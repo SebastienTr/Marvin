@@ -1,0 +1,7 @@
+SuperLens is released under three permissive licences, depending on the file:
+
+  hardware/                         CERN-OHL-P-2.0   (LICENSES/CERN-OHL-P-2.0.txt)
+  firmware/, host/, scripts         MIT              (LICENSES/MIT.txt)
+  docs/, README files, images       CC BY 4.0        (LICENSES/CC-BY-4.0.txt)
+
+Copyright (c) 2026 Sébastien Treille and SuperLens contributors.

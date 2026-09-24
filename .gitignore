@@ -1,0 +1,25 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Slicer projects and G-code (keep them local)
+*.gcode
+*.bgcode
+*.3mf.bak
+
+# OpenSCAD
+*.scad.bak
+
+# Firmware (PlatformIO)
+.pio/
+firmware/**/build/
+
+# Host (Python)
+__pycache__/
+*.pyc
+.venv/
+recordings/
+*.rrd

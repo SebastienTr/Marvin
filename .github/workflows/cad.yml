@@ -1,0 +1,22 @@
+name: CAD
+
+on:
+  push:
+    paths: ["hardware/**", ".github/workflows/cad.yml"]
+  pull_request:
+    paths: ["hardware/**", ".github/workflows/cad.yml"]
+
+jobs:
+  export-stl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OpenSCAD
+        run: sudo apt-get update && sudo apt-get install -y openscad
+      - name: Export every part
+        run: bash hardware/scripts/export_stl.sh
+      - name: Upload STLs
+        uses: actions/upload-artifact@v4
+        with:
+          name: superlens-stl
+          path: hardware/stl/*.stl
