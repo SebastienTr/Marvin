@@ -6,7 +6,7 @@ You only need a screwdriver and a wire stripper. Follow the steps in order.
 
 ## 1. Check the lidar on the template
 
-Lay the LD19 on the printed template. Its three holes must fall inside the slots. If they don't, adjust `lidPairDY` / `lidSingleDY` in the CAD **before** printing the head, and please open an issue with your measurements.
+Lay the lidar on the printed template. Its three holes must fall inside the slots. If they don't, adjust `lidPairDY` / `lidSingleDY` in the CAD **before** printing the head, and please open an issue with your measurements.
 
 ## 2. Mount the lidar
 

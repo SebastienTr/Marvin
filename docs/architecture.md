@@ -8,7 +8,7 @@ The head collects, timestamps and forwards data. The computer does everything el
 flowchart TB
   subgraph Device["SuperLens head"]
     direction LR
-    LD19["LD19<br/>≈ 4 500 pts/s"] -->|UART0 230400| FW
+    LID["D500 lidar<br/>≈ 5 000 pts/s"] -->|UART0 230400| FW
     LD2450["LD2450<br/>3 targets @ 10 Hz"] -->|UART1 256000| FW
     CAM["OV3660 camera"] -->|DVP| FW
     FW["ESP32-S3 firmware<br/>timestamp + frame"]
@@ -28,7 +28,7 @@ flowchart TB
 
 | Stream | Rate | Bandwidth |
 |---|---|---|
-| LD19 point packets (12 points each) | ≈ 375 packets/s × 47 bytes | ≈ 18 kB/s |
+| Lidar point packets (12 points each) | ≈ 420 packets/s × 47 bytes | ≈ 20 kB/s |
 | LD2450 target frames | 10 Hz × 30 bytes | < 1 kB/s |
 | Camera, MJPEG VGA | ≈ 10–15 fps | ≈ 300–600 kB/s |
 | MR60BHA2 vitals | ≈ 1 Hz | negligible |
@@ -59,7 +59,7 @@ Sensor positions (extrinsics) come straight from the CAD parameters:
 
 | Sensor | Position (X, Y, Z) mm | Facing |
 |---|---|---|
-| LD19 rotation centre | (0, 31, ≈111) | 360°, 0° to be calibrated |
+| Lidar rotation centre | (0, 31, ≈111) | 360°, 0° to be calibrated |
 | Camera (window centre) | (0, 0, 67) | −Y (forwards) |
 | HLK-LD2450 | (0, 0, 48.5) | −Y |
 | MR60BHA2 | (−7.4, 0, 21.1) | −Y |

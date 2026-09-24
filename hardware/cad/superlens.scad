@@ -1,6 +1,6 @@
 // =====================================================================
 //  SuperLens — handheld multi-sensor head
-//  LD19 2D lidar + HLK-LD2450 (24 GHz) + Seeed MR60BHA2 (60 GHz) + XIAO ESP32S3 Sense camera
+//  D500 (STL-19P) 2D lidar + HLK-LD2450 (24 GHz) + Seeed MR60BHA2 (60 GHz) + XIAO ESP32S3 Sense camera + 1.69" ST7789 screen
 //
 //  Parametric OpenSCAD source. Units: mm.
 //  Frame: X = right, Y = front (0) to back, Z = up.
@@ -54,7 +54,7 @@ ldCz = 48.5;
 xW = 21; xHt = 17.8; xDp = 15;
 xCz = 67;
 
-// LD19: footprint 54 x 46.29, Ø2.5 holes: pair at ±23.4 in X, single hole 31.92 away in Y
+// Lidar (LD19 / STL-19P, same footprint): 54 x 46.29, Ø2.5 holes: pair at ±23.4 in X, single hole 31.92 away in Y
 lidY  = 31;          // lidar centre (Y)
 lidPairDY = 8.3;     // hole pair 8.3 from centre; single hole 23.6 on the other side
 lidSingleDY = -23.6;
@@ -84,7 +84,7 @@ module hexSlotY(af, len, h) {
     hull() for (s=[-len, len]) translate([0,s,0]) cylinder(d=af/cos(30), h=h, $fn=6);
 }
 
-// Lidar hole pattern: pair at the front, single hole at the back (turn the LD19 180 deg if needed)
+// Lidar hole pattern: pair at the front, single hole at the back (turn the lidar 180 deg if needed)
 module lidarHoles() {
     for (x=[-23.4, 23.4]) translate([x, lidY - lidPairDY, 0]) children();
     translate([0, lidY - lidSingleDY, 0]) children();
@@ -292,7 +292,7 @@ module dock() {
 }
 
 // =====================================================================
-// Lidar check template (5 min print): test-fit the LD19 BEFORE printing the head
+// Lidar check template (5 min print): test-fit the lidar BEFORE printing the head
 module template() {
     difference() {
         translate([0, lidY, 0]) rrect(62, 58, 4, 2);

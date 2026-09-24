@@ -32,7 +32,7 @@ flowchart LR
   P5V --> W5
   PGND --> WG
 
-  subgraph LID["LD19 lidar"]
+  subgraph LID["D500 lidar (STL-19P)"]
     L5["P5V"]; LG["GND"]; LP["PWM"]; LT["Tx"]
   end
   W5 --> L5
@@ -120,9 +120,9 @@ If in doubt, compare with Seeed's official pinout.
 
 | Link | ESP32-S3 peripheral | Settings | Logic level |
 |---|---|---|---|
-| LD19 → ESP32 | UART0 RX on GPIO44 (D7) | 230 400 baud, 8N1, one-way | 3.3 V |
+| Lidar → ESP32 | UART0 RX on GPIO44 (D7) | 230 400 baud, 8N1, one-way | 3.3 V |
 | LD2450 ↔ ESP32 | UART1, RX on GPIO5 (D4), TX on GPIO6 (D5) | 256 000 baud, 8N1 | 3.3 V |
-| LD19 PWM ← ESP32 | GPIO8 (D9), LEDC PWM | Low = default speed | 3.3 V |
+| Lidar PWM ← ESP32 | GPIO8 (D9), LEDC PWM | Low = default speed | 3.3 V |
 | ESP32 → screen | SPI2 (FSPI): SCK GPIO7 (D8), MOSI GPIO9 (D10); CS GPIO1 (D0), DC GPIO2 (D1), RST GPIO4 (D3), BL GPIO43 (D6) | Up to 80 MHz | 3.3 V |
 | MR60BHA2 → PC | Its own ESP32-C6 over Wi-Fi | — | — |
 
@@ -133,13 +133,11 @@ The ESP32-S3 console uses native USB, which leaves UART0 free for the lidar. No 
 | Load | Average | Peak |
 |---|---:|---:|
 | XIAO ESP32S3 + camera + Wi-Fi | 300 mA | 450 mA |
-| LD19 lidar | 180 mA | 300 mA (motor start) |
+| D500 lidar (STL-19P) | 290 mA | 350 mA (motor start) |
 | HLK-LD2450 | 120 mA | 200 mA |
 | MR60BHA2 kit | 160 mA | 300 mA |
 | 1.69" screen (from 3V3) | 60 mA | 90 mA |
-| **Total at 5 V** | **≈ 0.9 A** | **≈ 1.4 A** |
-
-The lidar figure is for the LD19. The recommended D500 (STL-19P) draws about 290 mA, which adds roughly 0.1 A.
+| **Total at 5 V** | **≈ 1.0 A** | **≈ 1.5 A** |
 
 ## Flashing the ESP32
 

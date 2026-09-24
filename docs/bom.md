@@ -47,4 +47,4 @@ Prices are indicative. They were checked on AliExpress in September 2026 and mov
 
 - USB-C output, 5 V, **at least 1.5 A**. Almost every modern power bank qualifies.
 - Any size: it stays in your pocket, and the back of the device is taken by the screen.
-- At about 0.9–1 A average draw, a 10 000 mAh bank lasts roughly 5–6 hours.
+- At about 1 A average draw, a 10 000 mAh bank lasts roughly 5 hours.
