@@ -56,6 +56,9 @@ MAT = {
     "xiao": material("PCB bleu", (0.08, 0.18, 0.6), 0.4),
     "lcd": material("Ecran", (0.01, 0.02, 0.05), 0.15),
 }
+_lcd = MAT["lcd"].node_tree.nodes["Principled BSDF"]
+_lcd.inputs["Emission Color"].default_value = (0.05, 0.55, 0.6, 1)
+_lcd.inputs["Emission Strength"].default_value = 1.5
 
 
 def collection(name, parent=None):
@@ -69,6 +72,7 @@ def import_stl(path, name, mat, coll):
     ob = bpy.context.selected_objects[0]
     ob.name = ob.data.name = name
     ob.data.materials.append(mat)
+    ob.data.polygons.foreach_set("use_smooth", [False] * len(ob.data.polygons))  # crisp CAD edges
     for c in ob.users_collection:
         c.objects.unlink(ob)
     coll.objects.link(ob)

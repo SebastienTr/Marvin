@@ -1,9 +1,26 @@
 # SuperLens (français)
 
-**Une tête de capteurs portable et open source, qui voit une pièce de plusieurs façons à la fois.**
-Un lidar 360°, deux radars (24 GHz et 60 GHz) et une caméra envoient leurs données à un ordinateur. Celui-ci les affiche superposées, en direct.
+**Voir une pièce de cinq façons à la fois.**
+SuperLens est une tête de capteurs portable et open source. Elle braque un lidar 360°, deux radars (24 GHz et 60 GHz) et une caméra sur la même scène, puis fusionne tout sur ton ordinateur en une seule image vivante : la forme exacte de la pièce, où se trouve chaque personne, à quelle vitesse elle bouge, et si elle respire.
+
+<p align="center">
+  <img src="docs/images/hero_front.png" alt="SuperLens vu de face sur son socle" width="280">
+  <img src="docs/images/hero_back.png" alt="SuperLens vu de dos avec son écran" width="280">
+</p>
+
+Page de présentation : ouvre [`docs/index.html`](docs/index.html) dans un navigateur (FR/EN, avec une simulation en direct de l'écran arrière).
 
 > **État : rév. C conçue, pas encore fabriquée.** La mécanique et le câblage sont terminés et vérifiés en CAO. Le firmware et le visualiseur arrivent ensuite.
+
+## Ce qu'on veut faire
+
+Chaque capteur seul est à moitié aveugle. Un lidar dessine des murs parfaits mais ne distingue pas une personne d'un portemanteau, et une vitre lui est invisible. Un radar sait qui bouge et qui respire, mais il ne sait pas dessiner la pièce. Une caméra voit tout mais ne comprend rien aux distances. SuperLens les réunit sur un même support et une même horloge, pour qu'un ordinateur puisse les fusionner.
+
+1. **Capter : la tête est bête exprès.** L'ESP32-S3 lit chaque capteur, horodate chaque paquet et envoie tout en WiFi. Il dessine aussi une mini-carte sur son écran arrière.
+2. **Fusionner : l'ordinateur réfléchit.** Il place chaque mesure dans le même repère 3D et affiche une seule vue superposée, en direct, dans Rerun.
+3. **Modéliser : ensuite, un jumeau vivant.** Promène-toi avec et la carte devient un jumeau numérique vivant de l'espace, sans cloud.
+
+Usages possibles : tête de perception pour un robot domestique, détection de présence et de sommeil sans caméra, scan de pièces, jeux de données pour la recherche, apprentissage de la fusion de capteurs.
 
 ## En bref
 

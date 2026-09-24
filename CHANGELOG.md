@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- Presentation page `docs/index.html` (EN/FR) with a live simulation of the back screen.
+- Cycles renders `docs/images/hero_front.png` and `hero_back.png`.
+
+### Changed
+- README and README.fr now open with the project vision.
+- Blender file: flat CAD shading and a glowing screen material.
+
 ## [rev C] - 2026-09-24
 
 ### Added

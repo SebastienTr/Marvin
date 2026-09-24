@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SuperLens</title>
+<meta name="description" content="SuperLens — an open-source handheld sensor head: lidar, 24 GHz and 60 GHz radars, camera and a live screen, fused on a computer into one view of a room.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..100,400..900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#EEF1F1; --paper:#F8F9F9; --ink:#10181E; --muted:#56636B; --line:#CCD5D8;
+  --petg:#D8641C; --petg-ink:#A2460C; --teal:#138079; --teal-soft:#D5ECEA; --violet:#6A4FC2;
+  --lcd:#061114; --lcd-ink:#BFEDEA;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#0D1317; --paper:#141C21; --ink:#E4EAEC; --muted:#93A2AA; --line:#26343B;
+    --petg:#F07F38; --petg-ink:#F59C63; --teal:#3CC3B9; --teal-soft:#123A38; --violet:#A993F2;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#0D1317; --paper:#141C21; --ink:#E4EAEC; --muted:#93A2AA; --line:#26343B;
+  --petg:#F07F38; --petg-ink:#F59C63; --teal:#3CC3B9; --teal-soft:#123A38; --violet:#A993F2;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 var(--body);padding-inline:20px;padding-block:0 80px;-webkit-font-smoothing:antialiased}
+html[data-lang="en"] .fr, html[data-lang="fr"] .en{display:none}
+.wrap{max-width:1120px;margin:0 auto}
+a{color:var(--petg-ink);text-underline-offset:3px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--petg);outline-offset:3px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;line-height:1.02}
+p{margin:0;max-width:66ch}
+.mono{font-family:var(--mono)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* top bar */
+.top{display:flex;align-items:center;gap:16px;padding-block:18px;border-bottom:1px solid var(--line)}
+.mark{font-family:var(--display);font-weight:800;font-stretch:70%;font-size:22px;letter-spacing:.01em;display:flex;align-items:center;gap:10px}
+.mark i{width:14px;height:14px;border-radius:50%;border:2px solid var(--petg);position:relative;display:inline-block}
+.mark i::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--petg)}
+.top nav{margin-left:auto;display:flex;gap:18px;align-items:center;font-size:14px}
+.top nav a{color:var(--muted);text-decoration:none}
+.top nav a:hover{color:var(--ink)}
+.lang{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.lang button{font:500 12px var(--mono);background:none;border:0;color:var(--muted);padding:5px 10px;cursor:pointer}
+.lang button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.25fr .9fr;gap:48px;align-items:center;padding-block:64px 56px}
+.hero h1{font-size:clamp(48px,7.4vw,96px);font-weight:850;font-stretch:66%;letter-spacing:-.01em}
+.hero h1 em{font-style:normal;color:var(--petg)}
+.hero .lede{font-size:19px;color:var(--ink);margin-top:22px}
+.hero .sub{color:var(--muted);margin-top:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.chip{font:500 12px var(--mono);border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--muted);background:var(--paper)}
+.chip.state{border-color:var(--petg);color:var(--petg-ink)}
+.chip.state::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--petg);margin-right:7px;vertical-align:1px}
+
+.device{display:flex;flex-direction:column;align-items:center;gap:12px}
+.bezel{background:#1B2328;border-radius:26px;padding:14px;box-shadow:0 1px 0 #ffffff14 inset, 0 24px 60px -24px #0b1a2080;width:min(100%,330px)}
+.bezel canvas{display:block;width:100%;aspect-ratio:240/280;border-radius:14px;background:var(--lcd)}
+.device figcaption{font:12px var(--mono);color:var(--muted);text-align:center;max-width:320px}
+
+/* sections */
+section{padding-block:56px;border-top:1px solid var(--line)}
+.sh{display:grid;grid-template-columns:220px 1fr;gap:32px;margin-bottom:34px}
+.sh h2{font-size:clamp(30px,4vw,44px);font-weight:800;font-stretch:72%}
+.sh .eyebrow{padding-top:10px}
+.sh p{margin-top:12px;color:var(--muted)}
+
+/* idea */
+.idea{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
+.idea div{padding:22px 22px 24px;display:flex;flex-direction:column;gap:8px}
+.idea div+div{border-left:1px solid var(--line)}
+.idea b{font-family:var(--display);font-stretch:80%;font-size:22px;font-weight:750}
+.idea span.k{font:12px var(--mono);color:var(--petg-ink);letter-spacing:.1em;text-transform:uppercase}
+.idea p{font-size:15px;color:var(--muted)}
+.uses{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.uses span{font-size:14px;background:var(--teal-soft);color:var(--ink);padding:6px 12px;border-radius:4px}
+
+/* spectrum */
+.spectrum{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:18px 16px 6px;overflow-x:auto;margin-bottom:28px}
+.spectrum svg{display:block;min-width:720px;width:100%;height:auto}
+.spectrum text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
+.spectrum .lbl{fill:var(--ink);font-weight:500}
+
+/* layers */
+.layers{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+.layer{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.layer .sw{height:4px;border-radius:2px}
+.layer h3{font-size:21px;font-stretch:80%;font-weight:750}
+.layer .spec{font:12px var(--mono);color:var(--muted)}
+.layer p{font-size:14.5px}
+.layer .blind{font-size:13px;color:var(--muted);border-top:1px dashed var(--line);padding-top:8px;margin-top:auto}
+
+/* object */
+.object{display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:24px;align-items:end}
+.object figure{margin:0;display:flex;flex-direction:column;gap:10px;align-items:center}
+.object img{width:100%;max-width:360px;height:auto}
+.object figcaption{font:12px var(--mono);color:var(--muted)}
+.specs{display:grid;grid-template-columns:auto 1fr;gap:9px 18px;font-size:14.5px;align-self:center}
+.specs dt{font:12px var(--mono);color:var(--muted);padding-top:3px;white-space:nowrap}
+.specs dd{margin:0}
+
+/* pipeline */
+.pipe{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px;overflow-x:auto}
+.pipe svg{display:block;min-width:760px;width:100%;height:auto}
+.pipe text{font-family:var(--body);fill:var(--ink)}
+.pipe .s{font-family:var(--mono);font-size:11.5px;fill:var(--muted)}
+.pipe .h{font-family:var(--display);font-weight:700;font-size:15px}
+
+/* build */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;counter-reset:s}
+.step{counter-increment:s;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.step::before{content:counter(s,decimal-leading-zero);font:500 13px var(--mono);color:var(--petg-ink)}
+.step .big{font-family:var(--display);font-weight:800;font-stretch:68%;font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
+.step .big small{font-size:18px;font-weight:600;color:var(--muted);margin-left:4px}
+.step p{font-size:14.5px;color:var(--muted)}
+.step a{font-size:14px;margin-top:auto}
+
+/* roadmap */
+.road{list-style:none;margin:0;padding:0;display:grid;gap:0;border-left:2px solid var(--line);margin-left:6px}
+.road li{position:relative;padding:0 0 18px 26px}
+.road li::before{content:"";position:absolute;left:-8px;top:6px;width:14px;height:14px;border-radius:50%;background:var(--bg);border:2px solid var(--line)}
+.road li.done::before{background:var(--teal);border-color:var(--teal)}
+.road li.now::before{background:var(--petg);border-color:var(--petg)}
+.road b{font-family:var(--display);font-stretch:80%;font-size:18px;font-weight:700}
+.road li > span{display:block;color:var(--muted);font-size:14.5px}
+
+footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:wrap;gap:10px 28px;font-size:13.5px;color:var(--muted)}
+
+@media (max-width:980px){
+  .layers{grid-template-columns:repeat(2,1fr)}
+  .steps{grid-template-columns:repeat(2,1fr)}
+  .object{grid-template-columns:1fr 1fr}
+  .specs{grid-column:1/-1}
+}
+@media (max-width:760px){
+  .hero{grid-template-columns:1fr;padding-block:40px}
+  .sh{grid-template-columns:1fr;gap:6px}
+  .idea{grid-template-columns:1fr}
+  .idea div+div{border-left:0;border-top:1px solid var(--line)}
+  .layers,.steps{grid-template-columns:1fr}
+  .top nav a{display:none}
+}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="mark"><i aria-hidden="true"></i>SuperLens</div>
+  <nav>
+    <a href="#idea"><span class="en">Idea</span><span class="fr">L'idée</span></a>
+    <a href="#layers"><span class="en">Sensors</span><span class="fr">Capteurs</span></a>
+    <a href="#build"><span class="en">Build</span><span class="fr">Fabriquer</span></a>
+    <a href="../README.md">README</a>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" id="lang-en" data-l="en" aria-pressed="true">EN</button>
+      <button type="button" id="lang-fr" data-l="fr" aria-pressed="false">FR</button>
+    </div>
+  </nav>
+</header>
+
+<div class="hero">
+  <div>
+    <div class="eyebrow"><span class="en">Open-source handheld sensor head · rev C</span><span class="fr">Tête de capteurs portable open source · rév. C</span></div>
+    <h1 style="margin-top:14px"><span class="en">See a room <em>five ways</em> at once.</span><span class="fr">Voir une pièce de <em>cinq façons</em> à la fois.</span></h1>
+    <p class="lede"><span class="en">SuperLens points a laser, two radars and a camera at the same scene, then fuses everything on your computer into one live picture: the exact shape of the room, where each person is, how fast they move, and whether they are breathing.</span><span class="fr">SuperLens braque un laser, deux radars et une caméra sur la même scène, puis fusionne tout sur ton ordinateur en une seule image vivante : la forme exacte de la pièce, où se trouve chaque personne, à quelle vitesse elle bouge, et si elle respire.</span></p>
+    <p class="sub"><span class="en">About €160 of off-the-shelf parts, five printed pieces, twenty wires and not a single solder joint.</span><span class="fr">Environ 160 € de pièces du commerce, cinq pièces imprimées, vingt fils et pas une seule soudure.</span></p>
+    <div class="chips">
+      <span class="chip state"><span class="en">Designed · not built yet</span><span class="fr">Conçu · pas encore fabriqué</span></span>
+      <span class="chip">CERN-OHL-P · MIT · CC BY</span>
+      <span class="chip">ESP32-S3</span>
+    </div>
+  </div>
+  <figure class="device" style="margin:0">
+    <div class="bezel"><canvas id="lcd" width="480" height="560" aria-label="Simulated back screen: top-down lidar map with two people tracked by radar"></canvas></div>
+    <figcaption><span class="en">Simulation of the 1.69" back screen: lidar map from above, radar targets, breathing when someone is close.</span><span class="fr">Simulation de l'écran arrière 1,69" : carte lidar vue de dessus, cibles radar, respiration quand quelqu'un est proche.</span></figcaption>
+  </figure>
+</div>
+
+<section id="idea">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">What we want to do</span><span class="fr">Ce qu'on veut faire</span></div>
+    <div>
+      <h2><span class="en">A cheap, open pair of eyes that understands space</span><span class="fr">Des yeux bon marché et ouverts, qui comprennent l'espace</span></h2>
+      <p><span class="en">Every sensor alone is half-blind. A lidar draws perfect walls but cannot tell a person from a coat rack, and glass is invisible to it. A radar knows who moves and who breathes, but it can't draw the room. A camera sees everything and understands nothing about distance. SuperLens puts them on one frame, on one clock, so a computer can merge them.</span><span class="fr">Chaque capteur seul est à moitié aveugle. Un lidar dessine des murs parfaits mais ne distingue pas une personne d'un portemanteau, et une vitre lui est invisible. Un radar sait qui bouge et qui respire, mais il ne sait pas dessiner la pièce. Une caméra voit tout mais ne comprend rien aux distances. SuperLens les réunit sur un même support et une même horloge, pour qu'un ordinateur puisse les fusionner.</span></p>
+    </div>
+  </div>
+  <div class="idea">
+    <div><span class="k"><span class="en">Capture</span><span class="fr">Capter</span></span><b><span class="en">The head is dumb on purpose</span><span class="fr">La tête est bête exprès</span></b><p><span class="en">The ESP32-S3 reads every sensor, stamps each packet with the same clock and streams it over Wi-Fi. It also draws the mini-map on the back screen.</span><span class="fr">L'ESP32-S3 lit chaque capteur, horodate chaque paquet avec la même horloge et envoie tout en WiFi. Il dessine aussi la mini-carte sur l'écran arrière.</span></p></div>
+    <div><span class="k"><span class="en">Fuse</span><span class="fr">Fusionner</span></span><b><span class="en">The computer does the thinking</span><span class="fr">L'ordinateur réfléchit</span></b><p><span class="en">It places every measurement in the same 3D frame: lidar geometry, radar people and speeds, vital signs, camera colour. The result is one live overlay in Rerun.</span><span class="fr">Il place chaque mesure dans le même repère 3D : géométrie lidar, personnes et vitesses radar, signes vitaux, couleur caméra. Le résultat : une seule vue superposée, en direct, dans Rerun.</span></p></div>
+    <div><span class="k"><span class="en">Model</span><span class="fr">Modéliser</span></span><b><span class="en">Then, a living twin</span><span class="fr">Ensuite, un jumeau vivant</span></b><p><span class="en">Walk around with it and the map grows into a live digital twin of the space, showing who is where, what moves and who is breathing. No cloud, and no image needs to leave the room.</span><span class="fr">Promène-toi avec et la carte devient un jumeau numérique vivant de l'espace : qui est où, ce qui bouge, qui respire. Pas de cloud, et aucune image n'a besoin de quitter la pièce.</span></p></div>
+  </div>
+  <div class="uses" aria-label="Possible uses">
+    <span><span class="en">Perception head for a home robot</span><span class="fr">Tête de perception pour un robot domestique</span></span>
+    <span><span class="en">Camera-free presence and sleep sensing</span><span class="fr">Détection de présence et de sommeil sans caméra</span></span>
+    <span><span class="en">Room scanning and measuring</span><span class="fr">Scan et mesure de pièces</span></span>
+    <span><span class="en">Multimodal datasets for research</span><span class="fr">Jeux de données multimodaux pour la recherche</span></span>
+    <span><span class="en">Learning sensor fusion by doing</span><span class="fr">Apprendre la fusion de capteurs en pratiquant</span></span>
+  </div>
+</section>
+
+<section id="layers">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">Five layers</span><span class="fr">Cinq couches</span></div>
+    <div>
+      <h2><span class="en">Five slices of the spectrum, one frame</span><span class="fr">Cinq tranches du spectre, un seul repère</span></h2>
+      <p><span class="en">From 24 GHz radio to visible light, each sensor listens to a different band and each one covers another's blind spot.</span><span class="fr">De la radio à 24 GHz jusqu'à la lumière visible, chaque capteur écoute une bande différente, et chacun couvre l'angle mort d'un autre.</span></p>
+    </div>
+  </div>
+
+  <div class="spectrum" aria-label="Electromagnetic spectrum, logarithmic scale, with each sensor placed on it">
+    <svg viewBox="0 0 900 150" role="img">
+      <defs>
+        <linearGradient id="vis" x1="0" x2="1">
+          <stop offset="0" stop-color="#7a2cc9"/><stop offset=".25" stop-color="#2f6bf0"/><stop offset=".5" stop-color="#23b35a"/><stop offset=".75" stop-color="#f2c21b"/><stop offset="1" stop-color="#e2382b"/>
+        </linearGradient>
+      </defs>
+      <line x1="40" y1="92" x2="860" y2="92" stroke="var(--line)" stroke-width="2"/>
+      <g>
+        <line x1="40" y1="86" x2="40" y2="98" stroke="var(--muted)"/><text x="40" y="118" text-anchor="middle">1 GHz</text>
+        <line x1="176.7" y1="86" x2="176.7" y2="98" stroke="var(--muted)"/><text x="176.7" y="118" text-anchor="middle">10 GHz</text>
+        <line x1="313.3" y1="86" x2="313.3" y2="98" stroke="var(--muted)"/><text x="313.3" y="118" text-anchor="middle">100 GHz</text>
+        <line x1="450" y1="86" x2="450" y2="98" stroke="var(--muted)"/><text x="450" y="118" text-anchor="middle">1 THz</text>
+        <line x1="586.7" y1="86" x2="586.7" y2="98" stroke="var(--muted)"/><text x="586.7" y="118" text-anchor="middle">10 THz</text>
+        <line x1="723.3" y1="86" x2="723.3" y2="98" stroke="var(--muted)"/><text x="723.3" y="118" text-anchor="middle">100 THz</text>
+        <line x1="860" y1="86" x2="860" y2="98" stroke="var(--muted)"/><text x="860" y="118" text-anchor="middle">1 PHz</text>
+      </g>
+      <text x="450" y="142" text-anchor="middle">log₁₀ f</text>
+      <!-- Wi-Fi -->
+      <circle cx="91.9" cy="92" r="6" fill="var(--muted)"/>
+      <line x1="91.9" y1="86" x2="91.9" y2="56" stroke="var(--muted)"/>
+      <text x="91.9" y="36" text-anchor="middle" class="lbl">Wi-Fi</text><text x="91.9" y="50" text-anchor="middle">2.4 GHz</text>
+      <!-- 24 GHz -->
+      <circle cx="228.7" cy="92" r="7" fill="var(--teal)"/>
+      <line x1="228.7" y1="85" x2="228.7" y2="56" stroke="var(--teal)"/>
+      <text x="215" y="36" text-anchor="middle" class="lbl">LD2450</text><text x="215" y="50" text-anchor="middle">24 GHz</text>
+      <!-- 60 GHz -->
+      <circle cx="283" cy="92" r="7" fill="var(--violet)"/>
+      <line x1="283" y1="85" x2="283" y2="56" stroke="var(--violet)"/>
+      <text x="300" y="36" text-anchor="middle" class="lbl">MR60BHA2</text><text x="300" y="50" text-anchor="middle">60 GHz</text>
+      <!-- thermal, future -->
+      <rect x="631.8" y="86" width="32.7" height="12" rx="3" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"/>
+      <line x1="648" y1="86" x2="648" y2="56" stroke="var(--muted)" stroke-dasharray="3 3"/>
+      <text x="630" y="36" text-anchor="middle" class="lbl"><tspan class="en">thermal · later</tspan><tspan class="fr">thermique · plus tard</tspan></text><text x="630" y="50" text-anchor="middle">8–14 µm</text>
+      <!-- lidar -->
+      <circle cx="794.4" cy="92" r="7" fill="var(--petg)"/>
+      <line x1="794.4" y1="85" x2="794.4" y2="56" stroke="var(--petg)"/>
+      <text x="760" y="36" text-anchor="middle" class="lbl">Lidar D500</text><text x="760" y="50" text-anchor="middle">905 nm</text>
+      <!-- visible -->
+      <rect x="805.6" y="86" width="37.3" height="12" rx="3" fill="url(#vis)"/>
+      <line x1="824" y1="86" x2="824" y2="66" stroke="var(--muted)"/>
+      <text x="850" y="62" text-anchor="middle" class="lbl"><tspan class="en">camera</tspan><tspan class="fr">caméra</tspan></text>
+    </svg>
+  </div>
+
+  <div class="layers">
+    <article class="layer">
+      <div class="sw" style="background:var(--petg)"></div>
+      <h3><span class="en">Lidar</span><span class="fr">Lidar</span></h3>
+      <div class="spec">D500 · STL-19P · 5 000 pts/s · 12 m</div>
+      <p><span class="en">A spinning laser that times its own echo. It gives the exact outline of the room, 360° around, ten times a second.</span><span class="fr">Un laser rotatif qui chronomètre son propre écho. Il donne le contour exact de la pièce, sur 360°, dix fois par seconde.</span></p>
+      <div class="blind"><span class="en">Blind to glass, fog and smoke. Can't tell what is alive.</span><span class="fr">Aveugle aux vitres, au brouillard et à la fumée. Ne sait pas ce qui est vivant.</span></div>
+    </article>
+    <article class="layer">
+      <div class="sw" style="background:var(--teal)"></div>
+      <h3><span class="en">Radar 24 GHz</span><span class="fr">Radar 24 GHz</span></h3>
+      <div class="spec">HLK-LD2450 · 3 targets · 6 m · ±60°</div>
+      <p><span class="en">Tracks up to three people with their position and speed through Doppler. It works in the dark and through thin plastic.</span><span class="fr">Suit jusqu'à trois personnes, avec leur position et leur vitesse grâce à l'effet Doppler. Il marche dans le noir et à travers le plastique fin.</span></p>
+      <div class="blind"><span class="en">Coarse shapes. Nothing behind metal or water.</span><span class="fr">Formes grossières. Rien derrière du métal ou de l'eau.</span></div>
+    </article>
+    <article class="layer">
+      <div class="sw" style="background:var(--violet)"></div>
+      <h3><span class="en">Radar 60 GHz</span><span class="fr">Radar 60 GHz</span></h3>
+      <div class="spec">MR60BHA2 · 1.5 m · ±60°</div>
+      <p><span class="en">Feels millimetre movements: the chest rising as someone breathes, even the heartbeat. Presence without a camera.</span><span class="fr">Sent les mouvements d'un millimètre : la poitrine qui se soulève à chaque respiration, et même le battement du cœur. Une présence détectée sans caméra.</span></p>
+      <div class="blind"><span class="en">Short range. One person at a time for vitals.</span><span class="fr">Courte portée. Une personne à la fois pour les signes vitaux.</span></div>
+    </article>
+    <article class="layer">
+      <div class="sw" style="background:linear-gradient(90deg,#7a2cc9,#2f6bf0,#23b35a,#f2c21b,#e2382b)"></div>
+      <h3><span class="en">Camera</span><span class="fr">Caméra</span></h3>
+      <div class="spec">OV3660 · 3 MP · MJPEG</div>
+      <p><span class="en">Colour and texture, projected onto the lidar points so the map looks like the real room. The door to object recognition.</span><span class="fr">La couleur et la texture, projetées sur les points du lidar pour que la carte ressemble à la vraie pièce. La porte d'entrée vers la reconnaissance d'objets.</span></p>
+      <div class="blind"><span class="en">No depth on its own. Needs light.</span><span class="fr">Aucune profondeur seule. A besoin de lumière.</span></div>
+    </article>
+    <article class="layer">
+      <div class="sw" style="background:var(--ink)"></div>
+      <h3><span class="en">Screen</span><span class="fr">Écran</span></h3>
+      <div class="spec">1.69" · ST7789 · 240 × 280</div>
+      <p><span class="en">The device's own view: a top-down mini-map, radar targets and status. It works without a computer.</span><span class="fr">La vue propre à l'appareil : mini-carte vue de dessus, cibles radar et état. Il marche sans ordinateur.</span></p>
+      <div class="blind"><span class="en">A glance, not the full model. That lives on the PC.</span><span class="fr">Un coup d'œil, pas le modèle complet : celui-ci vit sur le PC.</span></div>
+    </article>
+  </div>
+</section>
+
+<section id="object">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">The object</span><span class="fr">L'objet</span></div>
+    <div>
+      <h2><span class="en">Held like a camera, parked like a lamp</span><span class="fr">Tenu comme un appareil photo, posé comme une lampe</span></h2>
+      <p><span class="en">The lidar sits on top so nothing blocks its laser plane. The radars and the camera face forward, and the screen faces you. A raked pistol grip drops into a printed stand, or screws onto any tripod.</span><span class="fr">Le lidar est au sommet, pour que rien ne coupe son plan laser. Les radars et la caméra regardent devant, l'écran te regarde. La poignée inclinée se glisse dans un socle imprimé, ou se visse sur n'importe quel trépied.</span></p>
+    </div>
+  </div>
+  <div class="object">
+    <figure><img src="images/hero_front.png" alt="SuperLens from the front: lidar on top, camera, 24 GHz and 60 GHz windows" loading="lazy"><figcaption><span class="en">Front: camera, 24 GHz, 60 GHz</span><span class="fr">Avant : caméra, 24 GHz, 60 GHz</span></figcaption></figure>
+    <figure><img src="images/hero_back.png" alt="SuperLens from the back: 1.69 inch screen in the back cover" loading="lazy"><figcaption><span class="en">Back: live screen</span><span class="fr">Arrière : écran en direct</span></figcaption></figure>
+    <dl class="specs">
+      <dt><span class="en">Head</span><span class="fr">Tête</span></dt><dd class="mono">76 × 62 × 84 mm</dd>
+      <dt><span class="en">Grip</span><span class="fr">Poignée</span></dt><dd class="mono">100 mm · 12° · 1/4"-20</dd>
+      <dt><span class="en">Laser plane</span><span class="fr">Plan laser</span></dt><dd class="mono">≈ 111 mm</dd>
+      <dt><span class="en">Power</span><span class="fr">Alimentation</span></dt><dd class="mono"><span class="en">USB-C bank in pocket · ≈ 1 A</span><span class="fr">Batterie USB-C en poche · ≈ 1 A</span></dd>
+      <dt><span class="en">Runtime</span><span class="fr">Autonomie</span></dt><dd class="mono"><span class="en">≈ 5 h on 10 000 mAh</span><span class="fr">≈ 5 h sur 10 000 mAh</span></dd>
+      <dt><span class="en">Print</span><span class="fr">Impression</span></dt><dd class="mono"><span class="en">5 parts · PETG · no supports</span><span class="fr">5 pièces · PETG · sans supports</span></dd>
+      <dt><span class="en">Source</span><span class="fr">Source</span></dt><dd class="mono">OpenSCAD · Blender · STL</dd>
+    </dl>
+  </div>
+</section>
+
+<section id="how">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">How it works</span><span class="fr">Comment ça marche</span></div>
+    <div>
+      <h2><span class="en">Dumb device, smart computer</span><span class="fr">Appareil bête, ordinateur malin</span></h2>
+      <p><span class="en">Less than 1 MB/s leaves the head, mostly the camera stream. Every packet carries a timestamp from the same clock, so the computer can line the streams up.</span><span class="fr">Moins de 1 Mo/s sort de la tête, surtout pour la caméra. Chaque paquet porte un horodatage de la même horloge, pour que l'ordinateur puisse aligner les flux.</span></p>
+    </div>
+  </div>
+  <div class="pipe">
+    <svg viewBox="0 0 980 256" role="img" aria-label="Data flow from sensors to the ESP32-S3, then over Wi-Fi to the computer">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
+      <g font-size="13">
+        <rect x="10" y="14" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--petg)"/><text x="24" y="34" class="h">Lidar D500</text><text x="24" y="50" class="s">UART 230 400 · 20 kB/s</text>
+        <rect x="10" y="70" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--teal)"/><text x="24" y="90" class="h">Radar 24 GHz</text><text x="24" y="106" class="s">UART 256 000 · 10 Hz</text>
+        <rect x="10" y="126" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--line)"/><text x="24" y="146" class="h"><tspan class="en">Camera</tspan><tspan class="fr">Caméra</tspan></text><text x="24" y="162" class="s">DVP · MJPEG</text>
+        <rect x="10" y="190" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--violet)"/><text x="24" y="210" class="h">Radar 60 GHz</text><text x="24" y="226" class="s"><tspan class="en">own ESP32-C6 · 1 Hz</tspan><tspan class="fr">son propre ESP32-C6 · 1 Hz</tspan></text>
+
+        <path d="M200 36 H270 V96 H300" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
+        <path d="M200 92 H300" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
+        <path d="M200 148 H270 V112 H300" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
+
+        <rect x="300" y="60" width="220" height="92" rx="6" fill="var(--bg)" stroke="var(--ink)" stroke-width="1.5"/>
+        <text x="316" y="86" class="h">XIAO ESP32-S3</text>
+        <text x="316" y="106" class="s"><tspan class="en">timestamp · frame · stream</tspan><tspan class="fr">horodate · emballe · envoie</tspan></text>
+        <text x="316" y="124" class="s"><tspan class="en">draws the back screen</tspan><tspan class="fr">dessine l'écran arrière</tspan></text>
+        <text x="316" y="142" class="s">OTA · Wi-Fi 2.4 GHz</text>
+
+        <path d="M410 152 V190" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
+        <rect x="340" y="190" width="140" height="40" rx="5" fill="var(--lcd)"/><text x="354" y="215" fill="var(--lcd-ink)" font-family="IBM Plex Mono, monospace" font-size="12"><tspan class="en">1.69" screen</tspan><tspan class="fr">écran 1,69"</tspan></text>
+
+        <path d="M520 106 H640" fill="none" stroke="var(--muted)" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+        <text x="548" y="96" class="s">UDP + MJPEG</text>
+        <path d="M200 212 H260 V244 H600 V134 H640" fill="none" stroke="var(--violet)" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+        <text x="530" y="238" class="s">Wi-Fi</text>
+
+        <rect x="640" y="40" width="330" height="140" rx="6" fill="var(--bg)" stroke="var(--ink)" stroke-width="1.5"/>
+        <text x="658" y="66" class="h"><tspan class="en">Computer</tspan><tspan class="fr">Ordinateur</tspan></text>
+        <text x="658" y="90" class="s"><tspan class="en">1 · receive every stream</tspan><tspan class="fr">1 · recevoir chaque flux</tspan></text>
+        <text x="658" y="110" class="s"><tspan class="en">2 · align them on one timeline</tspan><tspan class="fr">2 · les aligner sur une seule ligne de temps</tspan></text>
+        <text x="658" y="130" class="s"><tspan class="en">3 · place them in one 3D frame</tspan><tspan class="fr">3 · les placer dans un même repère 3D</tspan></text>
+        <text x="658" y="150" class="s"><tspan class="en">4 · show the live overlay (Rerun)</tspan><tspan class="fr">4 · afficher la vue superposée (Rerun)</tspan></text>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<section id="build">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">Build one</span><span class="fr">En fabriquer un</span></div>
+    <div>
+      <h2><span class="en">A weekend, a printer, a screwdriver</span><span class="fr">Un week-end, une imprimante, un tournevis</span></h2>
+      <p><span class="en">Everything is plugged or clamped. The only tools are a wire stripper and a screwdriver.</span><span class="fr">Tout s'enfiche ou se serre. Les seuls outils : une pince à dénuder et un tournevis.</span></p>
+    </div>
+  </div>
+  <div class="steps">
+    <div class="step"><div class="big">≈160<small>€</small></div><b><span class="en">Buy</span><span class="fr">Acheter</span></b><p><span class="en">Lidar, two radars, ESP32 camera board, screen, connectors. Mostly AliExpress.</span><span class="fr">Lidar, deux radars, carte ESP32 caméra, écran, connecteurs. Surtout sur AliExpress.</span></p><a href="bom.md"><span class="en">Bill of materials →</span><span class="fr">Liste d'achats →</span></a></div>
+    <div class="step"><div class="big">5<small><span class="en">parts</span><span class="fr">pièces</span></small></div><b><span class="en">Print</span><span class="fr">Imprimer</span></b><p><span class="en">Head, cover, grip, stand, plus a 5-minute lidar template. PETG, pre-oriented, no supports.</span><span class="fr">Tête, couvercle, poignée, socle, plus un gabarit lidar de 5 minutes. PETG, déjà orientées, sans supports.</span></p><a href="printing.md"><span class="en">Printing guide →</span><span class="fr">Guide d'impression →</span></a></div>
+    <div class="step"><div class="big">20<small><span class="en">wires</span><span class="fr">fils</span></small></div><b><span class="en">Wire</span><span class="fr">Câbler</span></b><p><span class="en">Dupont plugs on the ESP32, two lever connectors for power. A wire-by-wire table written for beginners.</span><span class="fr">Prises Dupont sur l'ESP32, deux connecteurs à levier pour l'alimentation. Un tableau fil par fil écrit pour débutants.</span></p><a href="wiring.md"><span class="en">Wiring guide →</span><span class="fr">Guide de câblage →</span></a></div>
+    <div class="step"><div class="big">0<small><span class="en">solder</span><span class="fr">soudure</span></small></div><b><span class="en">Assemble</span><span class="fr">Assembler</span></b><p><span class="en">Modules slide in from the back, and foam-padded columns on the cover hold them in place. Close it with four screws.</span><span class="fr">Les modules entrent par l'arrière et les colonnes du couvercle, garnies de mousse, les maintiennent. On ferme avec quatre vis.</span></p><a href="assembly.md"><span class="en">Assembly guide →</span><span class="fr">Guide d'assemblage →</span></a></div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">Where we are</span><span class="fr">Où on en est</span></div>
+    <div><h2><span class="en">Roadmap</span><span class="fr">Feuille de route</span></h2></div>
+  </div>
+  <ol class="road">
+    <li class="done"><b><span class="en">Rev A · the enclosure</span><span class="fr">Rév. A · le boîtier</span></b><span><span class="en">Head, grip, pressing-column cover, lidar template.</span><span class="fr">Tête, poignée, couvercle à colonnes, gabarit lidar.</span></span></li>
+    <li class="done"><b><span class="en">Rev B · no soldering</span><span class="fr">Rév. B · zéro soudure</span></b><span><span class="en">Pre-soldered ESP32, lever connectors, desk stand, tripod nut.</span><span class="fr">ESP32 pré-soudé, connecteurs à levier, socle, écrou trépied.</span></span></li>
+    <li class="done"><b><span class="en">Rev C · the screen</span><span class="fr">Rév. C · l'écran</span></b><span><span class="en">1.69" colour display on the back, D500 lidar, Blender model.</span><span class="fr">Écran couleur 1,69" au dos, lidar D500, modèle Blender.</span></span></li>
+    <li class="now"><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Order the parts, print, check every dimension against the real modules.</span><span class="fr">Commander, imprimer, vérifier chaque cote sur les vrais modules.</span></span></li>
+    <li><b>Firmware</b><span><span class="en">UART readers, UDP framing, MJPEG, screen mini-map, OTA.</span><span class="fr">Lecture des UART, trames UDP, MJPEG, mini-carte à l'écran, OTA.</span></span></li>
+    <li><b><span class="en">Host viewer</span><span class="fr">Visualiseur PC</span></b><span><span class="en">Receivers, time alignment, extrinsics, live Rerun overlay, recording.</span><span class="fr">Réception, alignement temporel, calibration, vue Rerun en direct, enregistrement.</span></span></li>
+    <li><b><span class="en">Beyond</span><span class="fr">Au-delà</span></b><span><span class="en">Walking 3D twin, thermal layer, a robot that uses SuperLens as its eyes.</span><span class="fr">Jumeau 3D en marchant, couche thermique, un robot qui utilise SuperLens comme yeux.</span></span></li>
+  </ol>
+</section>
+
+<footer>
+  <span>SuperLens · © 2026 Sébastien Treille <span class="en">and contributors</span><span class="fr">et contributeurs</span></span>
+  <span><span class="en">Hardware</span><span class="fr">Matériel</span> CERN-OHL-P-2.0 · <span class="en">Software</span><span class="fr">Logiciel</span> MIT · <span class="en">Docs</span><span class="fr">Doc</span> CC BY 4.0</span>
+  <span><span class="en">Sensor names are trademarks of their owners. Not affiliated.</span><span class="fr">Les noms des capteurs appartiennent à leurs propriétaires. Aucune affiliation.</span></span>
+</footer>
+
+</div>
+
+<script>
+/* ---------- language toggle ---------- */
+(function(){
+  const root = document.documentElement;
+  let saved = null;
+  try { saved = localStorage.getItem('superlens-lang'); } catch(e) {}
+  const initial = saved || ((navigator.language || 'en').toLowerCase().startsWith('fr') ? 'fr' : 'en');
+  function set(l){
+    root.dataset.lang = l; root.lang = l;
+    document.querySelectorAll('.lang button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.l === l)));
+    try { localStorage.setItem('superlens-lang', l); } catch(e) {}
+  }
+  document.querySelectorAll('.lang button').forEach(b => b.addEventListener('click', () => set(b.dataset.l)));
+  set(initial);
+})();
+
+/* ---------- simulated back screen ---------- */
+(function(){
+  const cv = document.getElementById('lcd'); const g = cv.getContext('2d');
+  const Wpx = cv.width, Hpx = cv.height;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const C = { bg:'#061114', grid:'#0f262a', pt:'#7FE3DA', sweep:'rgba(240,127,56,', dev:'#F07F38', r24:'#3CC3B9', r60:'#B39CF5', txt:'#BFEDEA', dim:'#4F7A7C' };
+
+  // Room in metres, device at origin facing -y (up on screen)
+  const seg = [];
+  const box = (x0,y0,x1,y1,glass) => { seg.push([x0,y0,x1,y0,glass],[x1,y0,x1,y1],[x1,y1,x0,y1],[x0,y1,x0,y0]); };
+  // outer walls (room 6 x 5 m), with a glass window on the top wall
+  seg.push([-3.2,-4.6,-0.6,-4.6],[-0.6,-4.6,1.4,-4.6,true],[1.4,-4.6,2.8,-4.6],[2.8,-4.6,2.8,0.6],[2.8,0.6,-3.2,0.6],[-3.2,0.6,-3.2,-4.6]);
+  seg.push([-3.2,-2.2,-1.9,-2.2]);                 // partition stub
+  box(-2.9,-4.3,-1.2,-3.5);                        // sofa
+  box(1.2,-1.9,2.1,-1.1);                          // table
+  box(2.2,-0.4,2.8,0.4);                           // cabinet
+
+  const people = [
+    { path:[[-0.6,-3.2],[1.6,-3.0],[1.8,-2.2],[-0.4,-2.4]], speed:0.55, t:0, p:[0,0], v:[0,0] },
+    { path:[[0.2,-1.9],[-0.3,-0.9],[0.25,-0.75],[0.6,-1.6]], speed:0.25, t:0.3, p:[0,0], v:[0,0] },
+  ];
+  function pathPos(pp, s){
+    const n = pp.path.length; let L = 0; const lens = [];
+    for (let i=0;i<n;i++){ const a=pp.path[i], b=pp.path[(i+1)%n]; const l=Math.hypot(b[0]-a[0],b[1]-a[1]); lens.push(l); L+=l; }
+    let d = (s % L + L) % L;
+    for (let i=0;i<n;i++){ if (d <= lens[i]) { const a=pp.path[i], b=pp.path[(i+1)%n]; const k=d/lens[i]; return [a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, (b[0]-a[0])/lens[i], (b[1]-a[1])/lens[i]]; } d -= lens[i]; }
+    return [pp.path[0][0], pp.path[0][1], 1, 0];
+  }
+  function ray(ang){
+    const dx = Math.sin(ang), dy = -Math.cos(ang); let best = 7.5, hit = false;
+    for (const s of seg){
+      if (s[4]) continue; // glass: the laser passes through
+      const ex=s[2]-s[0], ey=s[3]-s[1]; const den = dx*ey - dy*ex; if (Math.abs(den) < 1e-9) continue;
+      const t = (s[0]*ey - s[1]*ex)/den; const u = (s[0]*dy - s[1]*dx)/den;
+      if (t > 0.03 && u >= 0 && u <= 1 && t < best){ best = t; hit = true; }
+    }
+    for (const p of people){
+      const cx=p.p[0], cy=p.p[1], b = dx*cx + dy*cy, c = cx*cx + cy*cy - 0.04, disc = b*b - c;
+      if (disc > 0){ const t = b - Math.sqrt(disc); if (t > 0.03 && t < best){ best = t; hit = true; } }
+    }
+    return hit ? [dx*best, dy*best] : null;
+  }
+
+  // view transform: device near the bottom centre
+  const scale = 62, ox = Wpx/2, oy = Hpx*0.86;
+  const X = x => ox + x*scale, Y = y => oy + y*scale;
+  const pts = []; const MAXP = 1400;
+  let sweep = 0, last = performance.now(), t0 = last;
+
+  function step(dt, now){
+    for (const p of people){ p.t += dt*p.speed; const r = pathPos(p, p.t); p.p=[r[0],r[1]]; p.v=[r[2]*p.speed, r[3]*p.speed]; }
+    const revPerSec = 0.5, raysPerRev = 720;
+    const n = Math.max(1, Math.round(raysPerRev*revPerSec*dt));
+    for (let i=0;i<n;i++){
+      sweep += (2*Math.PI)/raysPerRev;
+      const h = ray(sweep); if (h) { pts.push([h[0], h[1], now]); if (pts.length > MAXP) pts.shift(); }
+    }
+  }
+
+  function draw(now){
+    g.fillStyle = C.bg; g.fillRect(0,0,Wpx,Hpx);
+    // range rings
+    g.strokeStyle = C.grid; g.lineWidth = 1;
+    for (let r=1;r<=6;r++){ g.beginPath(); g.arc(X(0),Y(0),r*scale,0,Math.PI*2); g.stroke(); }
+    // radar fields of view (±60°)
+    g.fillStyle = 'rgba(60,195,185,0.07)'; g.beginPath(); g.moveTo(X(0),Y(0)); g.arc(X(0),Y(0),6*scale,-Math.PI/2-Math.PI/3,-Math.PI/2+Math.PI/3); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(179,156,245,0.12)'; g.beginPath(); g.moveTo(X(0),Y(0)); g.arc(X(0),Y(0),1.5*scale,-Math.PI/2-Math.PI/3,-Math.PI/2+Math.PI/3); g.closePath(); g.fill();
+    // lidar points, fading with age
+    for (const p of pts){
+      const age = (now - p[2])/2200; if (age > 1) continue;
+      g.fillStyle = `rgba(127,227,218,${(1-age)*0.95+0.05})`;
+      g.fillRect(X(p[0])-1.6, Y(p[1])-1.6, 3.2, 3.2);
+    }
+    // sweep line
+    const sx = Math.sin(sweep), sy = -Math.cos(sweep);
+    const grd = g.createLinearGradient(X(0),Y(0),X(sx*7),Y(sy*7));
+    grd.addColorStop(0, C.sweep+'0.9)'); grd.addColorStop(1, C.sweep+'0)');
+    g.strokeStyle = grd; g.lineWidth = 2; g.beginPath(); g.moveTo(X(0),Y(0)); g.lineTo(X(sx*7),Y(sy*7)); g.stroke();
+    // radar targets
+    g.font = '500 17px "IBM Plex Mono", monospace';
+    let vital = null;
+    people.forEach((p, i) => {
+      const d = Math.hypot(p.p[0], p.p[1]); const ang = Math.atan2(p.p[0], -p.p[1]);
+      if (Math.abs(ang) > Math.PI/3 || d > 6) return;
+      const x = X(p.p[0]), y = Y(p.p[1]);
+      g.strokeStyle = C.r24; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(x, y-11); g.lineTo(x+11, y); g.lineTo(x, y+11); g.lineTo(x-11, y); g.closePath(); g.stroke();
+      g.beginPath(); g.moveTo(x,y); g.lineTo(x + p.v[0]*scale*1.6, y + p.v[1]*scale*1.6); g.stroke();
+      g.fillStyle = C.r24; g.fillText(`P${i+1} ${d.toFixed(1)}m`, x+15, y-8);
+      if (d < 1.5) vital = { i, d };
+    });
+    // device
+    g.fillStyle = C.dev; g.beginPath(); g.moveTo(X(0),Y(0)-11); g.lineTo(X(0)+8,Y(0)+7); g.lineTo(X(0)-8,Y(0)+7); g.closePath(); g.fill();
+    // status bar
+    g.fillStyle = 'rgba(6,17,20,0.85)'; g.fillRect(0,0,Wpx,40);
+    g.fillStyle = C.txt; g.font = '600 17px "IBM Plex Mono", monospace';
+    g.fillText('SUPERLENS', 16, 26);
+    g.font = '15px "IBM Plex Mono", monospace'; g.fillStyle = C.dim;
+    g.fillText('WiFi ● host ● 10 Hz', Wpx-196, 26);
+    // vital-sign panel
+    const py = Hpx - 58;
+    g.fillStyle = 'rgba(6,17,20,0.88)'; g.fillRect(0, py, Wpx, 58);
+    g.font = '15px "IBM Plex Mono", monospace';
+    if (vital){
+      const tt = (now - t0)/1000;
+      g.fillStyle = C.r60; g.fillText(`60 GHz · P${vital.i+1}  BR 14/min  HR 71`, 16, py+22);
+      g.strokeStyle = C.r60; g.lineWidth = 2; g.beginPath();
+      for (let k=0;k<=Wpx-32;k+=4){ const v = Math.sin((k/70) + tt*1.5)*7 + Math.sin((k/9) + tt*7.4)*1.4; const yy = py+42+v; k? g.lineTo(16+k,yy) : g.moveTo(16,yy); }
+      g.stroke();
+    } else {
+      g.fillStyle = C.dim; g.fillText('60 GHz · nobody within 1.5 m', 16, py+22);
+      g.fillText('D500 · 5 000 pts/s · 24 GHz · 2 targets', 16, py+44);
+    }
+  }
+
+  function frame(now){
+    const dt = Math.min(0.05, (now - last)/1000); last = now;
+    step(dt, now); draw(now);
+    if (!reduce) requestAnimationFrame(frame);
+  }
+  if (reduce){ // one full revolution, then a still image
+    const now = performance.now(); for (let i=0;i<120;i++) step(1/60, now); draw(now);
+  } else requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

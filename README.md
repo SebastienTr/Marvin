@@ -1,16 +1,32 @@
 # SuperLens
 
-**An open-source handheld sensor head that sees a room several ways at once.**
-A 360° lidar, two mmWave radars (24 GHz and 60 GHz) and a camera stream to a computer, which fuses them into a single live overlay.
+**See a room five ways at once.**
+SuperLens is an open-source handheld sensor head. It points a 360° lidar, two mmWave radars (24 GHz and 60 GHz) and a camera at the same scene, then fuses everything on your computer into one live picture: the exact shape of the room, where each person is, how fast they move, and whether they are breathing.
 
 <p align="center">
-  <img src="docs/images/render_front.png" alt="SuperLens on its desk stand: lidar on top, camera and radar windows on the front" width="300">
-  <img src="docs/images/render_exploded.png" alt="Exploded view: head, back cover with pressing columns, grip and stand" width="300">
+  <img src="docs/images/hero_front.png" alt="SuperLens on its desk stand, seen from the front: lidar on top, camera, 24 GHz and 60 GHz radar windows" width="300">
+  <img src="docs/images/hero_back.png" alt="SuperLens seen from the back: the 1.69 inch live screen in the back cover" width="300">
 </p>
 
-> Français : [lire en français](README.fr.md)
+> Français : [lire en français](README.fr.md) · Presentation page: open [`docs/index.html`](docs/index.html) in a browser (EN/FR, with a live simulation of the back screen).
 
 > **Project status: rev C, designed, not built yet.** The mechanics and wiring are complete and checked in CAD. The firmware and the desktop viewer are next. Expect changes once the first unit is assembled.
+
+## What we want to do
+
+Every sensor on its own is half-blind. A lidar draws perfect walls but cannot tell a person from a coat rack, and glass is invisible to it. A radar knows who moves and who breathes, but it cannot draw the room. A camera sees everything and understands nothing about distance. SuperLens puts them on one frame and one clock, so a computer can merge them.
+
+1. **Capture: the head is dumb on purpose.** The ESP32-S3 reads every sensor, stamps each packet with the same clock and streams it over Wi-Fi. It also draws a mini-map on its own back screen.
+2. **Fuse: the computer does the thinking.** It places every measurement in the same 3D frame (lidar geometry, radar people and speeds, vital signs, camera colour) and shows one live overlay in [Rerun](https://rerun.io).
+3. **Model: then, a living twin.** Walk around with it and the map grows into a live digital twin of the space. No cloud, and no image needs to leave the room.
+
+What it can be used for:
+
+- a perception head for a home robot;
+- camera-free presence and sleep sensing;
+- scanning and measuring rooms;
+- recording multimodal datasets for research;
+- learning sensor fusion hands-on.
 
 ## What each sensor adds
 
@@ -20,6 +36,7 @@ A 360° lidar, two mmWave radars (24 GHz and 60 GHz) and a camera stream to a co
 | Hi-Link **HLK-LD2450** | 24 GHz radar | X/Y position and speed of up to 3 people, up to 6 m |
 | Seeed **MR60BHA2** kit | 60 GHz radar | Presence, breathing rate and heart rate, up to 1.5 m |
 | **XIAO ESP32S3 Sense** | Visible | Colour camera. The ESP32-S3 also runs the device, its Wi-Fi and the screen |
+| Waveshare **1.69" LCD** (ST7789) | — | The device's own view: top-down lidar mini-map, radar targets and status, without a computer |
 
 Each sensor covers another's blind spot. The lidar gives exact geometry but misses glass and cannot tell a person from a coat rack. The radars see motion, speed and breathing, and they see through thin plastic and fabric. The camera adds texture and meaning.
 
@@ -69,6 +86,7 @@ superlens/
 ├── firmware/                     # ESP32-S3 firmware (planned)
 ├── host/                         # desktop fusion + viewer (planned)
 ├── docs/                         # BOM, wiring, printing, assembly, architecture
+│   └── index.html                # presentation page (open in a browser)
 └── LICENSES/                     # full licence texts
 ```
 
