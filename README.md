@@ -61,7 +61,8 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 ```
 superlens/
 ├── hardware/
-│   ├── cad/superlens.scad        # single parametric source for every part
+│   ├── blender/superlens.blend   # assembled model + print layout, open in Blender
+│   ├── cad/superlens.scad        # parametric source (dimensions live here)
 │   ├── stl/                      # print-ready STLs (generated)
 │   └── scripts/                  # export_stl.sh, render_previews.sh
 ├── firmware/                     # ESP32-S3 firmware (planned)
@@ -69,6 +70,12 @@ superlens/
 ├── docs/                         # BOM, wiring, printing, assembly, architecture
 └── LICENSES/                     # full licence texts
 ```
+
+## Open it in Blender
+
+[`hardware/blender/superlens.blend`](hardware/blender/superlens.blend) contains two collections: the assembled device with the sensors as coloured volumes (millimetre units), and every printable part laid out in its print-bed orientation. Blender 4.2 or newer is required.
+
+The file is generated from the STLs by [`hardware/blender/build_blend.py`](hardware/blender/build_blend.py).
 
 ## Customising the enclosure
 

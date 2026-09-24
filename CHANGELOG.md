@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- Blender file `hardware/blender/superlens.blend` (assembly + print layout) and its build script.
+
 ## [rev B] - 2026-09-24
 
 ### Changed
