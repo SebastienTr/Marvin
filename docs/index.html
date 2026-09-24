@@ -174,12 +174,12 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
 
 <div class="hero">
   <div>
-    <div class="eyebrow"><span class="en">Open-source handheld sensor head · rev C</span><span class="fr">Tête de capteurs portable open source · rév. C</span></div>
+    <div class="eyebrow"><span class="en">Open-source handheld sensor head · rev D</span><span class="fr">Tête de capteurs portable open source · rév. D</span></div>
     <h1 style="margin-top:14px"><span class="en">See a room <em>five ways</em> at once.</span><span class="fr">Voir une pièce de <em>cinq façons</em> à la fois.</span></h1>
     <p class="lede"><span class="en">SuperLens points a laser, two radars and a camera at the same scene, then fuses everything on your computer into one live picture: the exact shape of the room, where each person is, how fast they move, and whether they are breathing.</span><span class="fr">SuperLens braque un laser, deux radars et une caméra sur la même scène, puis fusionne tout sur ton ordinateur en une seule image vivante : la forme exacte de la pièce, où se trouve chaque personne, à quelle vitesse elle bouge, et si elle respire.</span></p>
-    <p class="sub"><span class="en">About €160 of off-the-shelf parts, five printed pieces, twenty wires and not a single solder joint.</span><span class="fr">Environ 160 € de pièces du commerce, cinq pièces imprimées, vingt fils et pas une seule soudure.</span></p>
+    <p class="sub"><span class="en">About €240 of off-the-shelf parts, five printed pieces, lever connectors instead of a breadboard, and just two header strips to solder.</span><span class="fr">Environ 240 € de pièces du commerce, cinq pièces imprimées, des connecteurs à levier au lieu d'une breadboard, et seulement deux barrettes de broches à souder.</span></p>
     <div class="chips">
-      <span class="chip state"><span class="en">Designed · not built yet</span><span class="fr">Conçu · pas encore fabriqué</span></span>
+      <span class="chip state"><span class="en">Rev D · designed, not built yet</span><span class="fr">Rév. D · conçu, pas encore fabriqué</span></span>
       <span class="chip">CERN-OHL-P · MIT · CC BY</span>
       <span class="chip">ESP32-S3</span>
     </div>
@@ -258,7 +258,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
       <!-- lidar -->
       <circle cx="794.4" cy="92" r="7" fill="var(--petg)"/>
       <line x1="794.4" y1="85" x2="794.4" y2="56" stroke="var(--petg)"/>
-      <text x="760" y="36" text-anchor="middle" class="lbl">Lidar D500</text><text x="760" y="50" text-anchor="middle">905 nm</text>
+      <text x="760" y="36" text-anchor="middle" class="lbl">Lidar D800</text><text x="760" y="50" text-anchor="middle">905 nm</text>
       <!-- visible -->
       <rect x="805.6" y="86" width="37.3" height="12" rx="3" fill="url(#vis)"/>
       <line x1="824" y1="86" x2="824" y2="66" stroke="var(--muted)"/>
@@ -270,7 +270,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <article class="layer">
       <div class="sw" style="background:var(--petg)"></div>
       <h3><span class="en">Lidar</span><span class="fr">Lidar</span></h3>
-      <div class="spec">D500 · STL-19P · 5 000 pts/s · 12 m</div>
+      <div class="spec">D800 · STL-27L · 21 600 pts/s · 25 m</div>
       <p><span class="en">A spinning laser that times its own echo. It gives the exact outline of the room, 360° around, ten times a second.</span><span class="fr">Un laser rotatif qui chronomètre son propre écho. Il donne le contour exact de la pièce, sur 360°, dix fois par seconde.</span></p>
       <div class="blind"><span class="en">Blind to glass, fog and smoke. Can't tell what is alive.</span><span class="fr">Aveugle aux vitres, au brouillard et à la fumée. Ne sait pas ce qui est vivant.</span></div>
     </article>
@@ -321,6 +321,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
       <dt><span class="en">Grip</span><span class="fr">Poignée</span></dt><dd class="mono">100 mm · 12° · 1/4"-20</dd>
       <dt><span class="en">Laser plane</span><span class="fr">Plan laser</span></dt><dd class="mono">≈ 111 mm</dd>
       <dt><span class="en">Power</span><span class="fr">Alimentation</span></dt><dd class="mono"><span class="en">USB-C bank in pocket · ≈ 1 A</span><span class="fr">Batterie USB-C en poche · ≈ 1 A</span></dd>
+      <dt><span class="en">Audio</span><span class="fr">Audio</span></dt><dd class="mono"><span class="en">built-in mic · 1 W speaker</span><span class="fr">micro intégré · haut-parleur 1 W</span></dd>
       <dt><span class="en">Runtime</span><span class="fr">Autonomie</span></dt><dd class="mono"><span class="en">≈ 5 h on 10 000 mAh</span><span class="fr">≈ 5 h sur 10 000 mAh</span></dd>
       <dt><span class="en">Print</span><span class="fr">Impression</span></dt><dd class="mono"><span class="en">5 parts · PETG · no supports</span><span class="fr">5 pièces · PETG · sans supports</span></dd>
       <dt><span class="en">Source</span><span class="fr">Source</span></dt><dd class="mono">OpenSCAD · Blender · STL</dd>
@@ -340,7 +341,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <svg viewBox="0 0 980 256" role="img" aria-label="Data flow from sensors to the ESP32-S3, then over Wi-Fi to the computer">
       <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
       <g font-size="13">
-        <rect x="10" y="14" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--petg)"/><text x="24" y="34" class="h">Lidar D500</text><text x="24" y="50" class="s">UART 230 400 · 20 kB/s</text>
+        <rect x="10" y="14" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--petg)"/><text x="24" y="34" class="h">Lidar D800</text><text x="24" y="50" class="s">UART 921 600 · 85 kB/s</text>
         <rect x="10" y="70" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--teal)"/><text x="24" y="90" class="h">Radar 24 GHz</text><text x="24" y="106" class="s">UART 256 000 · 10 Hz</text>
         <rect x="10" y="126" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--line)"/><text x="24" y="146" class="h"><tspan class="en">Camera</tspan><tspan class="fr">Caméra</tspan></text><text x="24" y="162" class="s">DVP · MJPEG</text>
         <rect x="10" y="190" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--violet)"/><text x="24" y="210" class="h">Radar 60 GHz</text><text x="24" y="226" class="s"><tspan class="en">own ESP32-C6 · 1 Hz</tspan><tspan class="fr">son propre ESP32-C6 · 1 Hz</tspan></text>
@@ -352,7 +353,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
         <rect x="300" y="60" width="220" height="92" rx="6" fill="var(--bg)" stroke="var(--ink)" stroke-width="1.5"/>
         <text x="316" y="86" class="h">XIAO ESP32-S3</text>
         <text x="316" y="106" class="s"><tspan class="en">timestamp · frame · stream</tspan><tspan class="fr">horodate · emballe · envoie</tspan></text>
-        <text x="316" y="124" class="s"><tspan class="en">draws the back screen</tspan><tspan class="fr">dessine l'écran arrière</tspan></text>
+        <text x="316" y="124" class="s"><tspan class="en">screen · mic in · speaker out</tspan><tspan class="fr">écran · micro · haut-parleur</tspan></text>
         <text x="316" y="142" class="s">OTA · Wi-Fi 2.4 GHz</text>
 
         <path d="M410 152 V190" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
@@ -379,14 +380,14 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <div class="eyebrow"><span class="en">Build one</span><span class="fr">En fabriquer un</span></div>
     <div>
       <h2><span class="en">A weekend, a printer, a screwdriver</span><span class="fr">Un week-end, une imprimante, un tournevis</span></h2>
-      <p><span class="en">Everything is plugged or clamped. The only tools are a wire stripper and a screwdriver.</span><span class="fr">Tout s'enfiche ou se serre. Les seuls outils : une pince à dénuder et un tournevis.</span></p>
+      <p><span class="en">Almost everything is plugged or clamped. Tools: a wire stripper, a screwdriver, and a soldering iron for two header strips.</span><span class="fr">Presque tout s'enfiche ou se serre. Outils : une pince à dénuder, un tournevis, et un fer pour deux barrettes de broches.</span></p>
     </div>
   </div>
   <div class="steps">
-    <div class="step"><div class="big">≈160<small>€</small></div><b><span class="en">Buy</span><span class="fr">Acheter</span></b><p><span class="en">Lidar, two radars, ESP32 camera board, screen, connectors. Mostly AliExpress.</span><span class="fr">Lidar, deux radars, carte ESP32 caméra, écran, connecteurs. Surtout sur AliExpress.</span></p><a href="bom.md"><span class="en">Bill of materials →</span><span class="fr">Liste d'achats →</span></a></div>
+    <div class="step"><div class="big">≈240<small>€</small></div><b><span class="en">Buy</span><span class="fr">Acheter</span></b><p><span class="en">Lidar, two radars, ESP32 camera board, screen, amp and speaker, connectors. Mostly AliExpress.</span><span class="fr">Lidar, deux radars, carte ESP32 caméra, écran, ampli et haut-parleur, connecteurs. Surtout sur AliExpress.</span></p><a href="bom.md"><span class="en">Bill of materials →</span><span class="fr">Liste d'achats →</span></a></div>
     <div class="step"><div class="big">5<small><span class="en">parts</span><span class="fr">pièces</span></small></div><b><span class="en">Print</span><span class="fr">Imprimer</span></b><p><span class="en">Head, cover, grip, stand, plus a 5-minute lidar template. PETG, pre-oriented, no supports.</span><span class="fr">Tête, couvercle, poignée, socle, plus un gabarit lidar de 5 minutes. PETG, déjà orientées, sans supports.</span></p><a href="printing.md"><span class="en">Printing guide →</span><span class="fr">Guide d'impression →</span></a></div>
-    <div class="step"><div class="big">20<small><span class="en">wires</span><span class="fr">fils</span></small></div><b><span class="en">Wire</span><span class="fr">Câbler</span></b><p><span class="en">Dupont plugs on the ESP32, two lever connectors for power. A wire-by-wire table written for beginners.</span><span class="fr">Prises Dupont sur l'ESP32, deux connecteurs à levier pour l'alimentation. Un tableau fil par fil écrit pour débutants.</span></p><a href="wiring.md"><span class="en">Wiring guide →</span><span class="fr">Guide de câblage →</span></a></div>
-    <div class="step"><div class="big">0<small><span class="en">solder</span><span class="fr">soudure</span></small></div><b><span class="en">Assemble</span><span class="fr">Assembler</span></b><p><span class="en">Modules slide in from the back, and foam-padded columns on the cover hold them in place. Close it with four screws.</span><span class="fr">Les modules entrent par l'arrière et les colonnes du couvercle, garnies de mousse, les maintiennent. On ferme avec quatre vis.</span></p><a href="assembly.md"><span class="en">Assembly guide →</span><span class="fr">Guide d'assemblage →</span></a></div>
+    <div class="step"><div class="big">29<small><span class="en">links</span><span class="fr">liaisons</span></small></div><b><span class="en">Wire</span><span class="fr">Câbler</span></b><p><span class="en">Dupont plugs on the ESP32, four lever connectors for power. A wire-by-wire table written for beginners.</span><span class="fr">Prises Dupont sur l'ESP32, quatre connecteurs à levier pour l'alimentation. Un tableau fil par fil écrit pour débutants.</span></p><a href="wiring.md"><span class="en">Wiring guide →</span><span class="fr">Guide de câblage →</span></a></div>
+    <div class="step"><div class="big">2<small><span class="en">headers</span><span class="fr">barrettes</span></small></div><b><span class="en">Assemble</span><span class="fr">Assembler</span></b><p><span class="en">Solder the header pins on the XIAO and the amp, then slide the modules in from the back. Foam-padded columns on the cover hold them, and four screws close it.</span><span class="fr">Soude les broches du XIAO et de l'ampli, puis glisse les modules par l'arrière. Les colonnes du couvercle, garnies de mousse, les maintiennent, et quatre vis ferment le tout.</span></p><a href="assembly.md"><span class="en">Assembly guide →</span><span class="fr">Guide d'assemblage →</span></a></div>
   </div>
 </section>
 
@@ -397,8 +398,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   </div>
   <ol class="road">
     <li class="done"><b><span class="en">Rev A · the enclosure</span><span class="fr">Rév. A · le boîtier</span></b><span><span class="en">Head, grip, pressing-column cover, lidar template.</span><span class="fr">Tête, poignée, couvercle à colonnes, gabarit lidar.</span></span></li>
-    <li class="done"><b><span class="en">Rev B · no soldering</span><span class="fr">Rév. B · zéro soudure</span></b><span><span class="en">Pre-soldered ESP32, lever connectors, desk stand, tripod nut.</span><span class="fr">ESP32 pré-soudé, connecteurs à levier, socle, écrou trépied.</span></span></li>
+    <li class="done"><b><span class="en">Rev B · lever connectors</span><span class="fr">Rév. B · connecteurs à levier</span></b><span><span class="en">Dupont plugs and lever connectors, desk stand, tripod nut.</span><span class="fr">Prises Dupont et connecteurs à levier, socle, écrou trépied.</span></span></li>
     <li class="done"><b><span class="en">Rev C · the screen</span><span class="fr">Rév. C · l'écran</span></b><span><span class="en">1.69" colour display on the back, D500 lidar, Blender model.</span><span class="fr">Écran couleur 1,69" au dos, lidar D500, modèle Blender.</span></span></li>
+    <li class="done"><b><span class="en">Rev D · it listens and talks</span><span class="fr">Rév. D · il écoute et il parle</span></b><span><span class="en">Built-in microphone, I2S amp and speaker behind the side vents, D800 lidar.</span><span class="fr">Micro intégré, ampli I2S et haut-parleur derrière les aérations, lidar D800.</span></span></li>
     <li class="now"><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Order the parts, print, check every dimension against the real modules.</span><span class="fr">Commander, imprimer, vérifier chaque cote sur les vrais modules.</span></span></li>
     <li><b>Firmware</b><span><span class="en">UART readers, UDP framing, MJPEG, screen mini-map, OTA.</span><span class="fr">Lecture des UART, trames UDP, MJPEG, mini-carte à l'écran, OTA.</span></span></li>
     <li><b><span class="en">Host viewer</span><span class="fr">Visualiseur PC</span></b><span><span class="en">Receivers, time alignment, extrinsics, live Rerun overlay, recording.</span><span class="fr">Réception, alignement temporel, calibration, vue Rerun en direct, enregistrement.</span></span></li>
@@ -541,7 +543,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
       g.stroke();
     } else {
       g.fillStyle = C.dim; g.fillText('60 GHz · nobody within 1.5 m', 16, py+22);
-      g.fillText('D500 · 5 000 pts/s · 24 GHz · 2 targets', 16, py+44);
+      g.fillText('D800 · 21 600 pts/s · 24 GHz · 2 targets', 16, py+44);
     }
   }
 

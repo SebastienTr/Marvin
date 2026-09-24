@@ -55,6 +55,7 @@ MAT = {
     "ld2450": material("PCB vert", (0.05, 0.35, 0.18), 0.4),
     "xiao": material("PCB bleu", (0.08, 0.18, 0.6), 0.4),
     "lcd": material("Ecran", (0.01, 0.02, 0.05), 0.15),
+    "spk": material("Haut-parleur", (0.75, 0.6, 0.15), 0.5),
 }
 _lcd = MAT["lcd"].node_tree.nodes["Principled BSDF"]
 _lcd.inputs["Emission Color"].default_value = (0.05, 0.55, 0.6, 1)
@@ -115,9 +116,10 @@ sens = collection("Capteurs (volumes)", asm)
 box("Kit MR60BHA2 (60 GHz)", kitX0 + clr / 2, t, kitZ0 + clr / 2, 54, 22, 35, MAT["kit"], sens)
 box("HLK-LD2450 (24 GHz)", -22, t, ldCz - 7.5, 44, 1.6, 15, MAT["ld2450"], sens)
 box("XIAO ESP32S3 Sense", -10.5, t, xCz - 8.9, 21, 15, 17.8, MAT["xiao"], sens)
+box("Haut-parleur 2030", -W / 2 + t, 45 - 15, 60 - 10, 5, 30, 20, MAT["spk"], sens)
 box("Ecran 1.69in ST7789", -15.75, D - 4.5, 40 - 19.5, 31.5, 4.5, 39, MAT["lcd"], sens)
-box("Lidar D500 - socle", -38.59 / 2, lidY - 38.59 / 2, H, 38.59, 38.59, 22.2, MAT["lidar"], sens)
-cylinder("Lidar D500 - tete", 0, lidY, H + 22.2, 35.29, 12.6, MAT["lidar"], sens)
+box("Lidar D800 - socle", -38.59 / 2, lidY - 38.59 / 2, H, 38.59, 38.59, 22.2, MAT["lidar"], sens)
+cylinder("Lidar D800 - tete", 0, lidY, H + 22.2, 35.29, 12.6, MAT["lidar"], sens)
 
 # ---- 2. Print-bed copies (same orientation as the STL exports) ----
 prn = collection("Impression (oriente plateau)")

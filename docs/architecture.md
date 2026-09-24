@@ -8,9 +8,11 @@ The head collects, timestamps and forwards data. The computer does everything el
 flowchart TB
   subgraph Device["SuperLens head"]
     direction LR
-    LID["D500 lidar<br/>≈ 5 000 pts/s"] -->|UART0 230400| FW
+    LID["D800 lidar<br/>≈ 21 600 pts/s"] -->|UART0 921600| FW
     LD2450["LD2450<br/>3 targets @ 10 Hz"] -->|UART1 256000| FW
     CAM["OV3660 camera"] -->|DVP| FW
+    MIC["PDM mic"] -->|I2S0| FW
+    FW -->|"I2S1"| SPK["MAX98357A + speaker"]
     FW["ESP32-S3 firmware<br/>timestamp + frame"]
     FW -->|"SPI"| LCD["1.69in screen<br/>mini-map + status"]
     MR60["MR60BHA2 kit<br/>ESP32-C6"]
@@ -28,7 +30,9 @@ flowchart TB
 
 | Stream | Rate | Bandwidth |
 |---|---|---|
-| Lidar point packets (12 points each) | ≈ 420 packets/s × 47 bytes | ≈ 20 kB/s |
+| Lidar point packets, D800 (12 points each) | ≈ 1 800 packets/s × 47 bytes | ≈ 85 kB/s |
+| Lidar point packets, D500 | ≈ 420 packets/s × 47 bytes | ≈ 20 kB/s |
+| Microphone, 16 kHz 16-bit mono (when streamed) | — | 32 kB/s |
 | LD2450 target frames | 10 Hz × 30 bytes | < 1 kB/s |
 | Camera, MJPEG VGA | ≈ 10–15 fps | ≈ 300–600 kB/s |
 | MR60BHA2 vitals | ≈ 1 Hz | negligible |
@@ -45,6 +49,7 @@ Everything fits comfortably in the ESP32-S3's Wi-Fi throughput.
 | **Pressing columns on the back cover** | Every module is held without screws or clips, and 3 mm foam absorbs tolerances. | Individual screw-in retainers |
 | **Thread-forming M3 screws into PETG** | No heat-set inserts, so no soldering iron is needed. | Brass heat-set inserts (rev A) |
 | **1.69" screen on the back cover, power bank in the pocket** | You see the live mini-map while holding the grip. The ESP32 draws a downsampled top-down lidar view and the radar targets locally, so the screen works without a PC. Freeing the back cover meant moving the power bank to your pocket. | Status-only monochrome OLED; side-mounted screen |
+| **Built-in mic, I2S amp and a speaker in the left wall** | The Sense board already carries a PDM microphone, so listening costs nothing. A MAX98357A needs only three pins. The speaker sits in a cradle behind the side vents, which double as its grille. To free those pins, the lidar PWM went back to GND and the screen backlight to 3V3. | Analog PWM audio into a PAM8302 (one pin, lower quality) |
 | **2D lidar on top, sensors on the front** | Nothing sits above the laser plane, so the lidar has a clear 360° view. The camera sits on the lidar axis to minimise parallax. | — |
 
 ## Coordinate frame
@@ -69,6 +74,7 @@ Sensor positions (extrinsics) come straight from the CAD parameters:
 - [x] Rev A: enclosure, soldered power distribution
 - [x] Rev B: solderless wiring, desk stand, tripod nut
 - [x] Rev C: 1.69" colour screen on the back, power bank moved to the pocket, D500 lidar
+- [x] Rev D: microphone + speaker, D800 lidar as the reference
 - [ ] First physical build and dimension check
 - [ ] Firmware: UART readers, UDP framing, MJPEG, OTA
 - [ ] Host: receivers, Rerun viewer, camera/lidar extrinsic calibration

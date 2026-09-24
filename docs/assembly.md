@@ -1,8 +1,12 @@
 # Assembly
 
-You only need a screwdriver and a wire stripper. Follow the steps in order.
+You need a screwdriver, a wire stripper and, for two header strips, a soldering iron. Follow the steps in order.
 
 <p align="center"><img src="images/render_exploded.png" alt="Exploded view of SuperLens" width="320"></p>
+
+## 0. Solder the headers
+
+Solder the 2 × 7 header pins under the XIAO ESP32S3 Sense (long side of the pins pointing away from the camera board) and the 7-pin header on the MAX98357A amp. Skip this step if you bought them pre-soldered.
 
 ## 1. Check the lidar on the template
 
@@ -17,6 +21,7 @@ Drop three M2.5 nuts into their pockets under the top deck, then drive the M2.5�
 1. **MR60BHA2 kit**: radar face forwards, its USB-C port to the right (that side of the sleeve is open).
 2. **HLK-LD2450**: flat antenna side forwards, into the middle frame.
 3. **XIAO ESP32S3 Sense**: camera in the top window, USB-C port facing the hole in the right side wall.
+4. **Speaker**: stick it with foam tape into the cradle on the left wall, cone facing the side vents. Stick the amp next to it on the floor of the head.
 
 ## 4. Wire it
 
@@ -30,11 +35,11 @@ Plug in the power bank. You should see:
 - the lidar start spinning,
 - the MR60BHA2 kit's LED light up.
 
-If nothing happens, unplug and re-check lines 1, 2, 3 and 7 of the wiring table.
+If nothing happens, unplug and re-check lines 1 to 5 of the wiring table.
 
 ## 6. Fit the screen in the back cover
 
-Lay the screen face down in its pocket, glass against the window, with its connector facing the inside. Stick a 3 mm foam pad on each brass standoff: the two clamp bars press on them when the cover is closed. Plug its cable in, then wire it following lines 13–20 of the wiring table.
+Lay the screen face down in its pocket, glass against the window, with its connector facing the inside. Stick a 3 mm foam pad on each brass standoff: the two clamp bars press on them when the cover is closed. Plug its cable in, then wire it following lines 15–22 of the wiring table.
 
 ## 7. Close the back cover
 
@@ -54,6 +59,7 @@ These dimensions are not guaranteed by the datasheets. Verify them before printi
 
 - **LD2450 cable**: it should end in female Dupont plugs. If yours are male, add a few male–female jumpers.
 - **Your USB-C cable plug** must fit through the 14 × 9 mm hole in the side wall.
+- **Speaker size**: the cradle expects a 20 × 30 mm face and at most 5 mm of depth (`spkL`, `spkH`, `spkT`).
 - **Screen thickness**: the pocket assumes 4.5 mm (glass + PCB) and 4 mm standoffs (`lcdT`, `lcdStand`). If the clamp bars do not touch the standoffs through the foam, adjust these values.
 - **MR60BHA2 case**: designed for 54 × 35 × 22 mm. If it rattles, set `clr = 0.2` and reprint the head.
 - **LD2450 back side**: if its connector hits a pressing column, trim the column or move it (`x=[-15, 15]` in `cover()`).

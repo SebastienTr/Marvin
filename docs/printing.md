@@ -28,6 +28,7 @@ Adjust these at the top of `superlens.scad`, then run `hardware/scripts/export_s
 | `gripA` | 12° | You prefer a more or less raked grip (the stand follows automatically) |
 | `lcdT`, `lcdStand` | 4.5 / 4 mm | Your screen module is thicker or thinner |
 | `lcdCz` | 40 mm | You want the screen higher or lower on the back cover |
+| `spkL`, `spkH`, `spkT` | 30.4 / 20.4 / 5 mm | Your speaker has a different size |
 
 ## Regenerating files
 

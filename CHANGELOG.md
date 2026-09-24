@@ -4,13 +4,19 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [rev D] - 2026-09-24
+
 ### Added
+- Audio: the XIAO Sense's built-in PDM microphone, plus a MAX98357A I2S amp driving a 2030 speaker held in a cradle on the left wall. The side vents act as its grille, with extra holes.
 - Presentation page `docs/index.html` (EN/FR) with a live simulation of the back screen.
 - Cycles renders `docs/images/hero_front.png` and `hero_back.png`.
 
 ### Changed
-- README and README.fr now open with the project vision.
-- Blender file: flat CAD shading and a glowing screen material.
+- The D800 lidar (STL-27L, 921 600 baud) is now the reference; the D500 remains a cheaper option.
+- To free the I2S pins, the lidar PWM goes back to GND and the screen backlight to 3V3. There are now four WAGO buses (5 V, GND-A, GND-B, 3V3) and 29 connections.
+- The standard XIAO (loose headers) is the default: two header strips to solder.
+- README and README.fr open with the project vision.
+- Blender file: flat CAD shading, glowing screen, speaker volume.
 
 ## [rev C] - 2026-09-24
 

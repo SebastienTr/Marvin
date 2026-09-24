@@ -1,6 +1,6 @@
 // =====================================================================
 //  SuperLens — handheld multi-sensor head
-//  D500 (STL-19P) 2D lidar + HLK-LD2450 (24 GHz) + Seeed MR60BHA2 (60 GHz) + XIAO ESP32S3 Sense camera + 1.69" ST7789 screen
+//  D800 / D500 2D lidar + HLK-LD2450 (24 GHz) + Seeed MR60BHA2 (60 GHz) + XIAO ESP32S3 Sense camera + 1.69" ST7789 screen + I2S speaker
 //
 //  Parametric OpenSCAD source. Units: mm.
 //  Frame: X = right, Y = front (0) to back, Z = up.
@@ -59,6 +59,10 @@ lidY  = 31;          // lidar centre (Y)
 lidPairDY = 8.3;     // hole pair 8.3 from centre; single hole 23.6 on the other side
 lidSingleDY = -23.6;
 slot = 1.2;          // ±1.2 mm slotted tolerance in Y
+
+// Speaker: 2030 cavity speaker (20 x 30 mm face) against the left wall, behind the side vents
+spkL = 30.4; spkH = 20.4; spkT = 5;   // face length (Y), height (Z), thickness (X) - measure yours
+spkY = 45; spkZ = 60;                 // centred on the left-side vents
 
 // Grip
 gripA  = 12;     // rake angle (deg)
@@ -128,6 +132,11 @@ module head() {
                 }
             // reinforcement pads under the lidar deck (nuts)
             lidarHoles() translate([0,0,H-tTop-2.5]) slotY(9, slot, 2.5+eps);
+            // speaker cradle on the left wall (open towards the inside)
+            translate([-W/2+t-eps, spkY-spkL/2-1.2, spkZ-spkH/2-1.2]) difference() {
+                cube([4, spkL+2.4, spkH+2.4]);
+                translate([-1, 1.2, 1.2]) cube([6, spkL, spkH]);
+            }
         }
         // ---- front windows ----
         translate([kitCx-25, -1, kitCz-15.5]) cube([50, t+2, 31]);           // radar 60 GHz
@@ -153,8 +162,10 @@ module head() {
         // ---- floor: grip screws + wire pass-through ----
         for (y=[gripCy-12, gripCy+12]) translate([0,y,-1]) cylinder(d=m3_clear, h=t+2);
         translate([0, gripCy, -1]) cylinder(d=10, h=t+2);
-        // side vents (upper rear)
+        // side vents (upper rear); on the left they are also the speaker grille
         for (sx=[-1,1], i=[0:3]) translate([sx*(W/2-t/2), 36+i*6, 60]) cube([t+2, 3, 14], center=true);
+        // extra speaker holes between the left vents
+        for (i=[0:2], dz=[-4, 4]) translate([-W/2+t/2, 39+i*6, spkZ+dz]) rotate([0,90,0]) cylinder(d=2, h=t+2, center=true);
     }
 }
 
@@ -305,6 +316,7 @@ module template() {
 // Module ghosts (preview only)
 module ghostLcd() { color("White", 0.9) translate([-lcdW/2, D-lcdT, lcdCz-lcdH/2]) cube([lcdW, lcdT, lcdH]); }
 module ghosts() {
+    color("Goldenrod", 0.9) translate([-W/2+t, spkY-spkL/2+0.2, spkZ-spkH/2+0.2]) cube([spkT, spkL-0.4, spkH-0.4]);
     color("DimGray", 0.8) translate([kitX0+clr/2, t, kitZ0+clr/2]) cube([kitW, kitDp, kitHt]);
     color("SeaGreen", 0.9) translate([-ldW/2, t, ldCz-ldHt/2]) cube([ldW, ldPcb, ldHt]);
     color("RoyalBlue", 0.9) translate([-xW/2, t, xCz-xHt/2]) cube([xW, xDp, xHt]);
