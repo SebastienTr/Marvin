@@ -12,6 +12,7 @@ flowchart TB
     LD2450["LD2450<br/>3 targets @ 10 Hz"] -->|UART1 256000| FW
     CAM["OV3660 camera"] -->|DVP| FW
     FW["ESP32-S3 firmware<br/>timestamp + frame"]
+    FW -->|"SPI"| LCD["1.69in screen<br/>mini-map + status"]
     MR60["MR60BHA2 kit<br/>ESP32-C6"]
   end
   FW -->|"UDP: lidar + radar frames"| HOST
@@ -43,6 +44,7 @@ Everything fits comfortably in the ESP32-S3's Wi-Fi throughput.
 | **WAGO lever connectors** | Solderless, reliable and reusable. | Soldered perfboard |
 | **Pressing columns on the back cover** | Every module is held without screws or clips, and 3 mm foam absorbs tolerances. | Individual screw-in retainers |
 | **Thread-forming M3 screws into PETG** | No heat-set inserts, so no soldering iron is needed. | Brass heat-set inserts (rev A) |
+| **1.69" screen on the back cover, power bank in the pocket** | You see the live mini-map while holding the grip. The ESP32 draws a downsampled top-down lidar view and the radar targets locally, so the screen works without a PC. Freeing the back cover meant moving the power bank to your pocket. | Status-only monochrome OLED; side-mounted screen |
 | **2D lidar on top, sensors on the front** | Nothing sits above the laser plane, so the lidar has a clear 360° view. The camera sits on the lidar axis to minimise parallax. | — |
 
 ## Coordinate frame
@@ -66,6 +68,7 @@ Sensor positions (extrinsics) come straight from the CAD parameters:
 
 - [x] Rev A: enclosure, soldered power distribution
 - [x] Rev B: solderless wiring, desk stand, tripod nut
+- [x] Rev C: 1.69" colour screen on the back, power bank moved to the pocket, D500 lidar
 - [ ] First physical build and dimension check
 - [ ] Firmware: UART readers, UDP framing, MJPEG, OTA
 - [ ] Host: receivers, Rerun viewer, camera/lidar extrinsic calibration

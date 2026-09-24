@@ -32,17 +32,21 @@ Plug in the power bank. You should see:
 
 If nothing happens, unplug and re-check lines 1, 2, 3 and 7 of the wiring table.
 
-## 6. Close the back cover
+## 6. Fit the screen in the back cover
+
+Lay the screen face down in its pocket, glass against the window, with its connector facing the inside. Stick a 3 mm foam pad on each brass standoff: the two clamp bars press on them when the cover is closed. Plug its cable in, then wire it following lines 13–20 of the wiring table.
+
+## 7. Close the back cover
 
 Stick a 3 mm foam pad on the end of each column: they press the modules against the front. Drive 4 × M3×10 gently, since the screws cut their own thread in the plastic.
 
-## 7. Grip and tripod nut
+## 8. Grip and tripod nut
 
 Slide the 1/4"-20 nut into the slot at the back of the grip butt. Screw the grip under the head with 2 × M3×12, driven from inside the head.
 
-## 8. Power bank and stand
+## 9. Power bank and stand
 
-Strap the power bank to the back and run its USB-C cable into the hole in the right side wall. Stick the silicone feet under the stand and drop the grip into it.
+Plug the 1 m USB-C cable into the hole in the right side wall and keep the power bank in your pocket. Stick the silicone feet under the stand and drop the grip into it.
 
 ## Check on arrival
 
@@ -50,6 +54,6 @@ These dimensions are not guaranteed by the datasheets. Verify them before printi
 
 - **LD2450 cable**: it should end in female Dupont plugs. If yours are male, add a few male–female jumpers.
 - **Your USB-C cable plug** must fit through the 14 × 9 mm hole in the side wall.
-- **Power bank width**: about 70 mm maximum between the strap slots.
+- **Screen thickness**: the pocket assumes 4.5 mm (glass + PCB) and 4 mm standoffs (`lcdT`, `lcdStand`). If the clamp bars do not touch the standoffs through the foam, adjust these values.
 - **MR60BHA2 case**: designed for 54 × 35 × 22 mm. If it rattles, set `clr = 0.2` and reprint the head.
 - **LD2450 back side**: if its connector hits a pressing column, trim the column or move it (`x=[-15, 15]` in `cover()`).

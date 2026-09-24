@@ -10,7 +10,7 @@ A 360° lidar, two mmWave radars (24 GHz and 60 GHz) and a camera stream to a co
 
 > Français : [lire en français](README.fr.md)
 
-> **Project status: rev B, designed, not built yet.** The mechanics and wiring are complete and checked in CAD. The firmware and the desktop viewer are next. Expect changes once the first unit is assembled.
+> **Project status: rev C, designed, not built yet.** The mechanics and wiring are complete and checked in CAD. The firmware and the desktop viewer are next. Expect changes once the first unit is assembled.
 
 ## What each sensor adds
 
@@ -19,7 +19,7 @@ A 360° lidar, two mmWave radars (24 GHz and 60 GHz) and a camera stream to a co
 | LDROBOT **LD19** lidar | 905 nm laser | Precise 2D outline of the room, 360°, up to 12 m |
 | Hi-Link **HLK-LD2450** | 24 GHz radar | X/Y position and speed of up to 3 people, up to 6 m |
 | Seeed **MR60BHA2** kit | 60 GHz radar | Presence, breathing rate and heart rate, up to 1.5 m |
-| **XIAO ESP32S3 Sense** | Visible | Colour camera. The ESP32-S3 also runs the device and its Wi-Fi |
+| **XIAO ESP32S3 Sense** | Visible | Colour camera. The ESP32-S3 also runs the device, its Wi-Fi and the screen |
 
 Each sensor covers another's blind spot. The lidar gives exact geometry but misses glass and cannot tell a person from a coat rack. The radars see motion, speed and breathing, and they see through thin plastic and fabric. The camera adds texture and meaning.
 
@@ -28,7 +28,8 @@ Each sensor covers another's blind spot. The lidar gives exact geometry but miss
 - **No soldering.** Pre-soldered ESP32, Dupont plugs and two lever connectors. A wire stripper and a screwdriver are the only tools.
 - **Prints without supports.** Five parts in PETG, pre-oriented for the bed.
 - **Handheld or standing.** A pistol grip slides into a printed desk stand, and a 1/4"-20 tripod nut sits in the grip butt.
-- **Bring your own power bank.** Any USB-C power bank that delivers ≥ 1.5 A at 5 V, strapped to the back.
+- **Live screen on the back.** A 1.69" colour display shows a top-down lidar mini-map and the radar targets, even without a computer.
+- **Bring your own power bank.** Any USB-C power bank that delivers ≥ 1.5 A at 5 V, kept in your pocket on a 1 m cable.
 - **Dumb device, smart computer.** The ESP32 only timestamps and forwards data. All fusion runs on the PC.
 
 ## How it works
@@ -50,9 +51,9 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 
 ## Build it
 
-1. **Buy the parts** in [docs/bom.md](docs/bom.md): about €166 from AliExpress, and nothing needs soldering.
+1. **Buy the parts** in [docs/bom.md](docs/bom.md): about €160 from AliExpress, and nothing needs soldering.
 2. **Print** following [docs/printing.md](docs/printing.md). Print the 5-minute lidar template first.
-3. **Wire** the 12 wires in [docs/wiring.md](docs/wiring.md). The guide is written for first-timers.
+3. **Wire** the 20 wires in [docs/wiring.md](docs/wiring.md). The guide is written for first-timers.
 4. **Assemble** following [docs/assembly.md](docs/assembly.md).
 5. **Flash and run.** The [firmware](firmware/) and the [host viewer](host/) are in progress.
 

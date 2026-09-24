@@ -54,6 +54,7 @@ MAT = {
     "kit": material("Kit MR60 noir", (0.05, 0.05, 0.06), 0.7),
     "ld2450": material("PCB vert", (0.05, 0.35, 0.18), 0.4),
     "xiao": material("PCB bleu", (0.08, 0.18, 0.6), 0.4),
+    "lcd": material("Ecran", (0.01, 0.02, 0.05), 0.15),
 }
 
 
@@ -110,6 +111,7 @@ sens = collection("Capteurs (volumes)", asm)
 box("Kit MR60BHA2 (60 GHz)", kitX0 + clr / 2, t, kitZ0 + clr / 2, 54, 22, 35, MAT["kit"], sens)
 box("HLK-LD2450 (24 GHz)", -22, t, ldCz - 7.5, 44, 1.6, 15, MAT["ld2450"], sens)
 box("XIAO ESP32S3 Sense", -10.5, t, xCz - 8.9, 21, 15, 17.8, MAT["xiao"], sens)
+box("Ecran 1.69in ST7789", -15.75, D - 4.5, 40 - 19.5, 31.5, 4.5, 39, MAT["lcd"], sens)
 box("Lidar D500 - socle", -38.59 / 2, lidY - 38.59 / 2, H, 38.59, 38.59, 22.2, MAT["lidar"], sens)
 cylinder("Lidar D500 - tete", 0, lidY, H + 22.2, 35.29, 12.6, MAT["lidar"], sens)
 

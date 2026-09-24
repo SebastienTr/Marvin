@@ -161,28 +161,53 @@ module head() {
 // =====================================================================
 // Back cover (printed outer face down)
 colFoam = 3.0;   // gap for a 3 mm adhesive foam pad (absorbs tolerances and components)
+// 1.69" ST7789V2 LCD (Waveshare 240x280): PCB 31.5 x 39, glass on the front, 4 brass standoffs on the back
+lcdW = 31.5; lcdH = 39.0;
+lcdT = 4.5;          // glass + PCB thickness (measure yours)
+lcdStand = 4.0;      // height of the brass standoffs on the back
+lcdCz = 40;          // screen centre height on the back cover
+lcdWinW = 28.6; lcdWinH = 33.4;   // viewing window (active area 27.97 x 32.63)
+lcdSx = 13.25;       // standoff centres, X (approx.)
+
 module cover() {
     ct = 2.4;
+    lcdBack = D - lcdT;                          // back face of the LCD PCB
+    barY = lcdBack - lcdStand - colFoam - 3;     // clamp bars press the standoffs through foam
     difference() {
         union() {
             translate([0, D, 0]) rbox(W, ct, H, R);
             // pressing columns (towards the front)
-            // MR60 kit
+            // MR60 kit (low, below the screen)
             for (x=[kitCx-13.5, kitCx+13.5])
-                translate([x-4, t+clr+kitDp+colFoam, kitCz-4]) cube([8, D-(t+clr+kitDp+colFoam)+eps, 8]);
-            // LD2450
-            for (x=[-15, 15])
-                translate([x-3, t+ldPcb+colFoam+0.4, ldCz-3]) cube([6, D-(t+ldPcb+colFoam+0.4)+eps, 6]);
-            // XIAO
+                translate([x-4, t+clr+kitDp+colFoam, 10-4]) cube([8, D-(t+clr+kitDp+colFoam)+eps, 8]);
+            // LD2450 (outside the screen footprint)
+            for (x=[-20.5, 20.5])
+                translate([x-2.5, t+ldPcb+colFoam+0.4, ldCz-3]) cube([5, D-(t+ldPcb+colFoam+0.4)+eps, 6]);
+            // XIAO (above the screen)
             translate([-4, t+xDp+colFoam, xCz-4]) cube([8, D-(t+xDp+colFoam)+eps, 8]);
+            // screen pocket walls
+            translate([0, 0, lcdCz]) difference() {
+                translate([-(lcdW+0.6)/2-1.2, lcdBack, -(lcdH+0.6)/2-1.2]) cube([lcdW+0.6+2.4, lcdT+eps, lcdH+0.6+2.4]);
+                translate([-(lcdW+0.6)/2, lcdBack-1, -(lcdH+0.6)/2]) cube([lcdW+0.6, lcdT+2, lcdH+0.6]);
+            }
+            // screen clamp: two C-brackets (post - bar - post) pressing the standoffs
+            for (sx=[-lcdSx, lcdSx]) translate([sx-2.5, 0, lcdCz]) {
+                zt = (lcdH+0.6)/2 + 1.2;
+                translate([0, barY, -zt-3]) cube([5, 3, 2*zt+6]);                       // bar
+                for (zz=[-zt-3, zt]) translate([0, barY, zz]) cube([5, D-barY+eps, 3]); // posts
+            }
         }
         // screws
         for (p=bossPos) translate([p[0], D-1, p[1]]) rotate([-90,0,0]) {
             cylinder(d=m3_clear, h=ct+2);
             translate([0,0,ct+1-1.6]) cylinder(d=6.2, h=2);     // counterbore for button head
         }
-        // slots for a 20 mm hook-and-loop strap (power bank)
-        for (x=[-32,-24,24,32]) translate([x-1.75, D-1, 42-11]) cube([3.5, ct+2, 22]);
+        // screen window with outer chamfer
+        translate([0, D-1, lcdCz]) rotate([-90,0,0]) rrect(lcdWinW, lcdWinH, 2, ct+2);
+        hull() {
+            translate([0, D+ct-0.8, lcdCz]) rotate([-90,0,0]) rrect(lcdWinW, lcdWinH, 2, 0.01);
+            translate([0, D+ct+0.01, lcdCz]) rotate([-90,0,0]) rrect(lcdWinW+2, lcdWinH+2, 3, 0.01);
+        }
         // vents
         for (x=[-20,-14,-8,8,14,20]) translate([x-1.5, D-1, 72]) cube([3, ct+2, 8]);
     }
@@ -278,6 +303,7 @@ module template() {
 
 // =====================================================================
 // Module ghosts (preview only)
+module ghostLcd() { color("White", 0.9) translate([-lcdW/2, D-lcdT, lcdCz-lcdH/2]) cube([lcdW, lcdT, lcdH]); }
 module ghosts() {
     color("DimGray", 0.8) translate([kitX0+clr/2, t, kitZ0+clr/2]) cube([kitW, kitDp, kitHt]);
     color("SeaGreen", 0.9) translate([-ldW/2, t, ldCz-ldHt/2]) cube([ldW, ldPcb, ldHt]);
@@ -307,6 +333,7 @@ else if (PART == "dock") dock();
 else if (PART == "exploded") {
     color("Orange") head();
     color("SlateGray") translate([0,45,0]) cover();
+    translate([0,45,0]) ghostLcd();
     color("Orange") translate([0,0,-35]) grip();
     color("SlateGray") translate([0,0,-70]) dock();
     ghosts();
@@ -316,5 +343,5 @@ else {
     color("SlateGray") cover();
     color("Orange") grip();
     color("SlateGray") dock();
-    ghosts();
+    ghosts(); ghostLcd();
 }

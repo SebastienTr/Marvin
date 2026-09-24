@@ -1,6 +1,6 @@
 # Wiring
 
-**12 wires, no soldering.** This guide assumes you have never wired electronics before.
+**20 wires, no soldering.** This guide assumes you have never wired electronics before.
 
 ## The idea in one paragraph
 
@@ -24,7 +24,8 @@ flowchart LR
   BANK["Power bank"] -- "USB-C cable" --> XIAO
 
   subgraph XIAO["XIAO ESP32S3 Sense"]
-    P5V["5V"]; PGND["GND"]; D7["D7 / GPIO44"]; D4["D4 / GPIO5"]; D5["D5 / GPIO6"]
+    P5V["5V"]; PGND["GND"]; P33["3V3"]; D7["D7 / GPIO44"]; D4["D4 / GPIO5"]; D5["D5 / GPIO6"]; D9["D9 / GPIO8"]
+    D0["D0 / GPIO1"]; D1["D1 / GPIO2"]; D3["D3 / GPIO4"]; D6["D6 / GPIO43"]; D8["D8 / GPIO7"]; D10["D10 / GPIO9"]
   end
 
   W5["WAGO 5V"]; WG["WAGO GND"]
@@ -36,7 +37,7 @@ flowchart LR
   end
   W5 --> L5
   WG --> LG
-  WG --> LP
+  D9 --> LP
   LT --> D7
 
   subgraph RAD["HLK-LD2450"]
@@ -52,6 +53,18 @@ flowchart LR
   end
   W5 -- "red" --> MU
   WG -- "black" --> MU
+
+  subgraph LCD["1.69in screen (ST7789)"]
+    SV["VCC"]; SG["GND"]; SDIN["DIN"]; SCLK["CLK"]; SCS["CS"]; SDC["DC"]; SRST["RST"]; SBL["BL"]
+  end
+  P33 --> SV
+  WG --> SG
+  D10 --> SDIN
+  D8 --> SCLK
+  D0 --> SCS
+  D1 --> SDC
+  D3 --> SRST
+  D6 --> SBL
 ```
 
 ## Wire-by-wire table
@@ -64,7 +77,7 @@ Tick each line as you go.
 | 2 | XIAO **GND** | WAGO GND | Same as above |
 | 3 | Lidar **P5V** | WAGO 5V | Cut the Dupont plug off, strip |
 | 4 | Lidar **GND** | WAGO GND | Cut, strip |
-| 5 | Lidar **PWM** | WAGO GND | Yes, to ground: the lidar then spins at its default speed (see the LD19 datasheet) |
+| 5 | Lidar **PWM** | XIAO **D9** | Push the Dupont plug on. The firmware holds it low (default speed) or drives it for speed control. |
 | 6 | Lidar **Tx** | XIAO **D7** | Push the Dupont plug on |
 | 7 | LD2450 **5V** | WAGO 5V | Cut, strip |
 | 8 | LD2450 **GND** | WAGO GND | Cut, strip |
@@ -72,8 +85,18 @@ Tick each line as you go.
 | 10 | LD2450 **RX** | XIAO **D5** | Push the Dupont plug on |
 | 11 | USB-C pigtail **red** | WAGO 5V | Usually pre-stripped. The plug goes into the MR60BHA2 kit. |
 | 12 | USB-C pigtail **black** | WAGO GND | Same as above |
+| 13 | Screen **VCC** | XIAO **3V3** | Push the Dupont plug on. **3V3, not 5V**: the screen's logic must match the ESP32's 3.3 V. |
+| 14 | Screen **GND** | WAGO GND | Cut, strip |
+| 15 | Screen **DIN** | XIAO **D10** | Push the Dupont plug on (SPI data) |
+| 16 | Screen **CLK** | XIAO **D8** | Push the Dupont plug on (SPI clock) |
+| 17 | Screen **CS** | XIAO **D0** | Push the Dupont plug on |
+| 18 | Screen **DC** | XIAO **D1** | Push the Dupont plug on |
+| 19 | Screen **RST** | XIAO **D3** | Push the Dupont plug on |
+| 20 | Screen **BL** | XIAO **D6** | Push the Dupont plug on (backlight, dimmable) |
 
-When you are done, WAGO 5V holds 4 wires (one port spare) and WAGO GND holds 5 (full).
+The screen ships with a cable that ends in 8 labelled Dupont plugs.
+
+When you are done, WAGO 5V holds 4 wires (one port spare) and WAGO GND holds 5 (full). Every XIAO pin is used except D2.
 
 ## XIAO pin map
 
@@ -99,6 +122,8 @@ If in doubt, compare with Seeed's official pinout.
 |---|---|---|---|
 | LD19 → ESP32 | UART0 RX on GPIO44 (D7) | 230 400 baud, 8N1, one-way | 3.3 V |
 | LD2450 ↔ ESP32 | UART1, RX on GPIO5 (D4), TX on GPIO6 (D5) | 256 000 baud, 8N1 | 3.3 V |
+| LD19 PWM ← ESP32 | GPIO8 (D9), LEDC PWM | Low = default speed | 3.3 V |
+| ESP32 → screen | SPI2 (FSPI): SCK GPIO7 (D8), MOSI GPIO9 (D10); CS GPIO1 (D0), DC GPIO2 (D1), RST GPIO4 (D3), BL GPIO43 (D6) | Up to 80 MHz | 3.3 V |
 | MR60BHA2 → PC | Its own ESP32-C6 over Wi-Fi | — | — |
 
 The ESP32-S3 console uses native USB, which leaves UART0 free for the lidar. No level shifters are needed, because both sensors use 3.3 V UART levels.
@@ -111,7 +136,10 @@ The ESP32-S3 console uses native USB, which leaves UART0 free for the lidar. No 
 | LD19 lidar | 180 mA | 300 mA (motor start) |
 | HLK-LD2450 | 120 mA | 200 mA |
 | MR60BHA2 kit | 160 mA | 300 mA |
-| **Total at 5 V** | **≈ 0.8 A** | **≈ 1.3 A** |
+| 1.69" screen (from 3V3) | 60 mA | 90 mA |
+| **Total at 5 V** | **≈ 0.9 A** | **≈ 1.4 A** |
+
+The lidar figure is for the LD19. The recommended D500 (STL-19P) draws about 290 mA, which adds roughly 0.1 A.
 
 ## Flashing the ESP32
 

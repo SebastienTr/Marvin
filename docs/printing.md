@@ -6,7 +6,7 @@ All parts come from one parametric source, [`hardware/cad/superlens.scad`](../ha
 |---|---|---|---|---|
 | `0_lidar_template.stl` | PLA | Flat | 0.2 mm, 2 walls | About 5 min. **Print this first** and test-fit the LD19 on it. |
 | `1_head.stl` | PETG | Front face down | 0.2 mm, 4 walls, 20 % gyroid | The windows come out clean on the bed side. |
-| `2_back_cover.stl` | PETG | Outer face down | 0.2 mm, 3 walls, 20 % | The pressing columns grow upwards. |
+| `2_back_cover.stl` | PETG | Outer face down | 0.2 mm, 3 walls, 20 % | The pressing columns and screen clamps grow upwards. The screen window comes out clean on the bed side. |
 | `3_grip.stl` | PETG | Upside down, flange on the bed | 0.2 mm, 5 walls, 25 % | The extra walls give the self-tapping M3 screws something to bite into. The cavity ceiling is sloped. |
 | `4_stand.stl` | PETG or PLA | Base down | 0.2 mm, 3 walls, 40 % | Denser infill adds weight and stability. |
 
@@ -26,6 +26,8 @@ Adjust these at the top of `superlens.scad`, then run `hardware/scripts/export_s
 | `tripod_nut_af` | 11.5 mm | Your 1/4"-20 nut spins or does not fit |
 | `colFoam` | 3 mm | You use a different foam tape thickness |
 | `gripA` | 12° | You prefer a more or less raked grip (the stand follows automatically) |
+| `lcdT`, `lcdStand` | 4.5 / 4 mm | Your screen module is thicker or thinner |
+| `lcdCz` | 40 mm | You want the screen higher or lower on the back cover |
 
 ## Regenerating files
 
