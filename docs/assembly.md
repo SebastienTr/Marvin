@@ -1,8 +1,10 @@
 # Assembly
 
-You need a screwdriver, a wire stripper and, for two header strips, a soldering iron. Follow the steps in order.
+You need a screwdriver, a wire stripper and, for two header strips, a soldering iron. Follow the steps in order. The whole build takes an evening.
 
-<p align="center"><img src="images/render_exploded.png" alt="Exploded view of SuperLens" width="320"></p>
+<p align="center"><img src="images/fanou_exploded.png" alt="Exploded view of Fanou: bottom plate, rocky island, spine with its modules, striped tower, gallery cap and lidar" width="360"></p>
+
+How it goes together: every electronic module rides on the **spine**, which is screwed onto the **island**. The striped **tower** then slides down over the spine and seats in the island's groove. The **gallery cap** closes the top and carries the lidar.
 
 ## 0. Solder the headers
 
@@ -10,56 +12,72 @@ Solder the 2 × 7 header pins under the XIAO ESP32S3 Sense (long side of the pin
 
 ## 1. Check the lidar on the template
 
-Lay the lidar on the printed template. Its three holes must fall inside the slots. If they don't, adjust `lidPairDY` / `lidSingleDY` in the CAD **before** printing the head, and please open an issue with your measurements.
+Lay the lidar on the printed template. Its three holes must fall inside the slots. If they don't, adjust `lidPairDY` / `lidSingleDY` in the CAD **before** printing the cap, and please open an issue with your measurements.
 
-## 2. Mount the lidar
+## 2. Spine on the island
 
-Drop three M2.5 nuts into their pockets under the top deck, then drive the M2.5×10 screws from above. Route the lidar cable through the rear-right opening.
+Stand the spine on the island, its foot flange towards the front (the side opposite the USB-C hole and the key). Drive 2 × M3×6 from inside the island into the flange.
 
-## 3. Insert the modules from the back
+## 3. Modules on the spine
 
-1. **MR60BHA2 kit**: radar face forwards, its USB-C port to the right (that side of the sleeve is open).
-2. **HLK-LD2450**: flat antenna side forwards, into the middle frame.
-3. **XIAO ESP32S3 Sense**: camera in the top window, USB-C port facing the hole in the right side wall.
-4. **Speaker**: stick it with foam tape into the cradle on the left wall, cone facing the side vents. Stick the amp next to it on the floor of the head.
+Each module slides into its rails from the front, face forward. Stick a 3 mm foam pad on each pillar behind it: when the tower goes on, the wall presses every module back against the foam.
+
+1. **MR60BHA2 kit** (bottom, in its printed case): radar face forward, USB-C port down, into the notch.
+2. **HLK-LD2450**: flat antenna side forward. Foam on the two pillars at the board ends.
+3. **Screen**: glass forward, cable connector at the back. Foam on the two pillars, which press on the brass standoffs.
+4. **XIAO ESP32S3 Sense** (top): camera lens forward, centred in the rails. Its USB-C port faces one of the side notches.
 
 ## 4. Wire it
 
-Follow the [wire-by-wire table](wiring.md#wire-by-wire-table) and tick each line. Tug gently on every wire in a WAGO: none should come out. Tuck the WAGOs at the bottom of the head.
+Follow the [wire-by-wire table](wiring.md#wire-by-wire-table) and tick each line.
 
-## 5. First power-up, lid off
+- Stick the four WAGOs on the back of the spine, halfway up, with foam tape.
+- Stick the amp on the back of the spine, low down, terminals facing down.
+- Pass the XIAO's Dupont plugs through the slots in the spine, above and below its pillar.
+- Wire the lidar cable now (lines 5–8), leaving its small JST plug free: it goes up through the tower at step 8.
+- Tug gently on every wire in a WAGO: none should come out.
 
-Plug in the power bank. You should see:
+## 5. Power cable
+
+Thread the straight end of the USB-C cable **from inside** the island out through the hole at the back, leaving about 25 cm inside. Plug the right-angle end into the XIAO, angled downward, and run the cable down behind the spine.
+
+## 6. Speaker and bottom plate
+
+Stick the speaker into the cradle on the bottom plate, cone facing the grille, and screw its wires into the amp terminals. If you want the tripod thread, press the 1/4"-20 nut into its hexagon from above. Close the bottom plate with 4 × M3×10 into the island's bosses, then stick the four silicone feet underneath.
+
+## 7. First power-up, tower off
+
+Plug the cable into a charger. You should see:
 
 - the ESP32 LED light up,
-- the lidar start spinning,
-- the MR60BHA2 kit's LED light up.
+- the MR60BHA2 kit's LED light up,
+- the screen backlight turn on.
 
-If nothing happens, unplug and re-check lines 1 to 5 of the wiring table.
+Plug the lidar's JST plug in for a moment: it should start spinning. If nothing happens, unplug and re-check lines 1 to 5 of the wiring table. Unplug before going on.
 
-## 6. Fit the screen in the back cover
+## 8. Tower and cap
 
-Lay the screen face down in its pocket, glass against the window, with its connector facing the inside. Stick a 3 mm foam pad on each brass standoff: the two clamp bars press on them when the cover is closed. Plug its cable in, then wire it following lines 15–22 of the wiring table.
+1. Put the gallery cap on top of the tower: the tower rim goes into the groove under the gallery. Line up the three screw holes.
+2. The lidar cable is already wired (step 4); its small JST plug is still free. Pass that plug up through the inside of the tower and out through the cable opening in the cap.
+3. Lower the tower over the spine, face window in front of the screen, until its rim drops into the island groove. The small key at the back only lets it go in one way.
+4. Drive the 3 × M3×12 radially through the gallery rim.
 
-## 7. Close the back cover
+## 9. Lidar
 
-Stick a 3 mm foam pad on the end of each column: they press the modules against the front. Drive 4 × M3×10 gently, since the screws cut their own thread in the plastic.
+Plug the JST plug into the lidar, lay the lidar on the plinth and fix it with 3 × M2.5×10, driven gently: they cut their own thread.
 
-## 8. Grip and tripod nut
+## 10. Say hello
 
-Slide the 1/4"-20 nut into the slot at the back of the grip butt. Screw the grip under the head with 2 × M3×12, driven from inside the head.
-
-## 9. Power bank and stand
-
-Plug the 1 m USB-C cable into the hole in the right side wall and keep the power bank in your pocket. Stick the silicone feet under the stand and drop the grip into it.
+Plug in the power. The lidar starts turning: Fanou is awake.
 
 ## Check on arrival
 
 These dimensions are not guaranteed by the datasheets. Verify them before printing the big parts:
 
-- **LD2450 cable**: it should end in female Dupont plugs. If yours are male, add a few male–female jumpers.
-- **Your USB-C cable plug** must fit through the 14 × 9 mm hole in the side wall.
+- **Lidar holes** on the printed template (step 1).
+- **MR60BHA2 case**: designed for 54 × 35 × 22 mm. If yours differs, set `kitW`, `kitH`, `kitD`.
+- **Screen thickness and standoffs**: the rails assume 4.5 mm (glass + PCB), 4 mm standoffs 26.5 mm apart (`lcdT`, `lcdStand`, `lcdSx`).
+- **Camera lens position**: the porthole is centred on the XIAO. If the lens sits off-centre on your board, move the porthole (`camD`, or the `throughF(xU + xH/2)` line in `shell()`).
 - **Speaker size**: the cradle expects a 20 × 30 mm face and at most 5 mm of depth (`spkL`, `spkH`, `spkT`).
-- **Screen thickness**: the pocket assumes 4.5 mm (glass + PCB) and 4 mm standoffs (`lcdT`, `lcdStand`). If the clamp bars do not touch the standoffs through the foam, adjust these values.
-- **MR60BHA2 case**: designed for 54 × 35 × 22 mm. If it rattles, set `clr = 0.2` and reprint the head.
-- **LD2450 back side**: if its connector hits a pressing column, trim the column or move it (`x=[-15, 15]` in `cover()`).
+- **USB-C cable**: the straight plug must pass through the 14 × 9 mm hole in the island, and the right-angle plug must fit beside the XIAO (side notch of 11 mm).
+- **LD2450 cable**: it should end in female Dupont plugs. If yours are male, add a few male–female jumpers.

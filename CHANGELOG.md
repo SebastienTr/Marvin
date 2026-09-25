@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [rev E] - 2026-09-25 · Fanou
+
+### Changed
+- The handheld sensor head becomes **Fanou**, a desk companion shaped like a little lighthouse. Same sensors, same wiring and pin map as rev D.
+- New parametric source `hardware/cad/fanou.scad`: rocky island base, bottom plate, striped tower (1.6 mm PETG wall, half a wavelength at 60 GHz), spine carrying every module, gallery cap with railing and lidar plinth.
+- The radars now look through the painted wall: the 60 GHz radar behind an arched door, the 24 GHz radar behind the middle red band.
+- The screen is Fanou's face, in portrait behind a framed window; the camera looks through a brass porthole above it.
+- The speaker moves to the bottom plate under a grille; the WAGOs and the amp are stuck on the back of the spine.
+- Power arrives through a USB-C cable with a right-angle plug, entering at the back of the island.
+- The lidar is held by 3 thread-forming M2.5 screws (no nuts); the cap by 3 radial M3 screws.
+- New Blender file `hardware/blender/fanou.blend` and Cycles renders `docs/images/fanou_*.png`. Presentation page and READMEs rewritten.
+
+### Added
+- Character studies in `docs/concepts/` (Fanou the lighthouse, Hulotte the owl, Tito the robot).
+
+### Removed
+- `hardware/cad/superlens.scad` and its parts (head, back cover, grip, stand), `superlens.blend` and the rev D renders.
+
 ## [rev D] - 2026-09-24
 
 ### Added

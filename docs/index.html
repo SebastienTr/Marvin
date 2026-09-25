@@ -3,50 +3,53 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>SuperLens</title>
-<meta name="description" content="SuperLens — an open-source handheld sensor head: lidar, 24 GHz and 60 GHz radars, camera and a live screen, fused on a computer into one view of a room.">
+<title>Fanou · SuperLens</title>
+<meta name="description" content="Fanou, a little open-source lighthouse for your desk: a 360° lidar lamp, two radars behind its painted wall, a porthole camera, a face, a voice. It sees, feels, hears and speaks.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..100,400..900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,400..900,50..100&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 :root{
   color-scheme: light;
-  --bg:#EEF1F1; --paper:#F8F9F9; --ink:#10181E; --muted:#56636B; --line:#CCD5D8;
-  --petg:#D8641C; --petg-ink:#A2460C; --teal:#138079; --teal-soft:#D5ECEA; --violet:#6A4FC2;
-  --lcd:#061114; --lcd-ink:#BFEDEA;
-  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --bg:#F4EFE6; --paper:#FBF8F2; --ink:#15212C; --muted:#5E6770; --line:#DDD4C5;
+  --red:#C23B2E; --red-ink:#9C2A1F; --navy:#1F3A5F; --brass:#B8893A; --sea:#D9E6EA;
+  --teal:#138079; --violet:#6A4FC2;
+  --lcd:#071217; --lcd-ink:#BFEDEA;
+  --display:"Fraunces",Georgia,serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme: dark;
-    --bg:#0D1317; --paper:#141C21; --ink:#E4EAEC; --muted:#93A2AA; --line:#26343B;
-    --petg:#F07F38; --petg-ink:#F59C63; --teal:#3CC3B9; --teal-soft:#123A38; --violet:#A993F2;
+    --bg:#0E151C; --paper:#151F28; --ink:#EDE7DC; --muted:#9AA5AE; --line:#26333E;
+    --red:#E2584A; --red-ink:#F0877B; --navy:#89A9D6; --brass:#D9AE5E; --sea:#14262E;
+    --teal:#3CC3B9; --violet:#A993F2;
   }
 }
 :root[data-theme="dark"]{
   color-scheme: dark;
-  --bg:#0D1317; --paper:#141C21; --ink:#E4EAEC; --muted:#93A2AA; --line:#26343B;
-  --petg:#F07F38; --petg-ink:#F59C63; --teal:#3CC3B9; --teal-soft:#123A38; --violet:#A993F2;
+  --bg:#0E151C; --paper:#151F28; --ink:#EDE7DC; --muted:#9AA5AE; --line:#26333E;
+  --red:#E2584A; --red-ink:#F0877B; --navy:#89A9D6; --brass:#D9AE5E; --sea:#14262E;
+  --teal:#3CC3B9; --violet:#A993F2;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:16px/1.6 var(--body);padding-inline:20px;padding-block:0 80px;-webkit-font-smoothing:antialiased}
 html[data-lang="en"] .fr, html[data-lang="fr"] .en{display:none}
 .wrap{max-width:1120px;margin:0 auto}
-a{color:var(--petg-ink);text-underline-offset:3px}
-a:focus-visible,button:focus-visible{outline:2px solid var(--petg);outline-offset:3px}
-h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;line-height:1.02}
+a{color:var(--red-ink);text-underline-offset:3px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;line-height:1.04;font-variation-settings:"SOFT" 100}
 p{margin:0;max-width:66ch}
 .mono{font-family:var(--mono)}
 .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 
 /* top bar */
 .top{display:flex;align-items:center;gap:16px;padding-block:18px;border-bottom:1px solid var(--line)}
-.mark{font-family:var(--display);font-weight:800;font-stretch:70%;font-size:22px;letter-spacing:.01em;display:flex;align-items:center;gap:10px}
-.mark i{width:14px;height:14px;border-radius:50%;border:2px solid var(--petg);position:relative;display:inline-block}
-.mark i::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--petg)}
+.mark{font-family:var(--display);font-weight:800;font-size:24px;display:flex;align-items:center;gap:10px}
+.mark svg{width:18px;height:26px}
+.mark small{font:500 12px var(--mono);color:var(--muted);letter-spacing:.08em}
 .top nav{margin-left:auto;display:flex;gap:18px;align-items:center;font-size:14px}
 .top nav a{color:var(--muted);text-decoration:none}
 .top nav a:hover{color:var(--ink)}
@@ -55,64 +58,78 @@ p{margin:0;max-width:66ch}
 .lang button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 
 /* hero */
-.hero{display:grid;grid-template-columns:1.25fr .9fr;gap:48px;align-items:center;padding-block:64px 56px}
-.hero h1{font-size:clamp(48px,7.4vw,96px);font-weight:850;font-stretch:66%;letter-spacing:-.01em}
-.hero h1 em{font-style:normal;color:var(--petg)}
-.hero .lede{font-size:19px;color:var(--ink);margin-top:22px}
+.hero{display:grid;grid-template-columns:1.15fr 1fr;gap:40px;align-items:center;padding-block:56px 48px}
+.hero h1{font-size:clamp(46px,6.8vw,88px);font-weight:800}
+.hero h1 em{font-style:italic;color:var(--red)}
+.hero .lede{font-size:19px;margin-top:22px}
 .hero .sub{color:var(--muted);margin-top:14px}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
-.chip{font:500 12px var(--mono);border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--muted);background:var(--paper)}
-.chip.state{border-color:var(--petg);color:var(--petg-ink)}
-.chip.state::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--petg);margin-right:7px;vertical-align:1px}
+.verbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.verbs > span{font:500 13px var(--mono);padding:5px 12px;border-radius:999px;background:var(--paper);border:1px solid var(--line)}
+.verbs > span > b{color:var(--red-ink);font-weight:500}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.chip{font:500 12px var(--mono);border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--muted)}
+.chip.state{border-color:var(--red);color:var(--red-ink)}
+.chip.state::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:7px;vertical-align:1px}
 
-.device{display:flex;flex-direction:column;align-items:center;gap:12px}
-.bezel{background:#1B2328;border-radius:26px;padding:14px;box-shadow:0 1px 0 #ffffff14 inset, 0 24px 60px -24px #0b1a2080;width:min(100%,330px)}
-.bezel canvas{display:block;width:100%;aspect-ratio:240/280;border-radius:14px;background:var(--lcd)}
-.device figcaption{font:12px var(--mono);color:var(--muted);text-align:center;max-width:320px}
+.stage{position:relative;display:grid;grid-template-columns:1fr auto;align-items:end;gap:6px}
+.stage img{width:100%;max-width:340px;height:auto;justify-self:center}
+.facebox{display:flex;flex-direction:column;align-items:center;gap:10px}
+.window{background:var(--navy);border-radius:14px;padding:10px;width:190px;box-shadow:0 20px 44px -22px #0b1a2080}
+.window canvas{display:block;width:100%;aspect-ratio:240/280;border-radius:8px;background:var(--lcd)}
+.moods{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;max-width:210px}
+.moods button{font:500 11.5px var(--mono);border:1px solid var(--line);background:var(--paper);color:var(--muted);border-radius:999px;padding:4px 9px;cursor:pointer}
+.moods button[aria-pressed="true"]{border-color:var(--red);color:var(--red-ink)}
+.facebox figcaption{font:12px var(--mono);color:var(--muted);text-align:center;max-width:210px}
 
 /* sections */
 section{padding-block:56px;border-top:1px solid var(--line)}
 .sh{display:grid;grid-template-columns:220px 1fr;gap:32px;margin-bottom:34px}
-.sh h2{font-size:clamp(30px,4vw,44px);font-weight:800;font-stretch:72%}
-.sh .eyebrow{padding-top:10px}
+.sh h2{font-size:clamp(30px,4vw,46px);font-weight:750}
+.sh .eyebrow{padding-top:12px}
 .sh p{margin-top:12px;color:var(--muted)}
 
-/* idea */
-.idea{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
-.idea div{padding:22px 22px 24px;display:flex;flex-direction:column;gap:8px}
-.idea div+div{border-left:1px solid var(--line)}
-.idea b{font-family:var(--display);font-stretch:80%;font-size:22px;font-weight:750}
-.idea span.k{font:12px var(--mono);color:var(--petg-ink);letter-spacing:.1em;text-transform:uppercase}
-.idea p{font-size:15px;color:var(--muted)}
-.uses{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
-.uses span{font-size:14px;background:var(--teal-soft);color:var(--ink);padding:6px 12px;border-radius:4px}
-
-/* spectrum */
-.spectrum{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:18px 16px 6px;overflow-x:auto;margin-bottom:28px}
-.spectrum svg{display:block;min-width:720px;width:100%;height:auto}
-.spectrum text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
-.spectrum .lbl{fill:var(--ink);font-weight:500}
-
-/* layers */
-.layers{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
-.layer{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:18px;display:flex;flex-direction:column;gap:10px}
-.layer .sw{height:4px;border-radius:2px}
-.layer h3{font-size:21px;font-stretch:80%;font-weight:750}
-.layer .spec{font:12px var(--mono);color:var(--muted)}
-.layer p{font-size:14.5px}
-.layer .blind{font-size:13px;color:var(--muted);border-top:1px dashed var(--line);padding-top:8px;margin-top:auto}
+/* senses */
+.senses{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.sense{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.sense .k{font:12px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--red-ink)}
+.sense h3{font-size:24px;font-weight:700}
+.sense p{font-size:14.5px;color:var(--muted)}
+.sense .hw{font:12px var(--mono);color:var(--ink);border-top:1px dashed var(--line);padding-top:8px;margin-top:auto}
+.moments{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1px solid var(--line);border-radius:8px;background:var(--paper);margin-top:22px}
+.moments div{padding:20px 22px;display:flex;flex-direction:column;gap:6px}
+.moments div+div{border-left:1px solid var(--line)}
+.moments b{font-family:var(--display);font-size:19px;font-weight:700}
+.moments p{font-size:14.5px;color:var(--muted)}
 
 /* object */
-.object{display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:24px;align-items:end}
-.object figure{margin:0;display:flex;flex-direction:column;gap:10px;align-items:center}
-.object img{width:100%;max-width:360px;height:auto}
-.object figcaption{font:12px var(--mono);color:var(--muted)}
-.specs{display:grid;grid-template-columns:auto 1fr;gap:9px 18px;font-size:14.5px;align-self:center}
+.gallery{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;align-items:end}
+.gallery figure{margin:0;display:flex;flex-direction:column;gap:10px;align-items:center}
+.gallery img{width:100%;max-width:330px;height:auto}
+.gallery figcaption{font:12px var(--mono);color:var(--muted);text-align:center}
+.anatomy{display:grid;grid-template-columns:1fr 1.1fr;gap:28px;margin-top:34px;align-items:center}
+.anatomy img{width:100%;max-width:420px;height:auto;justify-self:center}
+.parts{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.parts li{display:grid;grid-template-columns:28px 1fr;gap:12px;align-items:start;font-size:15px}
+.parts li i{width:22px;height:22px;border-radius:50%;margin-top:2px;border:1px solid #0002}
+.parts li b{font-weight:600}
+.parts li span{color:var(--muted)}
+.specs{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:14.5px;margin-top:22px;padding-top:18px;border-top:1px dashed var(--line)}
 .specs dt{font:12px var(--mono);color:var(--muted);padding-top:3px;white-space:nowrap}
 .specs dd{margin:0}
 
+/* map */
+.mapgrid{display:grid;grid-template-columns:auto 1fr;gap:36px;align-items:center}
+.mapgrid > *,.hero > *,.anatomy > *{min-width:0}
+.bezel{background:#1B2328;border-radius:22px;padding:12px;width:min(100%,300px)}
+.bezel canvas{display:block;width:100%;aspect-ratio:240/280;border-radius:12px;background:var(--lcd)}
+.spectrum{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:18px 16px 6px;overflow-x:auto}
+.spectrum svg{display:block;min-width:680px;width:100%;height:auto}
+.spectrum text{font-family:var(--mono);font-size:12px;fill:var(--muted)}
+.spectrum .lbl{fill:var(--ink);font-weight:500}
+.note{font-size:14.5px;color:var(--muted);margin-top:16px}
+
 /* pipeline */
-.pipe{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px;overflow-x:auto}
+.pipe{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto}
 .pipe svg{display:block;min-width:760px;width:100%;height:auto}
 .pipe text{font-family:var(--body);fill:var(--ink)}
 .pipe .s{font-family:var(--mono);font-size:11.5px;fill:var(--muted)}
@@ -120,256 +137,239 @@ section{padding-block:56px;border-top:1px solid var(--line)}
 
 /* build */
 .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;counter-reset:s}
-.step{counter-increment:s;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:20px;display:flex;flex-direction:column;gap:10px}
-.step::before{content:counter(s,decimal-leading-zero);font:500 13px var(--mono);color:var(--petg-ink)}
-.step .big{font-family:var(--display);font-weight:800;font-stretch:68%;font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
-.step .big small{font-size:18px;font-weight:600;color:var(--muted);margin-left:4px}
+.step{counter-increment:s;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.step::before{content:counter(s,decimal-leading-zero);font:500 13px var(--mono);color:var(--red-ink)}
+.step .big{font-family:var(--display);font-weight:800;font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
+.step .big small{font-size:17px;font-weight:600;color:var(--muted);margin-left:4px}
 .step p{font-size:14.5px;color:var(--muted)}
 .step a{font-size:14px;margin-top:auto}
+.stripes{display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:26px}
+.stripes span{flex:1}
+
+/* concepts */
+.concepts img{width:100%;height:auto;border-radius:8px;border:1px solid var(--line)}
 
 /* roadmap */
 .road{list-style:none;margin:0;padding:0;display:grid;gap:0;border-left:2px solid var(--line);margin-left:6px}
 .road li{position:relative;padding:0 0 18px 26px}
 .road li::before{content:"";position:absolute;left:-8px;top:6px;width:14px;height:14px;border-radius:50%;background:var(--bg);border:2px solid var(--line)}
-.road li.done::before{background:var(--teal);border-color:var(--teal)}
-.road li.now::before{background:var(--petg);border-color:var(--petg)}
-.road b{font-family:var(--display);font-stretch:80%;font-size:18px;font-weight:700}
+.road li.done::before{background:var(--navy);border-color:var(--navy)}
+.road li.now::before{background:var(--red);border-color:var(--red)}
+.road b{font-family:var(--display);font-size:18px;font-weight:700}
 .road li > span{display:block;color:var(--muted);font-size:14.5px}
 
 footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:wrap;gap:10px 28px;font-size:13.5px;color:var(--muted)}
 
 @media (max-width:980px){
-  .layers{grid-template-columns:repeat(2,1fr)}
-  .steps{grid-template-columns:repeat(2,1fr)}
-  .object{grid-template-columns:1fr 1fr}
-  .specs{grid-column:1/-1}
+  .senses,.steps{grid-template-columns:repeat(2,1fr)}
+  .gallery{grid-template-columns:1fr 1fr}
+  .gallery figure:last-child{display:none}
+  .anatomy,.mapgrid{grid-template-columns:1fr}
+  .bezel{justify-self:center}
 }
 @media (max-width:760px){
-  .hero{grid-template-columns:1fr;padding-block:40px}
+  .hero{grid-template-columns:1fr;padding-block:36px}
+  .stage{grid-template-columns:1fr 1fr}
+  .window{width:150px}
   .sh{grid-template-columns:1fr;gap:6px}
-  .idea{grid-template-columns:1fr}
-  .idea div+div{border-left:0;border-top:1px solid var(--line)}
-  .layers,.steps{grid-template-columns:1fr}
+  .moments{grid-template-columns:1fr}
+  .moments div+div{border-left:0;border-top:1px solid var(--line)}
+  .senses,.steps{grid-template-columns:1fr}
   .top nav a{display:none}
 }
-@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
 </style>
 </head>
 <body>
 <div class="wrap">
 
 <header class="top">
-  <div class="mark"><i aria-hidden="true"></i>SuperLens</div>
+  <div class="mark">
+    <svg viewBox="0 0 18 26" aria-hidden="true"><path d="M5 25 L7 7 H11 L13 25Z" fill="var(--red)"/><path d="M5.9 17 H12.1 L12.5 21 H5.5Z M6.6 11 H11.4 L11.7 14 H6.3Z" fill="var(--paper)"/><rect x="4.5" y="5" width="9" height="2.2" rx="1" fill="var(--navy)"/><rect x="6.5" y="1" width="5" height="4" rx="1" fill="var(--ink)"/></svg>
+    Fanou <small>· SuperLens</small>
+  </div>
   <nav>
-    <a href="#idea"><span class="en">Idea</span><span class="fr">L'idée</span></a>
-    <a href="#layers"><span class="en">Sensors</span><span class="fr">Capteurs</span></a>
+    <a href="#meet"><span class="en">Meet Fanou</span><span class="fr">Fanou</span></a>
+    <a href="#senses"><span class="en">Senses</span><span class="fr">Sens</span></a>
     <a href="#build"><span class="en">Build</span><span class="fr">Fabriquer</span></a>
     <a href="../README.md">README</a>
     <div class="lang" role="group" aria-label="Language">
-      <button type="button" id="lang-en" data-l="en" aria-pressed="true">EN</button>
-      <button type="button" id="lang-fr" data-l="fr" aria-pressed="false">FR</button>
+      <button type="button" data-l="en" aria-pressed="true">EN</button>
+      <button type="button" data-l="fr" aria-pressed="false">FR</button>
     </div>
   </nav>
 </header>
 
 <div class="hero">
   <div>
-    <div class="eyebrow"><span class="en">Open-source handheld sensor head · rev D</span><span class="fr">Tête de capteurs portable open source · rév. D</span></div>
-    <h1 style="margin-top:14px"><span class="en">See a room <em>five ways</em> at once.</span><span class="fr">Voir une pièce de <em>cinq façons</em> à la fois.</span></h1>
-    <p class="lede"><span class="en">SuperLens points a laser, two radars and a camera at the same scene, then fuses everything on your computer into one live picture: the exact shape of the room, where each person is, how fast they move, and whether they are breathing.</span><span class="fr">SuperLens braque un laser, deux radars et une caméra sur la même scène, puis fusionne tout sur ton ordinateur en une seule image vivante : la forme exacte de la pièce, où se trouve chaque personne, à quelle vitesse elle bouge, et si elle respire.</span></p>
-    <p class="sub"><span class="en">About €240 of off-the-shelf parts, five printed pieces, lever connectors instead of a breadboard, and just two header strips to solder.</span><span class="fr">Environ 240 € de pièces du commerce, cinq pièces imprimées, des connecteurs à levier au lieu d'une breadboard, et seulement deux barrettes de broches à souder.</span></p>
+    <div class="eyebrow"><span class="en">Open-source desk companion · rev E</span><span class="fr">Compagnon de bureau open source · rév. E</span></div>
+    <h1 style="margin-top:14px"><span class="en">A little lighthouse that <em>keeps an eye</em> on your room.</span><span class="fr">Un petit phare qui <em>veille</em> sur ta pièce.</span></h1>
+    <p class="lede"><span class="en">Fanou's lamp is a spinning laser. Two radars sleep behind its painted stripes, a camera peeks through a brass porthole, and its face lives in a window. It knows where you are, notices when you sit down, hears you, and answers.</span><span class="fr">La lampe de Fanou est un laser qui tourne. Deux radars dorment derrière ses rayures, une caméra regarde par un hublot en laiton, et son visage vit dans une fenêtre. Il sait où tu es, remarque quand tu t'assois, t'entend, et te répond.</span></p>
+    <div class="verbs">
+      <span><b><span class="en">sees</span><span class="fr">voit</span></b> · lidar + <span class="en">camera</span><span class="fr">caméra</span></span>
+      <span><b><span class="en">feels</span><span class="fr">ressent</span></b> · radar 24 + 60 GHz</span>
+      <span><b><span class="en">hears</span><span class="fr">écoute</span></b> · micro</span>
+      <span><b><span class="en">speaks</span><span class="fr">parle</span></b> · <span class="en">voice + eyes</span><span class="fr">voix + yeux</span></span>
+    </div>
     <div class="chips">
-      <span class="chip state"><span class="en">Rev D · designed, not built yet</span><span class="fr">Rév. D · conçu, pas encore fabriqué</span></span>
+      <span class="chip state"><span class="en">Rev E · designed, not built yet</span><span class="fr">Rév. E · conçu, pas encore fabriqué</span></span>
+      <span class="chip">≈ 240 €</span>
       <span class="chip">CERN-OHL-P · MIT · CC BY</span>
-      <span class="chip">ESP32-S3</span>
     </div>
   </div>
-  <figure class="device" style="margin:0">
-    <div class="bezel"><canvas id="lcd" width="480" height="560" aria-label="Simulated back screen: top-down lidar map with two people tracked by radar"></canvas></div>
-    <figcaption><span class="en">Simulation of the 1.69" back screen: lidar map from above, radar targets, breathing when someone is close.</span><span class="fr">Simulation de l'écran arrière 1,69" : carte lidar vue de dessus, cibles radar, respiration quand quelqu'un est proche.</span></figcaption>
-  </figure>
+  <div class="stage">
+    <img src="images/fanou_front.png" alt="Fanou: a red and white striped lighthouse on a grey rocky island, with a screen face, a brass porthole camera, a navy gallery and a black lidar lantern on top" width="1000" height="1300">
+    <figure class="facebox" style="margin:0">
+      <div class="window"><canvas id="face" width="480" height="560" aria-label="Animated simulation of Fanou's face on its 1.69 inch screen"></canvas></div>
+      <div class="moods" role="group" aria-label="Mood">
+        <button type="button" data-m="awake" aria-pressed="true"><span class="en">awake</span><span class="fr">éveillé</span></button>
+        <button type="button" data-m="happy" aria-pressed="false"><span class="en">happy</span><span class="fr">content</span></button>
+        <button type="button" data-m="listen" aria-pressed="false"><span class="en">listening</span><span class="fr">écoute</span></button>
+        <button type="button" data-m="sleep" aria-pressed="false"><span class="en">sleepy</span><span class="fr">endormi</span></button>
+      </div>
+      <figcaption><span class="en">Its face. Move your pointer: it looks at you.</span><span class="fr">Son visage. Bouge ton pointeur : il te regarde.</span></figcaption>
+    </figure>
+  </div>
 </div>
 
-<section id="idea">
+<section id="meet">
   <div class="sh">
-    <div class="eyebrow"><span class="en">What we want to do</span><span class="fr">Ce qu'on veut faire</span></div>
+    <div class="eyebrow"><span class="en">Meet Fanou</span><span class="fr">Voici Fanou</span></div>
     <div>
-      <h2><span class="en">A cheap, open pair of eyes that understands space</span><span class="fr">Des yeux bon marché et ouverts, qui comprennent l'espace</span></h2>
-      <p><span class="en">Every sensor alone is half-blind. A lidar draws perfect walls but cannot tell a person from a coat rack, and glass is invisible to it. A radar knows who moves and who breathes, but it can't draw the room. A camera sees everything and understands nothing about distance. SuperLens puts them on one frame, on one clock, so a computer can merge them.</span><span class="fr">Chaque capteur seul est à moitié aveugle. Un lidar dessine des murs parfaits mais ne distingue pas une personne d'un portemanteau, et une vitre lui est invisible. Un radar sait qui bouge et qui respire, mais il ne sait pas dessiner la pièce. Une caméra voit tout mais ne comprend rien aux distances. SuperLens les réunit sur un même support et une même horloge, pour qu'un ordinateur puisse les fusionner.</span></p>
+      <h2><span class="en">A shape you already love, with sensors where they belong</span><span class="fr">Une forme qu'on aime déjà, et chaque capteur à sa place</span></h2>
+      <p><span class="en">A lighthouse watches, turns and signals: it is a character before we add anything. Its lamp is exactly where a 360° lidar wants to be, on top with nothing above the laser plane. The wall is 1.6 mm of PETG, half a wavelength at 60 GHz, so the radars see through the paint.</span><span class="fr">Un phare veille, tourne et fait des signaux : c'est déjà un personnage avant qu'on ajoute quoi que ce soit. Sa lampe est exactement là où un lidar 360° veut être, au sommet, sans rien au-dessus du plan laser. La paroi fait 1,6 mm de PETG, une demi-longueur d'onde à 60 GHz : les radars voient à travers la peinture.</span></p>
     </div>
   </div>
-  <div class="idea">
-    <div><span class="k"><span class="en">Capture</span><span class="fr">Capter</span></span><b><span class="en">The head is dumb on purpose</span><span class="fr">La tête est bête exprès</span></b><p><span class="en">The ESP32-S3 reads every sensor, stamps each packet with the same clock and streams it over Wi-Fi. It also draws the mini-map on the back screen.</span><span class="fr">L'ESP32-S3 lit chaque capteur, horodate chaque paquet avec la même horloge et envoie tout en WiFi. Il dessine aussi la mini-carte sur l'écran arrière.</span></p></div>
-    <div><span class="k"><span class="en">Fuse</span><span class="fr">Fusionner</span></span><b><span class="en">The computer does the thinking</span><span class="fr">L'ordinateur réfléchit</span></b><p><span class="en">It places every measurement in the same 3D frame: lidar geometry, radar people and speeds, vital signs, camera colour. The result is one live overlay in Rerun.</span><span class="fr">Il place chaque mesure dans le même repère 3D : géométrie lidar, personnes et vitesses radar, signes vitaux, couleur caméra. Le résultat : une seule vue superposée, en direct, dans Rerun.</span></p></div>
-    <div><span class="k"><span class="en">Model</span><span class="fr">Modéliser</span></span><b><span class="en">Then, a living twin</span><span class="fr">Ensuite, un jumeau vivant</span></b><p><span class="en">Walk around with it and the map grows into a live digital twin of the space, showing who is where, what moves and who is breathing. No cloud, and no image needs to leave the room.</span><span class="fr">Promène-toi avec et la carte devient un jumeau numérique vivant de l'espace : qui est où, ce qui bouge, qui respire. Pas de cloud, et aucune image n'a besoin de quitter la pièce.</span></p></div>
+  <div class="gallery">
+    <figure><img src="images/fanou_face.png" alt="Close-up of Fanou's face: two glowing eyes in a navy window frame, a brass porthole camera above" loading="lazy" width="1000" height="1300"><figcaption><span class="en">The face and the porthole</span><span class="fr">Le visage et le hublot</span></figcaption></figure>
+    <figure><img src="images/fanou_back.png" alt="Fanou from the back: small window vents under the gallery, the key and the USB-C hole in the island" loading="lazy" width="1000" height="1300"><figcaption><span class="en">The back: vents and USB-C</span><span class="fr">Le dos : aérations et USB-C</span></figcaption></figure>
+    <figure><img src="images/fanou_front.png" alt="Fanou seen from the front left" loading="lazy" width="1000" height="1300"><figcaption><span class="en">≈ 21 cm tall, 13 cm wide</span><span class="fr">≈ 21 cm de haut, 13 cm de large</span></figcaption></figure>
   </div>
-  <div class="uses" aria-label="Possible uses">
-    <span><span class="en">Perception head for a home robot</span><span class="fr">Tête de perception pour un robot domestique</span></span>
-    <span><span class="en">Camera-free presence and sleep sensing</span><span class="fr">Détection de présence et de sommeil sans caméra</span></span>
-    <span><span class="en">Room scanning and measuring</span><span class="fr">Scan et mesure de pièces</span></span>
-    <span><span class="en">Multimodal datasets for research</span><span class="fr">Jeux de données multimodaux pour la recherche</span></span>
-    <span><span class="en">Learning sensor fusion by doing</span><span class="fr">Apprendre la fusion de capteurs en pratiquant</span></span>
+  <div class="anatomy">
+    <img src="images/fanou_exploded.png" alt="Exploded view: bottom plate, rocky island, spine carrying the modules, striped tower, gallery cap and lidar" loading="lazy" width="1000" height="1300">
+    <div>
+      <ul class="parts">
+        <li><i style="background:#1a1a1c"></i><div><b><span class="en">Lantern</span><span class="fr">Lanterne</span></b> · <span><span class="en">the D800 lidar, turning ten times a second.</span><span class="fr">le lidar D800, qui tourne dix fois par seconde.</span></span></div></li>
+        <li><i style="background:var(--navy)"></i><div><b><span class="en">Gallery cap</span><span class="fr">Galerie</span></b> · <span><span class="en">railing and plinth, held by three screws.</span><span class="fr">rambarde et socle du lidar, tenus par trois vis.</span></span></div></li>
+        <li><i style="background:linear-gradient(180deg,var(--red) 0 33%,#EDE9E0 33% 66%,var(--red) 66%)"></i><div><b><span class="en">Striped tower</span><span class="fr">Tour rayée</span></b> · <span><span class="en">printed upright, each stripe a filament change. It is also the radome.</span><span class="fr">imprimée debout, chaque rayure est un changement de filament. C'est aussi le radôme.</span></span></div></li>
+        <li><i style="background:#CDB88F"></i><div><b><span class="en">Spine</span><span class="fr">Colonne</span></b> · <span><span class="en">carries the camera, the face, both radars and all the wiring. The tower slides over it.</span><span class="fr">porte la caméra, le visage, les deux radars et tout le câblage. La tour glisse par-dessus.</span></span></div></li>
+        <li><i style="background:#6B747B"></i><div><b><span class="en">Rocky island</span><span class="fr">Île rocheuse</span></b> · <span><span class="en">weight, the USB-C entry, and the speaker under a grille.</span><span class="fr">du poids, l'entrée USB-C, et le haut-parleur sous une grille.</span></span></div></li>
+      </ul>
+      <dl class="specs">
+        <dt><span class="en">Size</span><span class="fr">Taille</span></dt><dd class="mono">⌀ 132 × ≈ 215 mm</dd>
+        <dt><span class="en">Laser plane</span><span class="fr">Plan laser</span></dt><dd class="mono">≈ 205 mm</dd>
+        <dt><span class="en">Gaze</span><span class="fr">Regard</span></dt><dd class="mono"><span class="en">4.6° upward, towards a seated face</span><span class="fr">4,6° vers le haut, vers un visage assis</span></dd>
+        <dt><span class="en">Power</span><span class="fr">Alimentation</span></dt><dd class="mono"><span class="en">USB-C 5 V · ≈ 1 A</span><span class="fr">USB-C 5 V · ≈ 1 A</span></dd>
+        <dt><span class="en">Print</span><span class="fr">Impression</span></dt><dd class="mono"><span class="en">5 parts · PETG/PLA · no supports</span><span class="fr">5 pièces · PETG/PLA · sans supports</span></dd>
+        <dt><span class="en">Source</span><span class="fr">Source</span></dt><dd class="mono">OpenSCAD · Blender · STL</dd>
+      </dl>
+    </div>
   </div>
 </section>
 
-<section id="layers">
+<section id="senses">
   <div class="sh">
-    <div class="eyebrow"><span class="en">Five layers</span><span class="fr">Cinq couches</span></div>
+    <div class="eyebrow"><span class="en">Four senses</span><span class="fr">Quatre sens</span></div>
     <div>
-      <h2><span class="en">Five slices of the spectrum, one frame</span><span class="fr">Cinq tranches du spectre, un seul repère</span></h2>
-      <p><span class="en">From 24 GHz radio to visible light, each sensor listens to a different band and each one covers another's blind spot.</span><span class="fr">De la radio à 24 GHz jusqu'à la lumière visible, chaque capteur écoute une bande différente, et chacun couvre l'angle mort d'un autre.</span></p>
+      <h2><span class="en">It sees, feels, hears and speaks</span><span class="fr">Il voit, ressent, écoute et parle</span></h2>
+      <p><span class="en">Every sensor alone is half-blind. A lidar draws perfect walls but can't tell a person from a coat rack. A radar knows who moves and who breathes, but can't draw the room. Together, on one clock, they make a companion that understands the space it lives in.</span><span class="fr">Chaque capteur seul est à moitié aveugle. Un lidar dessine des murs parfaits mais ne distingue pas une personne d'un portemanteau. Un radar sait qui bouge et qui respire, mais ne sait pas dessiner la pièce. Ensemble, sur une même horloge, ils font un compagnon qui comprend l'espace où il vit.</span></p>
     </div>
   </div>
-
-  <div class="spectrum" aria-label="Electromagnetic spectrum, logarithmic scale, with each sensor placed on it">
-    <svg viewBox="0 0 900 150" role="img">
-      <defs>
-        <linearGradient id="vis" x1="0" x2="1">
-          <stop offset="0" stop-color="#7a2cc9"/><stop offset=".25" stop-color="#2f6bf0"/><stop offset=".5" stop-color="#23b35a"/><stop offset=".75" stop-color="#f2c21b"/><stop offset="1" stop-color="#e2382b"/>
-        </linearGradient>
-      </defs>
-      <line x1="40" y1="92" x2="860" y2="92" stroke="var(--line)" stroke-width="2"/>
-      <g>
-        <line x1="40" y1="86" x2="40" y2="98" stroke="var(--muted)"/><text x="40" y="118" text-anchor="middle">1 GHz</text>
-        <line x1="176.7" y1="86" x2="176.7" y2="98" stroke="var(--muted)"/><text x="176.7" y="118" text-anchor="middle">10 GHz</text>
-        <line x1="313.3" y1="86" x2="313.3" y2="98" stroke="var(--muted)"/><text x="313.3" y="118" text-anchor="middle">100 GHz</text>
-        <line x1="450" y1="86" x2="450" y2="98" stroke="var(--muted)"/><text x="450" y="118" text-anchor="middle">1 THz</text>
-        <line x1="586.7" y1="86" x2="586.7" y2="98" stroke="var(--muted)"/><text x="586.7" y="118" text-anchor="middle">10 THz</text>
-        <line x1="723.3" y1="86" x2="723.3" y2="98" stroke="var(--muted)"/><text x="723.3" y="118" text-anchor="middle">100 THz</text>
-        <line x1="860" y1="86" x2="860" y2="98" stroke="var(--muted)"/><text x="860" y="118" text-anchor="middle">1 PHz</text>
-      </g>
-      <text x="450" y="142" text-anchor="middle">log₁₀ f</text>
-      <!-- Wi-Fi -->
-      <circle cx="91.9" cy="92" r="6" fill="var(--muted)"/>
-      <line x1="91.9" y1="86" x2="91.9" y2="56" stroke="var(--muted)"/>
-      <text x="91.9" y="36" text-anchor="middle" class="lbl">Wi-Fi</text><text x="91.9" y="50" text-anchor="middle">2.4 GHz</text>
-      <!-- 24 GHz -->
-      <circle cx="228.7" cy="92" r="7" fill="var(--teal)"/>
-      <line x1="228.7" y1="85" x2="228.7" y2="56" stroke="var(--teal)"/>
-      <text x="215" y="36" text-anchor="middle" class="lbl">LD2450</text><text x="215" y="50" text-anchor="middle">24 GHz</text>
-      <!-- 60 GHz -->
-      <circle cx="283" cy="92" r="7" fill="var(--violet)"/>
-      <line x1="283" y1="85" x2="283" y2="56" stroke="var(--violet)"/>
-      <text x="300" y="36" text-anchor="middle" class="lbl">MR60BHA2</text><text x="300" y="50" text-anchor="middle">60 GHz</text>
-      <!-- thermal, future -->
-      <rect x="631.8" y="86" width="32.7" height="12" rx="3" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"/>
-      <line x1="648" y1="86" x2="648" y2="56" stroke="var(--muted)" stroke-dasharray="3 3"/>
-      <text x="630" y="36" text-anchor="middle" class="lbl"><tspan class="en">thermal · later</tspan><tspan class="fr">thermique · plus tard</tspan></text><text x="630" y="50" text-anchor="middle">8–14 µm</text>
-      <!-- lidar -->
-      <circle cx="794.4" cy="92" r="7" fill="var(--petg)"/>
-      <line x1="794.4" y1="85" x2="794.4" y2="56" stroke="var(--petg)"/>
-      <text x="760" y="36" text-anchor="middle" class="lbl">Lidar D800</text><text x="760" y="50" text-anchor="middle">905 nm</text>
-      <!-- visible -->
-      <rect x="805.6" y="86" width="37.3" height="12" rx="3" fill="url(#vis)"/>
-      <line x1="824" y1="86" x2="824" y2="66" stroke="var(--muted)"/>
-      <text x="850" y="62" text-anchor="middle" class="lbl"><tspan class="en">camera</tspan><tspan class="fr">caméra</tspan></text>
-    </svg>
+  <div class="senses">
+    <article class="sense"><span class="k"><span class="en">Sees</span><span class="fr">Voit</span></span><h3><span class="en">Lamp and porthole</span><span class="fr">Lampe et hublot</span></h3><p><span class="en">The lidar draws the room 360° around, 21 600 points a second. The camera adds colour, and on the computer, meaning.</span><span class="fr">Le lidar dessine la pièce sur 360°, 21 600 points par seconde. La caméra ajoute la couleur et, sur l'ordinateur, le sens.</span></p><div class="hw">D800 lidar · OV3660</div></article>
+    <article class="sense"><span class="k"><span class="en">Feels</span><span class="fr">Ressent</span></span><h3><span class="en">Behind the stripes</span><span class="fr">Derrière les rayures</span></h3><p><span class="en">The 24 GHz radar follows up to three people and their speed. The 60 GHz radar, behind the door, feels breathing and heartbeat up close.</span><span class="fr">Le radar 24 GHz suit jusqu'à trois personnes et leur vitesse. Le radar 60 GHz, derrière la porte, sent la respiration et le cœur de près.</span></p><div class="hw">HLK-LD2450 · MR60BHA2</div></article>
+    <article class="sense"><span class="k"><span class="en">Hears</span><span class="fr">Écoute</span></span><h3><span class="en">A small ear</span><span class="fr">Une petite oreille</span></h3><p><span class="en">The camera board's microphone hears your voice and the sounds of the room: a door, a kettle, a laugh.</span><span class="fr">Le micro de la carte caméra entend ta voix et les sons de la pièce : une porte, une bouilloire, un rire.</span></p><div class="hw"><span class="en">built-in PDM mic</span><span class="fr">micro PDM intégré</span></div></article>
+    <article class="sense"><span class="k"><span class="en">Speaks</span><span class="fr">Parle</span></span><h3><span class="en">Eyes and voice</span><span class="fr">Des yeux et une voix</span></h3><p><span class="en">Its eyes blink, follow you and fall asleep. Its voice comes from the island: chirps on the device, words from the computer.</span><span class="fr">Ses yeux clignent, te suivent et s'endorment. Sa voix sort de l'île : des pépiements en local, des mots venus de l'ordinateur.</span></p><div class="hw">1.69" ST7789 · MAX98357A</div></article>
   </div>
-
-  <div class="layers">
-    <article class="layer">
-      <div class="sw" style="background:var(--petg)"></div>
-      <h3><span class="en">Lidar</span><span class="fr">Lidar</span></h3>
-      <div class="spec">D800 · STL-27L · 21 600 pts/s · 25 m</div>
-      <p><span class="en">A spinning laser that times its own echo. It gives the exact outline of the room, 360° around, ten times a second.</span><span class="fr">Un laser rotatif qui chronomètre son propre écho. Il donne le contour exact de la pièce, sur 360°, dix fois par seconde.</span></p>
-      <div class="blind"><span class="en">Blind to glass, fog and smoke. Can't tell what is alive.</span><span class="fr">Aveugle aux vitres, au brouillard et à la fumée. Ne sait pas ce qui est vivant.</span></div>
-    </article>
-    <article class="layer">
-      <div class="sw" style="background:var(--teal)"></div>
-      <h3><span class="en">Radar 24 GHz</span><span class="fr">Radar 24 GHz</span></h3>
-      <div class="spec">HLK-LD2450 · 3 targets · 6 m · ±60°</div>
-      <p><span class="en">Tracks up to three people with their position and speed through Doppler. It works in the dark and through thin plastic.</span><span class="fr">Suit jusqu'à trois personnes, avec leur position et leur vitesse grâce à l'effet Doppler. Il marche dans le noir et à travers le plastique fin.</span></p>
-      <div class="blind"><span class="en">Coarse shapes. Nothing behind metal or water.</span><span class="fr">Formes grossières. Rien derrière du métal ou de l'eau.</span></div>
-    </article>
-    <article class="layer">
-      <div class="sw" style="background:var(--violet)"></div>
-      <h3><span class="en">Radar 60 GHz</span><span class="fr">Radar 60 GHz</span></h3>
-      <div class="spec">MR60BHA2 · 1.5 m · ±60°</div>
-      <p><span class="en">Feels millimetre movements: the chest rising as someone breathes, even the heartbeat. Presence without a camera.</span><span class="fr">Sent les mouvements d'un millimètre : la poitrine qui se soulève à chaque respiration, et même le battement du cœur. Une présence détectée sans caméra.</span></p>
-      <div class="blind"><span class="en">Short range. One person at a time for vitals.</span><span class="fr">Courte portée. Une personne à la fois pour les signes vitaux.</span></div>
-    </article>
-    <article class="layer">
-      <div class="sw" style="background:linear-gradient(90deg,#7a2cc9,#2f6bf0,#23b35a,#f2c21b,#e2382b)"></div>
-      <h3><span class="en">Camera</span><span class="fr">Caméra</span></h3>
-      <div class="spec">OV3660 · 3 MP · MJPEG</div>
-      <p><span class="en">Colour and texture, projected onto the lidar points so the map looks like the real room. The door to object recognition.</span><span class="fr">La couleur et la texture, projetées sur les points du lidar pour que la carte ressemble à la vraie pièce. La porte d'entrée vers la reconnaissance d'objets.</span></p>
-      <div class="blind"><span class="en">No depth on its own. Needs light.</span><span class="fr">Aucune profondeur seule. A besoin de lumière.</span></div>
-    </article>
-    <article class="layer">
-      <div class="sw" style="background:var(--ink)"></div>
-      <h3><span class="en">Screen</span><span class="fr">Écran</span></h3>
-      <div class="spec">1.69" · ST7789 · 240 × 280</div>
-      <p><span class="en">The device's own view: a top-down mini-map, radar targets and status. It works without a computer.</span><span class="fr">La vue propre à l'appareil : mini-carte vue de dessus, cibles radar et état. Il marche sans ordinateur.</span></p>
-      <div class="blind"><span class="en">A glance, not the full model. That lives on the PC.</span><span class="fr">Un coup d'œil, pas le modèle complet : celui-ci vit sur le PC.</span></div>
-    </article>
+  <div class="moments">
+    <div><b><span class="en">You sit down</span><span class="fr">Tu t'assois</span></b><p><span class="en">The 24 GHz radar sees you arrive; Fanou wakes up and turns its eyes to you.</span><span class="fr">Le radar 24 GHz te voit arriver ; Fanou se réveille et tourne les yeux vers toi.</span></p></div>
+    <div><b><span class="en">You work for an hour</span><span class="fr">Tu travailles une heure</span></b><p><span class="en">It notices you haven't moved and your breathing got shallow. A soft chirp: time to stretch.</span><span class="fr">Il remarque que tu n'as pas bougé et que ta respiration s'est faite courte. Un petit bruit : il est temps de s'étirer.</span></p></div>
+    <div><b><span class="en">You leave</span><span class="fr">Tu pars</span></b><p><span class="en">The room empties, the eyes close, the lamp keeps turning. It watches the room while you're away.</span><span class="fr">La pièce se vide, les yeux se ferment, la lampe continue de tourner. Il veille pendant ton absence.</span></p></div>
   </div>
 </section>
 
-<section id="object">
+<section id="map">
   <div class="sh">
-    <div class="eyebrow"><span class="en">The object</span><span class="fr">L'objet</span></div>
+    <div class="eyebrow"><span class="en">What Fanou sees</span><span class="fr">Ce que voit Fanou</span></div>
     <div>
-      <h2><span class="en">Held like a camera, parked like a lamp</span><span class="fr">Tenu comme un appareil photo, posé comme une lampe</span></h2>
-      <p><span class="en">The lidar sits on top so nothing blocks its laser plane. The radars and the camera face forward, and the screen faces you. A raked pistol grip drops into a printed stand, or screws onto any tripod.</span><span class="fr">Le lidar est au sommet, pour que rien ne coupe son plan laser. Les radars et la caméra regardent devant, l'écran te regarde. La poignée inclinée se glisse dans un socle imprimé, ou se visse sur n'importe quel trépied.</span></p>
+      <h2><span class="en">Five slices of the spectrum, one picture</span><span class="fr">Cinq tranches du spectre, une seule image</span></h2>
+      <p><span class="en">Tap its face and it shows you its world: the lidar outline of the room from above, the people tracked by radar, and a breathing trace when someone is close.</span><span class="fr">Touche son visage et il te montre son monde : le contour lidar de la pièce vu de dessus, les personnes suivies au radar, et une courbe de respiration quand quelqu'un est proche.</span></p>
     </div>
   </div>
-  <div class="object">
-    <figure><img src="images/hero_front.png" alt="SuperLens from the front: lidar on top, camera, 24 GHz and 60 GHz windows" loading="lazy"><figcaption><span class="en">Front: camera, 24 GHz, 60 GHz</span><span class="fr">Avant : caméra, 24 GHz, 60 GHz</span></figcaption></figure>
-    <figure><img src="images/hero_back.png" alt="SuperLens from the back: 1.69 inch screen in the back cover" loading="lazy"><figcaption><span class="en">Back: live screen</span><span class="fr">Arrière : écran en direct</span></figcaption></figure>
-    <dl class="specs">
-      <dt><span class="en">Head</span><span class="fr">Tête</span></dt><dd class="mono">76 × 62 × 84 mm</dd>
-      <dt><span class="en">Grip</span><span class="fr">Poignée</span></dt><dd class="mono">100 mm · 12° · 1/4"-20</dd>
-      <dt><span class="en">Laser plane</span><span class="fr">Plan laser</span></dt><dd class="mono">≈ 111 mm</dd>
-      <dt><span class="en">Power</span><span class="fr">Alimentation</span></dt><dd class="mono"><span class="en">USB-C bank in pocket · ≈ 1 A</span><span class="fr">Batterie USB-C en poche · ≈ 1 A</span></dd>
-      <dt><span class="en">Audio</span><span class="fr">Audio</span></dt><dd class="mono"><span class="en">built-in mic · 1 W speaker</span><span class="fr">micro intégré · haut-parleur 1 W</span></dd>
-      <dt><span class="en">Runtime</span><span class="fr">Autonomie</span></dt><dd class="mono"><span class="en">≈ 5 h on 10 000 mAh</span><span class="fr">≈ 5 h sur 10 000 mAh</span></dd>
-      <dt><span class="en">Print</span><span class="fr">Impression</span></dt><dd class="mono"><span class="en">5 parts · PETG · no supports</span><span class="fr">5 pièces · PETG · sans supports</span></dd>
-      <dt><span class="en">Source</span><span class="fr">Source</span></dt><dd class="mono">OpenSCAD · Blender · STL</dd>
-    </dl>
+  <div class="mapgrid">
+    <div class="bezel"><canvas id="lcd" width="480" height="560" aria-label="Simulated map mode: top-down lidar map with two people tracked by radar"></canvas></div>
+    <div>
+      <div class="spectrum" aria-label="Electromagnetic spectrum, logarithmic scale, with each sensor placed on it">
+        <svg viewBox="0 0 900 150" role="img">
+          <defs><linearGradient id="vis" x1="0" x2="1"><stop offset="0" stop-color="#7a2cc9"/><stop offset=".25" stop-color="#2f6bf0"/><stop offset=".5" stop-color="#23b35a"/><stop offset=".75" stop-color="#f2c21b"/><stop offset="1" stop-color="#e2382b"/></linearGradient></defs>
+          <line x1="40" y1="92" x2="860" y2="92" stroke="var(--line)" stroke-width="2"/>
+          <g>
+            <line x1="40" y1="86" x2="40" y2="98" stroke="var(--muted)"/><text x="40" y="118" text-anchor="middle">1 GHz</text>
+            <line x1="176.7" y1="86" x2="176.7" y2="98" stroke="var(--muted)"/><text x="176.7" y="118" text-anchor="middle">10 GHz</text>
+            <line x1="313.3" y1="86" x2="313.3" y2="98" stroke="var(--muted)"/><text x="313.3" y="118" text-anchor="middle">100 GHz</text>
+            <line x1="450" y1="86" x2="450" y2="98" stroke="var(--muted)"/><text x="450" y="118" text-anchor="middle">1 THz</text>
+            <line x1="586.7" y1="86" x2="586.7" y2="98" stroke="var(--muted)"/><text x="586.7" y="118" text-anchor="middle">10 THz</text>
+            <line x1="723.3" y1="86" x2="723.3" y2="98" stroke="var(--muted)"/><text x="723.3" y="118" text-anchor="middle">100 THz</text>
+            <line x1="860" y1="86" x2="860" y2="98" stroke="var(--muted)"/><text x="860" y="118" text-anchor="middle">1 PHz</text>
+          </g>
+          <text x="450" y="142" text-anchor="middle">log₁₀ f</text>
+          <circle cx="91.9" cy="92" r="6" fill="var(--muted)"/><line x1="91.9" y1="86" x2="91.9" y2="56" stroke="var(--muted)"/>
+          <text x="91.9" y="36" text-anchor="middle" class="lbl">Wi-Fi</text><text x="91.9" y="50" text-anchor="middle">2.4 GHz</text>
+          <circle cx="228.7" cy="92" r="7" fill="var(--teal)"/><line x1="228.7" y1="85" x2="228.7" y2="56" stroke="var(--teal)"/>
+          <text x="215" y="36" text-anchor="middle" class="lbl">LD2450</text><text x="215" y="50" text-anchor="middle">24 GHz</text>
+          <circle cx="283" cy="92" r="7" fill="var(--violet)"/><line x1="283" y1="85" x2="283" y2="56" stroke="var(--violet)"/>
+          <text x="300" y="36" text-anchor="middle" class="lbl">MR60BHA2</text><text x="300" y="50" text-anchor="middle">60 GHz</text>
+          <rect x="631.8" y="86" width="32.7" height="12" rx="3" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"/><line x1="648" y1="86" x2="648" y2="56" stroke="var(--muted)" stroke-dasharray="3 3"/>
+          <text x="630" y="36" text-anchor="middle" class="lbl"><tspan class="en">thermal · later</tspan><tspan class="fr">thermique · plus tard</tspan></text><text x="630" y="50" text-anchor="middle">8–14 µm</text>
+          <circle cx="794.4" cy="92" r="7" fill="var(--red)"/><line x1="794.4" y1="85" x2="794.4" y2="56" stroke="var(--red)"/>
+          <text x="760" y="36" text-anchor="middle" class="lbl">Lidar D800</text><text x="760" y="50" text-anchor="middle">905 nm</text>
+          <rect x="805.6" y="86" width="37.3" height="12" rx="3" fill="url(#vis)"/><line x1="824" y1="86" x2="824" y2="66" stroke="var(--muted)"/>
+          <text x="850" y="62" text-anchor="middle" class="lbl"><tspan class="en">camera</tspan><tspan class="fr">caméra</tspan></text>
+        </svg>
+      </div>
+      <p class="note"><span class="en">Glass is invisible to the laser, but not to the radar. People are just shapes to the lidar, but the radar knows they breathe. That is why Fanou carries all of them.</span><span class="fr">Une vitre est invisible pour le laser, pas pour le radar. Pour le lidar une personne n'est qu'une forme, le radar sait qu'elle respire. C'est pour ça que Fanou les porte tous.</span></p>
+    </div>
   </div>
 </section>
 
 <section id="how">
   <div class="sh">
-    <div class="eyebrow"><span class="en">How it works</span><span class="fr">Comment ça marche</span></div>
+    <div class="eyebrow"><span class="en">How it thinks</span><span class="fr">Comment il pense</span></div>
     <div>
-      <h2><span class="en">Dumb device, smart computer</span><span class="fr">Appareil bête, ordinateur malin</span></h2>
-      <p><span class="en">Less than 1 MB/s leaves the head, mostly the camera stream. Every packet carries a timestamp from the same clock, so the computer can line the streams up.</span><span class="fr">Moins de 1 Mo/s sort de la tête, surtout pour la caméra. Chaque paquet porte un horodatage de la même horloge, pour que l'ordinateur puisse aligner les flux.</span></p>
+      <h2><span class="en">A small body, a big brain next door</span><span class="fr">Un petit corps, un gros cerveau à côté</span></h2>
+      <p><span class="en">The ESP32 inside Fanou stamps every packet with the same clock, draws the eyes and plays the sounds. Your computer fuses the streams into one 3D picture and decides what Fanou should say. Nothing needs the cloud.</span><span class="fr">L'ESP32 dans Fanou horodate chaque paquet avec la même horloge, dessine les yeux et joue les sons. Ton ordinateur fusionne les flux en une image 3D et décide de ce que Fanou doit dire. Rien n'a besoin du cloud.</span></p>
     </div>
   </div>
   <div class="pipe">
-    <svg viewBox="0 0 980 256" role="img" aria-label="Data flow from sensors to the ESP32-S3, then over Wi-Fi to the computer">
+    <svg viewBox="0 0 980 256" role="img" aria-label="Data flow from the sensors to the ESP32-S3 inside Fanou, then over Wi-Fi to the computer, and back as expressions and speech">
       <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
       <g font-size="13">
-        <rect x="10" y="14" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--petg)"/><text x="24" y="34" class="h">Lidar D800</text><text x="24" y="50" class="s">UART 921 600 · 85 kB/s</text>
+        <rect x="10" y="14" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--red)"/><text x="24" y="34" class="h">Lidar D800</text><text x="24" y="50" class="s">UART 921 600 · 85 kB/s</text>
         <rect x="10" y="70" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--teal)"/><text x="24" y="90" class="h">Radar 24 GHz</text><text x="24" y="106" class="s">UART 256 000 · 10 Hz</text>
-        <rect x="10" y="126" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--line)"/><text x="24" y="146" class="h"><tspan class="en">Camera</tspan><tspan class="fr">Caméra</tspan></text><text x="24" y="162" class="s">DVP · MJPEG</text>
+        <rect x="10" y="126" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--line)"/><text x="24" y="146" class="h"><tspan class="en">Camera + mic</tspan><tspan class="fr">Caméra + micro</tspan></text><text x="24" y="162" class="s">DVP · PDM</text>
         <rect x="10" y="190" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--violet)"/><text x="24" y="210" class="h">Radar 60 GHz</text><text x="24" y="226" class="s"><tspan class="en">own ESP32-C6 · 1 Hz</tspan><tspan class="fr">son propre ESP32-C6 · 1 Hz</tspan></text>
-
         <path d="M200 36 H270 V96 H300" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
         <path d="M200 92 H300" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
         <path d="M200 148 H270 V112 H300" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
-
         <rect x="300" y="60" width="220" height="92" rx="6" fill="var(--bg)" stroke="var(--ink)" stroke-width="1.5"/>
         <text x="316" y="86" class="h">XIAO ESP32-S3</text>
         <text x="316" y="106" class="s"><tspan class="en">timestamp · frame · stream</tspan><tspan class="fr">horodate · emballe · envoie</tspan></text>
-        <text x="316" y="124" class="s"><tspan class="en">screen · mic in · speaker out</tspan><tspan class="fr">écran · micro · haut-parleur</tspan></text>
+        <text x="316" y="124" class="s"><tspan class="en">eyes · chirps · reflexes</tspan><tspan class="fr">yeux · sons · réflexes</tspan></text>
         <text x="316" y="142" class="s">OTA · Wi-Fi 2.4 GHz</text>
-
         <path d="M410 152 V190" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
-        <rect x="340" y="190" width="140" height="40" rx="5" fill="var(--lcd)"/><text x="354" y="215" fill="var(--lcd-ink)" font-family="IBM Plex Mono, monospace" font-size="12"><tspan class="en">1.69" screen</tspan><tspan class="fr">écran 1,69"</tspan></text>
-
-        <path d="M520 106 H640" fill="none" stroke="var(--muted)" stroke-dasharray="5 4" marker-end="url(#ar)"/>
-        <text x="548" y="96" class="s">UDP + MJPEG</text>
-        <path d="M200 212 H260 V244 H600 V134 H640" fill="none" stroke="var(--violet)" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+        <rect x="340" y="190" width="140" height="40" rx="5" fill="var(--lcd)"/><text x="354" y="215" fill="var(--lcd-ink)" font-family="IBM Plex Mono, monospace" font-size="12"><tspan class="en">face + voice</tspan><tspan class="fr">visage + voix</tspan></text>
+        <path d="M520 96 H640" fill="none" stroke="var(--muted)" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+        <text x="548" y="86" class="s">UDP · MJPEG · audio</text>
+        <path d="M640 124 H520" fill="none" stroke="var(--red)" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+        <text x="540" y="140" class="s"><tspan class="en">expressions · speech</tspan><tspan class="fr">expressions · paroles</tspan></text>
+        <path d="M200 212 H260 V244 H600 V160 H640" fill="none" stroke="var(--violet)" stroke-dasharray="5 4" marker-end="url(#ar)"/>
         <text x="530" y="238" class="s">Wi-Fi</text>
-
-        <rect x="640" y="40" width="330" height="140" rx="6" fill="var(--bg)" stroke="var(--ink)" stroke-width="1.5"/>
-        <text x="658" y="66" class="h"><tspan class="en">Computer</tspan><tspan class="fr">Ordinateur</tspan></text>
-        <text x="658" y="90" class="s"><tspan class="en">1 · receive every stream</tspan><tspan class="fr">1 · recevoir chaque flux</tspan></text>
-        <text x="658" y="110" class="s"><tspan class="en">2 · align them on one timeline</tspan><tspan class="fr">2 · les aligner sur une seule ligne de temps</tspan></text>
-        <text x="658" y="130" class="s"><tspan class="en">3 · place them in one 3D frame</tspan><tspan class="fr">3 · les placer dans un même repère 3D</tspan></text>
-        <text x="658" y="150" class="s"><tspan class="en">4 · show the live overlay (Rerun)</tspan><tspan class="fr">4 · afficher la vue superposée (Rerun)</tspan></text>
+        <rect x="640" y="30" width="330" height="170" rx="6" fill="var(--bg)" stroke="var(--ink)" stroke-width="1.5"/>
+        <text x="658" y="56" class="h"><tspan class="en">Computer</tspan><tspan class="fr">Ordinateur</tspan></text>
+        <text x="658" y="80" class="s"><tspan class="en">1 · receive and align every stream</tspan><tspan class="fr">1 · recevoir et aligner chaque flux</tspan></text>
+        <text x="658" y="100" class="s"><tspan class="en">2 · place them in one 3D frame</tspan><tspan class="fr">2 · les placer dans un même repère 3D</tspan></text>
+        <text x="658" y="120" class="s"><tspan class="en">3 · live overlay (Rerun)</tspan><tspan class="fr">3 · vue superposée en direct (Rerun)</tspan></text>
+        <text x="658" y="140" class="s"><tspan class="en">4 · events: arrived, still, left…</tspan><tspan class="fr">4 · événements : arrivé, immobile, parti…</tspan></text>
+        <text x="658" y="160" class="s"><tspan class="en">5 · a local LLM gives Fanou its words</tspan><tspan class="fr">5 · un LLM local donne ses mots à Fanou</tspan></text>
       </g>
     </svg>
   </div>
@@ -379,16 +379,28 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   <div class="sh">
     <div class="eyebrow"><span class="en">Build one</span><span class="fr">En fabriquer un</span></div>
     <div>
-      <h2><span class="en">A weekend, a printer, a screwdriver</span><span class="fr">Un week-end, une imprimante, un tournevis</span></h2>
-      <p><span class="en">Almost everything is plugged or clamped. Tools: a wire stripper, a screwdriver, and a soldering iron for two header strips.</span><span class="fr">Presque tout s'enfiche ou se serre. Outils : une pince à dénuder, un tournevis, et un fer pour deux barrettes de broches.</span></p>
+      <h2><span class="en">An evening, a printer, a screwdriver</span><span class="fr">Une soirée, une imprimante, un tournevis</span></h2>
+      <p><span class="en">Everything rides on one spine that you wire in the open, then the striped tower slides over it. Tools: a wire stripper, a screwdriver, and a soldering iron for two header strips.</span><span class="fr">Tout est porté par une colonne que tu câbles à l'air libre, puis la tour rayée glisse par-dessus. Outils : une pince à dénuder, un tournevis, et un fer pour deux barrettes de broches.</span></p>
     </div>
   </div>
   <div class="steps">
     <div class="step"><div class="big">≈240<small>€</small></div><b><span class="en">Buy</span><span class="fr">Acheter</span></b><p><span class="en">Lidar, two radars, ESP32 camera board, screen, amp and speaker, connectors. Mostly AliExpress.</span><span class="fr">Lidar, deux radars, carte ESP32 caméra, écran, ampli et haut-parleur, connecteurs. Surtout sur AliExpress.</span></p><a href="bom.md"><span class="en">Bill of materials →</span><span class="fr">Liste d'achats →</span></a></div>
-    <div class="step"><div class="big">5<small><span class="en">parts</span><span class="fr">pièces</span></small></div><b><span class="en">Print</span><span class="fr">Imprimer</span></b><p><span class="en">Head, cover, grip, stand, plus a 5-minute lidar template. PETG, pre-oriented, no supports.</span><span class="fr">Tête, couvercle, poignée, socle, plus un gabarit lidar de 5 minutes. PETG, déjà orientées, sans supports.</span></p><a href="printing.md"><span class="en">Printing guide →</span><span class="fr">Guide d'impression →</span></a></div>
-    <div class="step"><div class="big">29<small><span class="en">links</span><span class="fr">liaisons</span></small></div><b><span class="en">Wire</span><span class="fr">Câbler</span></b><p><span class="en">Dupont plugs on the ESP32, four lever connectors for power. A wire-by-wire table written for beginners.</span><span class="fr">Prises Dupont sur l'ESP32, quatre connecteurs à levier pour l'alimentation. Un tableau fil par fil écrit pour débutants.</span></p><a href="wiring.md"><span class="en">Wiring guide →</span><span class="fr">Guide de câblage →</span></a></div>
-    <div class="step"><div class="big">2<small><span class="en">headers</span><span class="fr">barrettes</span></small></div><b><span class="en">Assemble</span><span class="fr">Assembler</span></b><p><span class="en">Solder the header pins on the XIAO and the amp, then slide the modules in from the back. Foam-padded columns on the cover hold them, and four screws close it.</span><span class="fr">Soude les broches du XIAO et de l'ampli, puis glisse les modules par l'arrière. Les colonnes du couvercle, garnies de mousse, les maintiennent, et quatre vis ferment le tout.</span></p><a href="assembly.md"><span class="en">Assembly guide →</span><span class="fr">Guide d'assemblage →</span></a></div>
+    <div class="step"><div class="big">5<small><span class="en">parts</span><span class="fr">pièces</span></small></div><b><span class="en">Print</span><span class="fr">Imprimer</span></b><p><span class="en">Island, bottom plate, tower, spine, cap, plus a 5-minute lidar template. No supports; the stripes are filament changes.</span><span class="fr">Île, plaque de fond, tour, colonne, galerie, plus un gabarit lidar de 5 minutes. Sans supports ; les rayures sont des changements de filament.</span></p><a href="printing.md"><span class="en">Printing guide →</span><span class="fr">Guide d'impression →</span></a></div>
+    <div class="step"><div class="big">29<small><span class="en">links</span><span class="fr">liaisons</span></small></div><b><span class="en">Wire</span><span class="fr">Câbler</span></b><p><span class="en">Dupont plugs on the ESP32, four lever connectors on the back of the spine. A wire-by-wire table written for beginners.</span><span class="fr">Prises Dupont sur l'ESP32, quatre connecteurs à levier au dos de la colonne. Un tableau fil par fil écrit pour débutants.</span></p><a href="wiring.md"><span class="en">Wiring guide →</span><span class="fr">Guide de câblage →</span></a></div>
+    <div class="step"><div class="big">12<small><span class="en">screws</span><span class="fr">vis</span></small></div><b><span class="en">Assemble</span><span class="fr">Assembler</span></b><p><span class="en">Modules slide into the spine, foam pads hold them, the tower slides over, the cap closes it, the lidar goes on top.</span><span class="fr">Les modules glissent dans la colonne, des mousses les tiennent, la tour glisse par-dessus, la galerie ferme, le lidar se pose au sommet.</span></p><a href="assembly.md"><span class="en">Assembly guide →</span><span class="fr">Guide d'assemblage →</span></a></div>
   </div>
+  <div class="stripes" aria-hidden="true"><span style="background:var(--red)"></span><span style="background:#EDE9E0"></span><span style="background:var(--red)"></span><span style="background:#EDE9E0"></span><span style="background:var(--red)"></span></div>
+</section>
+
+<section id="concepts" class="concepts">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">Where it came from</span><span class="fr">D'où il vient</span></div>
+    <div>
+      <h2><span class="en">Three characters, one lighthouse</span><span class="fr">Trois personnages, un phare</span></h2>
+      <p><span class="en">SuperLens started as a handheld sensor head. To make it something you keep on your desk, we sketched three characters: Fanou the lighthouse, Hulotte the owl and Tito the little robot. The lighthouse won, because its shape already explains its sensors.</span><span class="fr">SuperLens a commencé comme une tête de capteurs à tenir en main. Pour en faire un objet qu'on garde sur son bureau, on a esquissé trois personnages : Fanou le phare, Hulotte la chouette et Tito le petit robot. Le phare a gagné, parce que sa forme explique déjà ses capteurs.</span></p>
+    </div>
+  </div>
+  <img src="concepts/concepts_board.jpg" alt="Three concept sketches side by side: Fanou the lighthouse, Hulotte the owl, Tito the robot" loading="lazy" width="1350" height="550">
 </section>
 
 <section id="roadmap">
@@ -397,19 +409,17 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <div><h2><span class="en">Roadmap</span><span class="fr">Feuille de route</span></h2></div>
   </div>
   <ol class="road">
-    <li class="done"><b><span class="en">Rev A · the enclosure</span><span class="fr">Rév. A · le boîtier</span></b><span><span class="en">Head, grip, pressing-column cover, lidar template.</span><span class="fr">Tête, poignée, couvercle à colonnes, gabarit lidar.</span></span></li>
-    <li class="done"><b><span class="en">Rev B · lever connectors</span><span class="fr">Rév. B · connecteurs à levier</span></b><span><span class="en">Dupont plugs and lever connectors, desk stand, tripod nut.</span><span class="fr">Prises Dupont et connecteurs à levier, socle, écrou trépied.</span></span></li>
-    <li class="done"><b><span class="en">Rev C · the screen</span><span class="fr">Rév. C · l'écran</span></b><span><span class="en">1.69" colour display on the back, D500 lidar, Blender model.</span><span class="fr">Écran couleur 1,69" au dos, lidar D500, modèle Blender.</span></span></li>
-    <li class="done"><b><span class="en">Rev D · it listens and talks</span><span class="fr">Rév. D · il écoute et il parle</span></b><span><span class="en">Built-in microphone, I2S amp and speaker behind the side vents, D800 lidar.</span><span class="fr">Micro intégré, ampli I2S et haut-parleur derrière les aérations, lidar D800.</span></span></li>
-    <li class="now"><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Order the parts, print, check every dimension against the real modules.</span><span class="fr">Commander, imprimer, vérifier chaque cote sur les vrais modules.</span></span></li>
-    <li><b>Firmware</b><span><span class="en">UART readers, UDP framing, MJPEG, screen mini-map, OTA.</span><span class="fr">Lecture des UART, trames UDP, MJPEG, mini-carte à l'écran, OTA.</span></span></li>
-    <li><b><span class="en">Host viewer</span><span class="fr">Visualiseur PC</span></b><span><span class="en">Receivers, time alignment, extrinsics, live Rerun overlay, recording.</span><span class="fr">Réception, alignement temporel, calibration, vue Rerun en direct, enregistrement.</span></span></li>
-    <li><b><span class="en">Beyond</span><span class="fr">Au-delà</span></b><span><span class="en">Walking 3D twin, thermal layer, a robot that uses SuperLens as its eyes.</span><span class="fr">Jumeau 3D en marchant, couche thermique, un robot qui utilise SuperLens comme yeux.</span></span></li>
+    <li class="done"><b><span class="en">Rev A–D · the sensor head</span><span class="fr">Rév. A–D · la tête de capteurs</span></b><span><span class="en">Enclosure, solderless wiring, screen, microphone and speaker, D800 lidar.</span><span class="fr">Boîtier, câblage sans soudure, écran, micro et haut-parleur, lidar D800.</span></span></li>
+    <li class="done"><b><span class="en">Rev E · Fanou</span><span class="fr">Rév. E · Fanou</span></b><span><span class="en">The desk lighthouse: radars behind the paint, a face, a voice in the island.</span><span class="fr">Le phare de bureau : radars derrière la peinture, un visage, une voix dans l'île.</span></span></li>
+    <li class="now"><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Print, assemble, check every dimension against the real modules.</span><span class="fr">Imprimer, assembler, vérifier chaque cote sur les vrais modules.</span></span></li>
+    <li><b>Firmware</b><span><span class="en">Sensor readers, UDP framing, MJPEG, eyes and moods, sounds, OTA.</span><span class="fr">Lecture des capteurs, trames UDP, MJPEG, yeux et humeurs, sons, OTA.</span></span></li>
+    <li><b><span class="en">Host</span><span class="fr">Côté PC</span></b><span><span class="en">Fusion and Rerun overlay, presence events, voice, a local LLM.</span><span class="fr">Fusion et vue Rerun, événements de présence, voix, un LLM local.</span></span></li>
+    <li><b><span class="en">Beyond</span><span class="fr">Au-delà</span></b><span><span class="en">A thermal layer, a memory of the room's habits, several Fanous talking to each other.</span><span class="fr">Une couche thermique, une mémoire des habitudes de la pièce, plusieurs Fanou qui se parlent.</span></span></li>
   </ol>
 </section>
 
 <footer>
-  <span>SuperLens · © 2026 Sébastien Treille <span class="en">and contributors</span><span class="fr">et contributeurs</span></span>
+  <span>Fanou · SuperLens · © 2026 Sébastien Treille <span class="en">and contributors</span><span class="fr">et contributeurs</span></span>
   <span><span class="en">Hardware</span><span class="fr">Matériel</span> CERN-OHL-P-2.0 · <span class="en">Software</span><span class="fr">Logiciel</span> MIT · <span class="en">Docs</span><span class="fr">Doc</span> CC BY 4.0</span>
   <span><span class="en">Sensor names are trademarks of their owners. Not affiliated.</span><span class="fr">Les noms des capteurs appartiennent à leurs propriétaires. Aucune affiliation.</span></span>
 </footer>
@@ -432,12 +442,80 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   set(initial);
 })();
 
-/* ---------- simulated back screen ---------- */
+/* ---------- Fanou's face ---------- */
+(function(){
+  const cv = document.getElementById('face'); const g = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let mood = 'awake', manual = false, lastInput = performance.now();
+  let look = [0, 0], target = [0, 0], blink = 0, nextBlink = performance.now() + 2500;
+  const EYE = '#C8F4FF', GLOW = 'rgba(160,235,255,0.55)';
+
+  document.querySelectorAll('.moods button').forEach(b => b.addEventListener('click', () => {
+    mood = b.dataset.m; manual = true; lastInput = performance.now(); setPressed();
+    if (reduce) draw(performance.now());
+  }));
+  function setPressed(){ document.querySelectorAll('.moods button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === mood))); }
+
+  window.addEventListener('pointermove', e => {
+    const r = cv.getBoundingClientRect();
+    const dx = (e.clientX - (r.left + r.width/2)) / 500, dy = (e.clientY - (r.top + r.height*0.45)) / 500;
+    target = [Math.max(-1, Math.min(1, dx)), Math.max(-1, Math.min(1, dy))];
+    lastInput = performance.now();
+    if (!manual && mood === 'sleep') { mood = 'awake'; setPressed(); }
+  }, { passive: true });
+
+  function eye(cx, cy, w, h, open){
+    const hh = Math.max(3, h * open);
+    g.save(); g.shadowColor = GLOW; g.shadowBlur = 34; g.fillStyle = EYE;
+    g.beginPath(); g.ellipse(cx, cy, w, hh, 0, 0, Math.PI*2); g.fill(); g.restore();
+    if (open > 0.35){ g.fillStyle = 'rgba(255,255,255,0.95)'; g.beginPath(); g.arc(cx + w*0.35, cy - hh*0.45, w*0.22, 0, Math.PI*2); g.fill(); }
+  }
+  function arcEye(cx, cy, w){
+    g.save(); g.shadowColor = GLOW; g.shadowBlur = 30; g.strokeStyle = EYE; g.lineWidth = 16; g.lineCap = 'round';
+    g.beginPath(); g.arc(cx, cy + w*0.55, w, Math.PI*1.15, Math.PI*1.85); g.stroke(); g.restore();
+  }
+
+  function draw(now){
+    g.fillStyle = '#071217'; g.fillRect(0, 0, W, H);
+    if (!manual && now - lastInput > 9000) { if (mood !== 'sleep') { mood = 'sleep'; setPressed(); } }
+    if (manual && now - lastInput > 15000) { manual = false; }
+    look[0] += (target[0] - look[0]) * 0.12; look[1] += (target[1] - look[1]) * 0.12;
+    if (now > nextBlink) { blink = 1; nextBlink = now + 2200 + Math.random()*3200; }
+    blink = Math.max(0, blink - 0.12);
+    const open = blink > 0 ? Math.abs(blink*2 - 1) : 1;
+    const breathe = Math.sin(now / 4300 * Math.PI * 2);        // 14 breaths/min
+    const lx = look[0] * 34, ly = look[1] * 26;
+    const cx = W/2 + lx, cy = H*0.45 + ly, gap = 86;
+    if (mood === 'happy'){
+      arcEye(cx - gap, cy, 46); arcEye(cx + gap, cy, 46);
+      g.fillStyle = 'rgba(240,120,110,0.28)'; g.beginPath(); g.ellipse(cx - gap - 18, cy + 78, 34, 16, 0, 0, Math.PI*2); g.ellipse(cx + gap + 18, cy + 78, 34, 16, 0, 0, Math.PI*2); g.fill();
+    } else if (mood === 'sleep'){
+      const o = 0.07 + 0.04 * breathe;
+      eye(W/2 - gap, H*0.5, 50, 64, o); eye(W/2 + gap, H*0.5, 50, 64, o);
+      g.fillStyle = 'rgba(200,244,255,0.75)'; g.font = '600 40px "IBM Plex Mono", monospace';
+      const t = (now / 1400) % 1;
+      g.globalAlpha = 1 - t; g.fillText('z', W*0.66 + t*40, H*0.36 - t*70); g.globalAlpha = 1;
+      g.font = '600 28px "IBM Plex Mono", monospace'; g.fillText('z', W*0.62, H*0.40);
+    } else if (mood === 'listen'){
+      eye(cx - gap, cy, 54, 74, open); eye(cx + gap, cy, 54, 74, open);
+      g.fillStyle = 'rgba(200,244,255,0.8)';
+      for (let i = 0; i < 7; i++){ const hgt = 10 + Math.abs(Math.sin(now/170 + i*1.3)) * 42; g.fillRect(W/2 - 84 + i*26, H*0.82 - hgt/2, 12, hgt); }
+    } else {
+      const s = 1 + 0.03 * breathe;
+      eye(cx - gap, cy, 50*s, 66*s, open); eye(cx + gap, cy, 50*s, 66*s, open);
+    }
+    if (!reduce) requestAnimationFrame(draw);
+  }
+  if (reduce) draw(performance.now()); else requestAnimationFrame(draw);
+})();
+
+/* ---------- map mode: simulated lidar + radar view ---------- */
 (function(){
   const cv = document.getElementById('lcd'); const g = cv.getContext('2d');
   const Wpx = cv.width, Hpx = cv.height;
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const C = { bg:'#061114', grid:'#0f262a', pt:'#7FE3DA', sweep:'rgba(240,127,56,', dev:'#F07F38', r24:'#3CC3B9', r60:'#B39CF5', txt:'#BFEDEA', dim:'#4F7A7C' };
+  const C = { bg:'#061114', grid:'#0f262a', pt:'#7FE3DA', sweep:'rgba(226,88,74,', dev:'#E2584A', r24:'#3CC3B9', r60:'#B39CF5', txt:'#BFEDEA', dim:'#4F7A7C' };
 
   // Room in metres, device at origin facing -y (up on screen)
   const seg = [];
@@ -528,7 +606,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     // status bar
     g.fillStyle = 'rgba(6,17,20,0.85)'; g.fillRect(0,0,Wpx,40);
     g.fillStyle = C.txt; g.font = '600 17px "IBM Plex Mono", monospace';
-    g.fillText('SUPERLENS', 16, 26);
+    g.fillText('FANOU · MAP', 16, 26);
     g.font = '15px "IBM Plex Mono", monospace'; g.fillStyle = C.dim;
     g.fillText('WiFi ● host ● 10 Hz', Wpx-196, 26);
     // vital-sign panel

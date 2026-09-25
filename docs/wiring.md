@@ -9,19 +9,34 @@ There are two kinds of wires:
 - **Power wires** (5 V, 3.3 V and GND) go into one of four WAGO lever connectors. Cut the plug off, strip 10 mm of insulation, lift the lever, insert, and close the lever.
 - **Data wires** keep their female Dupont plug and push straight onto a pin of the ESP32.
 
-The power bank plugs into the ESP32's USB-C port. The ESP32's **5V** pin is connected directly to that port's 5 V line, so it feeds the WAGO bus, and the bus powers every sensor.
+The USB-C cable (charger or power bank at the other end) plugs into the ESP32's USB-C port. The ESP32's **5V** pin is connected directly to that port's 5 V line, so it feeds the WAGO bus, and the bus powers every sensor.
+
+## Where everything sits in Fanou
+
+| Part | Place | Height above the table |
+|---|---|---:|
+| Lidar | On the lantern plinth, cable down through the cap | ≈ 180 mm |
+| XIAO ESP32S3 Sense | Top of the spine, behind the porthole | ≈ 150 mm |
+| Screen | Behind the face window | ≈ 120 mm |
+| HLK-LD2450 | Behind the middle red band | ≈ 90 mm |
+| **WAGO connectors** | Stuck on the back of the spine, halfway up | ≈ 70–100 mm |
+| MR60BHA2 kit | Behind the arched door, USB-C down | ≈ 55 mm |
+| **Amp** | Stuck on the back of the spine, low down | ≈ 35 mm |
+| Speaker | Cradle on the bottom plate, under the grille | ≈ 8 mm |
+
+Every run fits the 20 cm Dupont jumpers. The only long cable is the USB-C power cable, which enters at the back of the island and climbs to the XIAO.
 
 ## Three rules
 
 1. **Read the label, not the colour.** Wire colours differ between sellers. The pin names printed on each board (TX, GND, 5V…) are what count.
 2. **5 V never touches a D pin.** 5 V goes only into its WAGO and onto the ESP32 pin marked **5V**. Anywhere else, it can destroy the ESP32.
-3. **Connect the power bank last.** Wire everything, re-check the table line by line, then plug in the power bank. If anything gets hot or smells, unplug it.
+3. **Connect the power last.** Wire everything, re-check the table line by line, then plug in the charger. If anything gets hot or smells, unplug it.
 
 ## Diagram
 
 ```mermaid
 flowchart LR
-  BANK["Power bank"] -- "USB-C cable" --> XIAO
+  BANK["Charger or power bank"] -- "USB-C cable, 90° plug" --> XIAO
 
   subgraph XIAO["XIAO ESP32S3 Sense (built-in mic)"]
     P5V["5V"]; PGND["GND"]; P33["3V3"]; D7["D7 / GPIO44"]; D4["D4 / GPIO5"]; D5["D5 / GPIO6"]
@@ -101,7 +116,7 @@ Tick each line as you go.
 | 13 | USB-C pigtail **red** | WAGO 5V | Usually pre-stripped. The plug goes into the MR60BHA2 kit. |
 | 14 | USB-C pigtail **black** | WAGO GND-B | Same as above |
 | 15 | Screen **VCC** | WAGO 3V3 | Cut, strip. **3V3, not 5V**: the screen's logic must match the ESP32's 3.3 V. |
-| 16 | Screen **BL** | WAGO 3V3 | Cut, strip. The backlight stays on at full brightness. |
+| 16 | Screen **BL** | WAGO 3V3 | Cut, strip. The backlight stays on at full brightness; the eyes dim in software by drawing darker colours. |
 | 17 | Screen **GND** | WAGO GND-B | Cut, strip |
 | 18 | Screen **DIN** | XIAO **D10** | Push the Dupont plug on (SPI data) |
 | 19 | Screen **CLK** | XIAO **D8** | Push the Dupont plug on (SPI clock) |
@@ -135,7 +150,7 @@ The standard XIAO ESP32S3 Sense ships with loose header pins, and so do most MAX
 
 ## XIAO pin map
 
-As seen **from below** (pins pointing at you, USB-C at the top). This is how you see the board through the open back of the head.
+As seen **from the pin side** (pins pointing at you, USB-C at the top). In Fanou this is how you see the board from behind the spine, turned a quarter turn: its USB-C port points to the side.
 
 ```
                ┌──[ USB-C ]──┐
@@ -176,8 +191,8 @@ The ESP32-S3 console uses native USB, which leaves UART0 free for the lidar. No 
 | MAX98357A + speaker | 20 mA idle | 400 mA (loud sound) |
 | **Total at 5 V** | **≈ 1.0 A** | **≈ 1.9 A** |
 
-Pick a power bank that delivers at least 2 A. Keep the speaker volume moderate in the firmware: a 1 W speaker can be overdriven by the amp at 5 V.
+Pick a charger or power bank that delivers at least 2 A. Keep the speaker volume moderate in the firmware: a 1 W speaker can be overdriven by the amp at 5 V.
 
 ## Flashing the ESP32
 
-Unplug the power bank, then connect your computer to the same USB-C port. The two sources must never be connected at the same time, because the 5V pin is wired straight to the port. After the first flash, updates go over Wi-Fi (OTA).
+Unplug the charger and plug the same cable into your computer: it goes straight to the XIAO. The two sources must never be connected at the same time, because the 5V pin is wired straight to the port. After the first flash, updates go over Wi-Fi (OTA).

@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Export every printable part of SuperLens, already oriented for the print bed.
+# Export every printable part of Fanou, already oriented for the print bed.
 # Usage: hardware/scripts/export_stl.sh          (needs OpenSCAD >= 2021.01 in PATH)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-src="$here/../cad/superlens.scad"
+src="$here/../cad/fanou.scad"
 out="$here/../stl"
 mkdir -p "$out"
 
 parts=(
   "print_template:0_lidar_template"
-  "print_head:1_head"
-  "print_cover:2_back_cover"
-  "print_grip:3_grip"
-  "print_dock:4_stand"
+  "print_base:1_base_island"
+  "print_bottom:2_bottom_plate"
+  "print_shell:3_tower_shell"
+  "print_spine:4_spine"
+  "print_cap:5_gallery_cap"
 )
 for p in "${parts[@]}"; do
   part="${p%%:*}"; name="${p##*:}"
