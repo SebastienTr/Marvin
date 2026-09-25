@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Rev F design (2026-09-25): the upright robot
+- New shape: a compact upright robot (about 88 × 80 mm, 15 cm tall with the lidar) replaces the lighthouse. Design studies in `docs/concepts/` (terminal, robot v1–v3, sight lines).
+- Sensors are tilted inside an upright shell: 60 GHz radar at 20° (aimed at a seated chest, 0.6–1 m), 24 GHz radar at 10°, camera at 20°, screen vertical.
+- Head and body joined through a TPU damper so the lidar motor does not disturb the heart-rate radar.
+- Smoked acrylic face window; anthracite band hiding both radars, printed as a filament change.
+- Grown-up design language: warm grey, anthracite, one orange knob.
+- BOM: MR60BHA2 now bought from Seeed Studio; adds smoked acrylic and TPU. Electronics and wiring unchanged.
+- Docs, READMEs and presentation page describe rev F. The rev F CAD is not written yet; `hardware/cad/fanou.scad` still holds rev E.
+
 ## [rev E] - 2026-09-25 · Fanou
 
 ### Changed

@@ -1,53 +1,42 @@
 # Printing
 
-All parts come from one parametric source, [`hardware/cad/fanou.scad`](../hardware/cad/fanou.scad). The STLs in [`hardware/stl/`](../hardware/stl/) are already oriented for the print bed, and **none of them needs supports**.
+> **Rev F status:** the parts below are the planned rev F set. Their STLs arrive with the rev F CAD. Until then, [`hardware/stl/`](../hardware/stl/) holds the rev E (lighthouse) parts, and only `0_lidar_template.stl` is valid for both.
 
-| File | Material | Orientation (already set) | Suggested settings | Notes |
+All parts come from one parametric OpenSCAD source in [`hardware/cad/`](../hardware/cad/). The STLs are exported already oriented for the print bed, and **none of them needs supports**. Every part fits a 180 × 180 mm bed (Bambu A1 mini and up).
+
+## Parts (rev F)
+
+| Part | Material | Orientation | Suggested settings | Notes |
 |---|---|---|---|---|
-| `0_lidar_template.stl` | PLA | Flat | 0.2 mm, 2 walls | About 5 min. **Print this first** and test-fit the lidar on it. |
-| `1_base_island.stl` | PETG or PLA, grey | Upside down, top face on the bed | 0.2 mm, 3 walls, 15 % | The groove for the tower and the key come out clean on the bed side. |
-| `2_bottom_plate.stl` | PETG or PLA, grey | Flat | 0.2 mm, 3 walls, 20 % | Speaker grille, speaker cradle and tripod-nut boss. |
-| `3_tower_shell.stl` | **PETG**, red and white | Upright | 0.2 mm, **exactly 1.6 mm wall** (4 perimeters of 0.4 mm), no infill needed | The stripes are filament changes, see below. Do not use vase mode. |
-| `4_spine.stl` | PETG | Lying on its back, plate on the bed | 0.2 mm, 3 walls, 20 % | Carries every front module. |
-| `5_gallery_cap.stl` | PETG or PLA, navy | Upright, floor on the bed | 0.2 mm, 3 walls, 20 % | The railing posts are 2.4 mm: print at moderate speed. |
+| Lidar template | PLA | Flat | 0.2 mm, 2 walls | About 5 min. **Print this first** and test-fit the lidar on it. |
+| Body shell | **PETG**, warm grey + anthracite | Upright | 0.2 mm, **exactly 1.6 mm wall in front of the radars** (4 × 0.4 mm perimeters) | The anthracite band is a filament change by layer (see below). The wall thickness matters for the radars; the colour does not. |
+| Plinth | PETG or PLA, anthracite | Flat | 0.2 mm, 3 walls, 20 % | Closes the body from below, carries the USB-C entry and the feet. |
+| Sensor sled | PETG | Lying on its back | 0.2 mm, 3 walls, 20 % | Holds the 60 GHz radar at 20° and the 24 GHz radar at 10°; the WAGOs and the amp stick on its back. |
+| Neck damper | **TPU 95A** | Flat | 0.2 mm, 3 walls, 15 % gyroid, slow (≤ 40 mm/s) | Decouples the head (lidar motor) from the body (heart-rate radar). Print outside the AMS. |
+| Head shell | PETG, warm grey | **Upside down**, top on the bed | 0.2 mm, 3 walls, 15 % | Printing it upside down avoids an 80 mm unsupported roof. The face opening comes out clean. |
+| Head frame | PETG | Flat | 0.2 mm, 3 walls, 20 % | Holds the screen vertical, the XIAO tilted 20° for the camera, and clamps the acrylic window. |
+| Lidar ring | PETG or PLA, anthracite | Flat | 0.2 mm, 3 walls | Flush ring on top of the head; the lidar screws through it. |
+| Knob | PETG or PLA, orange | Flat, face down | 0.12 mm layers for the knurl | Decorative in rev F (all XIAO pins are in use). |
+| Feet | TPU 95A | Flat | 0.2 mm | Optional: silicone bumper feet work too. |
 
-## The stripes
+The **face window** is not printed: cut it from 2 mm smoked acrylic (about 74 × 44 mm, corners filed to a 10 mm radius). Black PETG would hide the screen.
 
-The tower is printed upright, so each stripe is a filament change at a given height. Heights are measured **from the print bed** (the bottom of the tower):
+## The anthracite band
+
+The body shell is printed upright, so the band is a filament change at two heights. The exact heights come with the CAD; the plan is:
 
 | From | To | Colour | What it hides |
 |---:|---:|---|---|
-| 0 mm | 26 mm | Red | Bottom of the 60 GHz radar door |
-| 26 mm | 58 mm | White | — |
-| 58 mm | 82 mm | Red | The 24 GHz radar (LD2450) |
-| 82 mm | 114 mm | White | The face |
-| 114 mm | 148 mm (top) | Red | The camera porthole |
+| 0 | ≈ 8 mm | Warm grey | — |
+| ≈ 8 mm | ≈ 60 mm | Anthracite | Both radars |
+| ≈ 60 mm | top | Warm grey | — |
 
-- **Bambu A1 with AMS lite:** in Bambu Studio, right-click the layer slider at each height and choose "Change filament". To also paint the reliefs, use the Paint tool: door frame, face frame and porthole ring in navy, the porthole ring in brass-coloured PLA/PETG if you have one.
+- **Bambu A1 with AMS lite:** in Bambu Studio, right-click the layer slider at each height and choose "Change filament".
 - **Single-extruder printer:** insert a pause (M600 or "Pause print") at each height and swap the filament by hand.
 
-## Why PETG for the tower
+## Why PETG in front of the radars
 
-The radars look through the tower wall. At 60 GHz, a 1.6 mm PETG wall is half a wavelength thick, so it lets the signal through almost unchanged. Keep the wall at 1.6 mm (four 0.4 mm perimeters) and avoid metallic or carbon-filled filaments on the tower. The filament colour itself does not matter for the radars.
-
-PETG also stays rigid at temperatures that soften PLA. The island, bottom plate and cap can be PLA if you prefer.
-
-## Fit parameters
-
-Adjust these at the top of `fanou.scad`, then run `hardware/scripts/export_stl.sh`:
-
-| Parameter | Default | Change it when |
-|---|---|---|
-| `clr` | 0.4 mm | Modules or the cap are too loose (lower it) or too tight (raise it) |
-| `m3_pilot` | 2.6 mm | M3 screws are too hard or too easy to drive |
-| `m25_pilot` | 2.1 mm | The lidar screws are too hard or too easy to drive |
-| `lidPairDY`, `lidSingleDY` | 8.3 / −23.6 mm | The lidar holes do not line up on the template |
-| `tripod_nut_af` | 11.5 mm | Your 1/4"-20 nut spins or does not fit |
-| `colFoam` | 3 mm | You use a different foam tape thickness |
-| `lcdT`, `lcdStand`, `lcdSx` | 4.5 / 4 / 13.25 mm | Your screen module is thicker, or its standoffs sit elsewhere |
-| `kitW`, `kitH`, `kitD` | 35 / 54 / 22 mm | Your printed MR60BHA2 case has a different size |
-| `spkL`, `spkH`, `spkT` | 30.4 / 20.4 / 5 mm | Your speaker has a different size |
-| `ws` | 1.6 mm | Only if you print the tower in a filament other than PETG (half a wavelength depends on the material) |
+At 60 GHz, a 1.6 mm PETG wall is half a wavelength thick, so it lets the signal through almost unchanged, even when the radar looks through it at 20°. Keep that wall at 1.6 mm, keep it flat, and avoid metallic, glitter or carbon-filled filaments on the body. The filament colour itself does not matter.
 
 ## Regenerating files
 

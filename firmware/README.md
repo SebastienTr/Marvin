@@ -1,6 +1,6 @@
 # Firmware (planned)
 
-ESP32-S3 firmware for Fanou's XIAO ESP32S3 Sense. **Not written yet.** This file is the spec it will follow.
+ESP32-S3 firmware for the SuperLens robot's XIAO ESP32S3 Sense. **Not written yet.** This file is the spec it will follow.
 
 ## Responsibilities
 
@@ -9,12 +9,12 @@ ESP32-S3 firmware for Fanou's XIAO ESP32S3 Sense. **Not written yet.** This file
 3. Stamp every packet with a monotonic microsecond clock, synchronised to the host.
 4. Send lidar and radar packets to the host as **UDP** datagrams, in a small versioned binary envelope.
 5. Serve the camera as an **MJPEG** stream over HTTP.
-6. Drive the **1.69" ST7789 screen** (SPI), Fanou's face:
+6. Drive the **1.69" ST7789 screen** (SPI), the robot's face:
    - **eyes** by default: blinking, looking towards the nearest person tracked by the LD2450, sleepy when nobody is around, and any expression the host sends;
    - a top-down lidar **mini-map** with radar targets, and a status page (Wi-Fi, host link), on request.
 7. **Audio in**: read the built-in PDM microphone (I2S0, 16 kHz) and stream it on request, or detect simple sound events locally.
 8. **Audio out**: play chirps, beeps and speech streamed from the host through the MAX98357A (I2S1), with a volume cap.
-9. Keep Fanou **alive without a computer**: eyes, presence reactions and sounds work on the device alone; the host adds understanding and language.
+9. Keep the robot **alive without a computer**: eyes, presence reactions and sounds work on the device alone; the host adds understanding and language.
 10. Support **OTA** updates after the first USB flash.
 
 The MR60BHA2 kit runs Seeed's own firmware on its ESP32-C6 and talks to the host directly.

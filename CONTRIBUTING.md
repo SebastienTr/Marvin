@@ -6,12 +6,12 @@ Thanks for your interest! The project is at an early stage, so every contributio
 
 - **Build one and report back.** Photos, print settings, parts that did not fit, the actual sizes of your modules. Open an issue titled `Build report: <your name or handle>`.
 - **Fix the docs.** Typos, unclear steps, missing warnings.
-- **Improve the CAD.** Keep everything parametric in `hardware/cad/fanou.scad`.
+- **Improve the CAD.** Keep everything parametric in the OpenSCAD source under `hardware/cad/`.
 - **Write the firmware or host software**, following the specs in `firmware/README.md` and `host/README.md`.
 
 ## Ground rules for CAD changes
 
-1. Edit only `fanou.scad`. STLs are generated from it.
+1. Edit only the `.scad` source. STLs are generated from it.
 2. Keep every printable part support-free in its `print_*` orientation.
 3. Regenerate the files before committing:
    ```bash

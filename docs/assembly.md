@@ -1,10 +1,12 @@
 # Assembly
 
-You need a screwdriver, a wire stripper and, for two header strips, a soldering iron. Follow the steps in order. The whole build takes an evening.
+> **Rev F status:** this is the planned assembly order for the upright robot. Screw sizes and a step-by-step photo guide will follow with the rev F CAD and the first build.
 
-<p align="center"><img src="images/fanou_exploded.png" alt="Exploded view of Fanou: bottom plate, rocky island, spine with its modules, striped tower, gallery cap and lidar" width="360"></p>
+You need a screwdriver, a wire stripper and, for two header strips, a soldering iron. The whole build takes an evening.
 
-How it goes together: every electronic module rides on the **spine**, which is screwed onto the **island**. The striped **tower** then slides down over the spine and seats in the island's groove. The **gallery cap** closes the top and carries the lidar.
+<p align="center"><img src="images/robot_section.png" alt="Section of the robot: upright shell, 60 GHz radar tilted 20° and 24 GHz radar tilted 10° in the body, screen vertical and camera tilted 20° in the head, lidar on top" width="720"></p>
+
+How it goes together: the body holds the **sensor sled** (both radars, the WAGOs and the amp). The head holds the **head frame** (screen, XIAO with its camera, acrylic window) and carries the lidar on top. The two halves are joined through the **TPU neck damper**, and every wire between them passes through the neck.
 
 ## 0. Solder the headers
 
@@ -12,72 +14,54 @@ Solder the 2 × 7 header pins under the XIAO ESP32S3 Sense (long side of the pin
 
 ## 1. Check the lidar on the template
 
-Lay the lidar on the printed template. Its three holes must fall inside the slots. If they don't, adjust `lidPairDY` / `lidSingleDY` in the CAD **before** printing the cap, and please open an issue with your measurements.
+Lay the lidar on the printed template. Its three holes must fall inside the slots. If they don't, adjust `lidPairDY` / `lidSingleDY` in the CAD **before** printing the lidar ring, and please open an issue with your measurements.
 
-## 2. Spine on the island
+## 2. Face window
 
-Stand the spine on the island, its foot flange towards the front (the side opposite the USB-C hole and the key). Drive 2 × M3×6 from inside the island into the flange.
+Cut the smoked acrylic, file the corners round and peel the protective film. Clip it into the head frame from the inside.
 
-## 3. Modules on the spine
+## 3. Head
 
-Each module slides into its rails from the front, face forward. Stick a 3 mm foam pad on each pillar behind it: when the tower goes on, the wall presses every module back against the foam.
+1. **Screen** into the head frame, glass against the acrylic, connector at the back.
+2. **XIAO ESP32S3 Sense** into its 20° cradle, lens centred in the camera hole above the screen.
+3. Slide the head frame into the head shell and close it.
+4. Pass the **lidar cable** up through the lidar ring, screw the ring on, then the lidar with 3 × M2.5×10 (they cut their own thread).
 
-1. **MR60BHA2 kit** (bottom, in its printed case): radar face forward, USB-C port down, into the notch.
-2. **HLK-LD2450**: flat antenna side forward. Foam on the two pillars at the board ends.
-3. **Screen**: glass forward, cable connector at the back. Foam on the two pillars, which press on the brass standoffs.
-4. **XIAO ESP32S3 Sense** (top): camera lens forward, centred in the rails. Its USB-C port faces one of the side notches.
+## 4. Body
 
-## 4. Wire it
+1. **MR60BHA2 kit** (in its printed case) on the sled's 20° face, radar forward, on 3 mm foam.
+2. **HLK-LD2450** on the 10° face above it, flat antenna side forward, on foam.
+3. Stick the four **WAGOs** and the **amp** on the back of the sled.
+4. **Speaker** against the dot grille inside the right wall, on foam tape.
+5. Slide the sled into the body shell; the shell wall is the front stop.
 
-Follow the [wire-by-wire table](wiring.md#wire-by-wire-table) and tick each line.
+## 5. Wire it
 
-- Stick the four WAGOs on the back of the spine, halfway up, with foam tape.
-- Stick the amp on the back of the spine, low down, terminals facing down.
-- Pass the XIAO's Dupont plugs through the slots in the spine, above and below its pillar.
-- Wire the lidar cable now (lines 5–8), leaving its small JST plug free: it goes up through the tower at step 8.
-- Tug gently on every wire in a WAGO: none should come out.
+Follow the [wire-by-wire table](wiring.md#wire-by-wire-table) and tick each line. Wires between head and body go through the neck damper. Tug gently on every wire in a WAGO: none should come out.
 
-## 5. Power cable
+## 6. Power cable and first power-up
 
-Thread the straight end of the USB-C cable **from inside** the island out through the hole at the back, leaving about 25 cm inside. Plug the right-angle end into the XIAO, angled downward, and run the cable down behind the spine.
-
-## 6. Speaker and bottom plate
-
-Stick the speaker into the cradle on the bottom plate, cone facing the grille, and screw its wires into the amp terminals. If you want the tripod thread, press the 1/4"-20 nut into its hexagon from above. Close the bottom plate with 4 × M3×10 into the island's bosses, then stick the four silicone feet underneath.
-
-## 7. First power-up, tower off
-
-Plug the cable into a charger. You should see:
+Pass the USB-C cable in through the back of the plinth and up through the neck, and plug the right-angle end into the XIAO. Plug the other end into a charger. You should see:
 
 - the ESP32 LED light up,
 - the MR60BHA2 kit's LED light up,
-- the screen backlight turn on.
+- the screen backlight turn on,
+- the lidar start spinning.
 
-Plug the lidar's JST plug in for a moment: it should start spinning. If nothing happens, unplug and re-check lines 1 to 5 of the wiring table. Unplug before going on.
+If nothing happens, unplug and re-check lines 1 to 5 of the wiring table.
 
-## 8. Tower and cap
+## 7. Close it
 
-1. Put the gallery cap on top of the tower: the tower rim goes into the groove under the gallery. Line up the three screw holes.
-2. The lidar cable is already wired (step 4); its small JST plug is still free. Pass that plug up through the inside of the tower and out through the cable opening in the cap.
-3. Lower the tower over the spine, face window in front of the screen, until its rim drops into the island groove. The small key at the back only lets it go in one way.
-4. Drive the 3 × M3×12 radially through the gallery rim.
-
-## 9. Lidar
-
-Plug the JST plug into the lidar, lay the lidar on the plinth and fix it with 3 × M2.5×10, driven gently: they cut their own thread.
-
-## 10. Say hello
-
-Plug in the power. The lidar starts turning: Fanou is awake.
+Fit the neck damper between body and head, close the plinth, add the feet and the knob.
 
 ## Check on arrival
 
 These dimensions are not guaranteed by the datasheets. Verify them before printing the big parts:
 
 - **Lidar holes** on the printed template (step 1).
-- **MR60BHA2 case**: designed for 54 × 35 × 22 mm. If yours differs, set `kitW`, `kitH`, `kitD`.
-- **Screen thickness and standoffs**: the rails assume 4.5 mm (glass + PCB), 4 mm standoffs 26.5 mm apart (`lcdT`, `lcdStand`, `lcdSx`).
-- **Camera lens position**: the porthole is centred on the XIAO. If the lens sits off-centre on your board, move the porthole (`camD`, or the `throughF(xU + xH/2)` line in `shell()`).
-- **Speaker size**: the cradle expects a 20 × 30 mm face and at most 5 mm of depth (`spkL`, `spkH`, `spkT`).
-- **USB-C cable**: the straight plug must pass through the 14 × 9 mm hole in the island, and the right-angle plug must fit beside the XIAO (side notch of 11 mm).
+- **MR60BHA2 case**: designed for 54 × 35 × 22 mm.
+- **Screen thickness and standoffs**: 4.5 mm glass + PCB, 4 mm standoffs 26.5 mm apart.
+- **Camera lens position** on your XIAO Sense, relative to the camera hole.
+- **Speaker size**: a 20 × 30 mm face, at most 5 mm deep.
+- **USB-C cable**: the right-angle plug must fit beside the XIAO.
 - **LD2450 cable**: it should end in female Dupont plugs. If yours are male, add a few male–female jumpers.

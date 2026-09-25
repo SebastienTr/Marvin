@@ -2,11 +2,11 @@
 
 ## Principle: dumb device, smart computer
 
-Fanou collects, timestamps and forwards data, and it performs: eyes on the screen, sounds on the speaker. The computer does everything else: parsing, fusion, 3D modelling, language and the companion's behaviour. This keeps the firmware small and lets heavy processing run on a GPU.
+The robot collects, timestamps and forwards data, and it performs: eyes on the screen, sounds on the speaker. The computer does everything else: parsing, fusion, 3D modelling, language and the companion's behaviour. This keeps the firmware small and lets heavy processing run on a GPU.
 
 ```mermaid
 flowchart TB
-  subgraph Device["Fanou"]
+  subgraph Device["SuperLens robot"]
     direction LR
     LID["D800 lidar<br/>≈ 21 600 pts/s"] -->|UART0 921600| FW
     LD2450["LD2450<br/>3 targets @ 10 Hz"] -->|UART1 256000| FW
@@ -48,31 +48,33 @@ Everything fits comfortably in the ESP32-S3's Wi-Fi throughput.
 | **The MR60BHA2 stays a separate Wi-Fi node** | The kit ships with its own ESP32-C6 and firmware. Routing its data through the S3 would mean opening the case and soldering. Vital signs update at about 1 Hz, so timestamping them on arrival at the PC is precise enough. | UART link through the kit's Grove port (possible later) |
 | **Power through the XIAO's USB-C port** | The 5V pin is tied directly to VBUS, so the ESP32 becomes the power distribution point with no extra board. | Separate USB-C breakout with 5.1 kΩ resistors and a soldered distribution board (rev A) |
 | **WAGO lever connectors** | Solderless, reliable and reusable. | Soldered perfboard |
-| **A lighthouse** | People attach to characters, and a lighthouse already is one: it watches, it turns, it signals. Its lamp is where a 360° lidar has to be anyway, on top with nothing above the scan plane. | An owl (Hulotte) and a round robot (Tito), see `docs/concepts/` |
-| **Radars behind the painted wall** | No holes in front of the radars keeps the character clean. A 1.6 mm PETG wall is half a wavelength at 60 GHz, so it is almost transparent to both radars. | Open radar windows (rev A–D) |
-| **Everything on one spine that slides into the tower** | All modules, wires and connectors are assembled and tested in the open, then the tower slides over them. The tower wall is the front stop, and 3 mm foam pads absorb tolerances. | Modules inserted through the back of a box (rev A–D) |
-| **Modules set back from the round wall** | A flat module in a round tower touches with its corners first. Each module sits back by just enough (`sb()` in the CAD) to clear the wall, so all four face the room through less than 7 mm of air and plastic. | A flat front face on the tower |
-| **Screen as a portrait window, eyes by default** | A face makes the device readable at a glance: awake, listening, sleepy. The mini-map is still one tap away. | Back screen with a mini-map (rev C–D) |
-| **Speaker in the island** | The speaker needs volume and a grille; the island has both, and its weight keeps the lighthouse stable. | Speaker in the side wall (rev D) |
+| **An upright robot, sensors tilted inside** | To measure heart rate at a desk, the 60 GHz radar must aim at a seated chest, about 20° up. Tilting the whole object (rev E and the early robot sketches) made it look like it was falling backwards. Keeping the shell vertical and tilting the sensors on an internal sled gives the same aim with a calm silhouette. | Tilted face panel (robot v1–v2), lighthouse taper (rev E) |
+| **Radars behind a flat, uniform wall** | No holes in front of the radars keeps the design clean. A 1.6 mm PETG wall is half a wavelength at 60 GHz; seen at 20° incidence it is only about 3 % thicker electrically, which costs almost nothing. The anthracite band is a colour change, not a thickness change. | Open radar windows (rev A–D) |
+| **Head and body decoupled by a TPU damper** | The radar measures sub-millimetre chest motion; the lidar motor spins at 10 Hz on top of the head. The damper keeps that vibration out of the body. | Rigid neck |
+| **Screen vertical, camera tilted** | An IPS screen reads fine from 20° below, but a camera with a ~65° field of view at desk height would frame your chest. Tilting the XIAO by 20° centres your face. | Tilting the whole face |
+| **Smoked acrylic face window** | Gives the black-glass look while letting the screen through; printed black PETG would be opaque. | Open screen cut-out with a bezel |
+| **Grown-up design language** | The companion is for adults: warm grey, anthracite, one orange knob. Personality comes from the eyes and behaviour, not from decoration. | Cute toy styling (robot v2) |
+| **Screen as the face, eyes by default** | A face makes the device readable at a glance: awake, listening, sleepy. The mini-map is still one tap away. | Back screen with a mini-map (rev C–D) |
 | **Thread-forming screws into PETG and PLA** | No heat-set inserts and no nuts, except the optional tripod nut. | Brass inserts (rev A) |
 
 ## Coordinate frame
 
 The CAD frame is also the device frame used by the host software:
 
-- origin on the tower axis, at CAD Z = 0 (the bottom plate's underside is at Z = 2.6 mm, about where the table is once the feet are on);
-- **X** to the right, **Y** backwards (the face looks towards −Y), **Z** up;
-- the tower tapers by 4.6°, so every front module leans back by that angle and **looks 4.6° upward**, towards a seated person's face.
+- origin on the vertical axis of the body, at desk level (Z = 0);
+- **X** to the right, **Y** backwards (the face looks towards −Y), **Z** up.
 
-Sensor positions (extrinsics) come straight from the CAD parameters. They are the centre of each module's front face:
+Planned sensor positions (extrinsics) for rev F. The rev F CAD will give the final values:
 
 | Sensor | Position (X, Y, Z) mm | Facing |
 |---|---|---|
-| Lidar rotation centre | (0, 0, ≈ 205) | 360°, 0° to be calibrated. Scan plane about 25 mm above the plinth. |
-| Camera (porthole centre) | (0, −37.4, 152.3) | −Y, tilted 4.6° up |
-| Screen centre | (0, −37.9, 121.9) | −Y, tilted 4.6° up |
-| HLK-LD2450 | (0, −37.4, 90.7) | −Y, tilted 4.6° up |
-| MR60BHA2 case | (0, −43.0, 54.6) | −Y, tilted 4.6° up. The antenna is off-centre inside the case (about 7 mm to one side). |
+| Lidar rotation centre | (0, ≈ 0, ≈ 145) | 360°, 0° to be calibrated. |
+| Camera | (0, ≈ −36, ≈ 128) | −Y, tilted 20° up |
+| Screen centre | (0, ≈ −39, ≈ 107) | −Y, vertical |
+| HLK-LD2450 | (0, ≈ −34, ≈ 56) | −Y, tilted 10° up |
+| MR60BHA2 case | (0, ≈ −30, ≈ 34) | −Y, tilted 20° up. The antenna is off-centre inside the case (about 7 mm to one side). |
+
+With the 60 GHz radar at 34 mm and tilted 20°, its boresight crosses the chest band of a seated person (280–450 mm above the desk) between about 0.6 and 1.1 m.
 
 ## Roadmap
 
@@ -81,6 +83,8 @@ Sensor positions (extrinsics) come straight from the CAD parameters. They are th
 - [x] Rev C: 1.69" colour screen on the back, power bank moved to the pocket, D500 lidar
 - [x] Rev D: microphone + speaker, D800 lidar as the reference
 - [x] Rev E: Fanou, the desk lighthouse companion
+- [x] Rev F design: the upright robot, sensors tilted inside
+- [ ] Rev F CAD and print-ready parts
 - [ ] First physical build and dimension check
 - [ ] Firmware: UART readers, UDP framing, MJPEG, OTA
 - [ ] Host: receivers, Rerun viewer, camera/lidar extrinsic calibration

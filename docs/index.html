@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Fanou · SuperLens</title>
-<meta name="description" content="Fanou, a little open-source lighthouse for your desk: a 360° lidar lamp, two radars behind its painted wall, a porthole camera, a face, a voice. It sees, feels, hears and speaks.">
+<title>SuperLens</title>
+<meta name="description" content="SuperLens, a compact open-source desk robot: a 360° lidar on its head, two radars behind its band, a camera and a face behind black glass, a voice. It sees, feels (even your heart rate), hears and speaks.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,400..900,50..100&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -12,7 +12,7 @@
 :root{
   color-scheme: light;
   --bg:#F4EFE6; --paper:#FBF8F2; --ink:#15212C; --muted:#5E6770; --line:#DDD4C5;
-  --red:#C23B2E; --red-ink:#9C2A1F; --navy:#1F3A5F; --brass:#B8893A; --sea:#D9E6EA;
+  --red:#D9541A; --red-ink:#A83E10; --navy:#2A2C30; --brass:#B8893A; --sea:#D9E6EA;
   --teal:#138079; --violet:#6A4FC2;
   --lcd:#071217; --lcd-ink:#BFEDEA;
   --display:"Fraunces",Georgia,serif;
@@ -23,14 +23,14 @@
   :root:not([data-theme="light"]){
     color-scheme: dark;
     --bg:#0E151C; --paper:#151F28; --ink:#EDE7DC; --muted:#9AA5AE; --line:#26333E;
-    --red:#E2584A; --red-ink:#F0877B; --navy:#89A9D6; --brass:#D9AE5E; --sea:#14262E;
+    --red:#F07A3E; --red-ink:#F59C6B; --navy:#9AA0A8; --brass:#D9AE5E; --sea:#14262E;
     --teal:#3CC3B9; --violet:#A993F2;
   }
 }
 :root[data-theme="dark"]{
   color-scheme: dark;
   --bg:#0E151C; --paper:#151F28; --ink:#EDE7DC; --muted:#9AA5AE; --line:#26333E;
-  --red:#E2584A; --red-ink:#F0877B; --navy:#89A9D6; --brass:#D9AE5E; --sea:#14262E;
+  --red:#F07A3E; --red-ink:#F59C6B; --navy:#9AA0A8; --brass:#D9AE5E; --sea:#14262E;
   --teal:#3CC3B9; --violet:#A993F2;
 }
 *{box-sizing:border-box}
@@ -106,14 +106,14 @@ section{padding-block:56px;border-top:1px solid var(--line)}
 .gallery figure{margin:0;display:flex;flex-direction:column;gap:10px;align-items:center}
 .gallery img{width:100%;max-width:330px;height:auto}
 .gallery figcaption{font:12px var(--mono);color:var(--muted);text-align:center}
-.anatomy{display:grid;grid-template-columns:1fr 1.1fr;gap:28px;margin-top:34px;align-items:center}
-.anatomy img{width:100%;max-width:420px;height:auto;justify-self:center}
+.anatomy{display:grid;grid-template-columns:1fr 1fr;gap:28px 40px;margin-top:34px;align-items:start}
+.anatomy img{width:100%;height:auto;grid-column:1/-1;border-radius:8px;background:#fff;border:1px solid var(--line)}
 .parts{list-style:none;margin:0;padding:0;display:grid;gap:10px}
 .parts li{display:grid;grid-template-columns:28px 1fr;gap:12px;align-items:start;font-size:15px}
 .parts li i{width:22px;height:22px;border-radius:50%;margin-top:2px;border:1px solid #0002}
 .parts li b{font-weight:600}
 .parts li span{color:var(--muted)}
-.specs{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:14.5px;margin-top:22px;padding-top:18px;border-top:1px dashed var(--line)}
+.specs{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:14.5px;margin:0;align-content:start}
 .specs dt{font:12px var(--mono);color:var(--muted);padding-top:3px;white-space:nowrap}
 .specs dd{margin:0}
 
@@ -184,11 +184,11 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
 
 <header class="top">
   <div class="mark">
-    <svg viewBox="0 0 18 26" aria-hidden="true"><path d="M5 25 L7 7 H11 L13 25Z" fill="var(--red)"/><path d="M5.9 17 H12.1 L12.5 21 H5.5Z M6.6 11 H11.4 L11.7 14 H6.3Z" fill="var(--paper)"/><rect x="4.5" y="5" width="9" height="2.2" rx="1" fill="var(--navy)"/><rect x="6.5" y="1" width="5" height="4" rx="1" fill="var(--ink)"/></svg>
-    Fanou <small>· SuperLens</small>
+    <svg viewBox="0 0 18 26" aria-hidden="true"><rect x="5" y="1" width="8" height="3" rx="1.5" fill="var(--ink)"/><rect x="1.5" y="4.5" width="15" height="10" rx="3" fill="#C9C6C0"/><rect x="3.5" y="6.5" width="11" height="6" rx="2" fill="var(--ink)"/><circle cx="7" cy="9.5" r="1" fill="#BFEDEA"/><circle cx="11" cy="9.5" r="1" fill="#BFEDEA"/><rect x="2.5" y="15.5" width="13" height="9.5" rx="3" fill="#C9C6C0"/><rect x="2.5" y="17.5" width="13" height="4.5" fill="var(--navy)"/></svg>
+    SuperLens <small>· desk companion</small>
   </div>
   <nav>
-    <a href="#meet"><span class="en">Meet Fanou</span><span class="fr">Fanou</span></a>
+    <a href="#meet"><span class="en">The robot</span><span class="fr">Le robot</span></a>
     <a href="#senses"><span class="en">Senses</span><span class="fr">Sens</span></a>
     <a href="#build"><span class="en">Build</span><span class="fr">Fabriquer</span></a>
     <a href="../README.md">README</a>
@@ -201,9 +201,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
 
 <div class="hero">
   <div>
-    <div class="eyebrow"><span class="en">Open-source desk companion · rev E</span><span class="fr">Compagnon de bureau open source · rév. E</span></div>
-    <h1 style="margin-top:14px"><span class="en">A little lighthouse that <em>keeps an eye</em> on your room.</span><span class="fr">Un petit phare qui <em>veille</em> sur ta pièce.</span></h1>
-    <p class="lede"><span class="en">Fanou's lamp is a spinning laser. Two radars sleep behind its painted stripes, a camera peeks through a brass porthole, and its face lives in a window. It knows where you are, notices when you sit down, hears you, and answers.</span><span class="fr">La lampe de Fanou est un laser qui tourne. Deux radars dorment derrière ses rayures, une caméra regarde par un hublot en laiton, et son visage vit dans une fenêtre. Il sait où tu es, remarque quand tu t'assois, t'entend, et te répond.</span></p>
+    <div class="eyebrow"><span class="en">Open-source desk companion · rev F</span><span class="fr">Compagnon de bureau open source · rév. F</span></div>
+    <h1 style="margin-top:14px"><span class="en">A small robot that <em>notices</em> how you are doing.</span><span class="fr">Un petit robot qui <em>remarque</em> comment tu vas.</span></h1>
+    <p class="lede"><span class="en">A spinning laser on its head maps the room. Two radars behind its band follow the people in it, and measure your breathing and heart rate while you work. A camera and a face live behind black glass. It hears you, and answers.</span><span class="fr">Un laser qui tourne sur sa tête cartographie la pièce. Deux radars derrière sa bande suivent les personnes présentes, et mesurent ta respiration et ton rythme cardiaque pendant que tu travailles. Une caméra et un visage vivent derrière une vitre noire. Il t'entend, et te répond.</span></p>
     <div class="verbs">
       <span><b><span class="en">sees</span><span class="fr">voit</span></b> · lidar + <span class="en">camera</span><span class="fr">caméra</span></span>
       <span><b><span class="en">feels</span><span class="fr">ressent</span></b> · radar 24 + 60 GHz</span>
@@ -211,15 +211,15 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
       <span><b><span class="en">speaks</span><span class="fr">parle</span></b> · <span class="en">voice + eyes</span><span class="fr">voix + yeux</span></span>
     </div>
     <div class="chips">
-      <span class="chip state"><span class="en">Rev E · designed, not built yet</span><span class="fr">Rév. E · conçu, pas encore fabriqué</span></span>
-      <span class="chip">≈ 240 €</span>
+      <span class="chip state"><span class="en">Rev F · design frozen, CAD in progress</span><span class="fr">Rév. F · design figé, CAO en cours</span></span>
+      <span class="chip">≈ 245 €</span>
       <span class="chip">CERN-OHL-P · MIT · CC BY</span>
     </div>
   </div>
   <div class="stage">
-    <img src="images/fanou_front.png" alt="Fanou: a red and white striped lighthouse on a grey rocky island, with a screen face, a brass porthole camera, a navy gallery and a black lidar lantern on top" width="1000" height="1300">
+    <img src="images/robot_threequarter.png" alt="The SuperLens robot: an upright warm-grey body with an anthracite band, a slightly wider head with a black glass face showing two eyes, an orange knob and a lidar turret on top" width="570" height="831">
     <figure class="facebox" style="margin:0">
-      <div class="window"><canvas id="face" width="480" height="560" aria-label="Animated simulation of Fanou's face on its 1.69 inch screen"></canvas></div>
+      <div class="window"><canvas id="face" width="480" height="560" aria-label="Animated simulation of the robot's face on its 1.69 inch screen"></canvas></div>
       <div class="moods" role="group" aria-label="Mood">
         <button type="button" data-m="awake" aria-pressed="true"><span class="en">awake</span><span class="fr">éveillé</span></button>
         <button type="button" data-m="happy" aria-pressed="false"><span class="en">happy</span><span class="fr">content</span></button>
@@ -233,36 +233,35 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
 
 <section id="meet">
   <div class="sh">
-    <div class="eyebrow"><span class="en">Meet Fanou</span><span class="fr">Voici Fanou</span></div>
+    <div class="eyebrow"><span class="en">The robot</span><span class="fr">Le robot</span></div>
     <div>
-      <h2><span class="en">A shape you already love, with sensors where they belong</span><span class="fr">Une forme qu'on aime déjà, et chaque capteur à sa place</span></h2>
-      <p><span class="en">A lighthouse watches, turns and signals: it is a character before we add anything. Its lamp is exactly where a 360° lidar wants to be, on top with nothing above the laser plane. The wall is 1.6 mm of PETG, half a wavelength at 60 GHz, so the radars see through the paint.</span><span class="fr">Un phare veille, tourne et fait des signaux : c'est déjà un personnage avant qu'on ajoute quoi que ce soit. Sa lampe est exactement là où un lidar 360° veut être, au sommet, sans rien au-dessus du plan laser. La paroi fait 1,6 mm de PETG, une demi-longueur d'onde à 60 GHz : les radars voient à travers la peinture.</span></p>
+      <h2><span class="en">Upright on the desk, sensors aimed where they matter</span><span class="fr">Droit sur le bureau, les capteurs visent là où il faut</span></h2>
+      <p><span class="en">To read your heart rate at the desk, the 60 GHz radar must aim at your chest, about 20° up. Instead of tilting the whole object, the shell stays upright and the sensors are tilted inside it. They look through a flat 1.6 mm PETG wall, half a wavelength at 60 GHz. The lidar sits on top, with nothing above its laser plane.</span><span class="fr">Pour lire ton rythme cardiaque au bureau, le radar 60 GHz doit viser ta poitrine, environ 20° vers le haut. Au lieu d'incliner tout l'objet, la coque reste droite et les capteurs sont inclinés à l'intérieur. Ils regardent à travers une paroi plate de 1,6 mm en PETG, une demi-longueur d'onde à 60 GHz. Le lidar est au sommet, sans rien au-dessus de son plan laser.</span></p>
     </div>
   </div>
   <div class="gallery">
-    <figure><img src="images/fanou_face.png" alt="Close-up of Fanou's face: two glowing eyes in a navy window frame, a brass porthole camera above" loading="lazy" width="1000" height="1300"><figcaption><span class="en">The face and the porthole</span><span class="fr">Le visage et le hublot</span></figcaption></figure>
-    <figure><img src="images/fanou_back.png" alt="Fanou from the back: small window vents under the gallery, the key and the USB-C hole in the island" loading="lazy" width="1000" height="1300"><figcaption><span class="en">The back: vents and USB-C</span><span class="fr">Le dos : aérations et USB-C</span></figcaption></figure>
-    <figure><img src="images/fanou_front.png" alt="Fanou seen from the front left" loading="lazy" width="1000" height="1300"><figcaption><span class="en">≈ 21 cm tall, 13 cm wide</span><span class="fr">≈ 21 cm de haut, 13 cm de large</span></figcaption></figure>
+    <figure><img src="images/robot_front.png" alt="Front view: black glass face with two eyes, camera above them, anthracite band below" loading="lazy" width="685" height="837"><figcaption><span class="en">Front: face, camera, radar band</span><span class="fr">Face : visage, caméra, bande radar</span></figcaption></figure>
+    <figure><img src="images/robot_side.png" alt="Side view: upright silhouette, the orange knob on the head" loading="lazy" width="732" height="751"><figcaption><span class="en">Side: upright, one orange knob</span><span class="fr">Profil : droit, une molette orange</span></figcaption></figure>
+    <figure><img src="images/robot_threequarter.png" alt="Three-quarter view of the robot" loading="lazy" width="570" height="831"><figcaption><span class="en">≈ 88 × 80 mm, 15 cm tall</span><span class="fr">≈ 88 × 80 mm, 15 cm de haut</span></figcaption></figure>
   </div>
   <div class="anatomy">
-    <img src="images/fanou_exploded.png" alt="Exploded view: bottom plate, rocky island, spine carrying the modules, striped tower, gallery cap and lidar" loading="lazy" width="1000" height="1300">
-    <div>
-      <ul class="parts">
-        <li><i style="background:#1a1a1c"></i><div><b><span class="en">Lantern</span><span class="fr">Lanterne</span></b> · <span><span class="en">the D800 lidar, turning ten times a second.</span><span class="fr">le lidar D800, qui tourne dix fois par seconde.</span></span></div></li>
-        <li><i style="background:var(--navy)"></i><div><b><span class="en">Gallery cap</span><span class="fr">Galerie</span></b> · <span><span class="en">railing and plinth, held by three screws.</span><span class="fr">rambarde et socle du lidar, tenus par trois vis.</span></span></div></li>
-        <li><i style="background:linear-gradient(180deg,var(--red) 0 33%,#EDE9E0 33% 66%,var(--red) 66%)"></i><div><b><span class="en">Striped tower</span><span class="fr">Tour rayée</span></b> · <span><span class="en">printed upright, each stripe a filament change. It is also the radome.</span><span class="fr">imprimée debout, chaque rayure est un changement de filament. C'est aussi le radôme.</span></span></div></li>
-        <li><i style="background:#CDB88F"></i><div><b><span class="en">Spine</span><span class="fr">Colonne</span></b> · <span><span class="en">carries the camera, the face, both radars and all the wiring. The tower slides over it.</span><span class="fr">porte la caméra, le visage, les deux radars et tout le câblage. La tour glisse par-dessus.</span></span></div></li>
-        <li><i style="background:#6B747B"></i><div><b><span class="en">Rocky island</span><span class="fr">Île rocheuse</span></b> · <span><span class="en">weight, the USB-C entry, and the speaker under a grille.</span><span class="fr">du poids, l'entrée USB-C, et le haut-parleur sous une grille.</span></span></div></li>
+    <img src="images/robot_section.png" alt="Section: upright shell, radars tilted 20° and 10° in the body, screen vertical and camera tilted 20° in the head; the radar beam reaches the chest of a seated person" loading="lazy" width="2100" height="900">
+    <ul class="parts">
+        <li><i style="background:#1a1a1c"></i><div><b>Lidar</b> · <span><span class="en">on top of the head, turning ten times a second.</span><span class="fr">sur la tête, il tourne dix fois par seconde.</span></span></div></li>
+        <li><i style="background:#2A2C30"></i><div><b><span class="en">Head</span><span class="fr">Tête</span></b> · <span><span class="en">screen behind smoked acrylic, camera tilted 20°, the orange knob.</span><span class="fr">écran derrière l'acrylique fumé, caméra inclinée de 20°, la molette orange.</span></span></div></li>
+        <li><i style="background:#7a7d82"></i><div><b><span class="en">Neck damper</span><span class="fr">Cou amortisseur</span></b> · <span><span class="en">TPU, keeps the lidar's vibration away from the heart-rate radar.</span><span class="fr">en TPU, il garde les vibrations du lidar loin du radar cardiaque.</span></span></div></li>
+        <li><i style="background:linear-gradient(180deg,#C9C6C0 0 25%,#2A2C30 25% 75%,#C9C6C0 75%)"></i><div><b><span class="en">Body band</span><span class="fr">Bande du corps</span></b> · <span><span class="en">a filament change that hides both radars; the wall stays 1.6 mm.</span><span class="fr">un changement de filament qui cache les deux radars ; la paroi reste à 1,6 mm.</span></span></div></li>
+        <li><i style="background:#CDB88F"></i><div><b><span class="en">Sensor sled</span><span class="fr">Support capteurs</span></b> · <span><span class="en">60 GHz radar at 20°, 24 GHz at 10°, connectors and amp behind.</span><span class="fr">radar 60 GHz à 20°, 24 GHz à 10°, connecteurs et ampli derrière.</span></span></div></li>
       </ul>
       <dl class="specs">
-        <dt><span class="en">Size</span><span class="fr">Taille</span></dt><dd class="mono">⌀ 132 × ≈ 215 mm</dd>
-        <dt><span class="en">Laser plane</span><span class="fr">Plan laser</span></dt><dd class="mono">≈ 205 mm</dd>
-        <dt><span class="en">Gaze</span><span class="fr">Regard</span></dt><dd class="mono"><span class="en">4.6° upward, towards a seated face</span><span class="fr">4,6° vers le haut, vers un visage assis</span></dd>
+        <dt><span class="en">Size</span><span class="fr">Taille</span></dt><dd class="mono">≈ 88 × 80 × 150 mm</dd>
+        <dt><span class="en">Laser plane</span><span class="fr">Plan laser</span></dt><dd class="mono">≈ 145 mm</dd>
+        <dt><span class="en">Gaze</span><span class="fr">Regard</span></dt><dd class="mono"><span class="en">60 GHz radar 20° up: your chest at 0.6–1 m</span><span class="fr">radar 60 GHz à 20° : ta poitrine à 0,6–1 m</span></dd>
         <dt><span class="en">Power</span><span class="fr">Alimentation</span></dt><dd class="mono"><span class="en">USB-C 5 V · ≈ 1 A</span><span class="fr">USB-C 5 V · ≈ 1 A</span></dd>
-        <dt><span class="en">Print</span><span class="fr">Impression</span></dt><dd class="mono"><span class="en">5 parts · PETG/PLA · no supports</span><span class="fr">5 pièces · PETG/PLA · sans supports</span></dd>
+        <dt><span class="en">Print</span><span class="fr">Impression</span></dt><dd class="mono"><span class="en">≈ 9 parts · PETG + TPU · no supports</span><span class="fr">≈ 9 pièces · PETG + TPU · sans supports</span></dd>
         <dt><span class="en">Source</span><span class="fr">Source</span></dt><dd class="mono">OpenSCAD · Blender · STL</dd>
       </dl>
-    </div>
+    
   </div>
 </section>
 
@@ -275,13 +274,13 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     </div>
   </div>
   <div class="senses">
-    <article class="sense"><span class="k"><span class="en">Sees</span><span class="fr">Voit</span></span><h3><span class="en">Lamp and porthole</span><span class="fr">Lampe et hublot</span></h3><p><span class="en">The lidar draws the room 360° around, 21 600 points a second. The camera adds colour, and on the computer, meaning.</span><span class="fr">Le lidar dessine la pièce sur 360°, 21 600 points par seconde. La caméra ajoute la couleur et, sur l'ordinateur, le sens.</span></p><div class="hw">D800 lidar · OV3660</div></article>
-    <article class="sense"><span class="k"><span class="en">Feels</span><span class="fr">Ressent</span></span><h3><span class="en">Behind the stripes</span><span class="fr">Derrière les rayures</span></h3><p><span class="en">The 24 GHz radar follows up to three people and their speed. The 60 GHz radar, behind the door, feels breathing and heartbeat up close.</span><span class="fr">Le radar 24 GHz suit jusqu'à trois personnes et leur vitesse. Le radar 60 GHz, derrière la porte, sent la respiration et le cœur de près.</span></p><div class="hw">HLK-LD2450 · MR60BHA2</div></article>
+    <article class="sense"><span class="k"><span class="en">Sees</span><span class="fr">Voit</span></span><h3><span class="en">Laser and lens</span><span class="fr">Laser et objectif</span></h3><p><span class="en">The lidar draws the room 360° around, 21 600 points a second. The camera adds colour, and on the computer, meaning.</span><span class="fr">Le lidar dessine la pièce sur 360°, 21 600 points par seconde. La caméra ajoute la couleur et, sur l'ordinateur, le sens.</span></p><div class="hw">D800 lidar · OV3660</div></article>
+    <article class="sense"><span class="k"><span class="en">Feels</span><span class="fr">Ressent</span></span><h3><span class="en">Behind the band</span><span class="fr">Derrière la bande</span></h3><p><span class="en">The 24 GHz radar follows up to three people and their speed. The 60 GHz radar, aimed at your chest, feels breathing and heartbeat while you sit at the desk.</span><span class="fr">Le radar 24 GHz suit jusqu'à trois personnes et leur vitesse. Le radar 60 GHz, pointé vers ta poitrine, sent ta respiration et ton cœur quand tu es assis au bureau.</span></p><div class="hw">HLK-LD2450 · MR60BHA2</div></article>
     <article class="sense"><span class="k"><span class="en">Hears</span><span class="fr">Écoute</span></span><h3><span class="en">A small ear</span><span class="fr">Une petite oreille</span></h3><p><span class="en">The camera board's microphone hears your voice and the sounds of the room: a door, a kettle, a laugh.</span><span class="fr">Le micro de la carte caméra entend ta voix et les sons de la pièce : une porte, une bouilloire, un rire.</span></p><div class="hw"><span class="en">built-in PDM mic</span><span class="fr">micro PDM intégré</span></div></article>
-    <article class="sense"><span class="k"><span class="en">Speaks</span><span class="fr">Parle</span></span><h3><span class="en">Eyes and voice</span><span class="fr">Des yeux et une voix</span></h3><p><span class="en">Its eyes blink, follow you and fall asleep. Its voice comes from the island: chirps on the device, words from the computer.</span><span class="fr">Ses yeux clignent, te suivent et s'endorment. Sa voix sort de l'île : des pépiements en local, des mots venus de l'ordinateur.</span></p><div class="hw">1.69" ST7789 · MAX98357A</div></article>
+    <article class="sense"><span class="k"><span class="en">Speaks</span><span class="fr">Parle</span></span><h3><span class="en">Eyes and voice</span><span class="fr">Des yeux et une voix</span></h3><p><span class="en">Its eyes blink, follow you and fall asleep. Its voice comes from its side: chirps on the device, words from the computer.</span><span class="fr">Ses yeux clignent, te suivent et s'endorment. Sa voix sort de son flanc : des pépiements en local, des mots venus de l'ordinateur.</span></p><div class="hw">1.69" ST7789 · MAX98357A</div></article>
   </div>
   <div class="moments">
-    <div><b><span class="en">You sit down</span><span class="fr">Tu t'assois</span></b><p><span class="en">The 24 GHz radar sees you arrive; Fanou wakes up and turns its eyes to you.</span><span class="fr">Le radar 24 GHz te voit arriver ; Fanou se réveille et tourne les yeux vers toi.</span></p></div>
+    <div><b><span class="en">You sit down</span><span class="fr">Tu t'assois</span></b><p><span class="en">The 24 GHz radar sees you arrive; it wakes up and turns its eyes to you.</span><span class="fr">Le radar 24 GHz te voit arriver ; il se réveille et tourne les yeux vers toi.</span></p></div>
     <div><b><span class="en">You work for an hour</span><span class="fr">Tu travailles une heure</span></b><p><span class="en">It notices you haven't moved and your breathing got shallow. A soft chirp: time to stretch.</span><span class="fr">Il remarque que tu n'as pas bougé et que ta respiration s'est faite courte. Un petit bruit : il est temps de s'étirer.</span></p></div>
     <div><b><span class="en">You leave</span><span class="fr">Tu pars</span></b><p><span class="en">The room empties, the eyes close, the lamp keeps turning. It watches the room while you're away.</span><span class="fr">La pièce se vide, les yeux se ferment, la lampe continue de tourner. Il veille pendant ton absence.</span></p></div>
   </div>
@@ -289,7 +288,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
 
 <section id="map">
   <div class="sh">
-    <div class="eyebrow"><span class="en">What Fanou sees</span><span class="fr">Ce que voit Fanou</span></div>
+    <div class="eyebrow"><span class="en">What it sees</span><span class="fr">Ce qu'il voit</span></div>
     <div>
       <h2><span class="en">Five slices of the spectrum, one picture</span><span class="fr">Cinq tranches du spectre, une seule image</span></h2>
       <p><span class="en">Tap its face and it shows you its world: the lidar outline of the room from above, the people tracked by radar, and a breathing trace when someone is close.</span><span class="fr">Touche son visage et il te montre son monde : le contour lidar de la pièce vu de dessus, les personnes suivies au radar, et une courbe de respiration quand quelqu'un est proche.</span></p>
@@ -326,7 +325,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
           <text x="850" y="62" text-anchor="middle" class="lbl"><tspan class="en">camera</tspan><tspan class="fr">caméra</tspan></text>
         </svg>
       </div>
-      <p class="note"><span class="en">Glass is invisible to the laser, but not to the radar. People are just shapes to the lidar, but the radar knows they breathe. That is why Fanou carries all of them.</span><span class="fr">Une vitre est invisible pour le laser, pas pour le radar. Pour le lidar une personne n'est qu'une forme, le radar sait qu'elle respire. C'est pour ça que Fanou les porte tous.</span></p>
+      <p class="note"><span class="en">Glass is invisible to the laser, but not to the radar. People are just shapes to the lidar, but the radar knows they breathe. That is why it carries all of them.</span><span class="fr">Une vitre est invisible pour le laser, pas pour le radar. Pour le lidar une personne n'est qu'une forme, le radar sait qu'elle respire. C'est pour ça qu'il les porte tous.</span></p>
     </div>
   </div>
 </section>
@@ -336,11 +335,11 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <div class="eyebrow"><span class="en">How it thinks</span><span class="fr">Comment il pense</span></div>
     <div>
       <h2><span class="en">A small body, a big brain next door</span><span class="fr">Un petit corps, un gros cerveau à côté</span></h2>
-      <p><span class="en">The ESP32 inside Fanou stamps every packet with the same clock, draws the eyes and plays the sounds. Your computer fuses the streams into one 3D picture and decides what Fanou should say. Nothing needs the cloud.</span><span class="fr">L'ESP32 dans Fanou horodate chaque paquet avec la même horloge, dessine les yeux et joue les sons. Ton ordinateur fusionne les flux en une image 3D et décide de ce que Fanou doit dire. Rien n'a besoin du cloud.</span></p>
+      <p><span class="en">The ESP32 inside the robot stamps every packet with the same clock, draws the eyes and plays the sounds. Your computer fuses the streams into one 3D picture and decides what the robot should say. Nothing needs the cloud.</span><span class="fr">L'ESP32 dans le robot horodate chaque paquet avec la même horloge, dessine les yeux et joue les sons. Ton ordinateur fusionne les flux en une image 3D et décide de ce que le robot doit dire. Rien n'a besoin du cloud.</span></p>
     </div>
   </div>
   <div class="pipe">
-    <svg viewBox="0 0 980 256" role="img" aria-label="Data flow from the sensors to the ESP32-S3 inside Fanou, then over Wi-Fi to the computer, and back as expressions and speech">
+    <svg viewBox="0 0 980 256" role="img" aria-label="Data flow from the sensors to the ESP32-S3 inside the robot, then over Wi-Fi to the computer, and back as expressions and speech">
       <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
       <g font-size="13">
         <rect x="10" y="14" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--red)"/><text x="24" y="34" class="h">Lidar D800</text><text x="24" y="50" class="s">UART 921 600 · 85 kB/s</text>
@@ -369,7 +368,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
         <text x="658" y="100" class="s"><tspan class="en">2 · place them in one 3D frame</tspan><tspan class="fr">2 · les placer dans un même repère 3D</tspan></text>
         <text x="658" y="120" class="s"><tspan class="en">3 · live overlay (Rerun)</tspan><tspan class="fr">3 · vue superposée en direct (Rerun)</tspan></text>
         <text x="658" y="140" class="s"><tspan class="en">4 · events: arrived, still, left…</tspan><tspan class="fr">4 · événements : arrivé, immobile, parti…</tspan></text>
-        <text x="658" y="160" class="s"><tspan class="en">5 · a local LLM gives Fanou its words</tspan><tspan class="fr">5 · un LLM local donne ses mots à Fanou</tspan></text>
+        <text x="658" y="160" class="s"><tspan class="en">5 · a local LLM gives the robot its words</tspan><tspan class="fr">5 · un LLM local donne ses mots au robot</tspan></text>
       </g>
     </svg>
   </div>
@@ -380,27 +379,27 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <div class="eyebrow"><span class="en">Build one</span><span class="fr">En fabriquer un</span></div>
     <div>
       <h2><span class="en">An evening, a printer, a screwdriver</span><span class="fr">Une soirée, une imprimante, un tournevis</span></h2>
-      <p><span class="en">Everything rides on one spine that you wire in the open, then the striped tower slides over it. Tools: a wire stripper, a screwdriver, and a soldering iron for two header strips.</span><span class="fr">Tout est porté par une colonne que tu câbles à l'air libre, puis la tour rayée glisse par-dessus. Outils : une pince à dénuder, un tournevis, et un fer pour deux barrettes de broches.</span></p>
+      <p><span class="en">The radars ride on one sled in the body, the screen and camera on one frame in the head; you wire both in the open, then close the shells. Tools: a wire stripper, a screwdriver, and a soldering iron for two header strips.</span><span class="fr">Les radars sont sur un support dans le corps, l'écran et la caméra sur un cadre dans la tête ; tu câbles tout à l'air libre, puis tu refermes les coques. Outils : une pince à dénuder, un tournevis, et un fer pour deux barrettes de broches.</span></p>
     </div>
   </div>
   <div class="steps">
-    <div class="step"><div class="big">≈240<small>€</small></div><b><span class="en">Buy</span><span class="fr">Acheter</span></b><p><span class="en">Lidar, two radars, ESP32 camera board, screen, amp and speaker, connectors. Mostly AliExpress.</span><span class="fr">Lidar, deux radars, carte ESP32 caméra, écran, ampli et haut-parleur, connecteurs. Surtout sur AliExpress.</span></p><a href="bom.md"><span class="en">Bill of materials →</span><span class="fr">Liste d'achats →</span></a></div>
-    <div class="step"><div class="big">5<small><span class="en">parts</span><span class="fr">pièces</span></small></div><b><span class="en">Print</span><span class="fr">Imprimer</span></b><p><span class="en">Island, bottom plate, tower, spine, cap, plus a 5-minute lidar template. No supports; the stripes are filament changes.</span><span class="fr">Île, plaque de fond, tour, colonne, galerie, plus un gabarit lidar de 5 minutes. Sans supports ; les rayures sont des changements de filament.</span></p><a href="printing.md"><span class="en">Printing guide →</span><span class="fr">Guide d'impression →</span></a></div>
+    <div class="step"><div class="big">≈245<small>€</small></div><b><span class="en">Buy</span><span class="fr">Acheter</span></b><p><span class="en">Lidar, two radars, ESP32 camera board, screen, amp and speaker, connectors. Mostly AliExpress.</span><span class="fr">Lidar, deux radars, carte ESP32 caméra, écran, ampli et haut-parleur, connecteurs. Surtout sur AliExpress.</span></p><a href="bom.md"><span class="en">Bill of materials →</span><span class="fr">Liste d'achats →</span></a></div>
+    <div class="step"><div class="big">9<small><span class="en">parts</span><span class="fr">pièces</span></small></div><b><span class="en">Print</span><span class="fr">Imprimer</span></b><p><span class="en">Body, head, sled, frame, plinth, lidar ring, knob, TPU neck and feet. No supports; the band is a filament change. Plus a smoked acrylic window.</span><span class="fr">Corps, tête, support, cadre, socle, bague lidar, molette, cou et pieds en TPU. Sans supports ; la bande est un changement de filament. Plus une vitre en acrylique fumé.</span></p><a href="printing.md"><span class="en">Printing guide →</span><span class="fr">Guide d'impression →</span></a></div>
     <div class="step"><div class="big">29<small><span class="en">links</span><span class="fr">liaisons</span></small></div><b><span class="en">Wire</span><span class="fr">Câbler</span></b><p><span class="en">Dupont plugs on the ESP32, four lever connectors on the back of the spine. A wire-by-wire table written for beginners.</span><span class="fr">Prises Dupont sur l'ESP32, quatre connecteurs à levier au dos de la colonne. Un tableau fil par fil écrit pour débutants.</span></p><a href="wiring.md"><span class="en">Wiring guide →</span><span class="fr">Guide de câblage →</span></a></div>
-    <div class="step"><div class="big">12<small><span class="en">screws</span><span class="fr">vis</span></small></div><b><span class="en">Assemble</span><span class="fr">Assembler</span></b><p><span class="en">Modules slide into the spine, foam pads hold them, the tower slides over, the cap closes it, the lidar goes on top.</span><span class="fr">Les modules glissent dans la colonne, des mousses les tiennent, la tour glisse par-dessus, la galerie ferme, le lidar se pose au sommet.</span></p><a href="assembly.md"><span class="en">Assembly guide →</span><span class="fr">Guide d'assemblage →</span></a></div>
+    <div class="step"><div class="big">1<small><span class="en">evening</span><span class="fr">soirée</span></small></div><b><span class="en">Assemble</span><span class="fr">Assembler</span></b><p><span class="en">Radars on the sled, screen and XIAO in the head frame, wires through the neck, close the shells, lidar on top.</span><span class="fr">Radars sur le support, écran et XIAO dans le cadre de la tête, fils par le cou, on referme les coques, le lidar au sommet.</span></p><a href="assembly.md"><span class="en">Assembly guide →</span><span class="fr">Guide d'assemblage →</span></a></div>
   </div>
-  <div class="stripes" aria-hidden="true"><span style="background:var(--red)"></span><span style="background:#EDE9E0"></span><span style="background:var(--red)"></span><span style="background:#EDE9E0"></span><span style="background:var(--red)"></span></div>
+  <div class="stripes" aria-hidden="true"><span style="background:#C9C6C0;flex:2"></span><span style="background:#2A2C30;flex:3"></span><span style="background:#C9C6C0;flex:2"></span><span style="background:var(--red);flex:.4"></span></div>
 </section>
 
 <section id="concepts" class="concepts">
   <div class="sh">
     <div class="eyebrow"><span class="en">Where it came from</span><span class="fr">D'où il vient</span></div>
     <div>
-      <h2><span class="en">Three characters, one lighthouse</span><span class="fr">Trois personnages, un phare</span></h2>
-      <p><span class="en">SuperLens started as a handheld sensor head. To make it something you keep on your desk, we sketched three characters: Fanou the lighthouse, Hulotte the owl and Tito the little robot. The lighthouse won, because its shape already explains its sensors.</span><span class="fr">SuperLens a commencé comme une tête de capteurs à tenir en main. Pour en faire un objet qu'on garde sur son bureau, on a esquissé trois personnages : Fanou le phare, Hulotte la chouette et Tito le petit robot. Le phare a gagné, parce que sa forme explique déjà ses capteurs.</span></p>
+      <h2><span class="en">From a lighthouse to an upright robot</span><span class="fr">D'un phare à un robot debout</span></h2>
+      <p><span class="en">SuperLens started as a handheld sensor head, then became Fanou, a desk lighthouse. Measuring heart rate at the desk changed the brief: the 60 GHz radar has to aim at a seated chest. We tried a terminal and a tin robot, softened the robot, found it too cute, and ended with this: an upright, grown-up robot whose sensors are tilted inside.</span><span class="fr">SuperLens a commencé comme une tête de capteurs à tenir en main, puis est devenu Fanou, un phare de bureau. Mesurer le cœur au bureau a changé le cahier des charges : le radar 60 GHz doit viser une poitrine assise. On a essayé un terminal et un robot en tôle, on a adouci le robot, on l'a trouvé trop mignon, et on a fini par celui-ci : un robot droit et adulte, dont les capteurs sont inclinés à l'intérieur.</span></p>
     </div>
   </div>
-  <img src="concepts/concepts_board.jpg" alt="Three concept sketches side by side: Fanou the lighthouse, Hulotte the owl, Tito the robot" loading="lazy" width="1350" height="550">
+  <img src="concepts/robot_v3_board.jpg" alt="Design board of the rev F robot: three-quarter, front and side renders, and a section showing the sensors tilted inside with the radar beam reaching a seated chest" loading="lazy" width="1800" height="1560">
 </section>
 
 <section id="roadmap">
@@ -411,15 +410,17 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   <ol class="road">
     <li class="done"><b><span class="en">Rev A–D · the sensor head</span><span class="fr">Rév. A–D · la tête de capteurs</span></b><span><span class="en">Enclosure, solderless wiring, screen, microphone and speaker, D800 lidar.</span><span class="fr">Boîtier, câblage sans soudure, écran, micro et haut-parleur, lidar D800.</span></span></li>
     <li class="done"><b><span class="en">Rev E · Fanou</span><span class="fr">Rév. E · Fanou</span></b><span><span class="en">The desk lighthouse: radars behind the paint, a face, a voice in the island.</span><span class="fr">Le phare de bureau : radars derrière la peinture, un visage, une voix dans l'île.</span></span></li>
-    <li class="now"><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Print, assemble, check every dimension against the real modules.</span><span class="fr">Imprimer, assembler, vérifier chaque cote sur les vrais modules.</span></span></li>
+    <li class="done"><b><span class="en">Rev F · the upright robot (design)</span><span class="fr">Rév. F · le robot debout (design)</span></b><span><span class="en">Sensors tilted inside, heart rate at the desk, TPU neck damper, black glass face.</span><span class="fr">Capteurs inclinés à l'intérieur, cœur mesuré au bureau, cou amortisseur en TPU, visage en vitre noire.</span></span></li>
+    <li class="now"><b><span class="en">Rev F CAD</span><span class="fr">CAO rév. F</span></b><span><span class="en">Parametric OpenSCAD source, print-ready parts, Blender model.</span><span class="fr">Source OpenSCAD paramétrique, pièces prêtes à imprimer, modèle Blender.</span></span></li>
+    <li><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Print, assemble, check every dimension against the real modules.</span><span class="fr">Imprimer, assembler, vérifier chaque cote sur les vrais modules.</span></span></li>
     <li><b>Firmware</b><span><span class="en">Sensor readers, UDP framing, MJPEG, eyes and moods, sounds, OTA.</span><span class="fr">Lecture des capteurs, trames UDP, MJPEG, yeux et humeurs, sons, OTA.</span></span></li>
     <li><b><span class="en">Host</span><span class="fr">Côté PC</span></b><span><span class="en">Fusion and Rerun overlay, presence events, voice, a local LLM.</span><span class="fr">Fusion et vue Rerun, événements de présence, voix, un LLM local.</span></span></li>
-    <li><b><span class="en">Beyond</span><span class="fr">Au-delà</span></b><span><span class="en">A thermal layer, a memory of the room's habits, several Fanous talking to each other.</span><span class="fr">Une couche thermique, une mémoire des habitudes de la pièce, plusieurs Fanou qui se parlent.</span></span></li>
+    <li><b><span class="en">Beyond</span><span class="fr">Au-delà</span></b><span><span class="en">A thermal layer, a memory of the room's habits, several robots talking to each other.</span><span class="fr">Une couche thermique, une mémoire des habitudes de la pièce, plusieurs robots qui se parlent.</span></span></li>
   </ol>
 </section>
 
 <footer>
-  <span>Fanou · SuperLens · © 2026 Sébastien Treille <span class="en">and contributors</span><span class="fr">et contributeurs</span></span>
+  <span>SuperLens · © 2026 Sébastien Treille <span class="en">and contributors</span><span class="fr">et contributeurs</span></span>
   <span><span class="en">Hardware</span><span class="fr">Matériel</span> CERN-OHL-P-2.0 · <span class="en">Software</span><span class="fr">Logiciel</span> MIT · <span class="en">Docs</span><span class="fr">Doc</span> CC BY 4.0</span>
   <span><span class="en">Sensor names are trademarks of their owners. Not affiliated.</span><span class="fr">Les noms des capteurs appartiennent à leurs propriétaires. Aucune affiliation.</span></span>
 </footer>
@@ -442,7 +443,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   set(initial);
 })();
 
-/* ---------- Fanou's face ---------- */
+/* ---------- the robot's face ---------- */
 (function(){
   const cv = document.getElementById('face'); const g = cv.getContext('2d');
   const W = cv.width, H = cv.height;
@@ -606,7 +607,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     // status bar
     g.fillStyle = 'rgba(6,17,20,0.85)'; g.fillRect(0,0,Wpx,40);
     g.fillStyle = C.txt; g.font = '600 17px "IBM Plex Mono", monospace';
-    g.fillText('FANOU · MAP', 16, 26);
+    g.fillText('SUPERLENS · MAP', 16, 26);
     g.font = '15px "IBM Plex Mono", monospace'; g.fillStyle = C.dim;
     g.fillText('WiFi ● host ● 10 Hz', Wpx-196, 26);
     // vital-sign panel

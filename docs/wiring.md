@@ -11,20 +11,22 @@ There are two kinds of wires:
 
 The USB-C cable (charger or power bank at the other end) plugs into the ESP32's USB-C port. The ESP32's **5V** pin is connected directly to that port's 5 V line, so it feeds the WAGO bus, and the bus powers every sensor.
 
-## Where everything sits in Fanou
+## Where everything sits in the robot
 
-| Part | Place | Height above the table |
+Heights are the planned rev F values; the CAD fixes them to the millimetre.
+
+| Part | Place | Height above the desk |
 |---|---|---:|
-| Lidar | On the lantern plinth, cable down through the cap | ≈ 180 mm |
-| XIAO ESP32S3 Sense | Top of the spine, behind the porthole | ≈ 150 mm |
-| Screen | Behind the face window | ≈ 120 mm |
-| HLK-LD2450 | Behind the middle red band | ≈ 90 mm |
-| **WAGO connectors** | Stuck on the back of the spine, halfway up | ≈ 70–100 mm |
-| MR60BHA2 kit | Behind the arched door, USB-C down | ≈ 55 mm |
-| **Amp** | Stuck on the back of the spine, low down | ≈ 35 mm |
-| Speaker | Cradle on the bottom plate, under the grille | ≈ 8 mm |
+| Lidar | On top of the head, cable down through the lidar ring | ≈ 140 mm |
+| XIAO ESP32S3 Sense | Head frame, tilted 20°, camera above the screen | ≈ 128 mm |
+| Screen | Head frame, vertical, behind the acrylic window | ≈ 107 mm |
+| HLK-LD2450 | Body, upper part of the sensor sled, tilted 10° | ≈ 56 mm |
+| **WAGO connectors** | Body, stuck on the back of the sensor sled | ≈ 30–60 mm |
+| MR60BHA2 kit | Body, lower part of the sensor sled, tilted 20°, USB-C down | ≈ 34 mm |
+| **Amp** | Body, back of the sensor sled, low down | ≈ 20 mm |
+| Speaker | Body, against the dot grille in the right wall | ≈ 20 mm |
 
-Every run fits the 20 cm Dupont jumpers. The only long cable is the USB-C power cable, which enters at the back of the island and climbs to the XIAO.
+Everything between head and body (XIAO power and data, screen, lidar) runs through the neck damper. Every run fits the 20 cm Dupont jumpers. The USB-C power cable enters at the back of the plinth and climbs through the neck to the XIAO.
 
 ## Three rules
 
@@ -150,7 +152,7 @@ The standard XIAO ESP32S3 Sense ships with loose header pins, and so do most MAX
 
 ## XIAO pin map
 
-As seen **from the pin side** (pins pointing at you, USB-C at the top). In Fanou this is how you see the board from behind the spine, turned a quarter turn: its USB-C port points to the side.
+As seen **from the pin side** (pins pointing at you, USB-C at the top). In the head frame this is how you see the board from behind; its USB-C port points to the side.
 
 ```
                ┌──[ USB-C ]──┐
