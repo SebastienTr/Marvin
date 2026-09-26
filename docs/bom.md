@@ -2,7 +2,7 @@
 
 Prices are indicative. They were checked in September 2026 and move often. Pick the best-rated listing rather than the cheapest one, and allow 2–4 weeks for delivery.
 
-**Total: about €205 in parts with the D800 lidar, or about €165 with the D500** (prices checked 26 September 2026), in two orders: the MR60BHA2 kit from Seeed Studio, everything else from AliExpress. You provide the USB-C power source: a phone charger or a power bank.
+**Total: about €200 in parts with the D800 lidar, or about €160 with the D500** (prices checked 26 September 2026), in two orders: the MR60BHA2 kit and the XIAO ESP32S3 Sense from Seeed Studio (Germany warehouse, VAT included, no import fees), everything else from AliExpress. You provide the USB-C power source: a phone charger or a power bank.
 
 Rev F (the upright robot) uses exactly the same electronics as rev D and rev E. It only adds a smoked acrylic face window and a little TPU for the vibration damper.
 
@@ -10,7 +10,7 @@ Rev F (the upright robot) uses exactly the same electronics as rev D and rev E. 
 
 | Part | Qty | Purpose | ≈ € |
 |---|---:|---|---:|
-| [Seeed XIAO ESP32S3 Sense](https://fr.aliexpress.com/item/1005006988111963.html) (Seeed official store, +€5.44 shipping) | 1 | Controller, camera (OV3660), **built-in PDM microphone** and Wi-Fi. It sits in the head, tilted 20° so the camera sees your face. Ships with loose header pins to solder; the [pre-soldered version](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32S3-Sense-Pre-Soldered-p-6335.html) avoids that step. | 16 |
+| [Seeed XIAO ESP32S3 Sense](https://www.seeedstudio.com/XIAO-ESP32S3-Sense-p-5639.html) (Seeed Studio, Germany warehouse, variant "Un-Soldered", 1 pc; on back-order in September 2026, ships around 21 October). The same board from the [Seeed store on AliExpress](https://fr.aliexpress.com/item/1005006988111963.html) costs about €22 with shipping but ships at once. | 1 | Controller, camera (OV3660), **built-in PDM microphone** and Wi-Fi. It sits in the head, tilted 20° so the camera sees your face. Ships with loose header pins to solder; the [pre-soldered version](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32S3-Sense-Pre-Soldered-p-6335.html) avoids that step. | 14 |
 | [LDROBOT **D800** lidar kit (STL-27L)](https://fr.aliexpress.com/item/1005010728254952.html), variant "D800 lidar" | 1 | Reference lidar: 360°, 25 m, 21 600 points/s, UART at 921 600 baud. It sits on top of the head. Its footprint (54 × 46.29 mm) matches the LD19 family; check it on the printed template. | 111 |
 | *Cheaper option:* same listing, variant "D500 lidar kit" (STL-19P) | — | 12 m, 5 000 points/s, UART at 230 400 baud, same footprint and connector. | 68 |
 | [Hi-Link HLK-LD2450, KIT-A](https://fr.aliexpress.com/item/1005007316768708.html) (official Hi-Link store) | 1 | 24 GHz radar, tracks up to 3 people. Behind the body band, tilted 10°. KIT-A ships with its cable. | 8 |
