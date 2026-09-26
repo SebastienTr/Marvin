@@ -34,7 +34,7 @@ La mesure du cœur par radar est de niveau grand public : quelques battements d'
 - **Presque sans soudure** : prises Dupont et connecteurs Wago. Seules deux barrettes de broches sont à souder (XIAO et ampli).
 - **Impression sans supports**, la bande anthracite par simple changement de filament.
 - **Alimentation USB-C** : un chargeur ou une batterie qui fournit ≥ 2 A.
-- **Budget** : environ 200 € de pièces avec le lidar D800 (environ 160 € avec le D500).
+- **Budget** : environ 230 € de pièces avec le lidar D800 (environ 190 € avec le D500).
 
 ## Documentation
 

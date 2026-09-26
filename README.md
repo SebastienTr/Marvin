@@ -74,7 +74,7 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 
 ## Build it
 
-1. **Buy the parts** in [docs/bom.md](docs/bom.md): about €200 with the D800 lidar (about €160 with the D500).
+1. **Buy the parts** in [docs/bom.md](docs/bom.md): about €230 with the D800 lidar (about €190 with the D500).
 2. **Print** following [docs/printing.md](docs/printing.md). Print the 5-minute lidar template first.
 3. **Solder** two header strips, then **wire** the 29 connections in [docs/wiring.md](docs/wiring.md). The guide is written for first-timers.
 4. **Assemble** following [docs/assembly.md](docs/assembly.md).
