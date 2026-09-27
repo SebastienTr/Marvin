@@ -13,7 +13,7 @@ Firmware for the Marvin robot's XIAO ESP32S3 Sense, built with PlatformIO.
 ```bash
 cd firmware
 pio run -e d1_mini -t upload       # Wemos D1 mini
-pio device monitor                 # serial log, 115200 baud (Ctrl+C to quit)
+pio device monitor                 # serial log (Ctrl+C to quit); the speed comes from platformio.ini
 ```
 
 Other boards: `-e esp32s3` (ESP32-S3 DevKitC-1) and `-e xiao_esp32s3` (the robot). Simulate a D800 instead of a D500 with `-DMARVIN_SIM_LIDAR_MODEL=2` in `platformio.ini`.

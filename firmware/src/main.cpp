@@ -29,6 +29,9 @@
 #ifndef MARVIN_SIM_LIDAR_MODEL
 #define MARVIN_SIM_LIDAR_MODEL 1
 #endif
+#ifndef MARVIN_SERIAL_BAUD
+#define MARVIN_SERIAL_BAUD 115200
+#endif
 #ifndef MARVIN_LED_ACTIVE_LOW
 #define MARVIN_LED_ACTIVE_LOW 0
 #endif
@@ -120,7 +123,7 @@ void connect_wifi() {
 }  // namespace
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(MARVIN_SERIAL_BAUD);
   delay(200);
   Serial.printf("\nMarvin firmware %s, board %d\n", MARVIN_FW_VERSION, MARVIN_BOARD);
 #ifdef LED_BUILTIN
