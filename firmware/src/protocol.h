@@ -20,14 +20,29 @@ enum Type : uint8_t {
   LOG = 0x04,
   VITALS = 0x05,
   HOST_ACK = 0x81,
+  FACE_STATE = 0x82,  // host -> robot: presence state for the face (FACE_STATE_SIZE bytes, ~10 Hz)
+  FACE_EVENT = 0x83,  // host -> robot: one brain event, u8 code (face::Event in face/face.h)
 };
 
 constexpr uint8_t FLAG_SIMULATED = 0x01;
+
+// FACE_STATE payload: flags u8, head x/y/z i16 mm, position x/y/z i16 mm, distance u16 mm,
+// heart rate u16 (0.01/min). Invalid fields are 0. Decoded by face/face_link.h.
+constexpr size_t FACE_STATE_SIZE = 17;
+enum FaceStateFlag : uint8_t {
+  FACE_PRESENT = 0x01,
+  FACE_SEATED = 0x02,
+  FACE_HEAD = 0x04,        // head x/y/z valid
+  FACE_POSITION = 0x08,    // position x/y/z valid
+  FACE_DISTANCE = 0x10,    // distance valid
+  FACE_HEART_RATE = 0x20,  // heart rate valid
+};
 
 // Little-endian writers (both ESP8266 and ESP32 are little-endian, but keep it explicit).
 inline uint8_t *put16(uint8_t *p, uint16_t v) { p[0] = v; p[1] = v >> 8; return p + 2; }
 inline uint8_t *put32(uint8_t *p, uint32_t v) { for (int i = 0; i < 4; i++) p[i] = v >> (8 * i); return p + 4; }
 inline uint8_t *put64(uint8_t *p, uint64_t v) { for (int i = 0; i < 8; i++) p[i] = v >> (8 * i); return p + 8; }
+inline uint16_t get16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 inline uint64_t get64(const uint8_t *p) { uint64_t v = 0; for (int i = 7; i >= 0; i--) v = (v << 8) | p[i]; return v; }
 
 // Writes the 16-byte header, returns a pointer to the payload.

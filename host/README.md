@@ -63,6 +63,7 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `events.py` | Events and presence state: the contract between the brain and what reacts to it |
 | `brain.py` | Presence, seating, stillness and vital-sign reliability, as debounced events |
 | `face.py`, `raster.py` | The robot's eyes (reference renderer and behaviour) and the tiny rasterizer they use |
+| `link.py` | Host → robot face link: brain events (`FACE_EVENT`) and presence state (`FACE_STATE`, 10 Hz) to every robot with a screen |
 | `cli.py` | The `marvin-host` command |
 
 Tests: `pytest` (includes a real LD19 packet and the LD2450 datasheet example, and a full simulator → UDP → receiver run).

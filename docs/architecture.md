@@ -90,7 +90,8 @@ The 24 GHz radar sits below the 60 GHz one, not above it: the 60 GHz beam leaves
 - [ ] Rev F CAD, head: face frame, window, lidar ring, knob (after measuring the screen)
 - [ ] First physical build and dimension check
 - [x] Protocol v1, simulated robot on a Wemos D1 mini, host receiver and Rerun viewer
-- [ ] Firmware: UART readers, screen, audio, MJPEG, OTA
+- [x] Firmware: UART readers, the face on the screen, MR60BHA2 bridge (untested on hardware)
+- [ ] Firmware: audio, MJPEG, OTA
 - [x] Host: presence events (brain) and the face, on simulated data
 - [ ] Host: camera stream, camera/lidar extrinsic calibration
 - [ ] Companion: presence events, eye animations, voice, local LLM

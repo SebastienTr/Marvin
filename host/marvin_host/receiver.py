@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -54,6 +55,8 @@ class Receiver:
         self.sock.settimeout(0.2)
         self.devices: dict[tuple, Device] = {}
         self.t0 = time.monotonic()
+        self._tx_seq: dict[tuple, int] = {}      # per-destination sequence numbers for send()
+        self._tx_lock = threading.Lock()
         # one lidar revolution is assembled from many packets
         self._rev: dict[tuple, _Revolution] = {}
 
@@ -65,6 +68,22 @@ class Receiver:
             except socket.timeout:
                 continue
             self.handle(data, addr)
+
+    def send(self, dev_or_addr: Device | tuple, msg_type: int, payload: bytes = b"") -> None:
+        """Send a host -> robot message to a device (or an (ip, port) address), from the listening socket.
+
+        The robot answers HELLOs from its own port, so `dev.addr` is where it listens. Each destination
+        gets its own sequence number; the header clock is the host clock (as in HOST_ACK). Thread-safe.
+        """
+        addr = dev_or_addr.addr if isinstance(dev_or_addr, Device) else tuple(dev_or_addr)
+        with self._tx_lock:
+            seq = self._tx_seq.get(addr, 0)
+            self._tx_seq[addr] = (seq + 1) & 0xFFFFFFFF
+        t_us = int((time.monotonic() - self.t0) * 1e6)
+        try:
+            self.sock.sendto(protocol.pack(msg_type, seq, t_us, payload), addr)
+        except OSError as e:                     # unreachable host, network down: drop, like UDP
+            log.debug("send to %s failed: %s", addr, e)
 
     def handle(self, data: bytes, addr: tuple) -> None:
         try:

@@ -38,12 +38,41 @@ No configuration is needed on either side: the host does not need to know the ro
 | `0x04` | `LOG` | robot → host | UTF-8 text |
 | `0x05` | `VITALS` | robot → host | MR60BHA2 readings: valid (u8), breath rate (u16, 0.01/min), heart rate (u16, 0.01/min), breathing wave (i16, ±32767), heartbeat wave (i16, ±32767), distance (u16, mm) |
 | `0x81` | `HOST_ACK` | host → robot | Host clock, microseconds (u64) |
+| `0x82` | `FACE_STATE` | host → robot | Presence state for the face, 17 bytes, ≈ 10 Hz (see [Face messages](#face-messages)) |
+| `0x83` | `FACE_EVENT` | host → robot | One brain event: event code (u8) |
 
-`VITALS` is sent by the simulators today. The real MR60BHA2 kit runs its own firmware on its ESP32-C6; a small bridge will re-emit its readings in this format so the host sees one stream.
+`VITALS` is sent by the simulators and by the real MR60BHA2 kit: the [MR60BHA2 bridge](../firmware/mr60_bridge/README.md) firmware runs on the kit's own ESP32-C6, reads the radar and sends its readings in this format (board id 4), so the host sees one stream.
 
-Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 Sense, 255 = host-side simulator. Lidar models: 1 = D500 (STL-19P), 2 = D800 (STL-27L). Flag bit 0 = the sensor data is simulated.
+Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 Sense, 4 = MR60BHA2 kit (XIAO ESP32C6, vitals bridge), 255 = host-side simulator. Lidar models: 1 = D500 (STL-19P), 2 = D800 (STL-27L). Flag bit 0 = the sensor data is simulated.
 
 The sensor frames travel **raw**, CRC included, so the host validates them exactly as it would on a serial port, and a recording can be replayed through the same parsers.
+
+## Face messages
+
+The host sends the robot's face what its brain knows (`host/marvin_host/link.py`), only to robots whose `HELLO` board id has the screen (2 and 3), at the address the `HELLO` came from. They were added to v1 without a version bump: a robot that does not know them ignores them. Both are optional for the robot: with no `FACE_STATE` for 5 s, the face assumes nobody is there and falls asleep on its own.
+
+**`FACE_STATE` (0x82, 17 bytes), about 10 times a second:**
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 1 | Flags: bit 0 present, bit 1 seated, bit 2 head valid, bit 3 position valid, bit 4 distance valid, bit 5 heart rate valid |
+| 1 | 6 | Head x, y, z (3 × i16, mm, device frame) |
+| 7 | 6 | Nearest person's position x, y, z (3 × i16, mm, device frame) |
+| 13 | 2 | Horizontal distance (u16, mm) |
+| 15 | 2 | Heart rate (u16, 0.01 per minute) |
+
+Fields without their valid bit are sent as 0. Coordinates are rounded to the millimetre and clamped to ±32 767.
+
+**`FACE_EVENT` (0x83, 1 byte), sent as soon as the brain emits the event.** One table for both sides (`protocol.FACE_EVENT_CODES` in Python, `face::Event` in `firmware/src/face/face.h`); the robot ignores codes it does not know, so new events can be added.
+
+| Code | Event | | Code | Event |
+|---:|---|---|---:|---|
+| 1 | `arrived` | | 5 | `stood_up` |
+| 2 | `left` | | 6 | `still_long` |
+| 3 | `approached` | | 7 | `vitals_acquired` |
+| 4 | `sat_down` | | 8 | `vitals_lost` |
+
+Events are not repeated: a lost `FACE_EVENT` only loses that reaction, and the next `FACE_STATE` keeps the face consistent with the brain.
 
 ## Sensor frames
 
@@ -66,9 +95,10 @@ The host converts every point into the device frame (X right as seen facing the 
 | D800 lidar | 21 600 points/s | 180 | ≈ 85 kB/s |
 | LD2450 | 10 frames/s | 10 | 0.5 kB/s |
 | Vitals | 10 messages/s | 10 | 0.3 kB/s |
+| Face state (host → robot) | 10 messages/s | 10 | 0.3 kB/s |
 
 Even the D800 uses under 1 Mbit/s, well within an ESP8266's Wi-Fi.
 
 ## Planned
 
-Camera (MJPEG over HTTP), microphone audio, host → robot commands (face expression, sounds, speech) and clock synchronisation from `HOST_ACK` will come in a later version, with a version bump if the header changes.
+Camera (MJPEG over HTTP), microphone audio, more host → robot commands (sounds, speech) and clock synchronisation from `HOST_ACK` will come in a later version, with a version bump if the header changes.

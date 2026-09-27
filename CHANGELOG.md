@@ -11,6 +11,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Viewer layout: 3D, camera with lidar and radar projected onto the image, lidar top view, radar-style mmWave view, presence and vital-sign time series.
 - The brain (`host/marvin_host/brain.py`): presence, seating, stillness and vital-sign reliability as debounced events (`events.py`), shown in the viewer. The simulated MR60BHA2 now drops out while the person fidgets, as the real one does.
 - The face (`host/marvin_host/face.py`, `docs/face.md`): the robot's eyes as a reference renderer for the 240 × 280 screen, following the person, blinking, reacting to events and falling asleep; shown live in the viewer.
+- Real sensors (`firmware/src/sensor_framing.*`, `sensors_real.*`): resynchronising framers for the LDROBOT lidar and the HLK-LD2450 (with its multi-target init sequence), UART drivers for the XIAO ESP32-S3; `xiao_esp32s3` builds the real robot, `xiao_esp32s3_sim` keeps simulated sensors. Unity tests run on the PC (`pio test -e native`).
+- The face on the robot (`firmware/src/face/`): C++ port of the face, identical to the Python reference frame for frame, a small ST7789 driver sending only what changed, and host → robot messages `FACE_STATE` and `FACE_EVENT` (`host/marvin_host/link.py`).
+- `firmware/mr60_bridge/`: firmware for the MR60BHA2 kit's ESP32-C6 that sends its vital signs to the host (`VITALS`, board 4).
+- PlatformIO platforms are pinned (espressif32 7.1.3, espressif8266 4.2.1).
 - `firmware/`: first PlatformIO firmware. Wi-Fi, host discovery and streaming with simulated sensors, on the Wemos D1 mini (ESP8266), the ESP32-S3 DevKitC and the XIAO ESP32S3.
 
 ### Rev F CAD, body half (2026-09-27)

@@ -3,8 +3,8 @@
 Marvin's face is two eyes on the 1.69" screen behind the smoked acrylic window. They are calm and
 simple on purpose: rounded rectangles, lids that close over them, a gaze that follows you. The
 reference implementation lives in [`host/marvin_host/face.py`](../host/marvin_host/face.py) (with
-the rasterizer in [`raster.py`](../host/marvin_host/raster.py)) and is meant to be ported 1:1 to
-the ESP32-S3.
+the rasterizer in [`raster.py`](../host/marvin_host/raster.py)); the firmware runs a 1:1 C++ port
+of it, checked frame by frame against Python (see [On the robot](#on-the-robot-the-c-port)).
 
 <p align="center">
   <img src="images/face_expressions.png" alt="Contact sheet of the face: looking left, ahead and right; awake, surprised, content, calm, concerned; a blink, sleepy, asleep, and the orange vitals dot" width="600">
@@ -46,10 +46,9 @@ Everything is drawn with four calls, available in TFT_eSPI and LovyanGFX:
 | `fill_ellipse(cx, cy, rx, ry)` | `fillEllipse` | the lower lid |
 | `fill_circle(cx, cy, r)` | `fillCircle` | the vitals dot |
 
-The reference anti-aliases edges (coverage from a signed distance). On the device, use the smooth
-variants (`fillSmoothRoundRect`, `fillSmoothCircle` in LovyanGFX) where available, or draw aliased
-shapes into a sprite; the look survives either way. Render into a 240 × 280 sprite and push it
-once per frame (≈ 134 kB in RGB565, fits in PSRAM) to avoid flicker.
+The reference anti-aliases edges (coverage from a signed distance). The firmware does not use a
+graphics library: its port of the rasterizer draws the same shapes with the same anti-aliasing into
+a 240 × 280 RGB565 framebuffer (≈ 134 kB, in PSRAM) and pushes only what changed.
 
 ## Drawing one frame
 
@@ -158,5 +157,59 @@ frame = face.update(state, t)       # PresenceState, t in seconds (caller's mono
 
 `update` never reads the wall clock: the caller supplies time, so recordings and simulations
 replay exactly. Event timestamps (`t_us`, device clock) are not used; an event takes effect at the
-next `update`. On the robot, the host will send the events and a compact state (head position,
-present, seated, heart rate) and the firmware will run the same logic at the display rate.
+next `update`. On the robot, the host sends the events and a compact state (below) and the firmware
+runs the same logic at the display rate.
+
+## On the robot: the C++ port
+
+[`firmware/src/face/`](../firmware/src/face) holds the port. Everything but the screen driver is
+portable C++ (no Arduino), built and tested on the PC:
+
+| File | Role |
+|---|---|
+| `raster.{h,cpp}` | `raster.py`: the four primitives and their anti-aliasing, drawn row by row into the RGB565 framebuffer; returns the rectangle that changed |
+| `face.{h,cpp}` | `face.py`: constants, `FaceParams` table, springs, xorshift32, blinks, expressions, events, gaze |
+| `face_link.{h,cpp}` | Decodes `FACE_STATE` / `FACE_EVENT`; runs the face alone when the host is silent |
+| `display_st7789.{h,cpp}` | ST7789 init and pixel push (ESP32 + Arduino only) |
+| `face_app.{h,cpp}` | What `main.cpp` calls: `face_app::begin()`, `face_app::on_message()` (boards built with `-DMARVIN_HAS_SCREEN`) |
+
+**Parity with Python.** The rasterizer follows `raster.py` operation by operation in single
+precision (numpy float32) and the behaviour follows `face.py` in double precision, with the same
+random draws in the same order. [`host/scripts/face_golden.py`](../host/scripts/face_golden.py)
+plays a 49 s scenario (seed 7: arrival, approach, sitting down, vitals cue, break reminder, standing
+up, walking away, sleep, waking up again; 973 frames) through the Python face and writes the CRC-32
+of every RGB565 frame plus 7 complete frames (9 kB, run-length encoded) into
+[`firmware/test/test_face/`](../firmware/test/test_face). The Unity test replays it:
+
+| Distance maths | Frames bit-exact | Complete frames: pixels that differ | Max difference |
+|---|---:|---:|---:|
+| exact (`hypotf`, as numpy; default on the PC) | 973 / 973 | 0 | 0 |
+| fast (`sqrtf(x² + y²)`; default on the ESP32) | 967 / 973 | 0 | 0 |
+
+The test allows at most 0.5 % of the pixels to differ, by at most 2 LSB per RGB565 channel.
+Natively, a frame renders in about 0.5 ms.
+
+```bash
+cd host && python scripts/face_golden.py      # after changing face.py or raster.py
+cd firmware && pio test -e native -f test_face
+```
+
+**Screen.** A small driver of our own, no graphics library: the face already renders into its own
+framebuffer, so the panel needs only an init sequence, a window command and a pixel stream.
+Arduino-ESP32's `SPIClass::writePixels` feeds the SPI FIFO from the CPU, so the framebuffer can live
+in PSRAM with no DMA constraint. SPI2 at 40 MHz (GPIO7 and GPIO9 go through the GPIO matrix;
+`-DMARVIN_TFT_SPI_HZ=80000000` usually works with short wires), row offset 20 (the 240 × 280 panel
+sits inside the controller's 240 × 320), colour inversion on (IPS). Only the changed rectangle is
+sent: nothing at all when the face is still, the eyes' area (under 10 ms) when they move, and about
+30 ms for a full frame. The face runs in its own FreeRTOS task on core 0 at 30 fps, so rendering
+and SPI never block the main loop.
+
+**Host messages.** `FACE_STATE` (0x82, 17 bytes, 10 Hz: present, seated, head and position in mm,
+distance, heart rate) and `FACE_EVENT` (0x83, one byte per event); see
+[protocol.md](protocol.md#face-messages). On the host, [`link.py`](../host/marvin_host/link.py)
+sends them to every robot with a screen.
+
+**Alone.** With no `FACE_STATE` for 5 s (the host stopped, Wi-Fi dropped) or before the first one,
+the face is told nobody is there: it looks around, gets sleepy after 4 s and falls asleep after
+20 s, breathing slowly. It never freezes, and wakes up when the host comes back with someone
+present.

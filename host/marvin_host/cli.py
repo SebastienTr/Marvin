@@ -15,6 +15,7 @@ import time
 
 from . import __version__, protocol
 from .brain import Brain
+from .link import FaceLink
 from .receiver import Receiver, Sink
 from .sim import SimDevice
 
@@ -85,9 +86,8 @@ class _Tee(Sink):
             s.on_log(*a)
 
 
-def _sink(args) -> Sink:
+def _sink(args, brain: Brain) -> Sink:
     """brain -> console -> viewer: the brain goes first so its state is current for the others."""
-    brain = Brain()
     brain.add_listener(lambda e: print(f"  * {e.kind.value}" + (f": {e.detail}" if e.detail else "")))
     console = ConsoleSink()
     if args.no_viewer and not args.save:
@@ -126,11 +126,17 @@ def main(argv=None) -> None:
     try:
         if args.cmd == "run":
             print(f"listening on UDP {args.port}, waiting for the robot's HELLO...")
-            Receiver(_sink(args), port=args.port).serve()
+            brain = Brain()
+            rx = Receiver(_sink(args, brain), port=args.port)
+            link = FaceLink(rx, brain).start()      # drives the robot's face (robots with a screen)
+            try:
+                rx.serve()
+            finally:
+                link.stop()
         elif args.cmd == "sim":
             SimDevice(host=args.host, port=args.port, model=MODELS[args.model]).run(args.seconds)
         elif args.cmd == "demo":
-            rx = Receiver(_sink(args), port=args.port, bind="127.0.0.1")
+            rx = Receiver(_sink(args, Brain()), port=args.port, bind="127.0.0.1")
             stop = threading.Event()
             th = threading.Thread(target=rx.serve, kwargs={"stop": stop}, daemon=True)
             th.start()
