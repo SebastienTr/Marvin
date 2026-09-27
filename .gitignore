@@ -21,9 +21,14 @@ firmware/**/build/
 __pycache__/
 *.pyc
 .venv/
+*.egg-info/
+.pytest_cache/
 recordings/
 *.rrd
 
 # Blender backups
 *.blend1
 *.blend@
+
+# Firmware Wi-Fi credentials
+firmware/include/secrets.h

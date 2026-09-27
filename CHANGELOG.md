@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Software prototype (2026-09-27)
+- `docs/protocol.md`: robot → host UDP protocol v1. Zero-configuration discovery (`HELLO` broadcast, `HOST_ACK`), raw lidar and LD2450 frames in a 16-byte envelope.
+- `host/`: the `marvin-host` Python package. Parsers for LDROBOT and HLK-LD2450 frames, sensor extrinsics, UDP receiver with loss counting, live Rerun view and recording, and a simulated robot (room, walking person, D500 or D800 lidar). `marvin-host demo` runs everything on one computer. Tests with `pytest`.
+- `firmware/`: first PlatformIO firmware. Wi-Fi, host discovery and streaming with simulated sensors, on the Wemos D1 mini (ESP8266), the ESP32-S3 DevKitC and the XIAO ESP32S3.
+
 ### Rev F CAD, body half (2026-09-27)
 - `hardware/cad/marvin.scad`: body shell (printed upside down, 1.6 mm radome wall, anthracite band by filament change), plinth, sensor sled, TPU neck gasket, grommets and feet, lidar template. Print-ready STLs in `hardware/stl/`.
 - The 24 GHz radar now sits **below** the 60 GHz radar (face centres at 16 mm and 42 mm): above it, it would have shadowed the upper part of the 60 GHz beam.

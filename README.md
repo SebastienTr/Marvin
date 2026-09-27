@@ -81,7 +81,7 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 2. **Print** following [docs/printing.md](docs/printing.md). Print the 5-minute lidar template first.
 3. **Solder** two header strips, then **wire** the 29 connections in [docs/wiring.md](docs/wiring.md). The guide is written for first-timers.
 4. **Assemble** following [docs/assembly.md](docs/assembly.md).
-5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) are in progress.
+5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) are at the prototype stage: they already talk to each other with simulated sensors (`marvin-host demo`).
 
 The body parts are ready to print; the head parts arrive with the head CAD.
 
@@ -96,9 +96,10 @@ marvin/
 │   ├── blender/                  # assembled model + print layout (generated)
 │   ├── scripts/                  # export_stl.sh, render_previews.sh, section_diagram.py, build_3mf.py, build_blend.sh
 │   └── archive/                  # earlier revisions (rev E: Fanou the lighthouse)
-├── firmware/                     # ESP32-S3 firmware (planned)
-├── host/                         # desktop fusion + companion (planned)
+├── firmware/                     # ESP32 firmware (prototype)
+├── host/                         # desktop receiver, viewer, simulator
 ├── docs/                         # BOM, wiring, printing, assembly, architecture
+│   ├── protocol.md               # robot ↔ host UDP protocol
 │   ├── concepts/                 # design studies, from the lighthouse to the robot
 │   └── index.html                # presentation page (open in a browser)
 └── LICENSES/                     # full licence texts

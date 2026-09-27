@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "marvin-host"
+version = "0.1.0"
+description = "Desktop side of the Marvin desk robot: receivers, simulator and live viewer"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "rerun-sdk>=0.23"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+marvin-host = "marvin_host.cli:main"
+
+[tool.setuptools]
+packages = ["marvin_host"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
