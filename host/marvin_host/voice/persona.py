@@ -150,9 +150,14 @@ def context_block(state: PresenceState | None = None, events: Iterable[Event] = 
 
 
 def user_message(text: str, state: PresenceState | None = None, events: Iterable[Event] = (),
-                 now: dt.datetime | None = None) -> str:
-    """What is sent to the model for one question: the context, then what the person said."""
-    return f"{context_block(state, events, now)}\n\nThe person says: {text}"
+                 now: dt.datetime | None = None, language: str | None = None) -> str:
+    """What is sent to the model for one question: the context, what the person said, and (last,
+    where models weigh it most) the language to answer in. The context is in English, which
+    otherwise pulls some models into answering in English."""
+    msg = f"{context_block(state, events, now)}\n\nThe person says: {text}"
+    if language:
+        msg += f"\n\n(Answer in {LANGUAGE_NAMES.get(language, language)}.)"
+    return msg
 
 
 def system_prompt(language: str = "fr", state: PresenceState | None = None, events: Iterable[Event] = (),

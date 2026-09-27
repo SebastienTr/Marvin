@@ -334,8 +334,11 @@ class ScriptSource:
 
 
 def said(message: dict) -> str:
-    """What the person said, from a user message sent to the model (after the context block)."""
-    return message["content"].split("The person says: ", 1)[-1] if message["role"] == "user" else message["content"]
+    """What the person said, from a user message sent to the model (between the context block and
+    the language reminder)."""
+    if message["role"] != "user":
+        return message["content"]
+    return message["content"].split("The person says: ", 1)[-1].split("\n\n(Answer in ", 1)[0]
 
 
 def make(script, stt_script, replies=("D'accord.",), sink=None, brain=None, **cfg):
@@ -1087,3 +1090,13 @@ def test_wake_word_with_a_hallucinated_tail_just_listens():
     va, t = make([("say", 1.0), ("quiet", 1), ("idle",)], ["Marvin. Thank you."], follow_up_s=5.0)
     va.run()
     assert t.llm.calls == [] and t.log["status"] == ["listening"]
+
+
+def test_reply_language_reminder_and_voice_follow_the_text():
+    from marvin_host.voice import persona
+    from marvin_host.voice.text import guess_language
+    msg = persona.user_message("est-ce que t'as faim ?", language="fr")
+    assert msg.endswith("(Answer in French.)")
+    assert guess_language("No, I do not get hungry. I am a program running on your computer.") == "en"
+    assert guess_language("Non, je n'ai pas faim, je suis un programme.") == "fr"
+    assert guess_language("OK.") is None

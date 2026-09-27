@@ -44,7 +44,7 @@ from . import filters, persona
 from .echo import EchoFilter, EchoGate
 from .llm import LLM, LLMUnavailable
 from .stt import STT, Transcript
-from .text import SentenceSplitter, clean_for_speech
+from .text import SentenceSplitter, clean_for_speech, guess_language
 from .tts import TTS
 from .vad import Segment, Segmenter, SegmenterConfig, Vad, make_vad
 from .wake import TranscriptWakeWord, WakeMatch, WakeWordDetector, match_wake_word
@@ -555,7 +555,7 @@ class VoiceAssistant:
         if self.history and now - self._last_turn > self.config.memory_reset_s:
             log.debug("conversation forgotten after %.0f s of silence", now - self._last_turn)
             self.history.clear()
-        user = persona.user_message(job.text, state, events)
+        user = persona.user_message(job.text, state, events, language=job.language)
         return [{"role": "system", "content": persona.persona_prompt(job.language)}, *self.history,
                 {"role": "user", "content": user}], user
 
@@ -572,7 +572,10 @@ class VoiceAssistant:
                 continue
             t = time.monotonic()
             try:
-                pcm, rate = self.tts.synthesize(text, job.language)
+                # the voice follows the language actually written: a model that answers in English
+                # despite the instruction is still spoken with an English voice, not a French accent
+                voice_language = guess_language(text, self.config.languages) or job.language
+                pcm, rate = self.tts.synthesize(text, voice_language)
             except Exception:                               # noqa: BLE001 - never kill the speaker thread
                 log.exception("speech synthesis failed for %r", text)
                 continue
