@@ -26,10 +26,17 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 
 ## What the viewer shows
 
-- `world/robot`: the body, head, lidar and the two radar boresights.
-- `world/lidar/scan`: one lidar revolution at a time, in millimetres, in the device frame.
-- `world/ld2450/targets`: people seen by the 24 GHz radar, with distance and speed.
-- `presence/*` and `stats/*`: time series (targets, nearest distance, lidar rate, lost datagrams, CRC errors).
+| View | Content |
+|---|---|
+| 3D | The robot, the lidar scan and the radar targets in the device frame; for a simulated robot, the room as faint wireframes. |
+| Camera | The camera image, with the lidar points and radar targets projected onto it. Simulated robots get a rendered image of the simulated room, at the robot's clock. |
+| Lidar, top view | One full revolution seen from above, the robot's front up, coloured by distance, with range rings every metre and the LD2450 target. |
+| mmWave radars | Radar-style view: the LD2450 sector (±60°, 6 m) with targets, speed and a 4-second trail; the MR60BHA2 vital-signs range and the person it measures. |
+| Time series | Presence (targets, distance, speed), vital signs (breath and heart rates, breathing and heartbeat waves), link statistics, log. |
+
+## The simulated room
+
+[`scene.py`](marvin_host/scene.py) describes a small home office (desk, workbench, sofa, wardrobe, plants) and a person who walks in, moves around, sits at the desk for half a minute, then leaves (70 s loop). The lidar only sees what crosses its plane, 133 mm above the desk, as the real one would. The same scene drives the host simulator, the simulated camera and the firmware simulator: after editing it, regenerate the firmware copy with `python -m marvin_host.scene > ../firmware/src/scene_data.h` (a test checks it).
 
 ## Layout
 
@@ -41,7 +48,9 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `frames.py` | Sensor extrinsics, conversions to the device frame |
 | `receiver.py` | UDP server, handshake, loss counting, lidar revolution assembly |
 | `viewer.py` | Rerun logging |
-| `sim.py` | Simulated room, walking person, and robot |
+| `scene.py` | The simulated room and person (single source of truth) |
+| `sim.py` | Simulated robot: lidar, LD2450 and MR60BHA2 frames from the scene |
+| `camera.py` | Camera model and the simulated camera (numpy ray casting) |
 | `cli.py` | The `marvin-host` command |
 
 Tests: `pytest` (includes a real LD19 packet and the LD2450 datasheet example, and a full simulator → UDP → receiver run).

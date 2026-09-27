@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Software prototype (2026-09-27)
 - `docs/protocol.md`: robot → host UDP protocol v1. Zero-configuration discovery (`HELLO` broadcast, `HOST_ACK`), raw lidar and LD2450 frames in a 16-byte envelope.
 - `host/`: the `marvin-host` Python package. Parsers for LDROBOT and HLK-LD2450 frames, sensor extrinsics, UDP receiver with loss counting, live Rerun view and recording, and a simulated robot (room, walking person, D500 or D800 lidar). `marvin-host demo` runs everything on one computer. Tests with `pytest`.
+- Simulated home office (`host/marvin_host/scene.py`, shared with the firmware through a generated header): walls, furniture at their real heights, and a person who comes in, sits at the desk and leaves. Simulated camera rendering the same room, and MR60BHA2 vital signs (`VITALS` message).
+- Viewer layout: 3D, camera with lidar and radar projected onto the image, lidar top view, radar-style mmWave view, presence and vital-sign time series.
 - `firmware/`: first PlatformIO firmware. Wi-Fi, host discovery and streaming with simulated sensors, on the Wemos D1 mini (ESP8266), the ESP32-S3 DevKitC and the XIAO ESP32S3.
 
 ### Rev F CAD, body half (2026-09-27)

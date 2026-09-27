@@ -30,6 +30,7 @@ HELLO = 0x01        # device -> host (broadcast until acknowledged, then heartbe
 LIDAR = 0x02        # device -> host: u8 lidar model + N raw 47-byte LDROBOT packets
 LD2450 = 0x03       # device -> host: one raw 30-byte HLK-LD2450 frame
 LOG = 0x04          # device -> host: UTF-8 text
+VITALS = 0x05       # device -> host: MR60BHA2 readings (see Vitals)
 HOST_ACK = 0x81     # host -> device: u64 host clock (us); the device then unicasts to the sender
 
 # HELLO board ids
@@ -94,3 +95,27 @@ class Hello:
     @property
     def device_name(self) -> str:
         return "marvin-" + self.device_id[-3:].hex()
+
+
+@dataclass
+class Vitals:
+    """MR60BHA2 60 GHz radar readings. Rates in breaths / beats per minute, waves in -1..1."""
+
+    valid: bool               # a still person is measured
+    breath_rate: float
+    heart_rate: float
+    breath_wave: float
+    heart_wave: float
+    distance_mm: int
+
+    _S = struct.Struct("<BHHhhH")
+
+    def encode(self) -> bytes:
+        return self._S.pack(int(self.valid), round(self.breath_rate * 100), round(self.heart_rate * 100),
+                            round(max(-1, min(1, self.breath_wave)) * 32767),
+                            round(max(-1, min(1, self.heart_wave)) * 32767), min(int(self.distance_mm), 0xFFFF))
+
+    @classmethod
+    def decode(cls, payload: bytes) -> "Vitals":
+        v, br, hr, bw, hw, d = cls._S.unpack_from(payload)
+        return cls(bool(v & 1), br / 100, hr / 100, bw / 32767, hw / 32767, d)

@@ -1,25 +1,23 @@
 // SPDX-License-Identifier: MIT
 #include "sensors_sim.h"
 
+#include "scene_data.h"
+
 #include <math.h>
 #include <string.h>
 
 namespace sim {
 namespace {
 
-// Device frame, mm: X right (seen facing the robot), Y backwards, the robot looks at -Y.
-struct Seg { float x1, y1, x2, y2; };
-const Seg ROOM[] = {
-    {-2000, 400, 2000, 400},     {2000, 400, 2000, -3100},     {2000, -3100, -2000, -3100},
-    {-2000, -3100, -2000, 400},  {-2000, -1200, -1400, -1200}, {-1400, -1200, -1400, -1800},
-    {-1400, -1800, -2000, -1800},
-};
-constexpr float PERSON_R = 180.0f;
+// The room, the person's path and the timings come from scene_data.h, generated from
+// host/marvin_host/scene.py, so the firmware and the host simulators see the same room.
 constexpr float SCAN_HZ = 10.0f;
 constexpr float LD2450_Y = -33.1f;
 constexpr float LD2450_TILT = 10.0f * (float)M_PI / 180.0f;
+constexpr float LD2450_FOV = 60.0f * (float)M_PI / 180.0f;
+constexpr float LD2450_RANGE = 6000.0f;
 
-constexpr int TABLE = 1440;          // room distances every 0.25 deg, computed once at boot
+constexpr int TABLE = 3600;          // room distances every 0.1 deg, computed once at boot
 uint16_t room[TABLE];
 uint32_t rate = 4500;
 float angle = 0;                     // next scan angle, degrees
@@ -32,7 +30,7 @@ float noise() {                      // roughly +-8 mm
 
 float ray_room(float th) {
   float dx = -sinf(th), dy = -cosf(th), best = 1e9f;
-  for (const Seg &s : ROOM) {
+  for (const scene::Seg &s : scene::SEGMENTS) {
     float ex = s.x2 - s.x1, ey = s.y2 - s.y1, den = dx * ey - dy * ex;
     if (fabsf(den) < 1e-6f) continue;
     float t = (s.x1 * ey - s.y1 * ex) / den, u = (s.x1 * dy - s.y1 * dx) / den;
@@ -41,20 +39,34 @@ float ray_room(float th) {
   return best;
 }
 
-struct Person { float x, y, vx, vy; };
+struct Person { float x, y, vx, vy; bool seated; };
 
-Person person(float t) {             // 40 s loop: walks around, comes to the desk, sits
-  t = fmodf(t, 40.0f);
-  if (t < 20.0f) {
-    float w = 2 * (float)M_PI / 20.0f;
-    return {1200 * cosf(w * t), -1700 + 900 * sinf(w * t), -1200 * w * sinf(w * t), 900 * w * cosf(w * t)};
+Person person(float t) {             // same as scene.person_at()
+  t = fmodf(t, scene::LOOP);
+  Person p{0, 0, 0, 0, false};
+  for (int i = 0; i + 1 < scene::WAYPOINT_COUNT; i++) {
+    const scene::Waypoint &a = scene::WAYPOINTS[i], &b = scene::WAYPOINTS[i + 1];
+    if (t >= a.t && t <= b.t) {
+      float k = (t - a.t) / (b.t - a.t);
+      p.x = a.x + (b.x - a.x) * k;
+      p.y = a.y + (b.y - a.y) * k;
+      p.vx = (b.x - a.x) / (b.t - a.t);
+      p.vy = (b.y - a.y) / (b.t - a.t);
+      break;
+    }
   }
-  if (t < 24.0f) {
-    float k = (t - 20.0f) / 4.0f;
-    return {1200 - 1200 * k, -1700 + 1000 * k, -300, 250};
+  p.seated = t >= scene::SIT_START && t <= scene::SIT_END;
+  if (p.seated) {                    // small sway while seated
+    float w = 2 * (float)M_PI * 0.2f;
+    p.x += 25 * sinf(w * t);
+    p.vx += 25 * w * cosf(w * t);
   }
-  float w = 2 * (float)M_PI * 0.25f;
-  return {30 * sinf(w * t), -700, 30 * w * cosf(w * t), 0};
+  return p;
+}
+
+uint16_t room_at(float bearing) {    // radians, clockwise from the front
+  float deg = fmodf(bearing * 180.0f / (float)M_PI + 360.0f, 360.0f);
+  return room[(int)(deg * 10) % TABLE];
 }
 
 uint16_t enc(int v) { return v >= 0 ? (0x8000 | (v > 0x7FFF ? 0x7FFF : v)) : (-v > 0x7FFF ? 0x7FFF : -v); }
@@ -70,11 +82,12 @@ uint8_t crc8(const uint8_t *p, size_t n) {
 
 }  // namespace
 
-void begin(uint8_t lidar_model) {
+void begin(uint8_t lidar_model, void (*idle)()) {
   rate = lidar_model == 2 ? 21600 : 4500;
   for (int i = 0; i < TABLE; i++) {
-    float d = ray_room(i * 0.25f * (float)M_PI / 180.0f);
+    float d = ray_room(i * 0.1f * (float)M_PI / 180.0f);
     room[i] = d > 12000 ? 0 : (uint16_t)d;
+    if (idle && i % 32 == 0) idle();
   }
 }
 
@@ -85,7 +98,7 @@ void lidar_packet(float t, uint8_t *out) {
   Person p = person(t);
   float pr = sqrtf(p.x * p.x + p.y * p.y);
   float pa = atan2f(-p.x, -p.y);                        // person bearing, radians, clockwise from the front
-  float half = pr > PERSON_R ? asinf(PERSON_R / pr) : (float)M_PI;
+  float half = pr > scene::PERSON_RADIUS ? asinf(scene::PERSON_RADIUS / pr) : (float)M_PI;
 
   uint8_t *q = out;
   *q++ = 0x54;
@@ -97,12 +110,12 @@ void lidar_packet(float t, uint8_t *out) {
   float a = angle;
   for (int i = 0; i < 12; i++, a += step) {
     if (a >= 360.0f) a -= 360.0f;
-    float d = room[(int)(a * 4) % TABLE];
+    float d = room[(int)(a * 10) % TABLE];
     float th = a * (float)M_PI / 180.0f;
     float delta = remainderf(th - pa, 2 * (float)M_PI);
     if (fabsf(delta) < half) {                          // the ray may hit the person
       float s = pr * sinf(delta);
-      float hit = pr * cosf(delta) - sqrtf(PERSON_R * PERSON_R - s * s);
+      float hit = pr * cosf(delta) - sqrtf(scene::PERSON_RADIUS * scene::PERSON_RADIUS - s * s);
       if (hit > 0 && (d == 0 || hit < d)) d = hit;
     }
     uint16_t dist = d > 0 ? (uint16_t)(d + noise()) : 0;
@@ -120,18 +133,41 @@ void lidar_packet(float t, uint8_t *out) {
 
 void ld2450_frame(float t, uint8_t *out) {
   Person p = person(t);
-  int rx = (int)p.x;
-  int ry = (int)((LD2450_Y - p.y) / cosf(LD2450_TILT));
-  float dy = p.y - LD2450_Y, r = sqrtf(p.x * p.x + dy * dy);
-  float v = r > 1 ? (p.vx * p.x + p.vy * dy) / r : 0;   // mm/s, positive = away from the robot
-  int speed = (int)(-v / 10);
   static const uint8_t head[4] = {0xAA, 0xFF, 0x03, 0x00};
   memset(out, 0, LD2450_FRAME);
   memcpy(out, head, 4);
-  uint16_t f[4] = {enc(rx), enc(ry), enc(speed), 320};
-  for (int i = 0; i < 4; i++) { out[4 + 2 * i] = f[i]; out[5 + 2 * i] = f[i] >> 8; }
   out[28] = 0x55;
   out[29] = 0xCC;
+  float dy = p.y - LD2450_Y, r = sqrtf(p.x * p.x + dy * dy);
+  float d = sqrtf(p.x * p.x + p.y * p.y);
+  uint16_t wall = room_at(atan2f(-p.x, -p.y));
+  bool hidden = wall != 0 && wall < d - scene::PERSON_RADIUS;
+  if (r > LD2450_RANGE || fabsf(atan2f(p.x, -dy)) > LD2450_FOV || hidden) return;   // no target
+  int rx = (int)p.x;
+  int ry = (int)((LD2450_Y - p.y) / cosf(LD2450_TILT));
+  float v = r > 1 ? (p.vx * p.x + p.vy * dy) / r : 0;   // mm/s, positive = away from the robot
+  uint16_t f[4] = {enc(rx), enc(ry), enc((int)(-v / 10)), 320};
+  for (int i = 0; i < 4; i++) { out[4 + 2 * i] = f[i]; out[5 + 2 * i] = f[i] >> 8; }
+}
+
+size_t vitals(float t, uint8_t *out) {
+  Person p = person(t);
+  float dist = sqrtf((p.x - scene::MR60_X) * (p.x - scene::MR60_X) + (p.y - scene::MR60_Y) * (p.y - scene::MR60_Y));
+  float br = 0, hr = 0, bw = 0, hw = 0;
+  if (p.seated) {
+    br = 14.0f + 1.5f * sinf(2 * (float)M_PI * t / 23.0f);
+    hr = 68.0f + 4.0f * sinf(2 * (float)M_PI * t / 17.0f);
+    bw = sinf(2 * (float)M_PI * 14.0f / 60.0f * t);
+    hw = sinf(2 * (float)M_PI * 68.0f / 60.0f * t);
+  }
+  uint8_t *q = out;
+  *q++ = p.seated ? 1 : 0;
+  uint16_t b = (uint16_t)lroundf(br * 100), h = (uint16_t)lroundf(hr * 100);
+  int16_t bws = (int16_t)lroundf(bw * 32767), hws = (int16_t)lroundf(hw * 32767);
+  uint16_t dmm = dist > 65535 ? 65535 : (uint16_t)dist;
+  const uint16_t fields[5] = {b, h, (uint16_t)bws, (uint16_t)hws, dmm};
+  for (uint16_t v : fields) { *q++ = v; *q++ = v >> 8; }
+  return q - out;
 }
 
 }  // namespace sim

@@ -18,6 +18,7 @@ enum Type : uint8_t {
   LIDAR = 0x02,
   LD2450 = 0x03,
   LOG = 0x04,
+  VITALS = 0x05,
   HOST_ACK = 0x81,
 };
 

@@ -40,6 +40,7 @@ class Sink:
     def on_hello(self, dev: Device) -> None: ...
     def on_scan(self, dev: Device, t_us: int, points: np.ndarray, intensities: np.ndarray, speed_dps: int) -> None: ...
     def on_targets(self, dev: Device, t_us: int, targets: list[ld2450.Target], points: list[tuple]) -> None: ...
+    def on_vitals(self, dev: Device, t_us: int, vitals: protocol.Vitals) -> None: ...
     def on_log(self, dev: Device, t_us: int, text: str) -> None: ...
 
 
@@ -96,6 +97,13 @@ class Receiver:
             s.radar_frames += 1
             pts = [frames.ld2450_to_device(t.x_mm, t.y_mm) for t in targets]
             self.sink.on_targets(dev, hdr.t_us, targets, pts)
+        elif hdr.type == protocol.VITALS:
+            try:
+                v = protocol.Vitals.decode(payload)
+            except Exception:
+                s.bad += 1
+                return
+            self.sink.on_vitals(dev, hdr.t_us, v)
         elif hdr.type == protocol.LOG:
             self.sink.on_log(dev, hdr.t_us, payload.decode(errors="replace"))
 

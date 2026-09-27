@@ -2,7 +2,7 @@
 
 Firmware for the Marvin robot's XIAO ESP32S3 Sense, built with PlatformIO.
 
-**Status: prototype.** The Wi-Fi link and the [UDP protocol](../docs/protocol.md) work, with **simulated sensors**: a lidar (D500 or D800) and an HLK-LD2450 seeing a room with a person walking around, byte-exact to the real frames. It runs on a Wemos D1 mini (ESP8266) as well as on the ESP32-S3 boards, so the whole chain can be tested before the robot is built. The real UART readers, the screen and the audio come next.
+**Status: prototype.** The Wi-Fi link and the [UDP protocol](../docs/protocol.md) work, with **simulated sensors**: a lidar (D500 or D800), an HLK-LD2450 and the MR60BHA2 vital signs, seeing a small home office with a person walking around and sitting down, byte-exact to the real frames. It runs on a Wemos D1 mini (ESP8266) as well as on the ESP32-S3 boards, so the whole chain can be tested before the robot is built. The real UART readers, the screen and the audio come next.
 
 ## Build and flash
 
@@ -26,7 +26,8 @@ Then run `marvin-host run` on a computer on the same network (see [host/README.m
 |---|---|
 | `src/main.cpp` | Wi-Fi, host discovery (`HELLO` / `HOST_ACK`), streaming loop, status LED |
 | `src/protocol.h` | UDP envelope, mirrors `host/marvin_host/protocol.py` |
-| `src/sensors_sim.cpp` | Simulated lidar packets and LD2450 frames, same room as the host simulator |
+| `src/sensors_sim.cpp` | Simulated lidar packets, LD2450 frames and MR60BHA2 vital signs |
+| `src/scene_data.h` | The simulated room and person, generated from `host/marvin_host/scene.py` |
 
 ## Responsibilities (full firmware)
 

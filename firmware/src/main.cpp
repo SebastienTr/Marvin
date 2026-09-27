@@ -126,7 +126,9 @@ void setup() {
 #ifdef LED_BUILTIN
   pinMode(LED_BUILTIN, OUTPUT);
 #endif
-  sim::begin(MARVIN_SIM_LIDAR_MODEL);
+  uint32_t t0 = millis();
+  sim::begin(MARVIN_SIM_LIDAR_MODEL, [] { yield(); });
+  Serial.printf("simulated room ready in %lu ms\n", (unsigned long)(millis() - t0));
   connect_wifi();
   WiFi.macAddress(mac);
   udp.begin(proto::DEVICE_PORT);
@@ -168,6 +170,7 @@ void loop() {
   if ((int32_t)(ms - next_radar) >= 0) {
     sim::ld2450_frame(t, buf + proto::HEADER_SIZE);
     send(proto::LD2450, sim::LD2450_FRAME);
+    send(proto::VITALS, sim::vitals(t, buf + proto::HEADER_SIZE));
     next_radar = ms + 100;
   }
   delay(1);

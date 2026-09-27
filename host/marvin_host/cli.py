@@ -27,6 +27,7 @@ class ConsoleSink(Sink):
         self.scans = self.frames = 0
         self.points = 0
         self.nearest = None
+        self.vitals = None
         self.next = time.monotonic() + 1
 
     def on_scan(self, dev, t_us, points, intensities, speed_dps):
@@ -39,6 +40,9 @@ class ConsoleSink(Sink):
         self.nearest = min((t.y_mm for t in targets), default=None)
         self._tick(dev)
 
+    def on_vitals(self, dev, t_us, vitals):
+        self.vitals = vitals
+
     def on_log(self, dev, t_us, text):
         print(f"[{dev.hello.device_name}] {text}")
 
@@ -47,7 +51,9 @@ class ConsoleSink(Sink):
             return
         s = dev.stats
         near = f"{self.nearest / 1000:.2f} m" if self.nearest is not None else "-"
-        print(f"{dev.hello.device_name}: {self.scans} scans/s ({self.points} pts), {self.frames} radar/s, nearest {near}, "
+        v = self.vitals
+        vit = f", breath {v.breath_rate:.0f}/min, heart {v.heart_rate:.0f}/min" if v and v.valid else ""
+        print(f"{dev.hello.device_name}: {self.scans} scans/s ({self.points} pts), {self.frames} radar/s, nearest {near}{vit}, "
               f"lost {s.lost}, crc {s.crc_errors}")
         self.scans = self.frames = 0
         self.next = time.monotonic() + 1
@@ -68,6 +74,10 @@ class _Tee(Sink):
     def on_targets(self, *a):
         for s in self.sinks:
             s.on_targets(*a)
+
+    def on_vitals(self, *a):
+        for s in self.sinks:
+            s.on_vitals(*a)
 
     def on_log(self, *a):
         for s in self.sinks:

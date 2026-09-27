@@ -36,7 +36,10 @@ No configuration is needed on either side: the host does not need to know the ro
 | `0x02` | `LIDAR` | robot → host | Lidar model (u8), then N raw 47-byte LDROBOT packets, unchanged (10 per datagram by default) |
 | `0x03` | `LD2450` | robot → host | One raw 30-byte HLK-LD2450 target frame, unchanged |
 | `0x04` | `LOG` | robot → host | UTF-8 text |
+| `0x05` | `VITALS` | robot → host | MR60BHA2 readings: valid (u8), breath rate (u16, 0.01/min), heart rate (u16, 0.01/min), breathing wave (i16, ±32767), heartbeat wave (i16, ±32767), distance (u16, mm) |
 | `0x81` | `HOST_ACK` | host → robot | Host clock, microseconds (u64) |
+
+`VITALS` is sent by the simulators today. The real MR60BHA2 kit runs its own firmware on its ESP32-C6; a small bridge will re-emit its readings in this format so the host sees one stream.
 
 Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 Sense, 255 = host-side simulator. Lidar models: 1 = D500 (STL-19P), 2 = D800 (STL-27L). Flag bit 0 = the sensor data is simulated.
 
@@ -62,6 +65,7 @@ The host converts every point into the device frame (X right as seen facing the 
 | D500 lidar | 4 500 points/s | 38 | ≈ 18 kB/s |
 | D800 lidar | 21 600 points/s | 180 | ≈ 85 kB/s |
 | LD2450 | 10 frames/s | 10 | 0.5 kB/s |
+| Vitals | 10 messages/s | 10 | 0.3 kB/s |
 
 Even the D800 uses under 1 Mbit/s, well within an ESP8266's Wi-Fi.
 
