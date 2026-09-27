@@ -238,7 +238,10 @@ class RerunSink(Sink):
             rr.log("radar/mr60bha2", rr.Points2D([(0, -y)], radii=70, colors=[CORAL],
                                                  labels=[f"{v.heart_rate:.0f} bpm heart, {v.breath_rate:.0f}/min breath"]))
         else:
-            rr.log("radar/mr60bha2", rr.Clear(recursive=False))
+            # a Clear ends the series, so no line is drawn across the time without vital signs
+            for e in ("radar/mr60bha2", "vitals/rates/breath", "vitals/rates/heart",
+                      "vitals/waves/breath", "vitals/waves/heart"):
+                rr.log(e, rr.Clear(recursive=False))
 
     def on_log(self, dev, t_us, text) -> None:
         self._time(t_us)
