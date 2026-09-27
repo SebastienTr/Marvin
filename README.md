@@ -1,13 +1,13 @@
-# SuperLens
+# Marvin
 
 **A small desk companion that sees the room five ways at once, and knows how you are doing.**
 
-SuperLens is an open-source robot for your desk, called **Marvin**. A 360° lidar turns on top of its head, a camera and a face live behind a black glass window, and two mmWave radars (24 GHz and 60 GHz) hide behind the band around its body. It hears you through a microphone and answers through a speaker in its side.
+Marvin is an open-source robot for your desk. A 360° lidar turns on top of its head, a camera and a face live behind a black glass window, and two mmWave radars (24 GHz and 60 GHz) hide behind the band around its body. It hears you through a microphone and answers through a speaker in its side.
 
 It can **see** (camera, lidar), **feel** (who is in the room, how they move, and your breathing and heart rate when you sit in front of it), **hear** (microphone) and **speak** (speaker, expressive eyes). The heavy thinking runs on your computer, which fuses everything into one live model of the room.
 
 <p align="center">
-  <img src="docs/images/robot_threequarter.png" alt="Marvin, the SuperLens robot: an upright warm-grey body with an anthracite band, a slightly wider head with a black glass face showing two eyes, an orange knob on the side and a lidar turret on top" width="280">
+  <img src="docs/images/robot_threequarter.png" alt="The Marvin robot: an upright warm-grey body with an anthracite band, a slightly wider head with a black glass face showing two eyes, an orange knob on the side and a lidar turret on top" width="280">
   <img src="docs/images/robot_front.png" alt="Front view of the robot with a content expression on its face" width="300">
 </p>
 
@@ -17,7 +17,7 @@ It can **see** (camera, lidar), **feel** (who is in the room, how they move, and
 
 ## What we want to do
 
-Every sensor on its own is half-blind. A lidar draws perfect walls but cannot tell a person from a coat rack. A radar knows who moves and who breathes, but it cannot draw the room. A camera sees everything and understands nothing about distance. SuperLens puts them in one small body, on one clock, and gives the result a personality.
+Every sensor on its own is half-blind. A lidar draws perfect walls but cannot tell a person from a coat rack. A radar knows who moves and who breathes, but it cannot draw the room. A camera sees everything and understands nothing about distance. Marvin puts them in one small body, on one clock, and gives the result a personality.
 
 1. **Capture: the robot is dumb on purpose.** The ESP32-S3 reads every sensor, stamps each packet with the same clock and streams it over Wi-Fi. It draws its own eyes and plays its own sounds.
 2. **Fuse: the computer does the thinking.** It places every measurement in the same 3D frame (lidar geometry, radar people and speeds, vital signs, camera colour) and shows one live overlay in [Rerun](https://rerun.io).
@@ -53,7 +53,7 @@ Heart rate from a radar is consumer-grade: a few beats per minute of error, and 
 
 ## Design language
 
-The robot's name is **Marvin**. The name is also its wake word: "marvin" is one of the keywords in Google's open [Speech Commands](https://arxiv.org/abs/1804.03209) dataset, so a keyword-spotting model can be trained for it without recording a dataset first.
+The name is also the robot's wake word: "marvin" is one of the keywords in Google's open [Speech Commands](https://arxiv.org/abs/1804.03209) dataset, so a keyword-spotting model can be trained for it without recording a dataset first.
 
 
 Warm grey shell, anthracite band and face, a single orange knob (volume, and a tap to wake it). No stickers, no cartoon features: the personality comes from the eyes and from how it behaves.
@@ -62,7 +62,7 @@ Warm grey shell, anthracite band and face, a single orange knob (volume, and a t
 
 ```mermaid
 flowchart LR
-  subgraph Robot["Marvin (SuperLens robot)"]
+  subgraph Robot["Marvin robot"]
     LID["D800 lidar<br/>UART 921600"] --> ESP["XIAO ESP32S3 Sense<br/>camera + mic + Wi-Fi<br/>face + voice"]
     LD2450["HLK-LD2450<br/>UART 256000"] <--> ESP
     MR60["MR60BHA2 kit<br/>(own ESP32-C6)"]
@@ -88,7 +88,7 @@ Steps 2 and 4 describe the rev F parts as planned; the files arrive with the rev
 ## Repository layout
 
 ```
-superlens/
+marvin/
 ├── hardware/
 │   ├── blender/                  # assembled model + print layout, open in Blender
 │   ├── cad/                      # parametric OpenSCAD source (rev E now, rev F next)

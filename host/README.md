@@ -1,6 +1,6 @@
 # Host software (planned)
 
-The desktop side of SuperLens: the robot's big brain. **Not written yet.** This file is the spec it will follow.
+The desktop side of Marvin: the robot's big brain. **Not written yet.** This file is the spec it will follow.
 
 ## Responsibilities
 

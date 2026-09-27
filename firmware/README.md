@@ -1,6 +1,6 @@
 # Firmware (planned)
 
-ESP32-S3 firmware for the SuperLens robot's XIAO ESP32S3 Sense. **Not written yet.** This file is the spec it will follow.
+ESP32-S3 firmware for the Marvin robot's XIAO ESP32S3 Sense. **Not written yet.** This file is the spec it will follow.
 
 ## Responsibilities
 

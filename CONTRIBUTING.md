@@ -1,4 +1,4 @@
-# Contributing to SuperLens
+# Contributing to Marvin
 
 Thanks for your interest! The project is at an early stage, so every contribution counts, especially **build reports**.
 

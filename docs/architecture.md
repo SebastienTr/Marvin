@@ -6,7 +6,7 @@ The robot collects, timestamps and forwards data, and it performs: eyes on the s
 
 ```mermaid
 flowchart TB
-  subgraph Device["SuperLens robot"]
+  subgraph Device["Marvin robot"]
     direction LR
     LID["D800 lidar<br/>≈ 21 600 pts/s"] -->|UART0 921600| FW
     LD2450["LD2450<br/>3 targets @ 10 Hz"] -->|UART1 256000| FW

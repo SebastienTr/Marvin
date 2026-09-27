@@ -1,5 +1,5 @@
 // =====================================================================
-//  FANOU - the little lighthouse (SuperLens rev E)
+//  FANOU - the little lighthouse (Marvin rev E)
 //  A desk companion: the lidar is the lamp turning at the top, the
 //  screen is its face, the radars sleep behind the painted bands.
 //

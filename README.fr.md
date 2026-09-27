@@ -1,13 +1,13 @@
-# SuperLens (français)
+# Marvin (français)
 
 **Un petit compagnon de bureau qui voit la pièce de cinq façons à la fois, et qui sait comment tu vas.**
 
-SuperLens est un robot open source pour ton bureau, qui s'appelle **Marvin**. Un lidar 360° tourne sur sa tête, une caméra et un visage vivent derrière une vitre noire, et deux radars (24 GHz et 60 GHz) se cachent derrière la bande qui fait le tour de son corps. Il t'entend grâce à un micro et te répond par un haut-parleur sur le côté.
+Marvin est un robot open source pour ton bureau. Un lidar 360° tourne sur sa tête, une caméra et un visage vivent derrière une vitre noire, et deux radars (24 GHz et 60 GHz) se cachent derrière la bande qui fait le tour de son corps. Il t'entend grâce à un micro et te répond par un haut-parleur sur le côté.
 
 Il peut **voir** (caméra, lidar), **ressentir** (qui est dans la pièce, comment on bouge, et ta respiration et ton rythme cardiaque quand tu es assis devant), **écouter** (micro) et **parler** (haut-parleur, yeux expressifs). Le gros du calcul tourne sur ton ordinateur, qui fusionne tout en un modèle vivant de la pièce.
 
 <p align="center">
-  <img src="docs/images/robot_threequarter.png" alt="Le robot SuperLens : un corps gris chaud avec une bande anthracite, une tête un peu plus large avec un visage en vitre noire, une molette orange et un lidar sur le dessus" width="260">
+  <img src="docs/images/robot_threequarter.png" alt="Le robot Marvin : un corps gris chaud avec une bande anthracite, une tête un peu plus large avec un visage en vitre noire, une molette orange et un lidar sur le dessus" width="260">
   <img src="docs/images/robot_front.png" alt="Le robot de face, avec une expression contente" width="280">
 </p>
 

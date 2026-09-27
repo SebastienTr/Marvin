@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Renamed (2026-09-27): SuperLens is now Marvin
+- The project and the robot are now called Marvin. "marvin" is also its wake word, a keyword of Google's open Speech Commands dataset.
+- Older entries below keep the file names they had at the time (`superlens.scad`, `superlens.blend`).
+
 ### Rev F design (2026-09-25): the upright robot
 - New shape: a compact upright robot (about 88 × 80 mm, 15 cm tall with the lidar) replaces the lighthouse. Design studies in `docs/concepts/` (terminal, robot v1–v3, sight lines).
 - Sensors are tilted inside an upright shell: 60 GHz radar at 20° (aimed at a seated chest, 0.6–1 m), 24 GHz radar at 10°, camera at 20°, screen vertical.
