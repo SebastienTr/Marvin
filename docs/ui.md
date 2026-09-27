@@ -3,15 +3,26 @@
 
 Marvin comes with a small web app that runs on your computer, next to `marvin-host`. You open
 it in a browser, on the computer or on your phone. The Rerun viewer is the developer's view of
-the sensors. The app is the owner's view: how Marvin is doing, how long you have been sitting,
-and what your day and week look like.
+the sensors. The app is the owner's view and Marvin's control center: how Marvin is doing, how
+long you have been sitting, your day and week, the conversation with Marvin (the voice is turned
+on, set up and used from here), the robot's devices and sensors, and a log of what happened.
+The terminal stays quiet: it only prints the app's address, devices connecting and disconnecting,
+the voice turning on and off, and warnings.
 
 <p align="center">
   <img src="images/ui_phone.png" alt="Marvin's app on a phone: the live face, 'You've been at your desk for 38 min', breathing and heart rate, the break timer at 38 of 50 minutes, and the start of today's timeline" width="300">
 </p>
 
 <p align="center">
-  <img src="images/ui_desktop.png" alt="Marvin's app on a desktop browser: the face and break timer on the left; today's timeline, key numbers, the last 7 days and recent events on the right" width="800">
+  <img src="images/ui_desktop.png" alt="Marvin's app on a desktop browser: the face and break timer on the left, today's timeline and recent events in the middle, and the conversation with Marvin on the right, Marvin listening" width="800">
+</p>
+
+<p align="center">
+  <img src="images/ui_conversation.png" alt="The Talk panel on a phone: Marvin speaking, the conversation with what was heard, Marvin's answers with their latency, utterances Marvin did not answer and why, and the Talk now, Mute and Stop buttons above a text box" width="300">
+</p>
+
+<p align="center">
+  <img src="images/ui_robot.png" alt="The Robot panel: the robot and the vital signs radar with board, firmware, Wi-Fi signal, link and rates; a lidar top view of the room; the LD2450 radar's field of view with the person; breathing and heart rate charts" width="800">
 </p>
 
 ## Try it
@@ -24,21 +35,48 @@ marvin-host ui --demo --speed 60    # faster: a minute of sitting per second
 The demo keeps nothing: its history lives in a temporary folder that is deleted when you stop it
 (Ctrl-C).
 
+The demo also plays the robot and the vital signs radar for the Robot panel, and, when there is
+no language model to talk to, a scripted conversation (typed questions get canned answers from
+the simulated brain). With Ollama and the `voice` extra installed, the demo offers the real voice
+instead, off until you turn it on.
+
 With the real robot, the app starts with `marvin-host run` (turn it off with `--no-ui`).
 `marvin-host ui` runs the brain and the app without the Rerun viewer, which is lighter for
 everyday use.
+
+## Layout
+
+On a phone, a tab bar at the bottom: **Home**, **Talk**, **Robot**, **History**, **Settings**. On a
+computer the tabs move to the top; on a wide screen (1200 px and more) Home shows the conversation
+beside the face and the day, so the Talk tab disappears.
 
 ## What it shows
 
 | Part | Content |
 |---|---|
+| **Home** | |
 | Face | Marvin's eyes, live, drawn by the same code and from the same brain state as the robot's screen. |
 | Status | One sentence: "You've been at your desk for 42 min", "You're here, up and about", "Marvin is asleep. Nobody around.", "Marvin is offline". Breathing and heart rate appear under it only while the radar reads them reliably (you are seated and still). |
 | Break | How long you have been sitting, against the break reminder (50 minutes by default). The bar turns orange when it is time to stand up. Standing up resets it. |
-| Today | A timeline of the day: when you were around (dark), when you were seated (light), and break reminders (orange dots). Below it: time seated, sitting sessions, breaks, longest streak, when you arrived and last left, and your average breathing and heart rate. The arrows show earlier days. |
-| Last 7 days | Time seated per day. Tap a day to see its timeline. |
+| Today | A timeline of the day: when you were around (dark), when you were seated (light), and break reminders (orange dots). Below it: time seated, sitting sessions, breaks, longest streak, when you arrived and last left, and your average breathing and heart rate. |
 | Recent | What happened, in plain words: you came in, sat down, stood up after 47 minutes, break reminders. |
-| Settings | Break reminder interval, quiet hours, voice (for later), 12- or 24-hour clock. |
+| **Talk** | |
+| State | A small shape tells what Marvin is doing: still (voice off), breathing slowly (asleep, waiting for "Marvin"), an orange ring (listening), a turning arc (thinking), bars (speaking). With reduced motion, the shapes stay still. |
+| Conversation | What Marvin heard (typed questions say so), what it answered, what it said on its own (a break reminder, dashed), and, discreetly, what it heard but did not answer and why ("known hallucination", "own voice", "conversation closed"). Tap the time under an answer, like `1.3 s`, to see where the time went: end of speech, recognition, model, synthesis. |
+| Controls | **Voice** on and off without restarting `marvin-host` (it is remembered: the voice starts with `marvin-host` next time). **Talk now**: a listening window without saying "Marvin", as if you had just said the name. **Mute**: the microphone is ignored (reminders and typed questions still work). **Stop**: Marvin stops talking. The text box asks a question in writing; Marvin answers aloud and in the conversation. |
+| Problems | If the voice cannot start, the panel says why and how to fix it: the `voice` extra is not installed (`pip install -e ".[voice]"`), no microphone, Ollama not running (`ollama serve`), the model not pulled (`ollama pull qwen3:4b-instruct`). **Try again** after fixing it. |
+| **Robot** | |
+| Devices | Each device that said hello: the robot, the MR60BHA2 vital signs radar, the simulator. Board, firmware, address, uptime, Wi-Fi signal (bars and dBm), link (live, or how long since the last packet: a device that sends nothing for 6 s is offline), datagrams per second, loss, CRC errors, lidar scans per second and points, radar frames per second, and what it has (camera, speaker and microphone, simulated data). |
+| Lidar | A top view of the last scan (one range per degree), rings every metre, the robot in the middle facing up, and the person the LD2450 follows (orange) with their path over the last five seconds. |
+| Radar | The LD2450's field of view (±60°) with the people it tracks and their paths. |
+| Vital signs | Breathing and heart rate over the last five minutes, and their waves over the last fifteen seconds, while the MR60BHA2 can read them. |
+| Log | The brain's events, the devices' own messages (`LOG`, e.g. "firmware up"), devices connecting and disconnecting, the voice turning on and off, and the host's warnings and errors, newest first. Filter by Marvin, Devices, Voice or Warnings. |
+| **History** | |
+| Day | Any day's timeline and numbers; the arrows go back in time. |
+| Last 7 days | Time seated per day. Tap a day to see its timeline. |
+| **Settings** | |
+| Breaks and clock | Break reminder interval, quiet hours, 12- or 24-hour clock. |
+| Voice | Language model (the models installed in Ollama), speech recognition (MLX or faster-whisper, and the Whisper model), speech (say, Piper, espeak-ng, and the voice: installed Piper voices, a few to download, and the macOS voices), language (auto, French, English), waiting for "Marvin", the follow-up window, and spoken break reminders. Saved to `voice.json`, the file `marvin-host talk` reads too; **Apply** restarts the voice with them. See [voice.md](voice.md). |
 
 A few definitions:
 
@@ -67,6 +105,25 @@ the home screen; it opens full screen like an app.
 If the phone cannot reach it, check that both are on the same network (not a guest Wi-Fi) and
 that the computer's firewall lets Python accept incoming connections (macOS asks the first time).
 
+## The terminal
+
+`marvin-host run` prints only what you need to know; the app shows the rest:
+
+```
+Marvin's app: http://localhost:8765/
+  on a phone on the same Wi-Fi: http://192.168.1.23:8765/?token=q1w2e3r4t5y6u7i8
+listening for the robot on UDP 47100
++ marvin-a1b2c3 connected (Wemos D1 mini (ESP8266), firmware 0.4.1, simulated sensors) at 192.168.1.40
+voice: starting (qwen3:4b-instruct)...
+voice: on, say “Marvin, …”
+- marvin-a1b2c3 disconnected (nothing received for 6 s)
+```
+
+Warnings and errors are printed too (`warning: ...`). `-v` adds the brain's events, the devices'
+messages, the conversation (`you: ...`, `marvin: ...` with the time to the first word) and a
+sensor summary every second (`--stats`: the summary alone); `-vv` adds debug logs. With `--no-ui`
+the terminal is all there is, so it shows the events, the conversation and a summary every 5 s.
+
 ## Access key
 
 The app listens on your local network so your phone can reach it. Anyone on the same network
@@ -82,8 +139,10 @@ could reach it too, so other devices need the **access key**:
 - `--ui-port 8765` changes the port.
 
 The app also ignores requests addressed to unknown host names (a protection against web pages
-that try to reach services on your computer), and only accepts settings changes sent by the app
-itself.
+that try to reach services on your computer), and only accepts changes sent by the app itself
+(JSON from the same origin): settings, the voice's settings, turning the voice on and off,
+questions, Talk now, Mute and Stop. All of these need the access key from another device, like
+everything else. Anyone with the key can make Marvin listen and speak: keep it to yourself.
 
 The app has no HTTPS: the key and the data travel unencrypted on your local network, like most
 home devices. Do not expose the port to the internet.
@@ -95,7 +154,8 @@ home devices. Do not expose the port to the internet.
   `MARVIN_DATA_DIR` if you set it). The settings dialog shows where.
 - It holds Marvin's events (arrived, sat down, stood up...), one summary per minute (whether
   someone was there, and the average breathing and heart rate when they were measured), and
-  your settings. No images, no sound, no raw radar data.
+  your settings. No images, no sound, no raw radar data. The conversation and the log are kept
+  in memory only, for as long as `marvin-host` runs.
 - Nothing is sent anywhere. The app loads nothing from the internet (no fonts, no scripts, no
   analytics) and works without an internet connection.
 - To erase the history, stop `marvin-host` and delete the folder:
@@ -110,15 +170,18 @@ imaging library.
 
 | Module | Role |
 |---|---|
-| `server.py` | `UIServer(brain, host, port, store, token)`: HTTP API, live stream, face, settings |
+| `server.py` | `UIServer(brain, host, port, store, token, sink, voice)`: HTTP API, live streams, face, settings, log, voice control |
+| `sink.py` | `UISink`: a receiver sink that keeps the latest sensor data and counters (O(1) per frame); devices, rates, link state, sensor mini-views |
 | `store.py` | `EventStore`: the SQLite file (events, per-minute samples, settings) |
 | `stats.py` | Pure functions: intervals and daily statistics from events, the sentences |
-| `demo.py` | The simulated robot and past week for `--demo` |
+| `demo.py` | The simulated robot, devices, past week and scripted voice for `--demo` |
 | `static/` | The page |
 
 ```python
 from marvin_host import ui
-server = ui.UIServer(brain).start()      # brain: marvin_host.brain.Brain
+sink = ui.UISink().start()               # in the receiver's sink chain, after the brain
+voice = VoiceController(brain)           # marvin_host.voice.control, optional
+server = ui.UIServer(brain, sink=sink, voice=voice).start()      # brain: marvin_host.brain.Brain
 ...
 server.stop()
 ```
@@ -130,10 +193,20 @@ server.stop()
 | `GET /api/day?date=YYYY-MM-DD` | one day's stats and timeline (default: today) |
 | `GET /api/history?days=7` | time seated per day, oldest first |
 | `GET /api/events?since=ID&limit=50&quiet=1` | recent events, newest first, with a sentence each (`quiet` hides vital-sign events) |
-| `GET /api/stream` | Server-Sent Events: `state` (2 per second), `event` (as they happen), `today`, `settings` |
+| `GET /api/stream` | Server-Sent Events: `state` (2 per second), `event` (as they happen), `today`, `settings`, `voice` (state and status), `transcript` (one conversation entry), `log` (one log line), `devices` (once a second) |
 | `GET /face.png` | the face right now (240 × 280 PNG); `503` if it cannot be drawn |
 | `GET`, `POST /api/settings` | settings; POST a JSON object with the fields to change |
+| `GET /api/robot` | `{devices, scene}`: the devices, and the sensor mini-views (`lidar.ranges_cm`: 360 ranges, one per degree clockwise from the front; `targets` and `trail` in cm, right and forward; `vitals` with `rates` and `waves`) |
+| `GET /api/robot/stream` | Server-Sent Events for the Robot panel, opened only while it is on screen: `scene` 4 times a second (vital sign history once a second), `devices` once a second |
+| `GET /api/log?source=brain,device&limit=200&since=ID` | the log, newest first; sources `brain`, `device`, `host`, `voice` |
+| `GET /api/voice` | `{voice, settings, transcript}`: state (`off`, `starting`, `on`, `stopping`, `error` with `error` and `fix`, or `unavailable`), status, muted; the voice settings; the conversation |
+| `GET /api/voice/options` | what the voice settings offer: Ollama's models (or why Ollama cannot be reached), speech recognition backends and models, speech backends (installed or not), Piper and macOS voices |
+| `POST /api/voice/on`, `/off` | start or stop the voice (in the background: follow `voice` on the stream) |
+| `POST /api/voice/ask` | `{"text": "..."}`: a typed question (at most 500 characters), answered aloud; `409` while the voice is off |
+| `POST /api/voice/listen`, `/stop-speaking` | Talk now; Stop |
+| `POST /api/voice/mute` | `{"muted": true}` |
+| `POST /api/voice/settings` | the voice's settings to change (`llm_model`, `stt`, `stt_model`, `tts`, `tts_voice`, `language`, `wake`, `follow_up_s`, `reminders`, `welcome_back`); saved to `voice.json`, the voice restarts |
 
 Times are Unix seconds from the computer's clock; days are local calendar days. The break
 reminder setting also sets the brain's `still_long_s`, so the robot's own reminder follows it.
-Tests: `pytest tests/test_ui.py`.
+Tests: `pytest tests/test_ui.py tests/test_ui_control.py`.

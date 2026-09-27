@@ -11,6 +11,7 @@ SPDX-License-Identifier: MIT
 """
 from .cli import add_cli, add_run_arguments, attach, main
 from .server import UIServer
+from .sink import UISink
 from .store import EventStore, data_dir
 
-__all__ = ["UIServer", "EventStore", "data_dir", "add_cli", "add_run_arguments", "attach", "main"]
+__all__ = ["UIServer", "UISink", "EventStore", "data_dir", "add_cli", "add_run_arguments", "attach", "main"]

@@ -4,6 +4,14 @@ Standard library only: ``ThreadingHTTPServer`` for the pages and the JSON API, S
 for live updates, SQLite (store.py) for the history. The face is rendered here with face.py, from
 the same brain state as the robot's screen, and served as PNG (png.py, no imaging library).
 
+Optional parts, when marvin-host passes them in:
+- ``sink``: a ``UISink`` (sink.py) on the receiver: devices, link quality and the sensor mini-views
+  (Robot panel);
+- ``voice``: a ``VoiceController`` (voice/control.py): the conversation, and the voice turned on
+  and off and configured from the app (Talk panel).
+
+The Log panel gathers the brain's events, the devices' LOG messages and the host's warnings.
+
 Access (see docs/ui.md):
 - the server listens on the LAN (0.0.0.0) so a phone on the same Wi-Fi can open it;
 - requests from this computer (loopback) need nothing;
@@ -11,8 +19,8 @@ Access (see docs/ui.md):
   next to the database (``ui_token``). The URL printed at start-up carries it once; the server then
   sets a cookie and redirects to a clean URL;
 - the Host header must be an IP address or this machine's name when no key is checked (this
-  blocks DNS-rebinding pages in the browser from reading the loopback API), and POST requests must
-  be JSON from the same origin.
+  blocks DNS-rebinding pages in the browser from reading the loopback API), and every POST request
+  (settings, voice control, questions) must be JSON from the same origin.
 
 SPDX-License-Identifier: MIT
 """
@@ -52,13 +60,15 @@ STATIC_TYPES = {
 }
 COOKIE = "marvin_key"
 STATE_PERIOD_S = 0.5            # SSE state updates (2 Hz)
+SCENE_PERIOD_S = 0.25           # robot stream: sensor mini-views (4 Hz), vital sign history once a second
+LOG_SIZE = 500                  # entries kept in the Log panel
 TODAY_PERIOD_S = 5.0            # SSE day summary refresh, besides after every event
 FACE_MIN_PERIOD_S = 1 / 15      # the face is rendered at most this often, only when someone looks
 
 DEFAULT_SETTINGS = {
     "break_interval_min": 50,   # seated this long -> time for a break (drives BrainConfig.still_long_s)
     "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00"},
-    "voice": False,             # placeholder: the voice pipeline will read it
+    "voice": False,             # the voice starts with marvin-host (turned on and off in the app)
     "clock": "24h",             # "24h" or "12h"
 }
 
@@ -174,8 +184,11 @@ class UIServer:
 
     def __init__(self, brain, host: str = "0.0.0.0", port: int = 8765, store: EventStore | None = None,
                  token: str | None = "auto", clock: Callable[[], float] = time.time, face: bool = True,
-                 offline_after_s: float = 15.0, sample_period_s: float = 1.0, quiet: bool = False):
+                 offline_after_s: float = 15.0, sample_period_s: float = 1.0, quiet: bool = False,
+                 sink=None, voice=None):
         self.brain = brain
+        self.sink = sink
+        self.voice = voice
         self.host = host
         self.store = store if store is not None else EventStore()
         self.clock = clock
@@ -219,7 +232,16 @@ class UIServer:
         self._face_png: bytes | None = None
         self._face_t = -math.inf
         self._icon: bytes | None = None
+
+        self._log: deque[dict] = deque(maxlen=LOG_SIZE)
+        self._log_id = 0
+        self._log_lock = threading.Lock()
+        self._log_handler = _LogHandler(self)
         brain.add_listener(self._on_event)
+        if sink is not None:
+            sink.add_listener(self._on_sink)
+        if voice is not None:
+            voice.add_listener(self._on_voice)
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -229,6 +251,7 @@ class UIServer:
 
     def start(self) -> UIServer:
         self.started_at = self.clock()
+        logging.getLogger().addHandler(self._log_handler)
         self._record(stats.HOST_STARTED)
         for target, name in ((self._httpd.serve_forever, "ui-http"), (self._sampler, "ui-sampler")):
             th = threading.Thread(target=target, name=name, daemon=True)
@@ -243,6 +266,11 @@ class UIServer:
         if self._stop.is_set():
             return
         self._stop.set()
+        logging.getLogger().removeHandler(self._log_handler)
+        if self.sink is not None:
+            self.sink.remove_listener(self._on_sink)
+        if self.voice is not None:
+            self.voice.remove_listener(self._on_voice)
         self._httpd.shutdown()
         self._httpd.server_close()
         for th in self._threads:
@@ -343,7 +371,62 @@ class UIServer:
 
     def _publish_event(self, e: stats.StoredEvent) -> None:
         self._today = None
-        self.hub.publish("event", e.to_json())
+        j = e.to_json()
+        self.hub.publish("event", j)
+        system = e.kind in stats.SYSTEM_KINDS
+        self.add_log("host" if system else "brain", "attention" if e.kind == EventKind.STILL_LONG.value else "info",
+                     j["text"], e.ts, kind=e.kind)
+
+    # ---------------------------------------------------------------- log, devices, voice
+
+    def add_log(self, source: str, level: str, text: str, ts: float | None = None, **extra) -> dict:
+        """One line in the Log panel. ``source``: brain, device, host or voice; ``level``: info,
+        attention, warning or error."""
+        with self._log_lock:
+            self._log_id += 1
+            entry = {"id": self._log_id, "ts": self.clock() if ts is None else ts, "source": source,
+                     "level": level, "text": text, **extra}
+            self._log.append(entry)
+        self.hub.publish("log", entry)
+        return entry
+
+    def log_entries(self, limit: int = 200, sources: set[str] | None = None, since: int = 0) -> list[dict]:
+        """Newest first."""
+        with self._log_lock:
+            items = list(self._log)
+        out = [e for e in reversed(items) if e["id"] > since and (not sources or e["source"] in sources)]
+        return out[:limit]
+
+    def _on_sink(self, kind: str, info: dict) -> None:
+        if kind == "log":
+            self.add_log("device", "info", info["text"], self.clock(), device=info["device"])
+        elif kind in ("connected", "reconnected"):
+            what = f"{info['board']}, firmware {info['firmware']}" + (", simulated sensors" if info["simulated"] else "")
+            self.add_log("device", "info", f"{info['name']} {kind} ({what})", device=info["name"])
+            self.hub.publish("devices", self.sink.devices())
+        elif kind == "disconnected":
+            self.add_log("device", "warning", f"{info['name']} stopped sending (link lost)", device=info["name"])
+            self.hub.publish("devices", self.sink.devices())
+
+    def _on_voice(self, kind: str, payload: dict) -> None:
+        self.hub.publish(kind, payload)             # "voice" (state) or "transcript" (one entry)
+        if kind == "voice" and payload.get("state") == "error" and payload.get("error"):
+            self.add_log("voice", "warning", payload["error"] + (f". {payload['fix']}" if payload.get("fix") else ""))
+        elif kind == "transcript" and payload.get("kind") == "note":
+            self.add_log("voice", "info", payload["text"])
+
+    def voice_payload(self) -> dict:
+        v = self.voice
+        if v is None:
+            return {"voice": {"state": "unavailable", "status": "off", "muted": False,
+                              "error": "Voice control is not available here", "fix": "Start marvin-host run."},
+                    "settings": None, "transcript": []}
+        return {"voice": v.snapshot(), "settings": v.app_settings(), "transcript": v.recent()}
+
+    def robot_payload(self, history: bool = True) -> dict:
+        if self.sink is None:
+            return {"devices": [], "scene": None}
+        return {"devices": self.sink.devices(), "scene": self.sink.scene(history=history)}
 
     # ---------------------------------------------------------------- live state
 
@@ -439,6 +522,8 @@ class UIServer:
                     next_today = time.monotonic() + TODAY_PERIOD_S
                     if len(self.hub):
                         self.hub.publish("today", self.today())
+                if self.sink is not None and len(self.hub):
+                    self.hub.publish("devices", self.sink.devices())
             except Exception:
                 log.exception("ui sampler failed")
 
@@ -498,6 +583,24 @@ def _is_ip(host: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+class _LogHandler(logging.Handler):
+    """Host warnings and errors (any logger) into the Log panel."""
+
+    def __init__(self, app: UIServer):
+        super().__init__(logging.WARNING)
+        self.app = app
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            text = record.getMessage()
+            if record.exc_info and record.exc_info[1] is not None:
+                text += f" ({type(record.exc_info[1]).__name__}: {record.exc_info[1]})"
+            self.app.add_log("host", "error" if record.levelno >= logging.ERROR else "warning", text,
+                             logger=record.name)
+        except Exception:                           # noqa: BLE001 - logging must never fail
+            self.handleError(record)
 
 
 # ==================================================================================== HTTP
@@ -658,29 +761,89 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(self._settings_payload())
         if path == "/api/stream":
             return self._stream()
+        if path == "/api/robot":
+            return self._json(app.robot_payload())
+        if path == "/api/robot/stream":
+            return self._robot_stream()
+        if path == "/api/log":
+            limit = _query_int(query, "limit", 200, 1, LOG_SIZE)
+            since = _query_int(query, "since", 0, 0, 2**62)
+            sources = {x for x in query.get("source", [""])[0].split(",") if x} or None
+            return self._json({"entries": app.log_entries(limit, sources, since)})
+        if path == "/api/voice":
+            return self._json(app.voice_payload())
+        if path == "/api/voice/options":
+            if app.voice is None:
+                return self._error(HTTPStatus.NOT_FOUND, "voice control is not available")
+            from ..voice.control import options
+            return self._json(options(app.voice.settings()))
         self._error(HTTPStatus.NOT_FOUND, "not found")
+
+    POST_PATHS = ("/api/settings", "/api/voice/settings", "/api/voice/on", "/api/voice/off", "/api/voice/ask",
+                  "/api/voice/listen", "/api/voice/mute", "/api/voice/stop-speaking")
 
     def do_POST(self):
         url = urlsplit(self.path)
         why = self._access(parse_qs(url.query))
         if why != "ok":
             return self._denied(why, url.path)
-        if url.path != "/api/settings":
+        if url.path not in self.POST_PATHS:
             return self._error(HTTPStatus.NOT_FOUND, "not found")
         origin = self.headers.get("Origin")
         if origin and urlsplit(origin).netloc.lower() != (self.headers.get("Host") or "").lower():
             return self._error(HTTPStatus.FORBIDDEN, "cross-origin request")
         if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
             return self._error(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "send JSON")
-        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._error(HTTPStatus.BAD_REQUEST, "bad Content-Length")
         if n > 16384:
             return self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "too large")
         try:
-            update = json.loads(self.rfile.read(n) or b"{}")
-            self.app.update_settings(update)
+            body = json.loads(self.rfile.read(n) or b"{}")
+            if url.path == "/api/settings":
+                self.app.update_settings(body)
+                return self._json(self._settings_payload())
+            return self._voice_post(url.path, body)
         except (ValueError, json.JSONDecodeError) as e:
             return self._error(HTTPStatus.BAD_REQUEST, str(e))
-        self._json(self._settings_payload())
+
+    def _voice_post(self, path: str, body) -> None:
+        from ..voice.control import VoiceOff
+        app = self.app
+        v = app.voice
+        if v is None:
+            return self._error(HTTPStatus.NOT_FOUND, "voice control is not available")
+        if not isinstance(body, dict):
+            raise ValueError("send a JSON object")
+        try:
+            if path == "/api/voice/settings":
+                v.update_settings(body)
+            elif path == "/api/voice/on":
+                v.start()
+                if not app.settings.get("voice"):
+                    app.update_settings({"voice": True})      # and at the next start of marvin-host
+            elif path == "/api/voice/off":
+                v.stop()
+                if app.settings.get("voice"):
+                    app.update_settings({"voice": False})
+            elif path == "/api/voice/ask":
+                text = body.get("text")
+                if not isinstance(text, str):
+                    raise ValueError("text must be a string")
+                v.ask(text)
+            elif path == "/api/voice/listen":
+                v.listen_now()
+            elif path == "/api/voice/mute":
+                if not isinstance(body.get("muted"), bool):
+                    raise ValueError("muted must be true or false")
+                v.mute(body["muted"])
+            elif path == "/api/voice/stop-speaking":
+                v.stop_speaking()
+        except VoiceOff as e:
+            return self._error(HTTPStatus.CONFLICT, str(e))
+        self._json({"voice": v.snapshot(), "settings": v.app_settings()})
 
     def _settings_payload(self) -> dict:
         app = self.app
@@ -711,6 +874,10 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             self._sse("hello", {"settings": app.settings}, retry=3000)
             self._sse("today", app.today())
+            if app.voice is not None:
+                self._sse("voice", app.voice.snapshot())
+            if app.sink is not None:
+                self._sse("devices", app.sink.devices())
             next_state = 0.0
             while not app._stop.is_set():
                 now = time.monotonic()
@@ -728,6 +895,32 @@ class _Handler(BaseHTTPRequestHandler):
             pass
         finally:
             app.hub.unsubscribe(q)
+
+    def _robot_stream(self) -> None:
+        """The Robot panel's own stream, opened only while the panel is on screen: the sensor
+        mini-views 4 times a second (the vital sign history once a second) and the devices."""
+        app = self.app
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        try:
+            self._sse("hello", {}, retry=3000)
+            n = 0
+            while not app._stop.is_set():
+                full = n % 4 == 0
+                p = app.robot_payload(history=full)
+                self._sse("scene", p["scene"])
+                if full:
+                    self._sse("devices", p["devices"])
+                n += 1
+                if app._stop.wait(SCENE_PERIOD_S):
+                    break
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
 
     def _sse(self, kind: str, payload, retry: int | None = None) -> None:
         msg = (f"retry: {retry}\n" if retry else "") + f"event: {kind}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n"

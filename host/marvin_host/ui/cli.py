@@ -4,6 +4,7 @@
     marvin-host ui                   the app and the brain, listening for the robot (no Rerun)
     marvin-host ui --demo [--speed 10] [--open]
                                      the app with a simulated robot and a simulated past week
+                                     (and a scripted conversation when there is no language model)
 
 SPDX-License-Identifier: MIT
 """
@@ -17,6 +18,7 @@ import webbrowser
 from pathlib import Path
 
 from .server import UIServer
+from .sink import UISink
 from .store import EventStore
 
 DEFAULT_PORT = 8765
@@ -43,12 +45,15 @@ def _token(value: str | None) -> str | None:
     return None if value in (None, "", "off", "none") else value
 
 
-def attach(brain, args) -> UIServer | None:
-    """Starts the app for ``brain`` as the options ask; None with --no-ui or if the port is taken."""
+def attach(brain, args, sink: UISink | None = None, voice=None) -> UIServer | None:
+    """Starts the app for ``brain`` as the options ask; None with --no-ui or if the port is taken.
+    ``sink`` (a UISink on the receiver) feeds the Robot panel, ``voice`` (a VoiceController) the
+    Talk panel."""
     if not getattr(args, "ui", True):
         return None
     try:
-        return UIServer(brain, host=args.ui_host, port=args.ui_port, token=_token(args.ui_token)).start()
+        return UIServer(brain, host=args.ui_host, port=args.ui_port, token=_token(args.ui_token),
+                        sink=sink, voice=voice).start()
     except OSError as e:
         print(f"Marvin's app not started (port {args.ui_port}: {e.strerror or e}); try --ui-port")
         return None
@@ -67,6 +72,24 @@ def add_cli(subparsers) -> argparse.ArgumentParser:
     return p
 
 
+def demo_voice(brain, robot, folder: Path):
+    """The demo's voice: the real one if everything it needs is there (it then waits to be turned
+    on), else ``DemoVoice``'s scripted conversation, already on. Settings go to ``folder``."""
+    from ..voice import cli as voice_cli
+    from ..voice.control import VoiceController, VoiceUnavailable, preflight
+    from .demo import DemoVoice
+    path = folder / "voice.json"
+    voice_cli.save_settings(voice_cli.load_settings(), path)      # a copy: the demo keeps nothing
+    try:
+        preflight(voice_cli.load_settings(path))
+    except VoiceUnavailable as e:
+        ctl = VoiceController(brain, factory=lambda config, settings: DemoVoice(brain, robot.clock),
+                              check=None, path=path, clock=robot.clock)
+        ctl.start(wait=True)
+        return ctl, f"scripted voice ({e}; the real one needs it)"
+    return VoiceController(brain, path=path), "the real voice, off until you turn it on"
+
+
 def main(args) -> None:
     stop = threading.Event()
     cleanup = []
@@ -77,16 +100,21 @@ def main(args) -> None:
             tmp = Path(tempfile.mkdtemp(prefix="marvin-demo-"))
             cleanup.append(lambda: shutil.rmtree(tmp, ignore_errors=True))
             brain = Brain()
-            robot = DemoRobot(brain, speed=args.speed)
+            sink = UISink()
+            robot = DemoRobot(brain, speed=args.speed, sink=sink)
             store = EventStore(tmp / "marvin.db")
             cleanup.insert(0, store.close)
             seed_history(store, robot.clock())
+            voice, what = demo_voice(brain, robot, tmp)
+            cleanup.insert(0, voice.close)
             server = UIServer(brain, host=args.ui_host, port=args.ui_port, store=store,
-                              token=_token(args.ui_token), clock=robot.clock)
-            print(f"Demo: a simulated robot, time {args.speed:g}x faster, a simulated past week. "
+                              token=_token(args.ui_token), clock=robot.clock, sink=sink, voice=voice)
+            print(f"Demo: a simulated robot, time {args.speed:g}x faster, a simulated past week, {what}. "
                   "Nothing is kept.")
             server.start()
             cleanup.insert(0, server.stop)
+            sink.start()
+            cleanup.insert(0, sink.stop)
             robot.start()
             cleanup.insert(0, robot.stop)
             if args.open:
@@ -95,13 +123,22 @@ def main(args) -> None:
         else:
             from .. import protocol
             from ..brain import Brain
+            from ..cli import Tee
             from ..link import FaceLink
             from ..receiver import Receiver
+            from ..voice.control import VoiceController
             brain = Brain()
-            server = UIServer(brain, host=args.ui_host, port=args.ui_port, token=_token(args.ui_token)).start()
+            sink = UISink().start()
+            cleanup.insert(0, sink.stop)
+            voice = VoiceController(brain)
+            cleanup.insert(0, voice.close)
+            server = UIServer(brain, host=args.ui_host, port=args.ui_port, token=_token(args.ui_token),
+                              sink=sink, voice=voice).start()
             cleanup.insert(0, server.stop)
+            if server.settings.get("voice"):
+                voice.start()
             port = args.port or protocol.HOST_PORT
-            rx = Receiver(brain, port=port)
+            rx = Receiver(Tee(brain, sink), port=port)
             link = FaceLink(rx, brain).start()
             cleanup.insert(0, link.stop)
             print(f"listening for the robot on UDP {port}...")

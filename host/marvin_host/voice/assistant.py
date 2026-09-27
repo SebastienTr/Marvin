@@ -12,6 +12,12 @@ States: idle -> listening -> thinking -> speaking -> (listening for a follow-up)
   (half duplex does not hear anything while it speaks), and never while its own reply contains
   the name.
 
+Control from code (the app uses these): `ask(text)` (a typed question, answered aloud),
+`listen_now()` (a listening window without the wake word, like saying "Marvin." alone),
+`mute(True)` (the microphone is ignored until `mute(False)`), `stop_speaking()`. Several
+listeners can follow the conversation with `add_listener(fn)`: `fn(kind, data)` receives
+"status", "heard", "reply", "ignored" and "muted" (see `add_listener`).
+
 It never answers itself (echo.py): in half duplex (the default) the microphone is muted from the
 first word until `echo_tail_s` after the speaker has played the last one, and whatever is heard in
 any state is ignored if it repeats what Marvin said recently.
@@ -148,6 +154,8 @@ class VoiceAssistant:
         self.wake = wake or TranscriptWakeWord(stt)
         self.segmenter = Segmenter(vad or make_vad(c.vad), c.segmenter)
         self.on_status, self.on_transcript, self.on_reply = on_status, on_transcript, on_reply
+        self._listeners: list[Callable[[str, dict], None]] = []
+        self._muted = False
 
         self.echo = EchoFilter()
         self._cap_n = 0                                      # frames captured
@@ -242,8 +250,83 @@ class VoiceAssistant:
         return True
 
     def ask(self, text: str, language: str | None = None) -> None:
-        """Asks a question as if it had been heard."""
-        self._submit(text, language or self.language)
+        """Asks a question as if it had been heard (a typed question): stops what Marvin is saying,
+        then answers aloud. The language is `language`, else the forced one, else guessed from the
+        text, else the conversation's."""
+        text = text.strip()
+        if not text:
+            return
+        c = self.config
+        lang = language or c.language or guess_language(text, c.languages) or self.language
+        if self._pending > 0 or self._status in (Status.THINKING, Status.SPEAKING):
+            self._interrupt()
+        self._submit(text, lang, source="typed")
+
+    def listen_now(self) -> bool:
+        """Opens a listening window without the wake word, as if "Marvin." had been said alone: the
+        next utterance within `listen_window_s` is the question. Stops what Marvin is saying and
+        unmutes the microphone. False once closed."""
+        if self._closed.is_set():
+            return False
+        if self._pending > 0 or self._status in (Status.THINKING, Status.SPEAKING):
+            self._interrupt()
+        if self._muted:
+            self.mute(False)
+        self._listen(self._capture_time(), with_chime=self.config.chime)
+        return True
+
+    @property
+    def muted(self) -> bool:
+        return self._muted
+
+    def mute(self, muted: bool = True) -> None:
+        """Muted: everything the microphone captures is ignored (proactive speech, `ask` and
+        `say` still work). A listening window is closed."""
+        muted = bool(muted)
+        if muted == self._muted:
+            return
+        self._muted = muted
+        log.info("microphone %s", "muted" if muted else "unmuted")
+        if muted:
+            with self._lock:
+                self._listen_until = None
+                if self._status == Status.LISTENING:
+                    self._set_status(Status.IDLE)
+        self._emit("muted", muted=muted)
+
+    def stop_speaking(self) -> bool:
+        """Stops the answer being thought or spoken, and drops what was queued. True if there was
+        something to stop."""
+        with self._lock:
+            busy = self._pending > 0 or self._status in (Status.THINKING, Status.SPEAKING)
+        if busy:
+            self._interrupt()
+        return busy
+
+    def add_listener(self, fn: Callable[[str, dict], None]) -> None:
+        """Calls `fn(kind, data)` from the assistant's threads (keep it quick) for:
+
+        - "status": {"status": "idle" | "listening" | "thinking" | "speaking"}
+        - "heard": {"text", "language", "source": "voice" | "typed"}: a question Marvin answers
+        - "reply": {"text", "language", "latency": {stage: seconds}, "interrupted": bool,
+          "proactive": bool, "error": None | "llm_down" | "error", "hint": str}
+        - "ignored": {"text", "reason"}: an utterance Marvin chose not to answer
+        - "muted": {"muted": bool}
+
+        Every `data` also has "t", the wall-clock time (Unix seconds)."""
+        self._listeners.append(fn)
+
+    def remove_listener(self, fn: Callable[[str, dict], None]) -> None:
+        if fn in self._listeners:
+            self._listeners.remove(fn)
+
+    def _emit(self, kind: str, **data) -> None:
+        data["t"] = time.time()
+        for fn in list(self._listeners):
+            try:
+                fn(kind, data)
+            except Exception:
+                log.exception("voice listener failed")
 
     # ------------------------------------------------------------ capture
 
@@ -257,7 +340,7 @@ class VoiceAssistant:
             for frame in self.source.frames():
                 if self._closed.is_set():
                     break
-                gated = self.gate.closed()          # judged at the frame's start time
+                gated = self._muted or self.gate.closed()     # judged at the frame's start time
                 self._cap_n += 1
                 self._frames.put((frame, gated, time.monotonic()))
         except Exception:
@@ -303,6 +386,7 @@ class VoiceAssistant:
                 return
             self._status = s
         log.debug("voice: %s", s.value)
+        self._emit("status", status=s.value)
         if self.on_status:
             try:
                 self.on_status(s.value)
@@ -365,14 +449,18 @@ class VoiceAssistant:
     def _own_voice(self, text: str) -> bool:
         if self.echo.is_own_voice(text):
             log.info("heard: %s (ignored: own voice)", text)
+            self._emit("ignored", text=text, reason="own voice")
             return True
         return False
 
     def _ignored(self, text: str, reason: str, quiet: bool = False) -> None:
         (log.debug if quiet else log.info)("heard: %s (ignored: %s)", text or "…", reason)
+        if not quiet:
+            self._emit("ignored", text=text, reason=reason)
 
     def _close_conversation(self, text: str, reason: str) -> None:
         log.info("heard: %s (conversation closed: %s)", text, reason)
+        self._emit("ignored", text=text, reason=f"conversation closed: {reason}")
         with self._lock:
             self._listen_until = None
             if self._status == Status.LISTENING:
@@ -476,9 +564,10 @@ class VoiceAssistant:
             self.sink.play(chime())
 
     def _submit(self, text: str, language: str, tr: Transcript | None = None, t0: float | None = None,
-                lat: dict | None = None) -> None:
+                lat: dict | None = None, source: str = "voice") -> None:
         log.info("heard (%s): %s", language, text)
         self.last_latency = dict(lat or {})
+        self._emit("heard", text=text, language=language, source=source)
         if self.on_transcript:
             try:
                 self.on_transcript(text)
@@ -616,14 +705,18 @@ class VoiceAssistant:
 
     def _say(self, job: _Job) -> None:
         text = self._speak_all(job, lambda emit: emit(job.text), {})
-        if not job.cancel.is_set() and self.on_reply:
-            self.on_reply(text)
+        if not job.cancel.is_set():
+            self._emit("reply", text=text, language=job.language, latency={}, interrupted=False,
+                       proactive=True, error=None, hint="")
+            if self.on_reply:
+                self.on_reply(text)
 
     def _answer(self, job: _Job) -> None:
         messages, user = self._messages(job)
         lat = self.last_latency
         t = time.monotonic()
         failure: list[str] = []
+        hint: list[str] = []
 
         def produce(emit):
             splitter = SentenceSplitter()
@@ -641,6 +734,7 @@ class VoiceAssistant:
             except LLMUnavailable as e:
                 log.error("%s. %s", e, e.hint)
                 failure.append("llm_down")
+                hint.append(f"{e}. {e.hint}".strip())
                 emit(persona.phrase("llm_down", job.language))
             except Exception:
                 log.exception("the language model failed")
@@ -649,17 +743,25 @@ class VoiceAssistant:
 
         text = self._speak_all(job, produce, lat)
         lat["total"] = time.monotonic() - job.t_heard
+
+        def emit_reply(**kw):
+            self._emit("reply", text=text, language=job.language, latency=dict(lat), proactive=False,
+                       **{"interrupted": False, "error": None, "hint": "", **kw})
+
         if failure:
+            emit_reply(error=failure[0], hint=hint[0] if hint else "")
             return
         if job.cancel.is_set():
             log.info("interrupted")
             if text:
                 self._remember(user, text + " …")
+            emit_reply(interrupted=True)
             return
         log.info("said: %s", text)
         self._last_reply = text
         log.info("latency: %s", format_latency(lat))
         self._remember(user, text)
+        emit_reply()
         if self.on_reply:
             try:
                 self.on_reply(text)

@@ -3,7 +3,8 @@
     marvin-host talk [--lang fr] [--no-wake] [--wav FILE] ...    talk to Marvin with the computer's mic
     marvin-host run --voice [...]                                 the same, next to the robot's brain
 
-cli.py wires it in with `add_cli(sub)`, `add_run_arguments(run)` and `attach(brain, args)`.
+cli.py wires it in with `add_cli(sub)`, `add_run_arguments(run)` and `make_controller(brain, args)`
+(the voice that the app turns on and off; `attach(brain, args)` starts a bare assistant instead).
 Nothing heavy is imported until a command actually runs.
 
 SPDX-License-Identifier: MIT
@@ -30,6 +31,8 @@ SETTINGS = {
     "wake": ("wake", bool), "duplex": ("duplex", bool), "echo_tail_s": ("echo_tail_s", float),
     "follow_up_s": ("follow_up_s", float), "listen_window_s": ("listen_window_s", float),
     "speculative_stt": ("speculative_stt", bool), "end_silence_ms": (None, float),
+    # run --voice only: spoken break reminders and "welcome back" (voice/proactive.py)
+    "reminders": (None, bool), "welcome_back": (None, bool),
 }
 DEVICE_KEYS = ("input_device", "output_device")
 
@@ -193,6 +196,23 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
     _add_common(g, "voice-")
     g.add_argument("--voice-no-reminders", action="store_true", help="no break reminder after sitting long")
     g.add_argument("--voice-welcome", action="store_true", help="say 'welcome back' after a long absence")
+
+
+def overrides(args, prefix: str = "voice_") -> dict:
+    """The voice settings given on the `run` command line (they win over voice.json)."""
+    out = _flags(args, prefix)
+    if getattr(args, "voice_no_reminders", False):
+        out["reminders"] = False
+    if getattr(args, "voice_welcome", False):
+        out["welcome_back"] = True
+    return out
+
+
+def make_controller(brain, args, **kw):
+    """A `VoiceController` (voice/control.py) for `run`: the app turns the voice on and off, and
+    changes its settings. It does not start by itself: call `.start()`."""
+    from .control import VoiceController
+    return VoiceController(brain, overrides=overrides(args), **kw)
 
 
 def attach(brain, args):

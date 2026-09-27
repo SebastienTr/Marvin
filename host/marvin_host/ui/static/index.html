@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Marvin">
-<meta name="description" content="Marvin, your desk companion: presence, sitting time and breaks, from the robot on your desk.">
+<meta name="description" content="Marvin, your desk companion: presence, sitting time and breaks, conversation, and the robot's sensors.">
 <title>Marvin</title>
 <link rel="icon" type="image/png" href="/icon.png">
 <link rel="apple-touch-icon" href="/icon.png">
@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/app.js" defer></script>
 </head>
-<body>
+<body data-view="home">
 <svg width="0" height="0" class="sprite" aria-hidden="true" focusable="false">
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4.9a7.6 7.6 0 0 0-2.6-1.5L14 2.4h-4l-.4 2.5A7.6 7.6 0 0 0 7 6.4l-2.4-.9-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-.9a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.4.9 2-3.4z"/></symbol>
   <symbol id="i-prev" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
@@ -25,59 +25,204 @@
   <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.1a4.3 4.3 0 0 1 7.5 2.7C19.5 15.4 12 20 12 20z"/></symbol>
   <symbol id="i-breath" viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 1 0-3-3M3 13h15a3 3 0 1 1-3 3M3 17h7"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5L12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-talk" viewBox="0 0 24 24"><path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 16h-7l-4.5 3.5V16H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 5z"/></symbol>
+  <symbol id="i-robot" viewBox="0 0 24 24"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12.5" r="1.3"/><circle cx="14.5" cy="12.5" r="1.3"/><path d="M12 7V4M9 21h6"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M5 19V11M10 19V6M15 19v-5M20 19V9M3 19.5h18"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></symbol>
+  <symbol id="i-mic-off" viewBox="0 0 24 24"><path d="M15 10V6.5a3 3 0 0 0-5.6-1.5M9 9v2.5a3 3 0 0 0 4.7 2.5M5.5 11.5a6.5 6.5 0 0 0 10.4 5.2M18.5 11.5a6.4 6.4 0 0 1-.5 2.4M12 18v2.5M4 4l16 16"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.5v8M7 6.5a7 7 0 1 0 10 0"/></symbol>
 </svg>
 
-<a class="skip" href="#today">Skip to today</a>
+<a class="skip" href="#main">Skip to content</a>
 
 <header class="top">
   <div class="brand">
     <span class="wordmark">Marvin</span>
     <span class="conn" id="conn" role="status"><span class="dot" aria-hidden="true"></span><span id="conn-text">Connecting</span></span>
   </div>
-  <button class="icon-btn" id="open-settings" type="button" aria-haspopup="dialog" aria-controls="settings">
-    <svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg><span class="sr">Settings</span>
-  </button>
+  <nav class="tabs" aria-label="Sections">
+    <a href="#home" data-view="home"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Home</span></a>
+    <a href="#talk" data-view="talk" class="tab-talk"><svg class="icon" aria-hidden="true"><use href="#i-talk"/></svg><span>Talk</span><span class="tab-dot" id="tab-talk-dot" hidden></span></a>
+    <a href="#robot" data-view="robot"><svg class="icon" aria-hidden="true"><use href="#i-robot"/></svg><span>Robot</span></a>
+    <a href="#history" data-view="history"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span>History</span></a>
+    <a href="#settings" data-view="settings"><svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg><span>Settings</span></a>
+  </nav>
 </header>
 
-<main class="layout">
-  <div class="col-now">
-    <section class="hero" aria-labelledby="status">
-      <div class="screen">
-        <img id="face" src="/face.png" width="240" height="280" alt="Marvin's face">
+<main class="views" id="main" tabindex="-1">
+
+  <!-- ============================================================ home -->
+  <section class="view view-home" aria-label="Home">
+    <div class="col-now">
+      <div class="hero">
+        <div class="screen">
+          <img id="face" src="/face.png" width="240" height="280" alt="Marvin's face">
+        </div>
+        <h1 id="status" class="status" aria-live="polite">&nbsp;</h1>
+        <p id="vitals" class="vitals" hidden>
+          <span><svg class="icon sm" aria-hidden="true"><use href="#i-breath"/></svg><span id="breath"></span></span>
+          <span><svg class="icon sm" aria-hidden="true"><use href="#i-heart"/></svg><span id="heart"></span></span>
+        </p>
       </div>
-      <h1 id="status" class="status" aria-live="polite">&nbsp;</h1>
-      <p id="vitals" class="vitals" hidden>
-        <span><svg class="icon sm" aria-hidden="true"><use href="#i-breath"/></svg><span id="breath"></span></span>
-        <span><svg class="icon sm" aria-hidden="true"><use href="#i-heart"/></svg><span id="heart"></span></span>
-      </p>
+
+      <section class="card break" aria-labelledby="break-h" id="break">
+        <div class="row">
+          <h2 id="break-h">Break</h2>
+          <p class="break-value"><span id="break-now">0 min</span> <span class="muted" id="break-of">of 50 min</span></p>
+        </div>
+        <div class="bar" role="progressbar" id="break-bar" aria-labelledby="break-h" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="bar-fill" id="break-fill"></div>
+        </div>
+        <p class="hint" id="break-hint">The timer starts when you sit down.</p>
+      </section>
+    </div>
+
+    <div class="col-day">
+      <section class="card day" id="today" aria-labelledby="today-h" data-day="today">
+        <div class="row">
+          <h2 id="today-h">Today</h2>
+          <span class="muted day-label" data-f="label"></span>
+        </div>
+        <figure class="timeline">
+          <svg data-f="timeline" role="img" aria-labelledby="today-desc" preserveAspectRatio="none"></svg>
+          <figcaption id="today-desc" class="sr" data-f="desc"></figcaption>
+          <div class="axis" data-f="axis" aria-hidden="true"></div>
+        </figure>
+        <ul class="legend" aria-hidden="true">
+          <li><span class="swatch seated"></span>Seated</li>
+          <li><span class="swatch present"></span>Around</li>
+          <li><span class="swatch reminder"></span>Break reminder</li>
+        </ul>
+        <dl class="stats">
+          <div><dt>Time seated</dt><dd data-f="seated">–</dd></div>
+          <div><dt>Sessions</dt><dd data-f="sessions">–</dd></div>
+          <div><dt>Breaks</dt><dd data-f="breaks">–</dd></div>
+          <div><dt>Longest streak</dt><dd data-f="longest">–</dd></div>
+        </dl>
+        <p class="facts muted" data-f="facts"></p>
+      </section>
+
+      <section class="card" aria-labelledby="events-h">
+        <h2 id="events-h">Recent</h2>
+        <ol class="events" id="events"></ol>
+        <p class="empty muted" id="events-empty" hidden>Nothing yet today.</p>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============================================================ talk -->
+  <section class="view view-talk" aria-labelledby="talk-h">
+    <div class="card talk" id="talk-card">
+      <div class="talk-head">
+        <div class="orb" id="orb" data-status="off" aria-hidden="true">
+          <span class="orb-core"></span><span class="orb-ring"></span>
+          <span class="orb-bars"><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="talk-title">
+          <h2 id="talk-h">Conversation</h2>
+          <p class="voice-status" id="voice-status" role="status" aria-live="polite">Voice off</p>
+        </div>
+        <label class="switch compact"><span class="switch-label">Voice</span><input id="voice-switch" type="checkbox" role="switch"></label>
+      </div>
+
+      <div class="notice" id="voice-notice" hidden>
+        <p class="notice-title" id="voice-notice-title"></p>
+        <p class="notice-fix" id="voice-notice-fix" hidden><span class="muted">Fix:</span> <code id="voice-notice-code"></code></p>
+        <button type="button" class="btn small" id="voice-retry">Try again</button>
+      </div>
+
+      <ol class="transcript" id="transcript" aria-label="Conversation" aria-live="polite" aria-relevant="additions"></ol>
+      <div class="transcript-empty muted" id="transcript-empty">
+        <p>Say “Marvin, …” or type a question below.</p>
+      </div>
+
+      <div class="talk-controls" role="group" aria-label="Voice controls">
+        <button type="button" class="pill primary" id="listen-now"><svg class="icon sm" aria-hidden="true"><use href="#i-mic"/></svg><span>Talk now</span></button>
+        <button type="button" class="pill" id="mute" aria-pressed="false" aria-label="Mute the microphone"><svg class="icon sm" aria-hidden="true"><use href="#i-mic-off"/></svg><span id="mute-label">Mute</span></button>
+        <button type="button" class="pill" id="stop-speaking"><svg class="icon sm" aria-hidden="true"><use href="#i-stop"/></svg><span>Stop</span></button>
+      </div>
+      <form class="ask" id="ask-form" autocomplete="off">
+        <label for="ask-input" class="sr">Ask Marvin</label>
+        <input id="ask-input" type="text" maxlength="500" placeholder="Ask Marvin something" enterkeyhint="send">
+        <button type="submit" class="send" id="ask-send"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg><span class="sr">Ask</span></button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============================================================ robot -->
+  <section class="view view-robot" aria-labelledby="robot-h">
+    <h1 class="view-title" id="robot-h" tabindex="-1">Robot &amp; sensors</h1>
+    <section class="card" aria-labelledby="devices-h">
+      <div class="row"><h2 id="devices-h">Devices</h2><span class="muted small" id="devices-summary"></span></div>
+      <ul class="devices" id="devices"></ul>
+      <p class="empty muted" id="devices-empty">No device yet. The robot appears here as soon as it says hello.</p>
     </section>
 
-    <section class="card break" aria-labelledby="break-h" id="break">
-      <div class="row">
-        <h2 id="break-h">Break</h2>
-        <p class="break-value"><span id="break-now">0 min</span> <span class="muted" id="break-of">of 50 min</span></p>
-      </div>
-      <div class="bar" role="progressbar" id="break-bar" aria-labelledby="break-h" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-        <div class="bar-fill" id="break-fill"></div>
-      </div>
-      <p class="hint" id="break-hint">The timer starts when you sit down.</p>
-    </section>
-  </div>
+    <div class="sensor-grid">
+      <section class="card lidar-card" aria-labelledby="lidar-h">
+        <div class="row"><h2 id="lidar-h">Lidar</h2><span class="muted small" id="lidar-meta"></span></div>
+        <canvas class="scope" id="lidar" role="img" aria-label="Top view of the room from the lidar: the robot in the middle facing up, the last scan around it, and the person the radar follows."></canvas>
+        <p class="caption muted">Top view, the robot faces up. Rings every metre.</p>
+      </section>
+      <section class="card" aria-labelledby="radar-h">
+        <div class="row"><h2 id="radar-h">Radar</h2><span class="muted small" id="radar-meta"></span></div>
+        <canvas class="scope" id="radar" role="img" aria-label="The LD2450 radar's field of view with the people it tracks and their recent path."></canvas>
+        <p class="caption muted">LD2450 field of view, with the last five seconds of movement.</p>
+      </section>
 
-  <div class="col-day">
-    <section class="card" id="today" aria-labelledby="day-h" tabindex="-1">
+    <section class="card" aria-labelledby="vit-h">
+      <div class="row"><h2 id="vit-h">Vital signs</h2><span class="muted small" id="vit-meta"></span></div>
+      <div class="vit-grid">
+        <div class="vit">
+          <p class="vit-head"><svg class="icon sm" aria-hidden="true"><use href="#i-breath"/></svg><span>Breathing</span><span class="vit-val" id="vit-breath">–</span></p>
+          <canvas class="spark" id="spark-breath" role="img" aria-label="Breathing rate over the last five minutes"></canvas>
+          <canvas class="wave" id="wave-breath" aria-hidden="true"></canvas>
+        </div>
+        <div class="vit">
+          <p class="vit-head"><svg class="icon sm" aria-hidden="true"><use href="#i-heart"/></svg><span>Heart</span><span class="vit-val" id="vit-heart">–</span></p>
+          <canvas class="spark" id="spark-heart" role="img" aria-label="Heart rate over the last five minutes"></canvas>
+          <canvas class="wave" id="wave-heart" aria-hidden="true"></canvas>
+        </div>
+      </div>
+      <p class="caption muted" id="vit-caption">Readable while someone sits still in front of Marvin. Last five minutes; waves over the last fifteen seconds.</p>
+    </section>
+    </div>
+
+    <section class="card" aria-labelledby="log-h">
+      <div class="row wrap">
+        <h2 id="log-h">Log</h2>
+        <div class="chips" role="radiogroup" aria-label="Show">
+          <label><input type="radio" name="log-filter" value="" checked><span>All</span></label>
+          <label><input type="radio" name="log-filter" value="brain"><span>Marvin</span></label>
+          <label><input type="radio" name="log-filter" value="device"><span>Devices</span></label>
+          <label><input type="radio" name="log-filter" value="voice"><span>Voice</span></label>
+          <label><input type="radio" name="log-filter" value="warning"><span>Warnings</span></label>
+        </div>
+      </div>
+      <ol class="log" id="log"></ol>
+      <p class="empty muted" id="log-empty" hidden>Nothing to show.</p>
+    </section>
+  </section>
+
+  <!-- ============================================================ history -->
+  <section class="view view-history" aria-labelledby="history-h">
+    <h1 class="view-title" id="history-h" tabindex="-1">History</h1>
+    <section class="card day" id="day" aria-labelledby="day-h" data-day="browse">
       <div class="row">
-        <h2 id="day-h">Today</h2>
+        <h2 id="day-h" data-f="title">Today</h2>
         <div class="day-nav">
           <button class="icon-btn sm" type="button" id="day-prev"><svg class="icon" aria-hidden="true"><use href="#i-prev"/></svg><span class="sr">Previous day</span></button>
-          <span id="day-label" class="muted"></span>
+          <span class="muted day-label" data-f="label"></span>
           <button class="icon-btn sm" type="button" id="day-next"><svg class="icon" aria-hidden="true"><use href="#i-next"/></svg><span class="sr">Next day</span></button>
         </div>
       </div>
       <figure class="timeline">
-        <svg id="timeline" role="img" aria-labelledby="timeline-desc" preserveAspectRatio="none"></svg>
-        <figcaption id="timeline-desc" class="sr"></figcaption>
-        <div class="axis" id="axis" aria-hidden="true"></div>
+        <svg data-f="timeline" role="img" aria-labelledby="day-desc" preserveAspectRatio="none"></svg>
+        <figcaption id="day-desc" class="sr" data-f="desc"></figcaption>
+        <div class="axis" data-f="axis" aria-hidden="true"></div>
       </figure>
       <ul class="legend" aria-hidden="true">
         <li><span class="swatch seated"></span>Seated</li>
@@ -85,74 +230,113 @@
         <li><span class="swatch reminder"></span>Break reminder</li>
       </ul>
       <dl class="stats">
-        <div><dt>Time seated</dt><dd id="s-seated">–</dd></div>
-        <div><dt>Sessions</dt><dd id="s-sessions">–</dd></div>
-        <div><dt>Breaks</dt><dd id="s-breaks">–</dd></div>
-        <div><dt>Longest streak</dt><dd id="s-longest">–</dd></div>
+        <div><dt>Time seated</dt><dd data-f="seated">–</dd></div>
+        <div><dt>Sessions</dt><dd data-f="sessions">–</dd></div>
+        <div><dt>Breaks</dt><dd data-f="breaks">–</dd></div>
+        <div><dt>Longest streak</dt><dd data-f="longest">–</dd></div>
       </dl>
-      <p class="facts muted" id="facts"></p>
+      <p class="facts muted" data-f="facts"></p>
     </section>
 
     <section class="card" aria-labelledby="week-h">
       <div class="row"><h2 id="week-h">Last 7 days</h2><span class="muted" id="week-avg"></span></div>
       <ol class="week" id="week"></ol>
     </section>
+  </section>
 
-    <section class="card" aria-labelledby="events-h">
-      <h2 id="events-h">Recent</h2>
-      <ol class="events" id="events"></ol>
-      <p class="empty muted" id="events-empty" hidden>Nothing yet today.</p>
-    </section>
-  </div>
+  <!-- ============================================================ settings -->
+  <section class="view view-settings" aria-labelledby="settings-h">
+    <h1 class="view-title" id="settings-h" tabindex="-1">Settings</h1>
+    <div class="settings-grid">
+      <form class="card form" id="settings-form" aria-labelledby="general-h">
+        <h2 id="general-h">Breaks and clock</h2>
+        <div class="field">
+          <label for="f-break">Break reminder</label>
+          <div class="inline"><input id="f-break" name="break" type="number" min="1" max="240" step="1" inputmode="numeric" required><span class="muted">minutes seated</span></div>
+          <p class="hint">Marvin suggests a break after sitting this long.</p>
+        </div>
+        <fieldset class="field">
+          <legend>Quiet hours</legend>
+          <label class="switch"><input id="f-quiet" type="checkbox"><span>No reminders between</span></label>
+          <div class="inline range"><input id="f-quiet-start" type="time" aria-label="Quiet hours start"><span class="muted">and</span><input id="f-quiet-end" type="time" aria-label="Quiet hours end"></div>
+        </fieldset>
+        <fieldset class="field">
+          <legend>Clock</legend>
+          <div class="segmented">
+            <label><input type="radio" name="clock" value="24h"><span>24-hour</span></label>
+            <label><input type="radio" name="clock" value="12h"><span>12-hour</span></label>
+          </div>
+        </fieldset>
+        <p class="form-error" id="settings-error" role="alert" hidden></p>
+        <div class="actions"><span class="saved muted" id="settings-saved" role="status"></span><button type="submit" class="btn primary">Save</button></div>
+      </form>
+
+      <form class="card form" id="voice-form" aria-labelledby="voice-h">
+        <h2 id="voice-h">Voice</h2>
+        <p class="hint" id="voice-form-note">Saved to <code>voice.json</code>, so <code>marvin-host talk</code> uses the same. Applying restarts Marvin's voice.</p>
+        <fieldset class="fields" id="voice-fields">
+          <legend class="sr">Voice settings</legend>
+          <div class="field">
+            <label for="v-llm">Language model</label>
+            <input id="v-llm" type="text" list="v-llm-list" spellcheck="false" autocapitalize="off" required>
+            <datalist id="v-llm-list"></datalist>
+            <p class="hint" id="v-llm-hint">Models installed in Ollama.</p>
+          </div>
+          <div class="field two">
+            <div>
+              <label for="v-stt">Speech recognition</label>
+              <select id="v-stt"></select>
+            </div>
+            <div>
+              <label for="v-stt-model">Whisper model</label>
+              <select id="v-stt-model"></select>
+            </div>
+          </div>
+          <div class="field two">
+            <div>
+              <label for="v-tts">Speech</label>
+              <select id="v-tts"></select>
+            </div>
+            <div>
+              <label for="v-voice">Voice</label>
+              <select id="v-voice"></select>
+            </div>
+          </div>
+          <fieldset class="field">
+            <legend>Language</legend>
+            <div class="segmented">
+              <label><input type="radio" name="v-lang" value="auto"><span>Auto</span></label>
+              <label><input type="radio" name="v-lang" value="fr"><span>Français</span></label>
+              <label><input type="radio" name="v-lang" value="en"><span>English</span></label>
+            </div>
+            <p class="hint">Auto answers in the language you speak.</p>
+          </fieldset>
+          <div class="field">
+            <label class="switch"><input id="v-wake" type="checkbox"><span>Wait for “Marvin”</span></label>
+            <p class="hint">Off: Marvin answers everything it hears. Use a headset.</p>
+          </div>
+          <div class="field">
+            <label for="v-follow">Follow-up window</label>
+            <div class="inline"><input id="v-follow" type="number" min="0" max="30" step="0.5" inputmode="decimal"><span class="muted">seconds to ask again without the name</span></div>
+          </div>
+          <div class="field">
+            <label class="switch"><input id="v-reminders" type="checkbox"><span>Say when it's time for a break</span></label>
+          </div>
+        </fieldset>
+        <p class="form-error" id="voice-error" role="alert" hidden></p>
+        <div class="actions"><span class="saved muted" id="voice-saved" role="status"></span><button type="submit" class="btn primary">Apply</button></div>
+      </form>
+
+      <section class="card" aria-labelledby="data-h">
+        <h2 id="data-h">Your data</h2>
+        <p class="hint" id="about-data">History is stored on this computer only.</p>
+      </section>
+    </div>
+  </section>
 </main>
 
 <footer class="foot muted">
-  <p>Everything Marvin sees stays on this computer.</p>
+  <p>Everything Marvin sees and hears stays on this computer.</p>
 </footer>
-
-<dialog id="settings" aria-labelledby="settings-h">
-  <form id="settings-form" method="dialog">
-    <div class="row">
-      <h2 id="settings-h">Settings</h2>
-      <button class="icon-btn sm" type="button" id="close-settings"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg><span class="sr">Close</span></button>
-    </div>
-
-    <div class="field">
-      <label for="f-break">Break reminder</label>
-      <div class="inline"><input id="f-break" name="break" type="number" min="1" max="240" step="1" inputmode="numeric" required><span class="muted">minutes seated</span></div>
-      <p class="hint">Marvin suggests a break after sitting this long.</p>
-    </div>
-
-    <fieldset class="field">
-      <legend>Quiet hours</legend>
-      <label class="switch"><input id="f-quiet" type="checkbox"><span>No reminders between</span></label>
-      <div class="inline range"><input id="f-quiet-start" type="time" aria-label="Quiet hours start"><span class="muted">and</span><input id="f-quiet-end" type="time" aria-label="Quiet hours end"></div>
-    </fieldset>
-
-    <div class="field">
-      <label class="switch"><input id="f-voice" type="checkbox"><span>Voice</span></label>
-      <p class="hint">Marvin cannot speak yet. This will let him talk once his voice is ready.</p>
-    </div>
-
-    <fieldset class="field">
-      <legend>Clock</legend>
-      <div class="segmented">
-        <label><input type="radio" name="clock" value="24h"><span>24-hour</span></label>
-        <label><input type="radio" name="clock" value="12h"><span>12-hour</span></label>
-      </div>
-    </fieldset>
-
-    <div class="field about">
-      <h3>Your data</h3>
-      <p class="hint" id="about-data">History is stored on this computer only.</p>
-    </div>
-
-    <p class="form-error" id="settings-error" role="alert" hidden></p>
-    <div class="actions">
-      <button type="button" class="btn ghost" id="cancel-settings">Cancel</button>
-      <button type="submit" class="btn primary" id="save-settings">Save</button>
-    </div>
-  </form>
-</dialog>
 </body>
 </html>

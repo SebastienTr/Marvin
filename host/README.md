@@ -19,6 +19,7 @@ marvin-host demo                   # simulated robot + live 3D view, nothing els
 marvin-host ui --demo              # the app in the browser, with a simulated robot and week
 marvin-host run                    # wait for the real robot: viewer, app (http://localhost:8765) and face link
 marvin-host run --voice            # ... and talk to Marvin ("Marvin, ...") with the computer's mic
+marvin-host -v run                 # the same, printing events, the conversation and a summary per second
 marvin-host run --record day1.mvrec   # keep the raw sensor data; `marvin-host replay day1.mvrec` plays it back
 marvin-host talk                   # voice only, no robot needed
 marvin-host calibrate lidar --save # find the lidar's yaw (person moving in front of the robot)
@@ -60,7 +61,7 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `ldrobot.py` | LDROBOT 47-byte lidar packets, CRC-8 |
 | `ld2450.py` | HLK-LD2450 30-byte target frames |
 | `frames.py` | Sensor extrinsics, conversions to the device frame |
-| `receiver.py` | UDP server, handshake, loss counting, lidar revolution assembly |
+| `receiver.py` | UDP server, handshake, loss counting, lidar revolution assembly; sink calls run on their own thread, so a slow viewer or model never delays the robot's `HOST_ACK` (stale lidar scans are dropped first, see `Device.stats.shed` and `Receiver.timings()`) |
 | `viewer.py` | Rerun logging |
 | `scene.py` | The simulated room and person (single source of truth) |
 | `sim.py` | Simulated robot: lidar, LD2450 and MR60BHA2 frames from the scene |
@@ -72,7 +73,7 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `audio.py` | Audio contract (sources and sinks, 16 kHz mono) shared by the voice and the robot's audio |
 | `voice/` | Wake word, speech-to-text, local LLM and text-to-speech: talking to Marvin |
 | `robot_audio.py`, `camera_stream.py` | The robot's microphone and speaker over UDP, its MJPEG camera |
-| `ui/` | The app: a local web page with the face, today's timeline, breaks, history, settings |
+| `ui/` | The app: a local web page with the face, today's timeline, breaks, history, the conversation and voice controls, the robot's devices and sensors, the log, settings |
 | `record.py`, `calibration.py` | Recording and replaying raw sessions, sensor calibration |
 | `cli.py` | The `marvin-host` command |
 

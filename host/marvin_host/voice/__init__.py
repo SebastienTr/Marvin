@@ -9,7 +9,8 @@ Install with `pip install -e ".[voice]"`, see docs/voice.md.
 Modules: io (mic, speakers, WAV), vad (voice activity, utterances), wake (the wake word),
 stt (Whisper on GPU or CPU), echo (never answering itself), filters (what Whisper invents),
 llm (Ollama), persona (system prompt and context), text (sentence splitting),
-tts (say, Piper, espeak-ng), assistant (the orchestrator), proactive (reminders), cli.
+tts (say, Piper, espeak-ng), assistant (the orchestrator), proactive (reminders),
+control (on and off at run time, for the app), cli.
 
 Importing this package is cheap: heavy dependencies load when a component is created.
 
@@ -18,7 +19,8 @@ SPDX-License-Identifier: MIT
 from __future__ import annotations
 
 from .assistant import Status, VoiceAssistant, VoiceConfig
-from .cli import add_cli, add_run_arguments, attach
+from .cli import add_cli, add_run_arguments, attach, make_controller
+from .control import VoiceController, VoiceOff, VoiceUnavailable
 from .echo import EchoFilter, EchoGate
 from .io import ArraySource, MicSource, NullSink, SpeakerSink, WavSink, WavSource
 from .llm import LLM, FakeLLM, LLMUnavailable, OllamaLLM
@@ -30,7 +32,8 @@ from .wake import TranscriptWakeWord, WakeMatch, WakeWordDetector, match_wake_wo
 
 __all__ = [
     "VoiceAssistant", "VoiceConfig", "Status",
-    "add_cli", "add_run_arguments", "attach",
+    "add_cli", "add_run_arguments", "attach", "make_controller",
+    "VoiceController", "VoiceOff", "VoiceUnavailable",
     "MicSource", "SpeakerSink", "WavSource", "ArraySource", "NullSink", "WavSink",
     "LLM", "OllamaLLM", "FakeLLM", "LLMUnavailable",
     "ProactiveSpeaker", "ProactiveConfig",

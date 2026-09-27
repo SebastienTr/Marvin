@@ -50,6 +50,7 @@ marvin-host talk --tts piper
 marvin-host talk --wav question.wav --out answer.wav    # no microphone, no speakers
 marvin-host talk --list-devices             # then --input-device N / --output-device N
 marvin-host run --voice                     # with the robot: presence context and break reminders
+marvin-host run                             # ...or turn the voice on later, from the app
 ```
 
 How to talk to it:
@@ -69,6 +70,22 @@ once in a while: a break reminder on `still_long` (`--voice-no-reminders` to tur
 if you want it, a "welcome back" after 30 minutes away (`--voice-welcome`). At most one such
 sentence every 10 minutes, never during a conversation. `run` takes the same options as `talk`,
 prefixed with `--voice-` (`--voice-llm-model`, `--voice-duplex`...).
+
+### From the app
+
+With `marvin-host run` (or `marvin-host ui`), the app's **Talk** panel is the voice's control
+center ([ui.md](ui.md)): turn the voice on and off without restarting anything, see what Marvin
+heard and said (and what it chose not to answer, and why), how long each answer took, type a
+question, open a listening window without the name (**Talk now**), mute the microphone, stop
+Marvin mid-sentence. If something is missing (the `voice` extra, a microphone, Ollama, the model),
+the panel says what and how to fix it. Turning the voice on in the app is remembered: it starts
+with `marvin-host run` next time, as with `--voice`.
+
+**Settings > Voice** changes the model (from the list Ollama has), speech recognition, the speech
+backend and voice, the language, the wake word, the follow-up window and spoken break reminders.
+They are saved to `voice.json` below, so `marvin-host talk` uses them too, and the voice restarts
+with them. Options given on the `run` command line (`--voice-llm-model ...`) win over the file for
+that session, until the same setting is changed in the app.
 
 ### Your defaults
 
@@ -92,7 +109,8 @@ options given on that command line into it, keeping the rest. Example:
 ```
 
 Other keys: `ollama_host`, `tts_voice`, `default_language`, `wake`, `follow_up_s`,
-`listen_window_s`, `speculative_stt`.
+`listen_window_s`, `speculative_stt`, and for `run` only `reminders` (spoken break reminders,
+default true) and `welcome_back` (default false).
 
 ## It never answers itself
 
@@ -217,12 +235,18 @@ The code is in [`host/marvin_host/voice/`](../host/marvin_host/voice):
 | `filters.py` | What Whisper invents: speech evidence, decoder scores, known hallucinations, follow-up rules |
 | `assistant.py` | `VoiceAssistant`: the states (idle, listening, thinking, speaking), barge-in, memory, latency log |
 | `proactive.py` | `ProactiveSpeaker`: reminders from brain events |
+| `control.py` | `VoiceController`: the voice on and off at run time for the app, what is missing and how to fix it, settings, the conversation |
 | `cli.py` | `talk`, `run --voice`, the settings file |
 
 Everything goes through the audio contract in [`audio.py`](../host/marvin_host/audio.py) (16 kHz
 mono int16, 20 ms frames), so the robot's microphone and speaker plug in without changes.
 `VoiceAssistant` reports `on_status` ("idle", "listening", "thinking", "speaking"),
-`on_transcript` and `on_reply` for the face, the viewer and the UI; `say(text)` speaks from code.
+`on_transcript` and `on_reply`; `add_listener(fn)` lets several listeners follow everything as
+`fn(kind, data)`: "status", "heard" (with `source`: voice or typed), "reply" (with the latency of
+each stage, `interrupted`, `proactive`, and `error` / `hint` when the model is down), "ignored"
+(with the reason) and "muted". Control from code: `say(text)` (proactive speech), `ask(text)` (a
+typed question, answered aloud), `listen_now()` (a listening window without the wake word),
+`mute(True)`, `stop_speaking()`.
 
 ## Limits
 
