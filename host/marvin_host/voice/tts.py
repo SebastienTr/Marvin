@@ -178,7 +178,7 @@ BACKENDS = ("auto", "say", "piper", "espeak")
 
 
 def make_tts(kind: str = "auto", voice: str | None = None, language: str | None = None) -> TTS:
-    """'say', 'piper', 'espeak' or 'auto' (say on macOS, else Piper if installed, else espeak-ng).
+    """'say', 'piper', 'espeak' or 'auto' (Piper if installed, else say on macOS, else espeak-ng).
     `voice` overrides the voice for `language` (a `say` voice name, a Piper voice name or .onnx
     path, an espeak voice)."""
     voices = {language or "fr": voice} if voice else None
@@ -190,9 +190,13 @@ def make_tts(kind: str = "auto", voice: str | None = None, language: str | None 
         return EspeakTTS(voices)
     if kind != "auto":
         raise ValueError(f"unknown TTS backend {kind!r}, expected one of {BACKENDS}")
-    if sys.platform == "darwin" and shutil.which("say"):
-        return MacSayTTS(voices)
+    # Piper first when installed: it synthesises a sentence in a fraction of the time `say` needs
+    # to render one to a file (about 0.1-0.2 s against 0.9 s on an M3), which is most of the
+    # delay before Marvin's first word.
     try:
         return PiperTTS(voices)
     except RuntimeError:
-        return EspeakTTS(voices)
+        pass
+    if sys.platform == "darwin" and shutil.which("say"):
+        return MacSayTTS(voices)
+    return EspeakTTS(voices)
