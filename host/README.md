@@ -29,10 +29,19 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | View | Content |
 |---|---|
 | 3D | The robot, the lidar scan and the radar targets in the device frame; for a simulated robot, the room as faint wireframes. |
+| Face | The robot's eyes, exactly as the 240 × 280 screen will show them, driven by the brain. |
 | Camera | The camera image, with the lidar points and radar targets projected onto it. Simulated robots get a rendered image of the simulated room, at the robot's clock. |
 | Lidar, top view | One full revolution seen from above, the robot's front up, coloured by distance, with range rings every metre and the LD2450 target. |
 | mmWave radars | Radar-style view: the LD2450 sector (±60°, 6 m) with targets, speed and a 4-second trail; the MR60BHA2 vital-signs range and the person it measures. |
-| Time series | Presence (targets, distance, speed), vital signs (breath and heart rates, breathing and heartbeat waves), link statistics, log. |
+| Time series | Presence (targets, distance, speed, seated), vital signs (breath and heart rates, breathing and heartbeat waves), events, link statistics, log. |
+
+## The brain and the face
+
+[`brain.py`](marvin_host/brain.py) follows the nearest person seen by the LD2450 and turns the frames into events ([`events.py`](marvin_host/events.py)): `arrived`, `approached`, `sat_down`, `stood_up`, `still_long` (seated for 50 minutes: time for a break), `vitals_acquired`, `vitals_lost`, `left`. Every decision is debounced, and time comes only from the robot's clock, so a recording replays to the same events. `marvin-host run` prints them and shows them in the viewer.
+
+[`face.py`](marvin_host/face.py) is the reference implementation of the robot's eyes: it follows your head, blinks, reacts to the events and falls asleep when you leave. It only draws rounded rectangles, ellipses and triangles, so it ports 1:1 to the ESP32-S3; see [docs/face.md](../docs/face.md).
+
+<p align="center"><img src="../docs/images/face_expressions.png" alt="The face's expressions" width="480"></p>
 
 ## The simulated room
 
@@ -51,13 +60,16 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `scene.py` | The simulated room and person (single source of truth) |
 | `sim.py` | Simulated robot: lidar, LD2450 and MR60BHA2 frames from the scene |
 | `camera.py` | Camera model and the simulated camera (numpy ray casting) |
+| `events.py` | Events and presence state: the contract between the brain and what reacts to it |
+| `brain.py` | Presence, seating, stillness and vital-sign reliability, as debounced events |
+| `face.py`, `raster.py` | The robot's eyes (reference renderer and behaviour) and the tiny rasterizer they use |
 | `cli.py` | The `marvin-host` command |
 
 Tests: `pytest` (includes a real LD19 packet and the LD2450 datasheet example, and a full simulator → UDP → receiver run).
 
 ## Roadmap
 
-1. Camera stream and camera/lidar extrinsic calibration.
-2. Presence events: someone arrived, sat down, has been still for an hour, left.
-3. MR60BHA2 vital signs alongside the rest.
-4. The companion layer: face expressions, voice, a local LLM.
+1. Real sensors: UART readers in the firmware, the LD2450 speed sign and the MR60BHA2 bridge checked on hardware.
+2. The face on the robot's screen (port of `face.py`), driven by the host's events.
+3. Camera stream and camera/lidar extrinsic calibration.
+4. The companion layer: voice, a local LLM.

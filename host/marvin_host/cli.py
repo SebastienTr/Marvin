@@ -14,6 +14,7 @@ import threading
 import time
 
 from . import __version__, protocol
+from .brain import Brain
 from .receiver import Receiver, Sink
 from .sim import SimDevice
 
@@ -85,11 +86,14 @@ class _Tee(Sink):
 
 
 def _sink(args) -> Sink:
+    """brain -> console -> viewer: the brain goes first so its state is current for the others."""
+    brain = Brain()
+    brain.add_listener(lambda e: print(f"  * {e.kind.value}" + (f": {e.detail}" if e.detail else "")))
     console = ConsoleSink()
     if args.no_viewer and not args.save:
-        return console
+        return _Tee(brain, console)
     from . import viewer
-    return _Tee(console, viewer.start(save=args.save, spawn=not args.no_viewer))
+    return _Tee(brain, console, viewer.start(save=args.save, spawn=not args.no_viewer, brain=brain))
 
 
 def main(argv=None) -> None:

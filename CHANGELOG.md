@@ -9,6 +9,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - `host/`: the `marvin-host` Python package. Parsers for LDROBOT and HLK-LD2450 frames, sensor extrinsics, UDP receiver with loss counting, live Rerun view and recording, and a simulated robot (room, walking person, D500 or D800 lidar). `marvin-host demo` runs everything on one computer. Tests with `pytest`.
 - Simulated home office (`host/marvin_host/scene.py`, shared with the firmware through a generated header): walls, furniture at their real heights, and a person who comes in, sits at the desk and leaves. Simulated camera rendering the same room, and MR60BHA2 vital signs (`VITALS` message).
 - Viewer layout: 3D, camera with lidar and radar projected onto the image, lidar top view, radar-style mmWave view, presence and vital-sign time series.
+- The brain (`host/marvin_host/brain.py`): presence, seating, stillness and vital-sign reliability as debounced events (`events.py`), shown in the viewer. The simulated MR60BHA2 now drops out while the person fidgets, as the real one does.
+- The face (`host/marvin_host/face.py`, `docs/face.md`): the robot's eyes as a reference renderer for the 240 × 280 screen, following the person, blinking, reacting to events and falling asleep; shown live in the viewer.
 - `firmware/`: first PlatformIO firmware. Wi-Fi, host discovery and streaming with simulated sensors, on the Wemos D1 mini (ESP8266), the ESP32-S3 DevKitC and the XIAO ESP32S3.
 
 ### Rev F CAD, body half (2026-09-27)

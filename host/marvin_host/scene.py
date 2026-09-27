@@ -137,6 +137,21 @@ _PLAN = [
 WAYPOINTS = [(t, *to_device(x, y)) for t, x, y in _PLAN]
 LOOP = WAYPOINTS[-1][0]
 SIT = (27.0, 55.0)            # seated between these times (s): lower head, vital signs visible
+# While seated the person mostly sits still, with a few bursts of typing / shifting in the chair
+# (start, end in s, inside SIT). During these the MR60BHA2 loses the vital signs, as the real one
+# does as soon as the person moves, and the person sways more so the LD2450 sees the movement.
+FIDGETS = [(34.0, 36.5), (42.0, 45.0), (49.0, 51.0)]
+FIDGET_SWAY = (60.0, 60.0)    # extra sway amplitude (device X, Y), mm, peaking mid-window
+FIDGET_HZ = (1.0, 0.7)        # sway frequency (X, Y)
+
+
+def fidget_at(t: float) -> tuple[float, float]:
+    """(envelope 0..1, its time derivative 1/s) of the fidget sway at time t (s, in the loop)."""
+    for t0, t1 in FIDGETS:
+        if t0 < t < t1:
+            k = math.pi / (t1 - t0)
+            return math.sin(k * (t - t0)), k * math.cos(k * (t - t0))
+    return 0.0, 0.0
 
 
 @dataclass
@@ -162,6 +177,16 @@ def person_at(t: float) -> Person:
         w = 2 * math.pi * 0.2
         x += 25 * math.sin(w * t)
         vx += 25 * w * math.cos(w * t)
+        env, denv = fidget_at(t)
+        if env > 0:                                    # typing / shifting: larger, faster sway
+            for axis, (amp, hz) in enumerate(zip(FIDGET_SWAY, FIDGET_HZ)):
+                w = 2 * math.pi * hz
+                d = amp * env * math.sin(w * t)
+                v = amp * (denv * math.sin(w * t) + env * w * math.cos(w * t))
+                if axis == 0:
+                    x, vx = x + d, vx + v
+                else:
+                    y, vy = y + d, vy + v
     return Person(x, y, vx, vy, seated, 550.0 if seated else 1000.0)
 
 
@@ -209,14 +234,16 @@ MR60_POS = (0.0, -28.4, 41.7)
 def vitals_at(t: float) -> tuple[bool, float, float, float, float, float]:
     """(valid, breath rate bpm, heart rate bpm, breath wave, heart wave, distance mm).
 
-    Vital signs are only measurable on a still, seated person in front of the radar.
+    Vital signs are only measurable on a still, seated person in front of the radar: none while
+    walking, and none during the fidget windows (the real sensor drops out as soon as the person moves).
     """
     p = person_at(t)
     dist = math.hypot(p.x - MR60_POS[0], p.y - MR60_POS[1])
-    if not p.seated:
+    if not p.seated or fidget_at(t % LOOP)[0] > 0:
         return False, 0.0, 0.0, 0.0, 0.0, dist
-    br = 14.0 + 1.5 * math.sin(2 * math.pi * t / 23.0)
-    hr = 68.0 + 4.0 * math.sin(2 * math.pi * t / 17.0)
+    # slow drifts plus a little beat-to-beat jitter
+    br = 14.0 + 1.5 * math.sin(2 * math.pi * t / 23.0) + 0.3 * math.sin(2 * math.pi * t / 3.7)
+    hr = 68.0 + 4.0 * math.sin(2 * math.pi * t / 17.0) + 1.2 * math.sin(2 * math.pi * t / 2.3)
     # phases integrated from the mean rates keep the waves smooth
     bw = math.sin(2 * math.pi * 14.0 / 60.0 * t)
     hw = math.sin(2 * math.pi * 68.0 / 60.0 * t)
@@ -251,6 +278,19 @@ def c_header() -> str:
         f"constexpr float LOOP = {LOOP:.1f}f;",
         f"constexpr float SIT_START = {SIT[0]:.1f}f;",
         f"constexpr float SIT_END = {SIT[1]:.1f}f;",
+        "",
+        "struct Window { float start, end; };",
+        f"constexpr int FIDGET_COUNT = {len(FIDGETS)};",
+        "const Window FIDGETS[FIDGET_COUNT] = {",
+    ]
+    out += [f"    {{{a:.1f}f, {b:.1f}f}}," for a, b in FIDGETS]
+    out += [
+        "};",
+        f"constexpr float FIDGET_SWAY_X = {FIDGET_SWAY[0]:.1f}f;",
+        f"constexpr float FIDGET_SWAY_Y = {FIDGET_SWAY[1]:.1f}f;",
+        f"constexpr float FIDGET_HZ_X = {FIDGET_HZ[0]:.2f}f;",
+        f"constexpr float FIDGET_HZ_Y = {FIDGET_HZ[1]:.2f}f;",
+        "",
         f"constexpr float PERSON_RADIUS = {PERSON_RADIUS:.1f}f;",
         f"constexpr float MR60_X = {MR60_POS[0]:.1f}f;",
         f"constexpr float MR60_Y = {MR60_POS[1]:.1f}f;",

@@ -112,6 +112,19 @@ const Waypoint WAYPOINTS[WAYPOINT_COUNT] = {
 constexpr float LOOP = 70.0f;
 constexpr float SIT_START = 27.0f;
 constexpr float SIT_END = 55.0f;
+
+struct Window { float start, end; };
+constexpr int FIDGET_COUNT = 3;
+const Window FIDGETS[FIDGET_COUNT] = {
+    {34.0f, 36.5f},
+    {42.0f, 45.0f},
+    {49.0f, 51.0f},
+};
+constexpr float FIDGET_SWAY_X = 60.0f;
+constexpr float FIDGET_SWAY_Y = 60.0f;
+constexpr float FIDGET_HZ_X = 1.00f;
+constexpr float FIDGET_HZ_Y = 0.70f;
+
 constexpr float PERSON_RADIUS = 180.0f;
 constexpr float MR60_X = 0.0f;
 constexpr float MR60_Y = -28.4f;

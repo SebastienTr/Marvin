@@ -41,6 +41,19 @@ float ray_room(float th) {
 
 struct Person { float x, y, vx, vy; bool seated; };
 
+// Fidget sway envelope (0..1) and its derivative at time t in the loop: same as scene.fidget_at().
+float fidget(float t, float *denv) {
+  for (const scene::Window &f : scene::FIDGETS) {
+    if (t > f.start && t < f.end) {
+      float k = (float)M_PI / (f.end - f.start);
+      if (denv) *denv = k * cosf(k * (t - f.start));
+      return sinf(k * (t - f.start));
+    }
+  }
+  if (denv) *denv = 0;
+  return 0;
+}
+
 Person person(float t) {             // same as scene.person_at()
   t = fmodf(t, scene::LOOP);
   Person p{0, 0, 0, 0, false};
@@ -60,6 +73,14 @@ Person person(float t) {             // same as scene.person_at()
     float w = 2 * (float)M_PI * 0.2f;
     p.x += 25 * sinf(w * t);
     p.vx += 25 * w * cosf(w * t);
+    float denv, env = fidget(t, &denv);
+    if (env > 0) {                   // typing / shifting: larger, faster sway
+      float wx = 2 * (float)M_PI * scene::FIDGET_HZ_X, wy = 2 * (float)M_PI * scene::FIDGET_HZ_Y;
+      p.x += scene::FIDGET_SWAY_X * env * sinf(wx * t);
+      p.vx += scene::FIDGET_SWAY_X * (denv * sinf(wx * t) + env * wx * cosf(wx * t));
+      p.y += scene::FIDGET_SWAY_Y * env * sinf(wy * t);
+      p.vy += scene::FIDGET_SWAY_Y * (denv * sinf(wy * t) + env * wy * cosf(wy * t));
+    }
   }
   return p;
 }
@@ -153,15 +174,17 @@ void ld2450_frame(float t, uint8_t *out) {
 size_t vitals(float t, uint8_t *out) {
   Person p = person(t);
   float dist = sqrtf((p.x - scene::MR60_X) * (p.x - scene::MR60_X) + (p.y - scene::MR60_Y) * (p.y - scene::MR60_Y));
+  // same as scene.vitals_at(): nothing while walking or fidgeting
+  bool valid = p.seated && fidget(fmodf(t, scene::LOOP), nullptr) <= 0;
   float br = 0, hr = 0, bw = 0, hw = 0;
-  if (p.seated) {
-    br = 14.0f + 1.5f * sinf(2 * (float)M_PI * t / 23.0f);
-    hr = 68.0f + 4.0f * sinf(2 * (float)M_PI * t / 17.0f);
+  if (valid) {
+    br = 14.0f + 1.5f * sinf(2 * (float)M_PI * t / 23.0f) + 0.3f * sinf(2 * (float)M_PI * t / 3.7f);
+    hr = 68.0f + 4.0f * sinf(2 * (float)M_PI * t / 17.0f) + 1.2f * sinf(2 * (float)M_PI * t / 2.3f);
     bw = sinf(2 * (float)M_PI * 14.0f / 60.0f * t);
     hw = sinf(2 * (float)M_PI * 68.0f / 60.0f * t);
   }
   uint8_t *q = out;
-  *q++ = p.seated ? 1 : 0;
+  *q++ = valid ? 1 : 0;
   uint16_t b = (uint16_t)lroundf(br * 100), h = (uint16_t)lroundf(hr * 100);
   int16_t bws = (int16_t)lroundf(bw * 32767), hws = (int16_t)lroundf(hw * 32767);
   uint16_t dmm = dist > 65535 ? 65535 : (uint16_t)dist;

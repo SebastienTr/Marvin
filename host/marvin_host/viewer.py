@@ -1,8 +1,8 @@
 """Live view in Rerun.
 
 Layout (sent as a blueprint):
-    3D scene | camera (with lidar points and radar targets projected onto it)
-    time series (presence, vital signs, link) | lidar top view | radar view
+    3D scene | camera (with lidar points and radar targets projected onto it) | the robot's face
+    time series (presence, vital signs, link, log, events) | lidar top view | radar view
 
 Entity layout: world/... in the device frame (mm, 3D); lidar_map/... and radar/... are 2D views
 seen from above with the robot's front pointing up (screen x = -X, screen y = Y).
@@ -21,7 +21,10 @@ import rerun as rr
 import rerun.blueprint as rrb
 
 from . import frames, protocol, scene
+from .brain import Brain
 from .camera import CAMERA, SimCamera
+from .events import Event
+from .face import Face
 from .receiver import Device, Sink
 
 GREY = (190, 185, 175)
@@ -61,7 +64,8 @@ def blueprint() -> rrb.Blueprint:
             rrb.Horizontal(
                 rrb.Spatial3DView(origin="/world", name="3D"),
                 rrb.Spatial2DView(origin="/world/camera", contents=["$origin/**", "/world/lidar/**", "/world/ld2450/**"], name="Camera"),
-                column_shares=[1, 1],
+                rrb.Spatial2DView(origin="/face", name="Face"),
+                column_shares=[4, 4, 2],
             ),
             rrb.Horizontal(
                 rrb.Vertical(
@@ -71,7 +75,8 @@ def blueprint() -> rrb.Blueprint:
                                        time_ranges=rrb.VisibleTimeRange(
                                            "device_time", start=rrb.TimeRangeBoundary.cursor_relative(seconds=-10.0),
                                            end=rrb.TimeRangeBoundary.cursor_relative())),
-                    rrb.Tabs(rrb.TimeSeriesView(origin="/stats", name="Link", time_ranges=recent),
+                    rrb.Tabs(rrb.TextLogView(origin="/events", name="Events"),
+                             rrb.TimeSeriesView(origin="/stats", name="Link", time_ranges=recent),
                              rrb.TextLogView(origin="/log", name="Log")),
                 ),
                 rrb.Spatial2DView(origin="/lidar_map", name="Lidar, top view",
@@ -147,13 +152,61 @@ def log_scene() -> None:
 
 
 class RerunSink(Sink):
-    def __init__(self, camera_fps: float = 5.0):
+    """Logs everything to Rerun. With a brain, also logs its events and state and renders the face.
+
+    Put the brain before this sink in the chain, so its state is current when a frame is logged.
+    """
+
+    def __init__(self, brain: Brain | None = None, camera_fps: float = 5.0, face_fps: float = 20.0):
         self.trail: deque = deque()          # (t_s, screen x, screen y)
         self.sim_camera: SimCamera | None = None
         self.camera_fps = camera_fps
         self.latest_t_us: int | None = None
+        self._latest_mono = time.monotonic()
         self.scene_logged = False
         self._stop = threading.Event()
+        self.brain = brain
+        self.face: Face | None = None
+        if brain is not None:
+            self.face = Face()
+            brain.add_listener(self._on_event)
+            threading.Thread(target=self._face_loop, args=(face_fps,), daemon=True).start()
+
+    def _device_time_now(self) -> int | None:
+        """Device clock estimated from the last frame, for streams rendered between frames."""
+        if self.latest_t_us is None:
+            return None
+        return self.latest_t_us + int(min(time.monotonic() - self._latest_mono, 1.0) * 1e6)
+
+    def _seen(self, t_us: int) -> None:
+        self.latest_t_us = t_us
+        self._latest_mono = time.monotonic()
+
+    def _on_event(self, event: Event) -> None:
+        self._time(event.t_us)
+        rr.log("events", rr.TextLog(f"{event.kind.value}: {event.detail}" if event.detail else event.kind.value))
+        if self.face is not None:
+            self.face.on_event(event)
+
+    def _face_loop(self, fps: float) -> None:
+        """Animates the face on the host clock (it must never jump back); logs it on the device clock."""
+        period = 1.0 / fps
+        t0 = time.monotonic()
+        while not self._stop.is_set():
+            start = time.monotonic()
+            frame = self.face.update(self.brain.state, start - t0)
+            t_us = self._device_time_now()
+            if t_us is not None:
+                self._time(t_us)
+                rr.log("face", rr.Image(frame))
+            time.sleep(max(0.0, period - (time.monotonic() - start)))
+
+    def _log_state(self) -> None:
+        if self.brain is None:
+            return
+        st = self.brain.state
+        rr.log("presence/seated", rr.Scalars(1.0 if st.seated else 0.0))
+        rr.log("presence/still_s", rr.Scalars(st.still_s))
 
     @staticmethod
     def _time(t_us: int) -> None:
@@ -174,7 +227,7 @@ class RerunSink(Sink):
         period = 1.0 / self.camera_fps
         while not self._stop.is_set():
             start = time.monotonic()
-            t_us = self.latest_t_us
+            t_us = self._device_time_now()
             if t_us is not None and self.sim_camera is not None:
                 img = self.sim_camera.render(t_us / 1e6)
                 self._time(t_us)
@@ -185,7 +238,7 @@ class RerunSink(Sink):
         self._stop.set()
 
     def on_scan(self, dev, t_us, points, intensities, speed_dps) -> None:
-        self.latest_t_us = t_us
+        self._seen(t_us)
         self._time(t_us)
         if len(points):
             dist = np.hypot(points[:, 0], points[:, 1])
@@ -199,8 +252,9 @@ class RerunSink(Sink):
         rr.log("stats/crc_errors", rr.Scalars(s.crc_errors))
 
     def on_targets(self, dev, t_us, targets, points) -> None:
-        self.latest_t_us = t_us
+        self._seen(t_us)
         self._time(t_us)
+        self._log_state()
         now = t_us / 1e6
         while self.trail and now - self.trail[0][0] > TRAIL_S or (self.trail and self.trail[0][0] > now):
             self.trail.popleft()
@@ -248,10 +302,10 @@ class RerunSink(Sink):
         rr.log("log", rr.TextLog(f"{dev.hello.device_name}: {text}"))
 
 
-def start(save: str | None = None, spawn: bool = True) -> RerunSink:
+def start(save: str | None = None, spawn: bool = True, brain: Brain | None = None) -> RerunSink:
     rr.init("marvin", spawn=spawn and not save)
     if save:
         rr.save(save)
     rr.send_blueprint(blueprint())
     log_static()
-    return RerunSink()
+    return RerunSink(brain=brain)

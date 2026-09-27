@@ -81,7 +81,7 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 2. **Print** following [docs/printing.md](docs/printing.md). Print the 5-minute lidar template first.
 3. **Solder** two header strips, then **wire** the 29 connections in [docs/wiring.md](docs/wiring.md). The guide is written for first-timers.
 4. **Assemble** following [docs/assembly.md](docs/assembly.md).
-5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) are at the prototype stage: they already talk to each other with simulated sensors (`marvin-host demo`).
+5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) are at the prototype stage: they already talk to each other with simulated sensors, and the host turns what it sees into events and a face (`marvin-host demo`).
 
 The body parts are ready to print; the head parts arrive with the head CAD.
 
