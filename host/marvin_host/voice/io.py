@@ -10,6 +10,8 @@ SPDX-License-Identifier: MIT
 """
 from __future__ import annotations
 
+import collections
+
 import logging
 import queue
 import threading
@@ -36,7 +38,8 @@ def _lowpass_taps(cutoff: float, n: int = 63) -> np.ndarray:
 
 def resample(pcm: np.ndarray, src: int, dst: int = SAMPLE_RATE) -> np.ndarray:
     """Resamples a whole int16 (or float) buffer from `src` to `dst` Hz. Good enough for speech:
-    an anti-aliasing FIR when downsampling, then linear interpolation."""
+    an anti-aliasing FIR when downsampling, linear interpolation, and an anti-imaging FIR when
+    upsampling (without it, interpolated speech sounds harsh and gritty)."""
     if src == dst or len(pcm) == 0:
         return pcm
     x = pcm.astype(np.float32)
@@ -44,6 +47,8 @@ def resample(pcm: np.ndarray, src: int, dst: int = SAMPLE_RATE) -> np.ndarray:
         x = np.convolve(x, _lowpass_taps(0.45 * dst / src), mode="same")
     n_out = int(round(len(x) * dst / src))
     y = np.interp(np.arange(n_out) * (src / dst), np.arange(len(x)), x)
+    if dst > src:                       # remove the images linear interpolation leaves above src/2
+        y = np.convolve(y, _lowpass_taps(0.45 * src / dst), mode="same")
     if pcm.dtype == np.int16:
         return np.clip(np.round(y), -32768, 32767).astype(np.int16)
     return y.astype(pcm.dtype)
@@ -156,7 +161,8 @@ class MicSource:
                     self.overflows += 1
 
         self._stream = sd.InputStream(device=self.device, channels=1, dtype="int16", samplerate=rate,
-                                      blocksize=int(rate * FRAME_MS / 1000), callback=callback)
+                                      blocksize=int(rate * FRAME_MS / 1000), callback=callback,
+                                      latency=0.1)   # headroom: no overflow while Python is busy
         self._stream.start()
 
     def frames(self) -> Iterator[np.ndarray]:
@@ -294,35 +300,46 @@ class WavSink(NullSink):
 
 
 class SpeakerSink:
-    """The computer's speakers: a PortAudio output stream fed from a buffer. `play()` returns at
-    once, `wait()` blocks until the buffer has been played, `stop()` drops it (barge-in)."""
+    """The computer's speakers: a PortAudio output stream fed from a queue of chunks. `play()`
+    returns at once, `wait()` blocks until everything has been played, `stop()` drops it (barge-in).
 
-    def __init__(self, device: int | str | None = None):
+    The stream runs at the device's native rate (48 kHz on most Macs) so the system never has to
+    convert it, with a comfortable buffer (`latency`, 120 ms by default): speech does not need a
+    low-latency path, and a tiny buffer underruns (crackles) whenever the speech model, Whisper or
+    the language model keeps the Python interpreter busy. The audio callback only copies samples
+    that are already resampled; it never allocates large arrays."""
+
+    def __init__(self, device: int | str | None = None, latency: float = 0.12):
         sd = _sounddevice()
-        try:
-            sd.check_output_settings(device=device, channels=1, dtype="int16", samplerate=SAMPLE_RATE)
-            self.rate = SAMPLE_RATE
-        except Exception:
-            self.rate = int(sd.query_devices(device, "output")["default_samplerate"])
-        self._buf = np.zeros(0, np.int16)
+        self.rate = int(sd.query_devices(device, "output")["default_samplerate"])
+        self._chunks: collections.deque[np.ndarray] = collections.deque()
+        self._pos = 0                   # samples of _chunks[0] already played
         self._lock = threading.Lock()
         self._drained = threading.Event()
         self._drained.set()
         self._tail = 0                  # callbacks still to run before the last samples are heard
         self._stream = sd.OutputStream(device=device, channels=1, dtype="int16", samplerate=self.rate,
-                                       callback=self._callback, latency="low")
+                                       callback=self._callback, latency=latency)
         self._stream.start()
-        # from the samples leaving our buffer to the sound leaving the speaker (the echo gate adds it)
+        # from the samples leaving our queue to the sound leaving the speaker (the echo gate adds it)
         self.output_latency = float(self._stream.latency or 0.0)
 
     def _callback(self, outdata, frames, t, status):
+        out = outdata[:, 0]
+        filled = 0
         with self._lock:
-            n = min(frames, len(self._buf))
-            outdata[:n, 0] = self._buf[:n]
-            outdata[n:, 0] = 0
-            self._buf = self._buf[n:]
-            if len(self._buf) == 0 and not self._drained.is_set():
-                if n == 0:
+            while filled < frames and self._chunks:
+                chunk = self._chunks[0]
+                n = min(frames - filled, len(chunk) - self._pos)
+                out[filled:filled + n] = chunk[self._pos:self._pos + n]
+                filled += n
+                self._pos += n
+                if self._pos >= len(chunk):
+                    self._chunks.popleft()
+                    self._pos = 0
+            out[filled:] = 0
+            if not self._chunks and not self._drained.is_set():
+                if filled == 0:
                     self._tail -= 1
                     if self._tail <= 0:
                         self._drained.set()
@@ -330,9 +347,11 @@ class SpeakerSink:
                     self._tail = 2      # let the device play out what it already has
 
     def play(self, pcm: np.ndarray, rate: int = SAMPLE_RATE) -> None:
-        pcm = resample(to_int16(pcm), rate, self.rate)
+        pcm = resample(to_int16(pcm), rate, self.rate)     # here, never in the audio callback
+        if len(pcm) == 0:
+            return
         with self._lock:
-            self._buf = np.concatenate([self._buf, pcm])
+            self._chunks.append(pcm)
             self._drained.clear()
 
     def wait(self) -> None:
@@ -340,7 +359,8 @@ class SpeakerSink:
 
     def stop(self) -> None:
         with self._lock:
-            self._buf = np.zeros(0, np.int16)
+            self._chunks.clear()
+            self._pos = 0
             self._drained.set()
 
     @property
