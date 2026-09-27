@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Each hardware revision is a git tag (`rev-B` to `rev-E`; rev A predates the repository). Rev F will be tagged once the head is designed and the first unit is built.
 
 ## [Unreleased]
 

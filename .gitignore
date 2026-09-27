@@ -24,6 +24,6 @@ __pycache__/
 recordings/
 *.rrd
 
-
 # Blender backups
 *.blend1
+*.blend@

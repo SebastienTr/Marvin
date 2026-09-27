@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # OpenSCAD previews used in the docs (headless Linux: prefix with xvfb-run -a).
 # The side section diagram (docs/images/robot_section.png) comes from hardware/scripts/section_diagram.py.
 set -euo pipefail

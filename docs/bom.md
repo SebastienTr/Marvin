@@ -65,4 +65,4 @@ The microphone is already on the XIAO Sense board: nothing to buy.
 
 ## Import fees
 
-AliExpress splits the cart into one order per seller, and since July 2026 each parcel entering the EU pays a small flat import fee (about €1–4, shown only after checkout in each order's details). For this build that meant 15 parcels and about **€40 of import fees on top of the cart total**: €275 paid for a €235 cart in September 2026. Buying fewer, larger items from the same seller keeps it down.
+AliExpress splits the cart into one order per seller, and since July 2026 each parcel entering the EU pays a small flat import fee (about €1–4, shown only after checkout in each order's details). Ordered from about 15 sellers, the parts above add **roughly €40 of import fees** to the cart total. Buying several items from the same seller keeps it down.

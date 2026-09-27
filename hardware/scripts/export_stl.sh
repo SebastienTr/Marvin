@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # Export every printable part of Marvin (rev F), already oriented for the print bed.
 # Usage: hardware/scripts/export_stl.sh          (needs OpenSCAD >= 2021.01 in PATH)
 set -euo pipefail

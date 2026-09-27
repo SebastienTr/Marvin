@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # Rebuild hardware/blender/marvin.blend from marvin.scad (needs OpenSCAD and Blender 4.2+ or the bpy wheel).
 # Usage: hardware/scripts/build_blend.sh [render_dir]
 set -euo pipefail

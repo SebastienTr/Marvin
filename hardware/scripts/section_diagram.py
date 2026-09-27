@@ -2,6 +2,8 @@
 
 Heights come from hardware/cad/marvin.scad (body) and the planned head layout.
 Usage: python3 hardware/scripts/section_diagram.py   (needs matplotlib)
+
+SPDX-License-Identifier: MIT
 """
 import math
 from pathlib import Path
