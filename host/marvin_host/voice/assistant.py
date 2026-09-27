@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import copy
+import importlib.util
 import logging
 import queue
 import threading
@@ -39,7 +40,7 @@ from typing import Callable
 import numpy as np
 
 from ..audio import FRAME_MS, SAMPLE_RATE, AudioSink, AudioSource
-from . import persona
+from . import filters, persona
 from .echo import EchoFilter, EchoGate
 from .llm import LLM, LLMUnavailable
 from .stt import STT, Transcript
@@ -129,12 +130,15 @@ class VoiceAssistant:
         if llm is None:
             from .llm import OllamaLLM
             llm = OllamaLLM(c.llm_model, c.ollama_host)
-            if llm.available():
-                llm.warm_up(persona.persona_prompt(self.language))
+            if llm.available():     # rehearse a real first question: model loaded, prompt cached
+                llm.warm_up(persona.persona_prompt(self.language), persona.user_message("Bonjour."))
         if tts is None:
             from .tts import make_tts
             tts = make_tts(c.tts, c.tts_voice, c.language or c.default_language)
             t = time.monotonic()
+            from .tts import MacSayTTS
+            if isinstance(tts, MacSayTTS) and importlib.util.find_spec("piper") is None:
+                log.info("tip: pip install piper-tts for ~5x faster speech (Marvin uses it automatically)")
             try:                                # load the voice now (Piper: seconds), not at the first answer
                 tts.synthesize("Bonjour." if self.language == "fr" else "Hello.", self.language)
                 log.info("speech synthesis ready in %.1f s", time.monotonic() - t)
@@ -149,6 +153,7 @@ class VoiceAssistant:
         self._cap_n = 0                                      # frames captured
         self.gate = EchoGate(sink, c.echo_tail_s, enabled=not c.duplex, clock=self._capture_time)
         self.history: list[dict] = []
+        self._last_reply = ""                                # for "oui" / "non" follow-ups
         self.last_latency: dict[str, float] = {}             # of the last answer, seconds
         self._status = Status.IDLE
         self._lock = threading.RLock()
@@ -286,7 +291,7 @@ class VoiceAssistant:
         if self._spec is not None and self._spec[:2] == sg.utterance_key:
             return
         pend = sg.pending()
-        if pend is None:
+        if pend is None or filters.speech_evidence(pend) is not None:
             return
         if isinstance(self.wake, TranscriptWakeWord) and not self.wake.candidate(pend.pcm) and c.wake:
             return
@@ -363,6 +368,16 @@ class VoiceAssistant:
             return True
         return False
 
+    def _ignored(self, text: str, reason: str, quiet: bool = False) -> None:
+        (log.debug if quiet else log.info)("heard: %s (ignored: %s)", text or "…", reason)
+
+    def _close_conversation(self, text: str, reason: str) -> None:
+        log.info("heard: %s (conversation closed: %s)", text, reason)
+        with self._lock:
+            self._listen_until = None
+            if self._status == Status.LISTENING:
+                self._set_status(Status.IDLE)
+
     def _on_segment(self, seg: Segment, t_cap: float) -> None:
         c = self.config
         now_audio = self.segmenter.time
@@ -373,6 +388,13 @@ class VoiceAssistant:
             busy = self._status in (Status.THINKING, Status.SPEAKING) or self._pending > 0
             late = seg.t_start < self._listen_from - 0.05   # captured while it was speaking
             window = (self._listen_until is not None and not late and seg.t_start <= self._listen_until)
+
+        no_name = not c.wake or window          # no wake word will confirm it is for Marvin
+        weak = filters.speech_evidence(seg)
+        if weak:
+            self._spec = None
+            self._ignored("", weak, quiet=not (no_name and not busy and not late))
+            return
 
         if busy or late:
             # only "Marvin" counts, and not if Marvin is saying its own name right now
@@ -391,15 +413,34 @@ class VoiceAssistant:
             self._handle_match(m, seg, t0, lat)
             return
 
-        if not c.wake or window:
+        if no_name:
             tr = self._full_transcript(seg, lat)
-            if not tr.text.strip() or self._own_voice(tr.text):
+            if self._own_voice(tr.text):
+                return
+            bad = tr.rejected or filters.decoder_reason(tr.no_speech_prob, tr.avg_logprob, tr.compression_ratio)
+            if bad or not tr.text.strip():
+                self._ignored(tr.text, bad or "nothing understood")
                 return
             rest = match_wake_word(tr.text)
             text = tr.text.strip() if rest is None else rest
-            if not text:
-                if rest is not None:            # "Marvin." again: keep listening
-                    self._listen(seg.t_end)
+            if rest is not None and not text:   # "Marvin." again: keep listening
+                self._listen(seg.t_end)
+                return
+            if rest is None:                    # no name: be strict (filters.follow_up_decision)
+                # the language rule applies in a follow-up window; with --no-wake, the person
+                # may start in any language
+                conversation = self.language if window else (tr.language or self.language)
+                decision, why = filters.follow_up_decision(text, tr.language, tr.language_prob, conversation,
+                                                           self._last_reply)
+                if decision == filters.CLOSE:
+                    self._close_conversation(text, why)
+                    return
+                if decision == filters.IGNORE:
+                    self._ignored(text, why)
+                    return
+            bad = filters.hallucination_reason(text)
+            if bad:
+                self._ignored(tr.text, bad)
                 return
             self._submit(text, self._reply_language(tr), tr, t0, lat)
             return
@@ -411,6 +452,12 @@ class VoiceAssistant:
     def _handle_match(self, m: WakeMatch, seg: Segment, t0: float, lat: dict) -> None:
         tr = m.transcript
         query = m.query
+        if tr is not None and (tr.rejected or filters.decoder_reason(tr.no_speech_prob, tr.avg_logprob,
+                                                                     tr.compression_ratio)):
+            self._ignored(tr.text, tr.rejected or "low confidence")
+            return
+        if query and filters.hallucination_reason(query):
+            query = ""                          # "Marvin. Thank you." -> just the name
         if query is None:                       # a keyword model: transcribe the utterance ourselves
             tr = self._full_transcript(seg, lat)
             query = match_wake_word(tr.text)
@@ -603,6 +650,7 @@ class VoiceAssistant:
                 self._remember(user, text + " …")
             return
         log.info("said: %s", text)
+        self._last_reply = text
         log.info("latency: %s", format_latency(lat))
         self._remember(user, text)
         if self.on_reply:

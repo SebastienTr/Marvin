@@ -36,6 +36,40 @@ class Transcript:
     language: str | None = None     # ISO 639-1 code, None if unknown
     confident: bool = False         # the language detection is trustworthy
     seconds: float = 0.0            # time spent transcribing
+    language_prob: float | None = None      # probability of `language`, None if the backend does not say
+    # decoder scores of the kept Whisper segments (worst of them), None if unknown
+    no_speech_prob: float | None = None
+    avg_logprob: float | None = None
+    compression_ratio: float | None = None
+    rejected: str | None = None     # every segment looked like non-speech: why (the text is then "")
+
+
+def _keep_segments(segments) -> tuple[str, dict, str | None]:
+    """Drops the Whisper segments that look like non-speech (filters.decoder_reason).
+    `segments`: objects or dicts with text, no_speech_prob, avg_logprob, compression_ratio.
+    Returns (text of the kept ones, worst scores of the kept ones, reason if none was kept)."""
+    from .filters import decoder_reason
+
+    def get(s, k):
+        return s.get(k) if isinstance(s, dict) else getattr(s, k, None)
+
+    kept, reasons = [], []
+    scores = {"no_speech_prob": None, "avg_logprob": None, "compression_ratio": None}
+    for s in segments:
+        ns, lp, cr = get(s, "no_speech_prob"), get(s, "avg_logprob"), get(s, "compression_ratio")
+        why = decoder_reason(ns, lp, cr)
+        if why:
+            reasons.append(why)
+            continue
+        kept.append((get(s, "text") or "").strip())
+        if ns is not None:
+            scores["no_speech_prob"] = max(ns, scores["no_speech_prob"] or 0.0)
+        if lp is not None:
+            scores["avg_logprob"] = lp if scores["avg_logprob"] is None else min(lp, scores["avg_logprob"])
+        if cr is not None:
+            scores["compression_ratio"] = max(cr, scores["compression_ratio"] or 0.0)
+    rejected = reasons[0] if reasons and not kept else None
+    return " ".join(t for t in kept if t).strip(), scores, rejected
 
 
 class STT(Protocol):
@@ -71,18 +105,20 @@ class WhisperSTT:
         log.info("whisper %s loaded in %.1f s", model, time.monotonic() - t)
 
     def _run(self, audio: np.ndarray, language: str | None):
+        # temperature 0 only: the fallback to higher temperatures is where most inventions come
+        # from on short, unclear clips; a doubtful segment is dropped instead (filters.py)
         segments, info = self._model.transcribe(
-            audio, language=language, beam_size=self.beam_size, hotwords=self.hotwords,
+            audio, language=language, beam_size=self.beam_size, hotwords=self.hotwords, temperature=0.0,
             without_timestamps=True, condition_on_previous_text=False, vad_filter=False)
-        return " ".join(s.text.strip() for s in segments).strip(), info
+        return _keep_segments(list(segments)), info
 
     def transcribe(self, pcm: np.ndarray, language: str | None = None) -> Transcript:
         t = time.monotonic()
         audio = np.asarray(pcm, dtype=np.float32) / 32768.0
         if language:
-            text, _ = self._run(audio, language)
-            return Transcript(text, language, True, time.monotonic() - t)
-        text, info = self._run(audio, None)
+            (text, scores, rejected), _ = self._run(audio, language)
+            return Transcript(text, language, True, time.monotonic() - t, 1.0, rejected=rejected, **scores)
+        (text, scores, rejected), info = self._run(audio, None)
         probs = dict(info.all_language_probs or [(info.language, info.language_probability)])
         allowed = self.languages or (info.language,)
         best = max(allowed, key=lambda lang: probs.get(lang, 0.0))
@@ -90,8 +126,9 @@ class WhisperSTT:
         share = probs.get(best, 0.0) / total if total > 0 else 0.0
         confident = share >= self.min_language_prob and probs.get(best, 0.0) >= 0.3
         if info.language != best:           # decoded in a language we do not speak: decode again
-            text, _ = self._run(audio, best)
-        return Transcript(text, best, confident, time.monotonic() - t)
+            (text, scores, rejected), _ = self._run(audio, best)
+        return Transcript(text, best, confident, time.monotonic() - t, probs.get(best, 0.0),
+                          rejected=rejected, **scores)
 
 
 class FakeSTT:
@@ -166,18 +203,26 @@ class MlxWhisperSTT:
                                     condition_on_previous_text=False, initial_prompt=self.initial_prompt,
                                     verbose=None)
 
+    @staticmethod
+    def _text(r: dict) -> tuple[str, dict, str | None]:
+        segments = r.get("segments")
+        if segments:
+            return _keep_segments(segments)
+        return (r.get("text") or "").strip(), {}, None
+
     def transcribe(self, pcm: np.ndarray, language: str | None = None) -> Transcript:
         t = time.monotonic()
         audio = np.asarray(pcm, dtype=np.float32) / 32768.0
         r = self._run(audio, language)
-        text, lang = (r.get("text") or "").strip(), r.get("language") or language
+        (text, scores, rejected), lang = self._text(r), r.get("language") or language
         if language:
-            return Transcript(text, language, True, time.monotonic() - t)
+            return Transcript(text, language, True, time.monotonic() - t, 1.0, rejected=rejected, **scores)
         confident = lang in self.languages and len(pcm) / SAMPLE_RATE >= self.min_confident_s
         if self.languages and lang not in self.languages:     # e.g. a short clip detected as Welsh
             lang = self.languages[0]
-            text = (self._run(audio, lang).get("text") or "").strip()
-        return Transcript(text, lang, confident, time.monotonic() - t)
+            text, scores, rejected = self._text(self._run(audio, lang))
+        # mlx-whisper gives no language probability: None (filters treat it as "not sure")
+        return Transcript(text, lang, confident, time.monotonic() - t, None, rejected=rejected, **scores)
 
 
 STT_BACKENDS = ("auto", "mlx", "faster-whisper")

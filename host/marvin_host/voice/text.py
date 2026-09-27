@@ -14,7 +14,8 @@ import re
 ABBREVIATIONS = {"m", "mm", "mme", "mlle", "dr", "pr", "st", "ste", "mr", "mrs", "ms", "prof", "etc", "vs",
                  "cf", "ex", "p", "env", "approx", "no", "n°", "e.g", "i.e"}
 _END = re.compile(r"([.!?…]+[\"»”')\]]*)(\s+)|(\n+)")
-_CLAUSE = re.compile(r"([,;:—])(\s+)")
+_CLAUSE = re.compile(r"(?<=[^\d\s])([,;:—])(\s+|$)")          # not "3,5" or "14:30"
+_FIRST_END = re.compile(r"(?<=[^\d\s])([.!?…]+[\"»”')\]]*)$")   # a sentence end at the end of the buffer
 _EMOJI = re.compile("[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F1E6-\U0001F1FF‍️]")
 
 
@@ -37,9 +38,10 @@ class SentenceSplitter:
     may even be a clause, cut at a comma, semicolon or colon once it has `first_clause_words`
     words ("Paris, bien sûr, | la ville..." waits; "La capitale de la France, | c'est Paris."
     does not), so the voice starts before the model finishes its first sentence. 0 disables it.
+    For the first chunk it does not even wait for the space after the punctuation (one token less).
     """
 
-    def __init__(self, min_chars: int = 12, first_clause_words: int = 4):
+    def __init__(self, min_chars: int = 12, first_clause_words: int = 3):
         self.min_chars = min_chars
         self.first_clause_words = first_clause_words
         self._buf = ""
@@ -64,6 +66,13 @@ class SentenceSplitter:
                 out.extend(self._push(s))
         self._buf = self._buf[start:]
         if self._emitted == 0 and not out and self.first_clause_words:
+            m = _FIRST_END.search(self._buf)
+            word = re.findall(r"[\w°]+(?=[.!?…]+\W*$)", self._buf)
+            if m and not (m.group(1).startswith(".") and (not word or word[-1].lower() in ABBREVIATIONS
+                                                            or len(word[-1]) < 2)):
+                head = self._buf.strip()
+                self._buf = ""
+                return self._push(head)
             for m in _CLAUSE.finditer(self._buf):
                 head = self._buf[:m.end(1)].strip()
                 if len(re.findall(r"\w+", head)) >= self.first_clause_words:

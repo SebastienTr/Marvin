@@ -244,8 +244,11 @@ class _FakeOllama(BaseHTTPRequestHandler):
         self.end_headers()
         for piece in ["Paris est ", "la capitale. ", "Voilà."]:
             line = {"message": {"role": "assistant", "content": piece}, "done": False}
-            self.wfile.write((json.dumps(line) + "\n").encode())
-            self.wfile.flush()
+            try:
+                self.wfile.write((json.dumps(line) + "\n").encode())
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                return                                   # the client stopped reading (warm-up)
             time.sleep(0.01)
         self.wfile.write((json.dumps({"message": {"role": "assistant", "content": ""}, "done": True}) + "\n").encode())
 
@@ -404,10 +407,10 @@ def test_follow_up_without_the_name():
 
 def test_no_wake_answers_everything_and_follows_language():
     va, t = make([("say", 1.0), ("quiet", 1), ("idle",), ("quiet", 1), ("say", 1.0), ("quiet", 1), ("idle",)],
-                 [Transcript("What's the time?", "en", True), Transcript("Merci.", "fr", False)],
+                 [Transcript("What's the time?", "en", True), Transcript("Et demain alors ?", "fr", False)],
                  ["It's noon.", "Of course."], wake=False)
     va.run()
-    assert [said(c[-1]) for c in t.llm.calls] == ["What's the time?", "Merci."]
+    assert [said(c[-1]) for c in t.llm.calls] == ["What's the time?", "Et demain alors ?"]
     assert "English" in t.llm.calls[0][0]["content"]
     assert "English" in t.llm.calls[1][0]["content"]     # unconfident detection: keep the conversation's language
     assert [lang for _, lang in t.tts.said] == ["en", "en"]
@@ -879,15 +882,24 @@ def test_latency_line():
     assert "speech recognition 0.12 (speculative)" in line and "backlog" not in line
 
 
-def test_ollama_warm_up_loads_the_model_and_caches_the_prompt(ollama):
+def test_ollama_warm_up_rehearses_a_real_question(ollama, caplog):
+    """The warm-up must look exactly like a question (same options, stream, think, keep_alive,
+    same system prompt), or Ollama reloads the model or reprocesses the prompt at the first one."""
+    caplog.set_level("INFO", "marvin.voice.llm")
     llm = OllamaLLM(host=ollama)
-    assert llm.warm_up("You are Marvin.") is not None
-    req = _FakeOllama.requests[-1]
-    assert req["keep_alive"] == "30m" and req["options"]["num_predict"] == 1
-    assert req["messages"][0] == {"role": "system", "content": "You are Marvin."} and req["think"] is False
-    list(llm.stream_chat([{"role": "user", "content": "?"}]))
-    assert _FakeOllama.requests[-1]["keep_alive"] == "30m"
-    assert OllamaLLM(host="http://127.0.0.1:9", timeout=1).warm_up() is None
+    system = persona.persona_prompt("fr")
+    assert llm.warm_up(system, persona.user_message("Bonjour.")) is not None
+    warm = _FakeOllama.requests[-2:]
+    assert warm[0] == warm[1]                             # load, then check that the cache is reused
+    list(llm.stream_chat([{"role": "system", "content": system},
+                          {"role": "user", "content": persona.user_message("Quelle heure est-il ?")}]))
+    real = _FakeOllama.requests[-1]
+    for key in ("model", "options", "keep_alive", "think", "stream"):
+        assert warm[0][key] == real[key], key
+    assert real["options"]["num_ctx"] == 8192 and real["keep_alive"] == "30m" and real["think"] is False
+    assert warm[0]["messages"][0] == real["messages"][0]  # the cached prefix
+    assert "prompt cached" in caplog.text
+    assert OllamaLLM(host="http://127.0.0.1:9", timeout=1).warm_up("x") is None
 
 
 # ---------------------------------------------------------------- MLX Whisper (faked: no Apple GPU here)
@@ -962,3 +974,116 @@ def test_mlx_only_on_apple_silicon(monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     assert not mlx_available()
+
+
+# ---------------------------------------------------------------- Whisper hallucinations
+
+def test_decoder_scores():
+    from marvin_host.voice.filters import decoder_reason
+    assert decoder_reason(0.1, -0.3, 1.2) is None                       # clear speech
+    assert decoder_reason(None, None, None) is None                     # unknown: no opinion
+    assert "no speech" in decoder_reason(0.8, -1.1, 1.0)
+    assert decoder_reason(0.8, -0.4, 1.0) is None                       # sure of the words: keep
+    assert "repetitive" in decoder_reason(0.1, -0.3, 3.1)
+    assert "low confidence" in decoder_reason(0.1, -1.5, 1.0)
+
+
+def test_known_hallucinations():
+    from marvin_host.voice.filters import hallucination_reason
+    for text in ["Thank you.", "thanks for watching!", "I'm going to go.", "Bye.", "...", "♪ ♪",
+                 "Sous-titres réalisés par la communauté d'Amara.org", "Merci d'avoir regardé !",
+                 "Merci d'avoir regardé cette vidéo", "SOUS-TITRAGE ST' 501", "you",
+                 "the the the the the the the the"]:
+        assert hallucination_reason(text), text
+    for text in ["Thank you for the answer, what about tomorrow?", "Tu m'entends ?", "I'm going to go to Paris.",
+                 "Merci, et quelle heure est-il ?", "Bye the way, what's the weather?"]:
+        assert hallucination_reason(text) is None, text
+
+
+def test_follow_up_decisions():
+    from marvin_host.voice.filters import ACCEPT, CLOSE, IGNORE, follow_up_decision as d
+    assert d("Et qu'est-ce que tu ressens ?", "fr", None, "fr")[0] == ACCEPT
+    assert d("I'm going to go.", "en", None, "fr")[0] == IGNORE                # unsure language switch
+    assert d("I'm going to go.", "en", 0.6, "fr")[0] == IGNORE
+    assert d("What do you see now?", "en", 0.95, "fr")[0] == ACCEPT            # sure: the person switched
+    assert d("Merci.", "fr", None, "fr")[0] == CLOSE
+    assert d("OK, super, merci !", "fr", None, "fr")[0] == CLOSE
+    assert d("Pourquoi ?", "fr", None, "fr")[0] == ACCEPT
+    assert d("Oui.", "fr", None, "fr", "Une petite pause ?")[0] == ACCEPT      # answers its question
+    assert d("Oui.", "fr", None, "fr", "Il est midi.")[0] == CLOSE
+    assert d("Chaussette.", "fr", None, "fr")[0] == IGNORE                     # one word
+
+
+def test_speech_evidence():
+    from marvin_host.voice.filters import speech_evidence
+    from marvin_host.voice.vad import Segment
+    ok = Segment(np.concatenate([silence(0.3), voice(0.8), silence(0.15)]), 0, 1.25, 1.1, 1, 40)
+    assert speech_evidence(ok) is None
+    assert "speech" in speech_evidence(Segment(ok.pcm, 0, 1.25, 1.1, 1, 10))          # 0.2 s voiced
+    assert "silence" in speech_evidence(Segment(np.concatenate([silence(3), voice(0.4)]), 0, 3.4, 3.4, 1, 16))
+    assert "quiet" in speech_evidence(Segment((voice(1.0) // 200).astype(np.int16), 0, 1, 1, 1, 50))
+
+
+def test_whisper_segments_are_filtered():
+    from marvin_host.voice.stt import _keep_segments
+    seg = SimpleNamespace
+    text, scores, rejected = _keep_segments([
+        seg(text=" Tu m'entends ?", no_speech_prob=0.05, avg_logprob=-0.3, compression_ratio=1.1),
+        seg(text=" Merci d'avoir regardé.", no_speech_prob=0.9, avg_logprob=-1.4, compression_ratio=1.0)])
+    assert text == "Tu m'entends ?" and rejected is None and scores["avg_logprob"] == -0.3
+    text, _, rejected = _keep_segments([{"text": " I'm going to go.", "no_speech_prob": 0.85,
+                                         "avg_logprob": -1.05, "compression_ratio": 0.9}])
+    assert text == "" and "no speech" in rejected
+
+
+FOLLOW_UP = [("say", 1.0), ("quiet", 1), ("idle",), ("quiet", 1), ("say", 1.0), ("quiet", 1), ("idle",)]
+
+
+@pytest.mark.parametrize("heard, why", [
+    (Transcript("I'm going to go.", "en", True), "blocklist + language"),
+    (Transcript("Je vais y aller maintenant.", "fr", True, avg_logprob=-1.6), "low confidence"),
+    (Transcript("Je vais y aller maintenant.", "fr", True, no_speech_prob=0.9, avg_logprob=-1.1), "no speech"),
+    (Transcript("", "fr", True, rejected="no speech (p=0.91)"), "rejected by the decoder"),
+    (Transcript("Where are you going next?", "en", False, language_prob=0.55), "unsure language switch"),
+    (Transcript("Thanks for watching!", "fr", True), "blocklist"),
+    (Transcript("Chaussette.", "fr", True), "one word"),
+])
+def test_no_turn_on_hallucinations_in_the_follow_up_window(heard, why, caplog):
+    caplog.set_level("INFO", "marvin.voice")
+    va, t = make(FOLLOW_UP, ["Marvin, tu m'entends ?", heard], ["Oui, très bien."], follow_up_s=5.0)
+    va.run()
+    assert len(t.llm.calls) == 1, why
+    assert "(ignored:" in caplog.text
+
+
+def test_thanks_closes_the_conversation(caplog):
+    caplog.set_level("INFO", "marvin.voice")
+    va, t = make(FOLLOW_UP, ["Marvin, tu m'entends ?", "Merci."], ["Oui, très bien."], follow_up_s=5.0)
+    va.run()
+    assert len(t.llm.calls) == 1 and t.log["status"][-2:] == ["listening", "idle"]
+    assert "conversation closed" in caplog.text
+
+
+def test_real_follow_up_questions_still_work():
+    va, t = make(FOLLOW_UP + [("quiet", 1), ("say", 1.0), ("quiet", 1), ("idle",)],
+                 ["Marvin, tu m'entends ?", "Et qu'est-ce que tu as comme capteurs ?", "Oui."],
+                 ["Oui, très bien. Tu veux savoir quelque chose ?",
+                  "Un lidar, deux radars et une caméra. Autre chose ?",
+                  "Lequel ?"], follow_up_s=5.0)
+    va.run()
+    assert [said(c[-1]) for c in t.llm.calls] == ["tu m'entends ?", "Et qu'est-ce que tu as comme capteurs ?", "Oui."]
+
+
+def test_weak_audio_is_not_even_transcribed(caplog):
+    caplog.set_level("INFO", "marvin.voice")
+    # 0.28 s of sound: long enough to make a segment (0.25 s), too short to be worth Whisper (0.3 s)
+    va, t = make([("quiet", 1), ("say", 0.28), ("quiet", 1), ("idle",)], ["Thank you."], wake=False)
+    va.run()
+    assert t.stt.calls == [] and t.llm.calls == []
+    assert "s of speech" in caplog.text
+
+
+def test_wake_word_with_a_hallucinated_tail_just_listens():
+    va, t = make([("say", 1.0), ("quiet", 1), ("idle",)], ["Marvin. Thank you."], follow_up_s=5.0)
+    va.run()
+    assert t.llm.calls == [] and t.log["status"] == ["listening"]

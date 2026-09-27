@@ -7,7 +7,8 @@ Install with `pip install -e ".[voice]"`, see docs/voice.md.
     VoiceAssistant(MicSource(), SpeakerSink(), brain=brain).start()
 
 Modules: io (mic, speakers, WAV), vad (voice activity, utterances), wake (the wake word),
-stt (Whisper on GPU or CPU), echo (never answering itself), llm (Ollama), persona (system prompt and context), text (sentence splitting),
+stt (Whisper on GPU or CPU), echo (never answering itself), filters (what Whisper invents),
+llm (Ollama), persona (system prompt and context), text (sentence splitting),
 tts (say, Piper, espeak-ng), assistant (the orchestrator), proactive (reminders), cli.
 
 Importing this package is cheap: heavy dependencies load when a component is created.

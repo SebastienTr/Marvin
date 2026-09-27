@@ -136,8 +136,13 @@ system prompt cached; M1/M2 at the slow end, M3/M4 Pro/Max at the fast end):
 | 7-9B | `qwen3:8b`, `llama3.1:8b` | 5-6 GB | 0.2-0.6 s | 20-45 tokens/s | Noticeably better reasoning and French; still fast enough to feel live |
 | 24-32B | `gemma3:27b`, `qwen3:32b`, `mistral-small3.2` | 16-20 GB (32 GB Mac) | 0.6-2 s | 8-20 tokens/s | Clearly smarter; the pause before the first word becomes noticeable |
 
-The first question after starting a model costs its loading time (5-20 s for 27B): Marvin loads
-the model at start-up (`model ... loaded in X s`) and keeps it loaded (`keep_alive` 30 min).
+The first question after starting a model costs its loading time (5-20 s for 27B) and the
+processing of the system prompt (several seconds for 27B). Marvin does both at start-up by
+rehearsing a real question (same system prompt, same options: `num_ctx` 8192, `think` off,
+`keep_alive` 30 min, streamed), then checks that the next one reuses the cached prompt:
+`model ... ready (prompt cached) in X s; first token now Y s`. If Y stays high, the log says the
+server did not reuse the cache. Options that differ between requests (for instance another app
+using the same model with another `num_ctx`) make Ollama reload the model.
 
 ## Latency
 
@@ -153,17 +158,46 @@ What to expect on an Apple Silicon Mac with the defaults (estimates; the log tel
 | Stage | Time | How it is kept short |
 |---|---|---|
 | End of speech | 0.55 s | Silence that ends a question (`end_silence_ms`); shorter cuts people off mid-sentence |
-| Speech recognition | 0.1-0.3 s left to wait | MLX turbo on the GPU (0.2-0.5 s for a question); it starts speculatively after 0.25 s of silence, so part of it is already done when the question ends |
-| Model, first token | 0.1-0.3 s (4B) | Model loaded at start-up and kept loaded; the system prompt never changes (the live context is in the question), so Ollama reuses it from its cache |
-| First chunk | + 0.1-0.2 s | The first clause (4 words, up to a comma) is spoken without waiting for the end of the sentence |
-| Synthesis of the first chunk | 0.1-0.3 s (`say`) | Chunks are synthesised by a separate thread and play while the model writes the rest |
-| **Total** | **≈ 1.1-1.6 s (4B)**, + 0.2-0.4 s (8B), + 0.7-2 s (27B) | |
+| Speech recognition | 0.1-0.7 s left to wait | MLX turbo on the GPU (0.2-0.5 s for a question); it starts speculatively after 0.25 s of silence, so part of it is already done when the question ends |
+| Model, first token | 0.1-0.3 s (4B), about 1.4 s (27B, measured) | Model loaded and prompt cached at start-up, kept loaded; the system prompt never changes (the live context is in the question), so Ollama reuses it |
+| First chunk | + 0.1-0.4 s | The first clause (3 words, up to a comma) or the first sentence is spoken without waiting for the rest, nor for the space after its punctuation |
+| Synthesis of the first chunk | Piper 0.1-0.2 s; `say` 0.9-1.5 s (measured, M3 Max) | Chunks are synthesised by a separate thread and play while the model writes the rest |
+| **Total** | **≈ 1.1-1.6 s (4B + Piper)**, + 0.2-0.4 s (8B), about 2.8-3.2 s (27B + Piper), + 0.8-1.3 s with `say` | |
+
+`say` is slow to start: every call is a new process that loads the voice (the Enhanced and
+Premium voices are neural and the slowest to load), then renders to a file. Marvin already asks it
+for the final format (16 kHz, 16-bit WAV), so there is nothing to convert; the speaking rate does
+not change the start-up cost. Piper keeps its voice loaded and synthesises a sentence in about a
+tenth of a second, so `auto` picks Piper when it is installed, and Marvin prints a tip at start-up
+when it is not. A compact `say` voice (`--tts-voice Thomas` instead of an Enhanced one) is faster
+than an Enhanced one, at some cost in quality.
 
 Measured in a 2-core cloud container (CPU only, no GPU): faster-whisper `tiny` 0.3-0.8 s and
 `small` 3.7-5 s for a 3-second question, Piper 0.1-0.4 s per chunk; end to end with `tiny` and a
 local stub model, 1.15-1.25 s. The owner's first measurement on a Mac, before these changes
 (faster-whisper `small` on the CPU, 27B model): speech recognition 2 s, first word 3.9 s, and
-7.6 s for the first question (model loading).
+7.6 s for the first question (model loading). With MLX turbo and `say` (M3 Max, 27B): speech
+recognition 0.7 s, first token 1.4 s, first word 4.4-4.7 s, and 8.4 s for the first question (the
+system prompt was not cached yet: fixed by the rehearsal above).
+
+## Things nobody said
+
+Whisper was trained on subtitled videos: on silence, breathing or background noise it readily
+"hears" the end of one ("Thank you.", "Thanks for watching!", "I'm going to go.", "Sous-titres
+réalisés par la communauté d'Amara.org"). Without a wake word to confirm it (follow-up window,
+`--no-wake`), such a phrase would start a turn. Marvin filters in layers
+([`filters.py`](../host/marvin_host/voice/filters.py)); each drop is logged as
+`heard: ... (ignored: reason)`:
+
+| Layer | Rule |
+|---|---|
+| Speech evidence, before Whisper | at least 0.3 s of voiced frames, at least 25 % of the utterance voiced, loudest half above -50 dBFS |
+| Decoder confidence, per Whisper segment | drop if `no_speech_prob` > 0.6 with `avg_logprob` < -1.0, or `compression_ratio` > 2.4 (repetition), or `avg_logprob` < -1.2; decoding at temperature 0 only, `condition_on_previous_text` off |
+| Known hallucinations | a list of English and French phrases, matched on the whole transcript (normalised, exact or 90 % similar), a few markers anywhere ("amara.org", "sous-titrage"...), no letters at all, runaway repetitions. Add new ones to `HALLUCINATIONS` |
+| Without a wake word | another language than the conversation's is ignored unless detected with probability >= 0.8 (MLX gives no probability: a switch then needs the name); at least two words, except a question word ("Pourquoi ?"), and "oui"/"non" when Marvin just asked a question; "merci", "ok", "thanks", "au revoir" end the conversation (no answer, no more listening) |
+
+With the wake word, the transcript still goes through the first three layers, and "Marvin. Thank
+you." counts as the name alone.
 
 ## How it works
 
@@ -180,6 +214,7 @@ The code is in [`host/marvin_host/voice/`](../host/marvin_host/voice):
 | `text.py` | Streaming chunker (first clause early, then sentences), markdown and emoji removal |
 | `tts.py` | `MacSayTTS`, `PiperTTS`, `EspeakTTS` |
 | `echo.py` | `EchoGate` (half duplex), `EchoFilter` (its own words) |
+| `filters.py` | What Whisper invents: speech evidence, decoder scores, known hallucinations, follow-up rules |
 | `assistant.py` | `VoiceAssistant`: the states (idle, listening, thinking, speaking), barge-in, memory, latency log |
 | `proactive.py` | `ProactiveSpeaker`: reminders from brain events |
 | `cli.py` | `talk`, `run --voice`, the settings file |

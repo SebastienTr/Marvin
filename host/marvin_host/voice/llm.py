@@ -46,10 +46,11 @@ class LLM(Protocol):
 class OllamaLLM:
     def __init__(self, model: str = DEFAULT_MODEL, host: str = DEFAULT_HOST, temperature: float = 0.6,
                  num_predict: int = 200, keep_alive: str = "30m", think: bool | None = False,
-                 timeout: float = 60.0):
+                 timeout: float = 60.0, num_ctx: int = 8192):
         self.model = model
         self.host = host.rstrip("/")
-        self.options = {"temperature": temperature, "num_predict": num_predict}
+        # num_ctx is set explicitly so that it never differs between requests (a change reloads the model)
+        self.options = {"temperature": temperature, "num_predict": num_predict, "num_ctx": num_ctx}
         self.keep_alive = keep_alive        # keep the model in memory between questions
         # False: no hidden reasoning before the answer on thinking models (qwen3, qwen3.5: 8 s -> 0.2 s
         # to the first word); accepted by non-thinking models. None: the model's default.
@@ -91,35 +92,49 @@ class OllamaLLM:
             return False
         return True
 
-    def warm_up(self, system: str | None = None) -> float | None:
-        """Loads the model into memory now rather than at the first question (and keeps it there
-        for `keep_alive`). With `system`, also processes the system prompt once, so that Ollama's
-        prompt cache already holds it. Returns the time it took, None if Ollama is unreachable."""
+    def _chat_body(self, messages: list[Message]) -> dict:
+        """The request body. Warm-up and questions use exactly the same one (options, keep_alive,
+        think, stream): any difference can make Ollama reload the model or reprocess the prompt."""
+        body = {"model": self.model, "messages": messages, "stream": True,
+                "options": dict(self.options), "keep_alive": self.keep_alive}
+        if self.think is not None:
+            body["think"] = self.think
+        return body
+
+    def first_token(self, messages: list[Message], timeout: float = 300.0) -> float:
+        """Sends a real request, stops at the first token, returns how long it took."""
         t = time.monotonic()
-        body: dict = {"model": self.model, "messages": [], "keep_alive": self.keep_alive}
-        if system:
-            body = {**body, "messages": [{"role": "system", "content": system}, {"role": "user", "content": "."}],
-                    "stream": False, "options": {**self.options, "num_predict": 1}}
-            if self.think is not None:
-                body["think"] = self.think
+        for _ in self.stream_chat(messages, timeout=timeout):
+            break
+        return time.monotonic() - t
+
+    def warm_up(self, system: str | None = None, user: str = "Bonjour.") -> float | None:
+        """Loads the model and fills Ollama's prompt cache before the first question, by rehearsing
+        a real one: the same system prompt, a user message of the same shape, the same options.
+        A second rehearsal checks that the cached prompt is reused (it then answers at once).
+        Returns the time it took, None if Ollama is unreachable or has no such model."""
+        messages = [{"role": "system", "content": system}] if system else []
+        messages.append({"role": "user", "content": user})
+        t = time.monotonic()
         try:
-            with self._request("/api/chat", body, timeout=max(self.timeout, 300)) as r:
-                r.read()
+            self.first_token(messages)
+            loaded = time.monotonic() - t
+            again = self.first_token(messages)
         except LLMUnavailable as e:
             log.warning("%s. %s", e, e.hint)
             return None
-        dt = time.monotonic() - t
-        log.info("model %s loaded in %.1f s", self.model, dt)
-        return dt
+        log.info("model %s ready (prompt cached) in %.1f s; first token now %.2f s", self.model, loaded, again)
+        if again > 1.5 and again > 0.5 * loaded:
+            log.warning("Ollama did not reuse the cached prompt (first token still %.1f s): the first "
+                        "question will be slow", again)
+        return loaded
 
-    def stream_chat(self, messages: list[Message]) -> Iterator[str]:
-        body = {"model": self.model, "messages": messages, "stream": True,
-                "options": self.options, "keep_alive": self.keep_alive}
-        if self.think is not None:
-            body["think"] = self.think
+    def stream_chat(self, messages: list[Message], timeout: float | None = None) -> Iterator[str]:
+        """`timeout`: for the first byte (loading a big model takes a while) and between pieces."""
+        body = self._chat_body(messages)
         t = time.monotonic()
         first = True
-        with self._request("/api/chat", body) as r:
+        with self._request("/api/chat", body, timeout=timeout) as r:
             for line in r:
                 line = line.strip()
                 if not line:
