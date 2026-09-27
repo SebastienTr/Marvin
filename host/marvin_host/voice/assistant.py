@@ -1,27 +1,32 @@
 """The voice assistant: hears "Marvin, ...", thinks with a local model, answers aloud.
 
-    source -> VAD segmenter -> wake word (Whisper) -> question -> LLM (streamed)
-           -> sentence splitter -> TTS -> sink
+    source -> [capture thread: echo gate] -> VAD segmenter -> wake word / Whisper -> question
+           -> LLM (streamed) -> first clause / sentences -> [speaker thread: TTS -> sink]
 
 States: idle -> listening -> thinking -> speaking -> (listening for a follow-up) -> idle.
 
 - "Marvin, what time is it?" in one breath: the name is stripped, the rest is the question.
 - "Marvin." alone: a soft chime, then the next utterance within `listen_window_s` is the question.
 - After an answer, a follow-up question needs no name for `follow_up_s`.
-- Barge-in: saying "Marvin" while it thinks or speaks stops it (and asks the new question, if any).
-  Without echo cancellation the microphone also hears Marvin itself: utterances that repeat what
-  it is saying are ignored, and anything that does not start with the name is ignored while it
-  speaks. Headphones, or the robot's own speaker away from the microphone, work best.
+- Barge-in: saying "Marvin" while it thinks stops it. While it speaks, only in `duplex` mode
+  (half duplex does not hear anything while it speaks), and never while its own reply contains
+  the name.
 
-Threads: `run()` reads the source and does all the listening (VAD, Whisper) in the caller's thread
-(or a background one with `start()`); a second thread does the thinking and speaking, so listening
-continues during an answer. Listening decisions use audio time (seconds of audio read), so a
-recording replays the same way at any speed.
+It never answers itself (echo.py): in half duplex (the default) the microphone is muted from the
+first word until `echo_tail_s` after the speaker has played the last one, and whatever is heard in
+any state is ignored if it repeats what Marvin said recently.
+
+Threads: a capture thread reads the source as it comes and applies the echo gate at capture
+time; `run()` does the listening (VAD, Whisper) in the caller's thread (or a background one with
+`start()`); a mouth thread asks the model and a speaker thread synthesises and plays, so the
+first clause is heard while the model is still writing. Listening decisions use audio time
+(seconds of audio captured), so a recording replays the same way at any speed.
 
 SPDX-License-Identifier: MIT
 """
 from __future__ import annotations
 
+import concurrent.futures
 import copy
 import logging
 import queue
@@ -33,14 +38,15 @@ from typing import Callable
 
 import numpy as np
 
-from ..audio import SAMPLE_RATE, AudioSink, AudioSource
+from ..audio import FRAME_MS, SAMPLE_RATE, AudioSink, AudioSource
 from . import persona
+from .echo import EchoFilter, EchoGate
 from .llm import LLM, LLMUnavailable
 from .stt import STT, Transcript
 from .text import SentenceSplitter, clean_for_speech
 from .tts import TTS
 from .vad import Segment, Segmenter, SegmenterConfig, Vad, make_vad
-from .wake import TranscriptWakeWord, WakeMatch, WakeWordDetector, is_wake_word, match_wake_word, normalize
+from .wake import TranscriptWakeWord, WakeMatch, WakeWordDetector, match_wake_word
 
 log = logging.getLogger("marvin.voice")
 
@@ -59,7 +65,8 @@ class VoiceConfig:
     languages: tuple[str, ...] = ("fr", "en")   # languages the speaker is expected to use
     default_language: str = "fr"            # until someone speaks
     # models (used when the components are not passed in)
-    stt_model: str = "small"
+    stt: str = "auto"                       # auto (MLX on Apple Silicon if installed), mlx, faster-whisper
+    stt_model: str | None = None            # None: the backend's default (turbo on MLX, small on CPU)
     llm_model: str = "qwen3:4b-instruct"
     ollama_host: str = "http://localhost:11434"
     tts: str = "auto"                       # auto, say, piper, espeak
@@ -73,6 +80,11 @@ class VoiceConfig:
     chime: bool = True                      # soft chime when listening after "Marvin."
     memory_turns: int = 6                   # question/answer pairs kept
     memory_reset_s: float = 180.0           # forget the conversation after this much silence
+    # echo and latency
+    duplex: bool = False                    # True: keep listening while speaking (headset, echo-cancelling robot)
+    echo_tail_s: float = 0.8                # half duplex: still deaf this long after the speaker stops
+    speculative_stt: bool = True            # start Whisper during the pause that may end the question
+    speculate_after_s: float = 0.25         # ...after this much silence
     segmenter: SegmenterConfig = field(default_factory=SegmenterConfig)
 
 
@@ -81,7 +93,7 @@ class _Job:
     kind: str                               # "ask" or "say"
     text: str
     language: str
-    t_heard: float = 0.0                    # monotonic time the question was understood
+    t_heard: float = 0.0                    # monotonic time the question's segment was complete
     cancel: threading.Event = field(default_factory=threading.Event)
 
 
@@ -95,6 +107,9 @@ def chime(rate: int = SAMPLE_RATE) -> np.ndarray:
     return np.concatenate(out).astype(np.int16)
 
 
+_DONE = object()
+
+
 class VoiceAssistant:
     """See the module docstring. Components not passed in are built from `config`."""
 
@@ -106,36 +121,51 @@ class VoiceAssistant:
                  on_reply: Callable[[str], None] | None = None):
         self.config = c = config or VoiceConfig()
         self.source, self.sink, self.brain = source, sink, brain
+        languages = (c.language,) if c.language else c.languages
+        self.language = c.language or c.default_language    # of the conversation
         if stt is None:
-            from .stt import WhisperSTT
-            stt = WhisperSTT(c.stt_model, languages=(c.language,) if c.language else c.languages)
+            from .stt import make_stt
+            stt = make_stt(c.stt, c.stt_model, languages)
         if llm is None:
             from .llm import OllamaLLM
             llm = OllamaLLM(c.llm_model, c.ollama_host)
             if llm.available():
-                llm.warm_up()
+                llm.warm_up(persona.persona_prompt(self.language))
         if tts is None:
             from .tts import make_tts
             tts = make_tts(c.tts, c.tts_voice, c.language or c.default_language)
+            t = time.monotonic()
+            try:                                # load the voice now (Piper: seconds), not at the first answer
+                tts.synthesize("Bonjour." if self.language == "fr" else "Hello.", self.language)
+                log.info("speech synthesis ready in %.1f s", time.monotonic() - t)
+            except Exception as e:
+                log.warning("speech synthesis failed to start: %s", e)
         self.stt, self.llm, self.tts = stt, llm, tts
         self.wake = wake or TranscriptWakeWord(stt)
         self.segmenter = Segmenter(vad or make_vad(c.vad), c.segmenter)
         self.on_status, self.on_transcript, self.on_reply = on_status, on_transcript, on_reply
 
-        self.language = c.language or c.default_language    # of the conversation
+        self.echo = EchoFilter()
+        self._cap_n = 0                                      # frames captured
+        self.gate = EchoGate(sink, c.echo_tail_s, enabled=not c.duplex, clock=self._capture_time)
         self.history: list[dict] = []
         self.last_latency: dict[str, float] = {}             # of the last answer, seconds
         self._status = Status.IDLE
         self._lock = threading.RLock()
+        self._stt_lock = threading.Lock()
         self._listen_until: float | None = None              # audio time
+        self._listen_from = 0.0                              # audio time: earlier utterances are not follow-ups
         self._audio_now = 0.0
         self._last_turn = 0.0                                # monotonic
+        self._frames: queue.Queue = queue.Queue()            # (frame, gated, capture time) from the capture thread
         self._jobs: queue.Queue[_Job | None] = queue.Queue()
         self._pending = 0                                    # jobs queued or running
         self._current: _Job | None = None
-        self._speaking_text = ""
+        self._spec: tuple[int, int, concurrent.futures.Future] | None = None   # (uid, voiced, transcript)
+        self._spec_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="marvin-voice-stt")
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
+        self._capture: threading.Thread | None = None
         self._mouth = threading.Thread(target=self._mouth_loop, name="marvin-voice-mouth", daemon=True)
         self._mouth.start()
 
@@ -147,18 +177,20 @@ class VoiceAssistant:
 
     def run(self) -> None:
         """Listens until the source ends or `close()`; then finishes what it was saying."""
+        self._capture = threading.Thread(target=self._capture_loop, name="marvin-voice-capture", daemon=True)
+        self._capture.start()
         try:
-            for frame in self.source.frames():
-                if self._closed.is_set():
-                    break
-                seg = self.segmenter.feed(frame)
-                self._audio_now = self.segmenter.time
-                if seg is not None:
-                    self._on_segment(seg)
-                self._tick()
+            while True:
+                item = self._frames.get()
+                try:
+                    if item is None or self._closed.is_set():
+                        break
+                    self._hear(*item)
+                finally:
+                    self._frames.task_done()
             seg = self.segmenter.flush()
             if seg is not None and not self._closed.is_set():
-                self._on_segment(seg)
+                self._on_segment(seg, time.monotonic())
         finally:
             self.wait_idle()
 
@@ -175,21 +207,24 @@ class VoiceAssistant:
         self._closed.set()
         self._interrupt()
         self._jobs.put(None)
+        self._frames.put(None)
         self.source.close()
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=2)
+        self._spec_pool.shutdown(wait=False)
         if hasattr(self.sink, "close"):
             self.sink.close()
 
     def wait_idle(self, timeout: float | None = None) -> bool:
-        """Blocks until nothing is queued, thought or spoken. False on timeout."""
+        """Blocks until everything captured has been heard and nothing is queued, thought or
+        spoken. False on timeout."""
         end = None if timeout is None else time.monotonic() + timeout
-        while self._pending > 0:
-            if self._closed.is_set() and not self._mouth.is_alive():
-                return True
+        while self._pending > 0 or self._frames.unfinished_tasks > 0:
+            if self._closed.is_set():
+                return not self._mouth.is_alive() or self._pending == 0
             if end is not None and time.monotonic() > end:
                 return False
-            time.sleep(0.01)
+            time.sleep(0.005)
         return True
 
     def say(self, text: str, language: str | None = None, force: bool = False) -> bool:
@@ -205,7 +240,57 @@ class VoiceAssistant:
         """Asks a question as if it had been heard."""
         self._submit(text, language or self.language)
 
+    # ------------------------------------------------------------ capture
+
+    def _capture_time(self) -> float:
+        return self._cap_n * FRAME_MS / 1000
+
+    def _capture_loop(self) -> None:
+        """Reads the source at its own pace, so the echo gate is applied when the sound is captured,
+        however far behind the listening (Whisper) is."""
+        try:
+            for frame in self.source.frames():
+                if self._closed.is_set():
+                    break
+                gated = self.gate.closed()          # judged at the frame's start time
+                self._cap_n += 1
+                self._frames.put((frame, gated, time.monotonic()))
+        except Exception:
+            log.exception("audio source failed")
+        finally:
+            self._frames.put(None)
+
     # ------------------------------------------------------------ listening
+
+    def _hear(self, frame: np.ndarray, gated: bool, t_cap: float) -> None:
+        if gated:
+            self.segmenter.advance()          # deaf: time goes on, a started utterance is dropped
+            self._spec = None
+        else:
+            seg = self.segmenter.feed(frame)
+            if seg is not None:
+                self._on_segment(seg, t_cap)
+            else:
+                self._speculate()
+        self._audio_now = self.segmenter.time
+        self._tick()
+
+    def _speculate(self) -> None:
+        """During a pause that may end the utterance, start transcribing it: if the speaker does
+        not go on, the transcript is ready (or nearly) when the pause is long enough to end it."""
+        c, sg = self.config, self.segmenter
+        if not c.speculative_stt or not sg.in_speech or sg.silence_s < c.speculate_after_s:
+            return
+        if self._pending > 0:                 # busy: only a barge-in could come, no need to hurry
+            return
+        if self._spec is not None and self._spec[:2] == sg.utterance_key:
+            return
+        pend = sg.pending()
+        if pend is None:
+            return
+        if isinstance(self.wake, TranscriptWakeWord) and not self.wake.candidate(pend.pcm) and c.wake:
+            return
+        self._spec = (pend.uid, pend.voiced, self._spec_pool.submit(self._transcribe, pend.pcm))
 
     def _set_status(self, s: Status) -> None:
         with self._lock:
@@ -228,7 +313,41 @@ class VoiceAssistant:
                 self._set_status(Status.IDLE)
 
     def _transcribe(self, pcm: np.ndarray) -> Transcript:
-        return self.stt.transcribe(pcm, self.config.language)
+        with self._stt_lock:
+            return self.stt.transcribe(pcm, self.config.language)
+
+    def _transcript_for(self, seg: Segment, lat: dict) -> Transcript | None:
+        """The speculative transcript of `seg` if it is still valid, else None."""
+        spec, self._spec = self._spec, None
+        if spec is None or spec[:2] != (seg.uid, seg.voiced):
+            return None
+        t = time.monotonic()
+        try:
+            tr = spec[2].result()
+        except Exception:
+            log.exception("speculative transcription failed")
+            return None
+        lat["stt"] = time.monotonic() - t     # what was left to wait for
+        lat["speculative"] = 1.0
+        return tr
+
+    def _full_transcript(self, seg: Segment, lat: dict) -> Transcript:
+        tr = self._transcript_for(seg, lat)
+        if tr is None:
+            tr = self._transcribe(seg.pcm)
+            lat["stt"] = tr.seconds
+        return tr
+
+    def _wake_check(self, seg: Segment, lat: dict) -> WakeMatch | None:
+        if isinstance(self.wake, TranscriptWakeWord):
+            if not self.wake.candidate(seg.pcm):
+                self._spec = None
+                return None
+            return self.wake.check(seg.pcm, self.config.language, transcript=self._full_transcript(seg, lat))
+        t = time.monotonic()
+        m = self.wake.check(seg.pcm, self.config.language)
+        lat["wake"] = time.monotonic() - t
+        return m
 
     def _reply_language(self, tr: Transcript | None) -> str:
         c = self.config
@@ -238,48 +357,66 @@ class VoiceAssistant:
             self.language = tr.language
         return self.language
 
-    def _on_segment(self, seg: Segment) -> None:
-        c = self.config
-        with self._lock:
-            busy = self._status in (Status.THINKING, Status.SPEAKING) or self._current is not None
-            window = self._listen_until is not None and seg.t_start <= self._listen_until
-        t0 = time.monotonic()
+    def _own_voice(self, text: str) -> bool:
+        if self.echo.is_own_voice(text):
+            log.info("heard: %s (ignored: own voice)", text)
+            return True
+        return False
 
-        if busy:
+    def _on_segment(self, seg: Segment, t_cap: float) -> None:
+        c = self.config
+        now_audio = self.segmenter.time
+        lat = {"endpoint": max(0.0, now_audio - seg.t_speech_end) if seg.t_speech_end else c.segmenter.end_silence_s,
+               "queue": max(0.0, time.monotonic() - t_cap)}
+        t0 = t_cap                              # when the end of the question was captured
+        with self._lock:
+            busy = self._status in (Status.THINKING, Status.SPEAKING) or self._pending > 0
+            late = seg.t_start < self._listen_from - 0.05   # captured while it was speaking
+            window = (self._listen_until is not None and not late and seg.t_start <= self._listen_until)
+
+        if busy or late:
+            # only "Marvin" counts, and not if Marvin is saying its own name right now
             if not (c.wake and c.barge_in):
-                return                          # half duplex: what it hears now is mostly itself
-            m = self.wake.check(seg.pcm, c.language)
-            if m is None or self._is_echo(m):
+                self._spec = None
                 return
-            log.info("barge-in")
-            self._interrupt()
-            self._handle_match(m, seg, t0)
+            if self._status == Status.SPEAKING and self.echo.current_has_wake_word():
+                self._spec = None
+                return
+            m = self._wake_check(seg, lat)
+            if m is None or (m.transcript is not None and self._own_voice(m.transcript.text)):
+                return
+            if busy:
+                log.info("barge-in")
+                self._interrupt()
+            self._handle_match(m, seg, t0, lat)
             return
 
         if not c.wake or window:
-            tr = self._transcribe(seg.pcm)
+            tr = self._full_transcript(seg, lat)
+            if not tr.text.strip() or self._own_voice(tr.text):
+                return
             rest = match_wake_word(tr.text)
             text = tr.text.strip() if rest is None else rest
             if not text:
                 if rest is not None:            # "Marvin." again: keep listening
                     self._listen(seg.t_end)
                 return
-            self._submit(text, self._reply_language(tr), tr, t0)
+            self._submit(text, self._reply_language(tr), tr, t0, lat)
             return
 
-        m = self.wake.check(seg.pcm, c.language)
-        if m is not None:
-            self._handle_match(m, seg, t0)
+        m = self._wake_check(seg, lat)
+        if m is not None and not (m.transcript is not None and self._own_voice(m.transcript.text)):
+            self._handle_match(m, seg, t0, lat)
 
-    def _handle_match(self, m: WakeMatch, seg: Segment, t0: float) -> None:
+    def _handle_match(self, m: WakeMatch, seg: Segment, t0: float, lat: dict) -> None:
         tr = m.transcript
         query = m.query
         if query is None:                       # a keyword model: transcribe the utterance ourselves
-            tr = self._transcribe(seg.pcm)
+            tr = self._full_transcript(seg, lat)
             query = match_wake_word(tr.text)
             query = tr.text if query is None else query
         if query:
-            self._submit(query, self._reply_language(tr), tr, t0)
+            self._submit(query, self._reply_language(tr), tr, t0, lat)
         else:
             self._reply_language(tr)
             self._listen(seg.t_end, with_chime=self.config.chime)
@@ -291,18 +428,10 @@ class VoiceAssistant:
         if with_chime:
             self.sink.play(chime())
 
-    def _is_echo(self, m: WakeMatch) -> bool:
-        """True if what was heard is Marvin's own voice coming back through the microphone."""
-        if m.transcript is None or not self._speaking_text:
-            return False
-        heard = [w for w in normalize(m.transcript.text).split() if len(w) > 2 and not is_wake_word(w)]
-        said = set(normalize(self._speaking_text).split())
-        return bool(heard) and sum(w in said for w in heard) / len(heard) >= 0.6
-
-    def _submit(self, text: str, language: str, tr: Transcript | None = None, t0: float | None = None) -> None:
+    def _submit(self, text: str, language: str, tr: Transcript | None = None, t0: float | None = None,
+                lat: dict | None = None) -> None:
         log.info("heard (%s): %s", language, text)
-        if tr is not None:
-            self.last_latency = {"stt": tr.seconds}
+        self.last_latency = dict(lat or {})
         if self.on_transcript:
             try:
                 self.on_transcript(text)
@@ -348,30 +477,26 @@ class VoiceAssistant:
                 if job.kind == "ask":
                     self._answer(job)
                 else:
-                    self._set_status(Status.SPEAKING)
-                    self._speaking_text = job.text
-                    self._speak(job, job.text)
-                    self.sink.wait()
-                    if not job.cancel.is_set() and self.on_reply:
-                        self.on_reply(job.text)
+                    self._say(job)
             except Exception:
                 log.exception("voice job failed")
             finally:
-                self._speaking_text = ""
                 with self._lock:
                     self._current = None
                     self._pending -= 1
                     if self._pending == 0 and self._status in (Status.THINKING, Status.SPEAKING):
                         c = self.config
+                        # anything captured before now (plus the echo tail) is not a follow-up
+                        self._listen_from = self._capture_time() + (0.0 if c.duplex else c.echo_tail_s)
                         if job.kind == "ask" and not job.cancel.is_set() and c.wake and c.follow_up_s > 0:
-                            self._listen_until = self._audio_now + self.config.follow_up_s
+                            self._listen_until = self._listen_from + c.follow_up_s
                             self._set_status(Status.LISTENING)
                         elif self._listen_until is None:
                             self._set_status(Status.IDLE)
                         else:
                             self._set_status(Status.LISTENING)
 
-    def _messages(self, job: _Job) -> list[dict]:
+    def _messages(self, job: _Job) -> tuple[list[dict], str]:
         state, events = None, ()
         if self.brain is not None:
             state = copy.copy(self.brain.state)
@@ -383,65 +508,103 @@ class VoiceAssistant:
         if self.history and now - self._last_turn > self.config.memory_reset_s:
             log.debug("conversation forgotten after %.0f s of silence", now - self._last_turn)
             self.history.clear()
-        system = persona.system_prompt(job.language, state, events)
-        return [{"role": "system", "content": system}, *self.history, {"role": "user", "content": job.text}]
+        user = persona.user_message(job.text, state, events)
+        return [{"role": "system", "content": persona.persona_prompt(job.language)}, *self.history,
+                {"role": "user", "content": user}], user
 
-    def _speak(self, job: _Job, sentence: str) -> bool:
-        text = clean_for_speech(sentence)
-        if not text or job.cancel.is_set():
-            return False
-        pcm, rate = self.tts.synthesize(text, job.language)
-        if job.cancel.is_set():
-            return False
-        if "first_audio" not in self.last_latency and job.kind == "ask":
-            self.last_latency["first_audio"] = time.monotonic() - job.t_heard
-        self._set_status(Status.SPEAKING)
-        self.sink.play(pcm, rate)
-        return True
+    def _speaker(self, job: _Job, sentences: queue.Queue, lat: dict) -> None:
+        """Speaker thread of one reply: synthesises each chunk and queues it on the sink, in order,
+        while the model keeps writing."""
+        first = True
+        while True:
+            s = sentences.get()
+            if s is _DONE or job.cancel.is_set():
+                return
+            text = clean_for_speech(s)
+            if not text:
+                continue
+            t = time.monotonic()
+            pcm, rate = self.tts.synthesize(text, job.language)
+            if job.cancel.is_set():
+                return
+            if first:
+                lat["tts"] = time.monotonic() - t
+                lat["audio_start"] = time.monotonic() - job.t_heard
+                self.gate.speaking(True)
+                self._set_status(Status.SPEAKING)
+                first = False
+            self.sink.play(pcm, rate)
+
+    def _speak_all(self, job: _Job, produce: Callable[[Callable[[str], None]], None], lat: dict) -> str:
+        """Runs `produce(emit)` (which calls emit(chunk) as text becomes available) with a speaker
+        thread, waits until everything is played, and returns what was said."""
+        sentences: queue.Queue = queue.Queue()
+        said: list[str] = []
+
+        def emit(chunk: str) -> None:
+            said.append(chunk)
+            self.echo.speaking(" ".join(said))      # filter it before it is even played
+            sentences.put(chunk)
+
+        spk = threading.Thread(target=self._speaker, args=(job, sentences, lat), name="marvin-voice-speaker",
+                               daemon=True)
+        spk.start()
+        try:
+            produce(emit)
+        finally:
+            sentences.put(_DONE)
+            spk.join()
+            if not job.cancel.is_set():
+                self.sink.wait()
+            self.gate.speaking(False)
+            self.echo.said(" ".join(said))
+        return clean_for_speech(" ".join(said))
+
+    def _say(self, job: _Job) -> None:
+        text = self._speak_all(job, lambda emit: emit(job.text), {})
+        if not job.cancel.is_set() and self.on_reply:
+            self.on_reply(text)
 
     def _answer(self, job: _Job) -> None:
-        messages = self._messages(job)
-        splitter = SentenceSplitter()
-        reply: list[str] = []
+        messages, user = self._messages(job)
+        lat = self.last_latency
         t = time.monotonic()
-        try:
-            for piece in self.llm.stream_chat(messages):
-                if job.cancel.is_set():
-                    break
-                if not reply and "llm_first_token" not in self.last_latency:
-                    self.last_latency["llm_first_token"] = time.monotonic() - t
-                for s in splitter.feed(piece):
-                    reply.append(s)
-                    self._speaking_text = " ".join(reply)
-                    self._speak(job, s)
-            if not job.cancel.is_set():
+        failure: list[str] = []
+
+        def produce(emit):
+            splitter = SentenceSplitter()
+            try:
+                for piece in self.llm.stream_chat(messages):
+                    if job.cancel.is_set():
+                        return
+                    lat.setdefault("llm_first_token", time.monotonic() - t)
+                    for s in splitter.feed(piece):
+                        lat.setdefault("first_chunk", time.monotonic() - t)
+                        emit(s)
                 for s in splitter.flush():
-                    reply.append(s)
-                    self._speaking_text = " ".join(reply)
-                    self._speak(job, s)
-        except LLMUnavailable as e:
-            log.error("%s. %s", e, e.hint)
-            self._speak(job, persona.phrase("llm_down", job.language))
-            self.sink.wait()
+                    lat.setdefault("first_chunk", time.monotonic() - t)
+                    emit(s)
+            except LLMUnavailable as e:
+                log.error("%s. %s", e, e.hint)
+                failure.append("llm_down")
+                emit(persona.phrase("llm_down", job.language))
+            except Exception:
+                log.exception("the language model failed")
+                failure.append("error")
+                emit(persona.phrase("error", job.language))
+
+        text = self._speak_all(job, produce, lat)
+        lat["total"] = time.monotonic() - job.t_heard
+        if failure:
             return
-        except Exception:
-            log.exception("the language model failed")
-            self._speak(job, persona.phrase("error", job.language))
-            self.sink.wait()
-            return
-        self.sink.wait()
-        text = clean_for_speech(" ".join(reply))
-        self.last_latency["total"] = time.monotonic() - job.t_heard
         if job.cancel.is_set():
             log.info("interrupted")
             if text:
-                self._remember(job.text, text + " …")
+                self._remember(user, text + " …")
             return
-        lat = self.last_latency
         log.info("said: %s", text)
-        log.info("latency: speech recognition %.2f s, first word %.2f s after the end of the question",
-                 lat.get("stt", 0.0), lat.get("first_audio", 0.0))
-        self._remember(job.text, text)
+        log.info("latency: %s", format_latency(lat))
+        self._remember(user, text)
         if self.on_reply:
             try:
                 self.on_reply(text)
@@ -452,3 +615,20 @@ class VoiceAssistant:
         self.history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
         del self.history[:-2 * self.config.memory_turns]
         self._last_turn = time.monotonic()
+
+
+def format_latency(lat: dict) -> str:
+    """One line: where the time went between the end of the question and the first word."""
+    first_word = lat.get("endpoint", 0.0) + lat.get("audio_start", 0.0)
+    parts = [f"end of speech {lat.get('endpoint', 0.0):.2f}"]
+    if lat.get("queue", 0.0) >= 0.05:
+        parts.append(f"backlog {lat['queue']:.2f}")
+    stt = f"speech recognition {lat.get('stt', 0.0):.2f}"
+    parts.append(stt + (" (speculative)" if lat.get("speculative") else ""))
+    if "llm_first_token" in lat:
+        parts.append(f"model first token {lat['llm_first_token']:.2f}")
+    if "first_chunk" in lat:
+        parts.append(f"first chunk {lat['first_chunk']:.2f}")
+    if "tts" in lat:
+        parts.append(f"synthesis {lat['tts']:.2f}")
+    return f"first word {first_word:.2f} s after you stopped talking ({', '.join(parts)} s)"

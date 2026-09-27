@@ -89,6 +89,9 @@ class Segment:
     pcm: np.ndarray
     t_start: float
     t_end: float
+    t_speech_end: float = 0.0       # end of the last voiced frame (t_end minus the kept trailing silence)
+    uid: int = 0                    # utterance number, see `Segmenter.pending()`
+    voiced: int = 0                 # voiced frames in it
 
     @property
     def duration(self) -> float:
@@ -99,7 +102,8 @@ class Segment:
 class SegmenterConfig:
     start_window: int = 10          # frames looked at to decide that speech started (200 ms)...
     start_ratio: float = 0.6        # ...this share of them voiced
-    end_silence_s: float = 0.7      # this much silence ends the utterance
+    end_silence_s: float = 0.55     # this much silence ends the utterance (endpointing delay)
+    tail_kept_s: float = 0.15       # trailing silence kept in the segment
     pre_roll_s: float = 0.3         # audio kept before the detected start
     min_speech_s: float = 0.25      # shorter utterances (clicks, coughs) are dropped
     max_segment_s: float = 15.0     # cut long monologues here
@@ -119,6 +123,7 @@ class Segmenter:
         self._voiced_count = 0
         self._n = 0                     # frames consumed
         self._start_n = 0
+        self._uid = 0
 
     @property
     def in_speech(self) -> bool:
@@ -129,6 +134,33 @@ class Segmenter:
     def time(self) -> float:
         """Audio time, seconds."""
         return self._n * FRAME_MS / 1000
+
+    @property
+    def silence_s(self) -> float:
+        """Silence since the last voiced frame of the current utterance (0 outside utterances)."""
+        return self._silence * FRAME_MS / 1000 if self._in_speech else 0.0
+
+    @property
+    def utterance_key(self) -> tuple[int, int]:
+        """(uid, voiced frames) of the current utterance: unchanged while the speaker pauses."""
+        return self._uid, self._voiced_count
+
+    def pending(self) -> Segment | None:
+        """The current utterance as it would end now (for speculative transcription), or None.
+        It is still valid when the segment really ends if `uid` and `voiced` are unchanged."""
+        if not self._in_speech:
+            return None
+        keep = int(self.config.tail_kept_s * 1000 / FRAME_MS)
+        frames = self._frames[:len(self._frames) - max(0, self._silence - keep)]
+        pcm = np.concatenate(frames)
+        t0 = self._start_n * FRAME_MS / 1000
+        return Segment(pcm, t0, t0 + len(pcm) / SAMPLE_RATE, self.time - self.silence_s, self._uid, self._voiced_count)
+
+    def advance(self) -> None:
+        """A frame that was not heard (microphone muted while Marvin speaks): time moves on, and
+        any utterance in progress is dropped."""
+        self._n += 1
+        self.reset()
 
     def feed(self, frame: np.ndarray) -> Segment | None:
         c = self.config
@@ -146,6 +178,7 @@ class Segmenter:
                 self._voiced_count = sum(v for _, v in kept)
                 self._start_n = self._n - len(kept)
                 self._in_speech = True
+                self._uid += 1
                 self._silence = 0
                 self._ring.clear()
                 self._voiced.clear()
@@ -157,7 +190,7 @@ class Segmenter:
         else:
             self._silence += 1
         if self._silence * FRAME_MS / 1000 >= c.end_silence_s:
-            trim = max(0, self._silence - int(0.2 * 1000 / FRAME_MS))       # keep 200 ms of trailing silence
+            trim = max(0, self._silence - int(c.tail_kept_s * 1000 / FRAME_MS))
             return self._finish(trim)
         if len(self._frames) * FRAME_MS / 1000 >= c.max_segment_s:
             return self._finish(0)
@@ -170,16 +203,17 @@ class Segmenter:
     def reset(self) -> None:
         self._in_speech = False
         self._frames = []
+        self._silence = 0
         self._ring.clear()
         self._voiced.clear()
 
     def _finish(self, trim: int) -> Segment | None:
         frames = self._frames[:len(self._frames) - trim] if trim else self._frames
         voiced = self._voiced_count
+        speech_end = self.time - self._silence * FRAME_MS / 1000
         self.reset()
         if voiced * FRAME_MS / 1000 < self.config.min_speech_s or not frames:
             return None
         pcm = np.concatenate(frames)
         t0 = self._start_n * FRAME_MS / 1000
-        return Segment(pcm, t0, t0 + len(pcm) / SAMPLE_RATE)
-
+        return Segment(pcm, t0, t0 + len(pcm) / SAMPLE_RATE, speech_end, self._uid, voiced)

@@ -14,7 +14,8 @@ dependencies = ["numpy>=1.24", "rerun-sdk>=0.23"]
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 # talk to Marvin, all local (docs/voice.md); Piper voices are optional: pip install piper-tts
-voice = ["sounddevice>=0.5", "faster-whisper>=1.1", "webrtcvad-wheels>=2.0.14"]
+voice = ["sounddevice>=0.5", "faster-whisper>=1.1", "webrtcvad-wheels>=2.0.14",
+         "mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 
 [project.scripts]
 marvin-host = "marvin_host.cli:main"

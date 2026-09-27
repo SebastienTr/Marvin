@@ -14,6 +14,7 @@ import re
 ABBREVIATIONS = {"m", "mm", "mme", "mlle", "dr", "pr", "st", "ste", "mr", "mrs", "ms", "prof", "etc", "vs",
                  "cf", "ex", "p", "env", "approx", "no", "n°", "e.g", "i.e"}
 _END = re.compile(r"([.!?…]+[\"»”')\]]*)(\s+)|(\n+)")
+_CLAUSE = re.compile(r"([,;:—])(\s+)")
 _EMOJI = re.compile("[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F1E6-\U0001F1FF‍️]")
 
 
@@ -32,11 +33,15 @@ class SentenceSplitter:
     """Feed text pieces as they stream in; get complete sentences back.
 
     Sentences shorter than `min_chars` are joined with the next one ("Oui. C'est ça." is spoken
-    as one), except the very first, which is released as soon as possible to start speaking.
+    as one), except the very first, which is released as soon as possible to start speaking: it
+    may even be a clause, cut at a comma, semicolon or colon once it has `first_clause_words`
+    words ("Paris, bien sûr, | la ville..." waits; "La capitale de la France, | c'est Paris."
+    does not), so the voice starts before the model finishes its first sentence. 0 disables it.
     """
 
-    def __init__(self, min_chars: int = 12):
+    def __init__(self, min_chars: int = 12, first_clause_words: int = 4):
         self.min_chars = min_chars
+        self.first_clause_words = first_clause_words
         self._buf = ""
         self._pending = ""          # short sentence waiting to be joined with the next
         self._emitted = 0
@@ -58,6 +63,13 @@ class SentenceSplitter:
             if s:
                 out.extend(self._push(s))
         self._buf = self._buf[start:]
+        if self._emitted == 0 and not out and self.first_clause_words:
+            for m in _CLAUSE.finditer(self._buf):
+                head = self._buf[:m.end(1)].strip()
+                if len(re.findall(r"\w+", head)) >= self.first_clause_words:
+                    self._buf = self._buf[m.end():]
+                    out.extend(self._push(head))
+                    break
         return out
 
     def flush(self) -> list[str]:
@@ -77,5 +89,5 @@ class SentenceSplitter:
 
 
 def split_sentences(text: str) -> list[str]:
-    sp = SentenceSplitter(min_chars=0)
+    sp = SentenceSplitter(min_chars=0, first_clause_words=0)
     return sp.feed(text) + sp.flush()

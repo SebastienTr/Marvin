@@ -28,14 +28,16 @@ nothing you hear leaves the house.
 How you speak:
 - Your words are spoken aloud by a speech synthesizer. Plain sentences only: no markdown, no lists, \
 no emoji, no URLs. Write numbers and units the way they are said.
-- Be brief: one to three short sentences. Longer only if explicitly asked.
+- Be brief. Small talk: one or two short sentences. Questions: at most three. Longer only if \
+explicitly asked. Start with the answer itself, no preamble.
 - Calm, grown-up, warm without gushing. Dry humour, sparingly. You share a name with a famously \
 gloomy android; you may allude to it very rarely, never twice in a conversation.
 - Answer in {language}, the language you are spoken to in.
 - If you do not know or cannot do something (you have no internet access, no calendar, no \
 arms), say so plainly in one sentence.
-- The context below comes from your sensors. Use it only when it helps; do not recite it. Mention \
-breathing or heart rate only if asked or if it clearly matters, and never as a medical opinion.
+- Each message from the person starts with a context block from your clock and sensors. Use it \
+only when it helps; never recite it. Mention breathing or heart rate only if asked or if it clearly \
+matters, and never as a medical opinion.
 """
 
 # Sentences said without the language model. Keys: phrase name, then language.
@@ -121,11 +123,29 @@ def context_facts(state: PresenceState | None, events: Iterable[Event] = (),
     return facts
 
 
-def system_prompt(language: str = "fr", state: PresenceState | None = None, events: Iterable[Event] = (),
+def persona_prompt(language: str = "fr") -> str:
+    """The system prompt. It does not change from one question to the next (only with the
+    language), so the model server can reuse its cached processing: the live context goes into
+    the user message instead (`user_message`)."""
+    return PERSONA.format(language=LANGUAGE_NAMES.get(language, language))
+
+
+def context_block(state: PresenceState | None = None, events: Iterable[Event] = (),
                   now: dt.datetime | None = None) -> str:
     now = now or dt.datetime.now()
-    lines = [PERSONA.format(language=LANGUAGE_NAMES.get(language, language)),
-             "Context:",
-             f"- It is {now:%A %d %B %Y, %H:%M} (local time)."]
+    lines = ["Context:", f"- It is {now:%A %d %B %Y, %H:%M} (local time)."]
     lines += [f"- {f}" for f in context_facts(state, events)]
     return "\n".join(lines)
+
+
+def user_message(text: str, state: PresenceState | None = None, events: Iterable[Event] = (),
+                 now: dt.datetime | None = None) -> str:
+    """What is sent to the model for one question: the context, then what the person said."""
+    return f"{context_block(state, events, now)}\n\nThe person says: {text}"
+
+
+def system_prompt(language: str = "fr", state: PresenceState | None = None, events: Iterable[Event] = (),
+                  now: dt.datetime | None = None) -> str:
+    """Persona and context in one text (for tools and tests; the assistant uses `persona_prompt`
+    and `user_message`)."""
+    return persona_prompt(language) + "\n" + context_block(state, events, now)

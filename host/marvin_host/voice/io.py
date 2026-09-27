@@ -312,6 +312,8 @@ class SpeakerSink:
         self._stream = sd.OutputStream(device=device, channels=1, dtype="int16", samplerate=self.rate,
                                        callback=self._callback, latency="low")
         self._stream.start()
+        # from the samples leaving our buffer to the sound leaving the speaker (the echo gate adds it)
+        self.output_latency = float(self._stream.latency or 0.0)
 
     def _callback(self, outdata, frames, t, status):
         with self._lock:

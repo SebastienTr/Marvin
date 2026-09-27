@@ -91,13 +91,26 @@ class OllamaLLM:
             return False
         return True
 
-    def warm_up(self) -> None:
-        """Loads the model into memory now rather than at the first question."""
+    def warm_up(self, system: str | None = None) -> float | None:
+        """Loads the model into memory now rather than at the first question (and keeps it there
+        for `keep_alive`). With `system`, also processes the system prompt once, so that Ollama's
+        prompt cache already holds it. Returns the time it took, None if Ollama is unreachable."""
+        t = time.monotonic()
+        body: dict = {"model": self.model, "messages": [], "keep_alive": self.keep_alive}
+        if system:
+            body = {**body, "messages": [{"role": "system", "content": system}, {"role": "user", "content": "."}],
+                    "stream": False, "options": {**self.options, "num_predict": 1}}
+            if self.think is not None:
+                body["think"] = self.think
         try:
-            with self._request("/api/chat", {"model": self.model, "messages": [], "keep_alive": self.keep_alive}):
-                pass
+            with self._request("/api/chat", body, timeout=max(self.timeout, 300)) as r:
+                r.read()
         except LLMUnavailable as e:
             log.warning("%s. %s", e, e.hint)
+            return None
+        dt = time.monotonic() - t
+        log.info("model %s loaded in %.1f s", self.model, dt)
+        return dt
 
     def stream_chat(self, messages: list[Message]) -> Iterator[str]:
         body = {"model": self.model, "messages": messages, "stream": True,

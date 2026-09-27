@@ -141,11 +141,13 @@ class TranscriptWakeWord:
         d = len(pcm) / SAMPLE_RATE
         return self.min_s <= d <= self.max_s and rms_dbfs(pcm) >= self.min_dbfs
 
-    def check(self, pcm: np.ndarray, language: str | None = None) -> WakeMatch | None:
+    def check(self, pcm: np.ndarray, language: str | None = None,
+              transcript: Transcript | None = None) -> WakeMatch | None:
+        """`transcript`: already transcribed (speculatively, while the speaker was pausing)."""
         self.last = None
         if not self.candidate(pcm):
             return None
-        tr = self.stt.transcribe(pcm, language)
+        tr = transcript or self.stt.transcribe(pcm, language)
         self.last = tr
         rest = match_wake_word(tr.text)
         return None if rest is None else WakeMatch(rest, tr)
