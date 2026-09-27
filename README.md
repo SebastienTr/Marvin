@@ -2,12 +2,12 @@
 
 **A small desk companion that sees the room five ways at once, and knows how you are doing.**
 
-SuperLens is an open-source robot for your desk. A 360° lidar turns on top of its head, a camera and a face live behind a black glass window, and two mmWave radars (24 GHz and 60 GHz) hide behind the band around its body. It hears you through a microphone and answers through a speaker in its side.
+SuperLens is an open-source robot for your desk, called **Marvin**. A 360° lidar turns on top of its head, a camera and a face live behind a black glass window, and two mmWave radars (24 GHz and 60 GHz) hide behind the band around its body. It hears you through a microphone and answers through a speaker in its side.
 
 It can **see** (camera, lidar), **feel** (who is in the room, how they move, and your breathing and heart rate when you sit in front of it), **hear** (microphone) and **speak** (speaker, expressive eyes). The heavy thinking runs on your computer, which fuses everything into one live model of the room.
 
 <p align="center">
-  <img src="docs/images/robot_threequarter.png" alt="The SuperLens robot: an upright warm-grey body with an anthracite band, a slightly wider head with a black glass face showing two eyes, an orange knob on the side and a lidar turret on top" width="280">
+  <img src="docs/images/robot_threequarter.png" alt="Marvin, the SuperLens robot: an upright warm-grey body with an anthracite band, a slightly wider head with a black glass face showing two eyes, an orange knob on the side and a lidar turret on top" width="280">
   <img src="docs/images/robot_front.png" alt="Front view of the robot with a content expression on its face" width="300">
 </p>
 
@@ -53,13 +53,16 @@ Heart rate from a radar is consumer-grade: a few beats per minute of error, and 
 
 ## Design language
 
+The robot's name is **Marvin**. The name is also its wake word: "marvin" is one of the keywords in Google's open [Speech Commands](https://arxiv.org/abs/1804.03209) dataset, so a keyword-spotting model can be trained for it without recording a dataset first.
+
+
 Warm grey shell, anthracite band and face, a single orange knob (volume, and a tap to wake it). No stickers, no cartoon features: the personality comes from the eyes and from how it behaves.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  subgraph Robot["SuperLens robot"]
+  subgraph Robot["Marvin (SuperLens robot)"]
     LID["D800 lidar<br/>UART 921600"] --> ESP["XIAO ESP32S3 Sense<br/>camera + mic + Wi-Fi<br/>face + voice"]
     LD2450["HLK-LD2450<br/>UART 256000"] <--> ESP
     MR60["MR60BHA2 kit<br/>(own ESP32-C6)"]

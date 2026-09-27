@@ -2,7 +2,7 @@
 
 **Un petit compagnon de bureau qui voit la pièce de cinq façons à la fois, et qui sait comment tu vas.**
 
-SuperLens est un robot open source pour ton bureau. Un lidar 360° tourne sur sa tête, une caméra et un visage vivent derrière une vitre noire, et deux radars (24 GHz et 60 GHz) se cachent derrière la bande qui fait le tour de son corps. Il t'entend grâce à un micro et te répond par un haut-parleur sur le côté.
+SuperLens est un robot open source pour ton bureau, qui s'appelle **Marvin**. Un lidar 360° tourne sur sa tête, une caméra et un visage vivent derrière une vitre noire, et deux radars (24 GHz et 60 GHz) se cachent derrière la bande qui fait le tour de son corps. Il t'entend grâce à un micro et te répond par un haut-parleur sur le côté.
 
 Il peut **voir** (caméra, lidar), **ressentir** (qui est dans la pièce, comment on bouge, et ta respiration et ton rythme cardiaque quand tu es assis devant), **écouter** (micro) et **parler** (haut-parleur, yeux expressifs). Le gros du calcul tourne sur ton ordinateur, qui fusionne tout en un modèle vivant de la pièce.
 
