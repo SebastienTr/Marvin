@@ -13,7 +13,7 @@ It can **see** (camera, lidar), **feel** (who is in the room, how they move, and
 
 > Français : [lire en français](README.fr.md) · Presentation page: open [`docs/index.html`](docs/index.html) in a browser.
 
-> **Project status: rev F, design frozen, CAD in progress.** The shape, the sensor layout and the parts list are settled (see [docs/concepts/robot_v3_board.jpg](docs/concepts/robot_v3_board.jpg)). The printable CAD for rev F is being written; until it lands, [`hardware/cad/fanou.scad`](hardware/cad/fanou.scad) holds the previous rev E (the lighthouse). The wiring is unchanged since rev D.
+> **Project status: rev F, CAD in progress; the parts for the first build are ordered.** The body half is designed and printable ([`hardware/cad/marvin.scad`](hardware/cad/marvin.scad)): body, plinth, sensor sled and TPU neck. The head follows once the screen is measured. The rev E lighthouse is archived in [`hardware/archive/rev-e/`](hardware/archive/rev-e/). The wiring is unchanged since rev D.
 
 ## What we want to do
 
@@ -27,8 +27,8 @@ Every sensor on its own is half-blind. A lidar draws perfect walls but cannot te
 
 The robot stands upright on the desk; **the sensors are tilted inside it**, not the body.
 
-- **Heart rate at the desk.** The 60 GHz radar sits in the body on a sled tilted 20° up, so its beam lands on the chest of someone seated 0.6–1 m away. It looks through a flat 1.6 mm PETG wall, half a wavelength at 60 GHz; crossing it at 20° costs almost nothing.
-- **Room tracking.** The 24 GHz radar sits just above it, tilted 10°, covering ±60° of the room.
+- **Heart rate at the desk.** The 60 GHz radar sits in the body on a sled tilted 20° up, so its beam lands on the chest of someone seated 0.65–1.1 m away. It looks through a flat 1.6 mm PETG wall, half a wavelength at 60 GHz; crossing it at 20° costs almost nothing.
+- **Room tracking.** The 24 GHz radar sits just below it, tilted 10°, covering ±60° of the room. Below, not above: that way it never shadows the 60 GHz beam.
 - **Face and camera.** The screen stands vertical behind a smoked acrylic window; the camera is tilted 20° so it frames your face, not your chest.
 - **Lidar on top**, with nothing above its laser plane. On a desk, your monitor and the wall will hide part of its 360° scan; it maps the whole room best from a corner or a shelf.
 - **Quiet for the radar.** Head and body are joined through a TPU damper, so the lidar motor does not shake the heart-rate radar.
@@ -83,17 +83,17 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 4. **Assemble** following [docs/assembly.md](docs/assembly.md).
 5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) are in progress.
 
-Steps 2 and 4 describe the rev F parts as planned; the files arrive with the rev F CAD.
+The body parts are ready to print; the head parts arrive with the head CAD.
 
 ## Repository layout
 
 ```
 marvin/
 ├── hardware/
-│   ├── blender/                  # assembled model + print layout, open in Blender
-│   ├── cad/                      # parametric OpenSCAD source (rev E now, rev F next)
+│   ├── cad/                      # parametric OpenSCAD source (marvin.scad, rev F)
 │   ├── stl/                      # print-ready STLs (generated)
-│   └── scripts/                  # export_stl.sh, render_previews.sh
+│   ├── scripts/                  # export_stl.sh, render_previews.sh, section_diagram.py
+│   └── archive/                  # earlier revisions (rev E: Fanou the lighthouse)
 ├── firmware/                     # ESP32-S3 firmware (planned)
 ├── host/                         # desktop fusion + companion (planned)
 ├── docs/                         # BOM, wiring, printing, assembly, architecture

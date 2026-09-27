@@ -42,10 +42,10 @@ The microphone is already on the XIAO Sense board: nothing to buy.
 | Part | Qty | Purpose | ≈ € |
 |---|---:|---|---:|
 | [Tinted acrylic sheet, 10 × 20 cm, 2.3 mm](https://fr.aliexpress.com/item/1005006782700043.html), variant "Transparent Black" | 1 | The black-glass face window, about 74 × 44 mm (the CAD uses 2.3 mm). Cut with a fine saw or score-and-snap, then file the corners round. Black PETG would hide the screen. | 5 |
-| [TPU filament 95A, 200 g](https://fr.aliexpress.com/item/1005008589285483.html), variant "Black 200g" | ~15 g used | The neck damper between head and body, and the feet. It keeps the lidar motor's vibration away from the 60 GHz radar. Print it on the A1 outside the AMS. | 13 |
+| [TPU filament 95A, 200 g](https://fr.aliexpress.com/item/1005008589285483.html), variant "Black 200g" | ~15 g used | The neck gasket, the four grommets between head and body, and the feet. It keeps the lidar motor's vibration away from the 60 GHz radar. Print it on the A1 outside the AMS. | 13 |
 | M2.5×10 screws | 3 | Lidar on top of the head. They thread-form into the plastic: no nuts. | from your kit |
-| M3 button-head screws | ~8 | Head and body closures. Exact lengths come with the CAD. | from your kit |
-| [3 mm double-sided foam strips](https://fr.aliexpress.com/item/1005008290401897.html), variant "Square 20X150mm 5pcs" | 1 | Cut into pads that hold the modules on their sleds, and the WAGOs, amp and speaker. | 2 |
+| M3 screws | 2 × M3×12, 4 × M3×10 button head, 4 × M3×14 + 4 washers | Plinth to sled, body back wall to sled, neck (through the TPU grommets into the head floor). They thread-form into the plastic: no nuts. See [assembly](assembly.md#screws). | from your kit |
+| [3 mm double-sided foam strips](https://fr.aliexpress.com/item/1005008290401897.html), variant "Square 20X150mm 5pcs" | 1 | Cut into pads that hold both radars on the sled, and the lever connectors, amp and speaker. | 2 |
 
 ## Tools
 

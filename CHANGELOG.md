@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Rev F CAD, body half (2026-09-27)
+- `hardware/cad/marvin.scad`: body shell (printed upside down, 1.6 mm radome wall, anthracite band by filament change), plinth, sensor sled, TPU neck gasket, grommets and feet, lidar template. Print-ready STLs in `hardware/stl/`.
+- The 24 GHz radar now sits **below** the 60 GHz radar (face centres at 16 mm and 42 mm): above it, it would have shadowed the upper part of the 60 GHz beam.
+- The head sits on the body through a TPU gasket and four TPU grommets; no screw links them rigidly.
+- `hardware/scripts/section_diagram.py` draws the section diagram from the CAD values.
+- Rev E (Fanou) sources, STLs and Blender file moved to `hardware/archive/rev-e/`.
+
 ### Renamed (2026-09-27): SuperLens is now Marvin
 - The project and the robot are now called Marvin. "marvin" is also its wake word, a keyword of Google's open Speech Commands dataset.
 - Older entries below keep the file names they had at the time (`superlens.scad`, `superlens.blend`).

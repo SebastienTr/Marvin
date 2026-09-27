@@ -13,18 +13,18 @@ The USB-C cable (charger or power bank at the other end) plugs into the ESP32's 
 
 ## Where everything sits in the robot
 
-Heights are the planned rev F values; the CAD fixes them to the millimetre.
+Body heights come from the rev F CAD; head heights are planned until the head CAD lands.
 
 | Part | Place | Height above the desk |
 |---|---|---:|
-| Lidar | On top of the head, cable down through the lidar ring | ≈ 140 mm |
-| XIAO ESP32S3 Sense | Head frame, tilted 20°, camera above the screen | ≈ 128 mm |
-| Screen | Head frame, vertical, behind the acrylic window | ≈ 107 mm |
-| HLK-LD2450 | Body, upper part of the sensor sled, tilted 10° | ≈ 56 mm |
-| **WAGO connectors** | Body, stuck on the back of the sensor sled | ≈ 30–60 mm |
-| MR60BHA2 kit | Body, lower part of the sensor sled, tilted 20°, USB-C down | ≈ 34 mm |
-| **Amp** | Body, back of the sensor sled, low down | ≈ 20 mm |
-| Speaker | Body, against the dot grille in the right wall | ≈ 20 mm |
+| Lidar | On top of the head, cable down through the lidar ring | ≈ 133 mm |
+| XIAO ESP32S3 Sense | Face frame, tilted 20°, camera above the screen | ≈ 113 mm |
+| Screen | Face frame, vertical, behind the acrylic window | ≈ 92 mm |
+| MR60BHA2 kit | Body, upper part of the sensor sled, tilted 20° | 42 mm |
+| **Lever connectors** | Body, stuck on the back plate of the sensor sled | ≈ 20–55 mm |
+| **Amp** | Body, back plate of the sensor sled, low down | ≈ 20 mm |
+| Speaker | Body, against the dot grille in the right wall | 18 mm |
+| HLK-LD2450 | Body, bottom front of the sensor sled, tilted 10° | 16 mm |
 
 Everything between head and body (XIAO power and data, screen, lidar) runs through the neck damper. Every run fits the 20 cm Dupont jumpers. The USB-C power cable enters at the back of the plinth and climbs through the neck to the XIAO.
 

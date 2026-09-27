@@ -245,7 +245,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <figure><img src="images/robot_threequarter.png" alt="Three-quarter view of the robot" loading="lazy" width="570" height="831"><figcaption><span class="en">≈ 88 × 80 mm, 15 cm tall</span><span class="fr">≈ 88 × 80 mm, 15 cm de haut</span></figcaption></figure>
   </div>
   <div class="anatomy">
-    <img src="images/robot_section.png" alt="Section: upright shell, radars tilted 20° and 10° in the body, screen vertical and camera tilted 20° in the head; the radar beam reaches the chest of a seated person" loading="lazy" width="2100" height="900">
+    <img src="images/robot_section.png" alt="Section: upright shell, 24 GHz radar tilted 10° low in the body with the 60 GHz radar tilted 20° above it, screen vertical and camera tilted 20° in the head; the radar beam reaches the chest of a seated person" loading="lazy" width="2115" height="662">
     <ul class="parts">
         <li><i style="background:#1a1a1c"></i><div><b>Lidar</b> · <span><span class="en">on top of the head, turning ten times a second.</span><span class="fr">sur la tête, il tourne dix fois par seconde.</span></span></div></li>
         <li><i style="background:#2A2C30"></i><div><b><span class="en">Head</span><span class="fr">Tête</span></b> · <span><span class="en">screen behind smoked acrylic, camera tilted 20°, the orange knob.</span><span class="fr">écran derrière l'acrylique fumé, caméra inclinée de 20°, la molette orange.</span></span></div></li>
@@ -255,8 +255,8 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
       </ul>
       <dl class="specs">
         <dt><span class="en">Size</span><span class="fr">Taille</span></dt><dd class="mono">≈ 88 × 80 × 150 mm</dd>
-        <dt><span class="en">Laser plane</span><span class="fr">Plan laser</span></dt><dd class="mono">≈ 145 mm</dd>
-        <dt><span class="en">Gaze</span><span class="fr">Regard</span></dt><dd class="mono"><span class="en">60 GHz radar 20° up: your chest at 0.6–1 m</span><span class="fr">radar 60 GHz à 20° : ta poitrine à 0,6–1 m</span></dd>
+        <dt><span class="en">Laser plane</span><span class="fr">Plan laser</span></dt><dd class="mono">≈ 133 mm</dd>
+        <dt><span class="en">Gaze</span><span class="fr">Regard</span></dt><dd class="mono"><span class="en">60 GHz radar 20° up: your chest at 0.65–1.1 m</span><span class="fr">radar 60 GHz à 20° : ta poitrine à 0,65–1,1 m</span></dd>
         <dt><span class="en">Power</span><span class="fr">Alimentation</span></dt><dd class="mono"><span class="en">USB-C 5 V · ≈ 1 A</span><span class="fr">USB-C 5 V · ≈ 1 A</span></dd>
         <dt><span class="en">Print</span><span class="fr">Impression</span></dt><dd class="mono"><span class="en">≈ 9 parts · PETG + TPU · no supports</span><span class="fr">≈ 9 pièces · PETG + TPU · sans supports</span></dd>
         <dt><span class="en">Source</span><span class="fr">Source</span></dt><dd class="mono">OpenSCAD · Blender · STL</dd>
@@ -411,7 +411,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <li class="done"><b><span class="en">Rev A–D · the sensor head</span><span class="fr">Rév. A–D · la tête de capteurs</span></b><span><span class="en">Enclosure, solderless wiring, screen, microphone and speaker, D800 lidar.</span><span class="fr">Boîtier, câblage sans soudure, écran, micro et haut-parleur, lidar D800.</span></span></li>
     <li class="done"><b><span class="en">Rev E · Fanou</span><span class="fr">Rév. E · Fanou</span></b><span><span class="en">The desk lighthouse: radars behind the paint, a face, a voice in the island.</span><span class="fr">Le phare de bureau : radars derrière la peinture, un visage, une voix dans l'île.</span></span></li>
     <li class="done"><b><span class="en">Rev F · the upright robot (design)</span><span class="fr">Rév. F · le robot debout (design)</span></b><span><span class="en">Sensors tilted inside, heart rate at the desk, TPU neck damper, black glass face.</span><span class="fr">Capteurs inclinés à l'intérieur, cœur mesuré au bureau, cou amortisseur en TPU, visage en vitre noire.</span></span></li>
-    <li class="now"><b><span class="en">Rev F CAD</span><span class="fr">CAO rév. F</span></b><span><span class="en">Parametric OpenSCAD source, print-ready parts, Blender model.</span><span class="fr">Source OpenSCAD paramétrique, pièces prêtes à imprimer, modèle Blender.</span></span></li>
+    <li class="now"><b><span class="en">Rev F CAD</span><span class="fr">CAO rév. F</span></b><span><span class="en">Parametric OpenSCAD source. Body, plinth, sensor sled and TPU neck are ready to print; the head comes once the screen is measured.</span><span class="fr">Source OpenSCAD paramétrique. Corps, socle, support des radars et cou en TPU prêts à imprimer ; la tête suit une fois l'écran mesuré.</span></span></li>
     <li><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Print, assemble, check every dimension against the real modules.</span><span class="fr">Imprimer, assembler, vérifier chaque cote sur les vrais modules.</span></span></li>
     <li><b>Firmware</b><span><span class="en">Sensor readers, UDP framing, MJPEG, eyes and moods, sounds, OTA.</span><span class="fr">Lecture des capteurs, trames UDP, MJPEG, yeux et humeurs, sons, OTA.</span></span></li>
     <li><b><span class="en">Host</span><span class="fr">Côté PC</span></b><span><span class="en">Fusion and Rerun overlay, presence events, voice, a local LLM.</span><span class="fr">Fusion et vue Rerun, événements de présence, voix, un LLM local.</span></span></li>

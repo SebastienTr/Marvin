@@ -13,14 +13,14 @@ Il peut **voir** (caméra, lidar), **ressentir** (qui est dans la pièce, commen
 
 Page de présentation : ouvre [`docs/index.html`](docs/index.html) dans un navigateur (FR/EN).
 
-> **État : rév. F, design figé, CAO en cours.** La forme, la disposition des capteurs et la liste d'achats sont arrêtées (voir [docs/concepts/robot_v3_board.jpg](docs/concepts/robot_v3_board.jpg)). La CAO imprimable de la rév. F est en cours ; en attendant, [`hardware/cad/fanou.scad`](hardware/cad/fanou.scad) contient la rév. E précédente (le phare). Le câblage n'a pas changé depuis la rév. D.
+> **État : rév. F, CAO en cours ; les pièces du premier exemplaire sont commandées.** La moitié basse est dessinée et imprimable ([`hardware/cad/marvin.scad`](hardware/cad/marvin.scad)) : corps, socle, support des radars et cou en TPU. La tête suivra une fois l'écran mesuré. Le phare de la rév. E est archivé dans [`hardware/archive/rev-e/`](hardware/archive/rev-e/). Le câblage n'a pas changé depuis la rév. D.
 
 ## Pensé autour des capteurs
 
 Le robot se tient droit ; **ce sont les capteurs qui sont inclinés à l'intérieur**, pas le corps.
 
-- **Le cœur, au bureau** : le radar 60 GHz est sur un support incliné de 20° vers le haut. Son faisceau tombe sur la poitrine d'une personne assise à 0,6–1 m, à travers une paroi plate de 1,6 mm en PETG.
-- **La pièce** : le radar 24 GHz, juste au-dessus, incliné de 10°, couvre ±60°.
+- **Le cœur, au bureau** : le radar 60 GHz est sur un support incliné de 20° vers le haut. Son faisceau tombe sur la poitrine d'une personne assise à 0,65–1,1 m, à travers une paroi plate de 1,6 mm en PETG.
+- **La pièce** : le radar 24 GHz, juste en dessous, incliné de 10°, couvre ±60°. En dessous et pas au-dessus, pour ne jamais masquer le faisceau du 60 GHz.
 - **Visage et caméra** : l'écran reste vertical derrière une vitre en acrylique fumé ; la caméra est inclinée de 20° pour cadrer ton visage.
 - **Lidar au sommet** : sur un bureau, l'écran et le mur masquent une partie du balayage ; il cartographie mieux toute la pièce depuis un coin ou une étagère.
 - **Silence pour le radar** : un amortisseur en TPU entre la tête et le corps empêche le moteur du lidar de perturber la mesure du cœur.

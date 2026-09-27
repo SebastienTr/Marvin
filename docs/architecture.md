@@ -64,17 +64,19 @@ The CAD frame is also the device frame used by the host software:
 - origin on the vertical axis of the body, at desk level (Z = 0);
 - **X** to the right, **Y** backwards (the face looks towards −Y), **Z** up.
 
-Planned sensor positions (extrinsics) for rev F. The rev F CAD will give the final values:
+Sensor positions (extrinsics) for rev F. Body values come from `hardware/cad/marvin.scad`; head values are planned until the head CAD lands:
 
 | Sensor | Position (X, Y, Z) mm | Facing |
 |---|---|---|
-| Lidar rotation centre | (0, ≈ 0, ≈ 145) | 360°, 0° to be calibrated. |
-| Camera | (0, ≈ −36, ≈ 128) | −Y, tilted 20° up |
-| Screen centre | (0, ≈ −39, ≈ 107) | −Y, vertical |
-| HLK-LD2450 | (0, ≈ −34, ≈ 56) | −Y, tilted 10° up |
-| MR60BHA2 case | (0, ≈ −30, ≈ 34) | −Y, tilted 20° up. The antenna is off-centre inside the case (about 7 mm to one side). |
+| Lidar rotation centre | (0, ≈ 0, ≈ 133) | 360°, 0° to be calibrated. Planned. |
+| Camera | (0, ≈ −38, ≈ 113) | −Y, tilted 20° up. Planned. |
+| Screen centre | (0, ≈ −38, ≈ 92) | −Y, vertical. Planned. |
+| MR60BHA2 case, face centre | (0, −28.4, 41.7) | −Y, tilted 20° up. The antenna is off-centre inside the case (about 7 mm to one side). |
+| HLK-LD2450, face centre | (0, −33.1, 16.4) | −Y, tilted 10° up |
 
-With the 60 GHz radar at 34 mm and tilted 20°, its boresight crosses the chest band of a seated person (280–450 mm above the desk) between about 0.6 and 1.1 m.
+With the 60 GHz radar at 42 mm and tilted 20°, its boresight crosses the chest band of a seated person (280–450 mm above the desk) between about 0.65 and 1.1 m.
+
+The 24 GHz radar sits below the 60 GHz one, not above it: the 60 GHz beam leaves the robot upwards, and a board standing in front of the upper half of the 60 GHz radar would shadow it.
 
 ## Roadmap
 
@@ -84,7 +86,8 @@ With the 60 GHz radar at 34 mm and tilted 20°, its boresight crosses the chest 
 - [x] Rev D: microphone + speaker, D800 lidar as the reference
 - [x] Rev E: Fanou, the desk lighthouse companion
 - [x] Rev F design: the upright robot, sensors tilted inside
-- [ ] Rev F CAD and print-ready parts
+- [x] Rev F CAD, body half: body, plinth, sensor sled, TPU neck
+- [ ] Rev F CAD, head: face frame, window, lidar ring, knob (after measuring the screen)
 - [ ] First physical build and dimension check
 - [ ] Firmware: UART readers, UDP framing, MJPEG, OTA
 - [ ] Host: receivers, Rerun viewer, camera/lidar extrinsic calibration
