@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - The head sits on the body through a TPU gasket and four TPU grommets; no screw links them rigidly.
 - `hardware/scripts/section_diagram.py` draws the section diagram from the CAD values.
 - Rev E (Fanou) sources, STLs and Blender file moved to `hardware/archive/rev-e/`.
+- `hardware/blender/marvin.blend`: the body half from the CAD (band painted), the modules, a concept stand-in for the head, and the print plates. Built by `hardware/scripts/build_blend.sh`.
+- `hardware/bambu/marvin_A1.3mf`: Bambu Studio project for the A1 + AMS lite (4 plates, colours, per-part settings, band colour change). Built by `hardware/scripts/build_3mf.py` with the Bambu Studio command line.
 
 ### Renamed (2026-09-27): SuperLens is now Marvin
 - The project and the robot are now called Marvin. "marvin" is also its wake word, a keyword of Google's open Speech Commands dataset.

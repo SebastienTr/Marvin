@@ -4,6 +4,19 @@ All parts come from one parametric OpenSCAD source, [`hardware/cad/marvin.scad`]
 
 > **Rev F status:** the body half is ready to print (lidar template, body, plinth, sensor sled, TPU parts). The head (face frame, window, lidar ring, knob) comes next, once the 1.69" screen is measured on arrival. The rev E lighthouse parts are archived in [`hardware/archive/rev-e/`](../hardware/archive/rev-e/).
 
+## Bambu Studio project (A1 + AMS lite)
+
+[`hardware/bambu/marvin_A1.3mf`](../hardware/bambu/marvin_A1.3mf) is ready to open in Bambu Studio: every part on its plate, the filaments and colours set, the per-part settings and the band colour change already in place. Check the filament profiles against your spools, then slice.
+
+| Plate | Parts | Filament | Time (Bambu Studio estimate) |
+|---|---|---|---:|
+| 1 | Lidar template, **print it first** | PETG anthracite | 12 min |
+| 2 | Body + sensor sled | PETG warm grey, anthracite band from 14 to 44 mm | 2 h 27 |
+| 3 | Plinth | PETG anthracite | 30 min |
+| 4 | Neck gasket, 4 grommets, 4 feet | TPU 95A, **external spool** (not the AMS lite) | 59 min |
+
+Slots: 1 = PETG warm grey, 2 = PETG anthracite, 3 = TPU black. Textured PEI plate, 0.4 mm nozzle, 0.20 mm layers. The sled also changes colour inside the band: it is hidden in the body, so it does not matter.
+
 <p align="center"><img src="images/cad_exploded.png" alt="Exploded view of the body half: plinth with the sensor sled and both radars, body shell, grommets and TPU neck gasket" width="420"></p>
 
 ## Parts
@@ -46,6 +59,12 @@ hardware/scripts/render_previews.sh
 
 # the side section diagram in docs/images (needs matplotlib)
 python3 hardware/scripts/section_diagram.py
+
+# the Bambu Studio project (needs the Bambu Studio command line)
+BAMBU_STUDIO=/path/to/bambu-studio python3 hardware/scripts/build_3mf.py
+
+# the Blender model hardware/blender/marvin.blend (needs Blender 4.2+ or the bpy wheel)
+hardware/scripts/build_blend.sh
 ```
 
 OpenSCAD 2021.01 or newer is required.

@@ -12,7 +12,8 @@
 //  is fixed here (neck bolt pattern, cable hole).
 //
 //  PART = "assembly" | "exploded" | "section"                (views)
-//         "body" | "plinth" | "sled" | "neck" | "grommet" | "foot" | "template"
+//         "body" | "plinth" | "sled" | "neck" | "grommet" | "foot" | "template"   (assembly frame)
+//         "ghost_mr60" | "ghost_ld2450" | "ghost_speaker"   (modules, for the Blender model)
 //         "print_body" | "print_plinth" | "print_sled" | "print_tpu" | "print_template"
 //
 //  SPDX-License-Identifier: CERN-OHL-P-2.0
@@ -221,11 +222,14 @@ module template() {
 
 // =====================================================================
 // Ghosts (not printed): modules and the head envelope
+module kitGhost() translate([-kitW/2, 0, 0]) sideExtrude(0, kitW)
+    polygon([K0, add(K0, mul(upV(kitTilt), kitH)), add(add(K0, mul(upV(kitTilt), kitH)), mul(inV(kitTilt), kitD)), add(K0, mul(inV(kitTilt), kitD))]);
+module ldGhost() translate([-ldW/2, 0, 0]) sideExtrude(0, ldW)
+    polygon([L0, add(L0, mul(upV(ldTilt), ldH)), add(add(L0, mul(upV(ldTilt), ldH)), mul(inV(ldTilt), ldT)), add(L0, mul(inV(ldTilt), ldT))]);
+module speakerGhost() translate([inW/2 - 5, spkY - spkL/2, spkZ - spkH/2]) cube([5, spkL, spkH]);
 module ghosts(cut=false) {
-    color("DimGray") translate([-kitW/2, 0, 0]) sideExtrude(0, kitW)
-        polygon([K0, add(K0, mul(upV(kitTilt), kitH)), add(add(K0, mul(upV(kitTilt), kitH)), mul(inV(kitTilt), kitD)), add(K0, mul(inV(kitTilt), kitD))]);
-    color("SeaGreen") translate([-ldW/2, 0, 0]) sideExtrude(0, ldW)
-        polygon([L0, add(L0, mul(upV(ldTilt), ldH)), add(add(L0, mul(upV(ldTilt), ldH)), mul(inV(ldTilt), ldT)), add(L0, mul(inV(ldTilt), ldT))]);
+    color("DimGray") kitGhost();
+    color("SeaGreen") ldGhost();
     if (!cut) color("WhiteSmoke", 0.25) sqblock(headW, headD, headR, headZ0, headZ1 - headZ0);
 }
 
@@ -248,7 +252,7 @@ module assemblyView(e=0, cut=false) {
     // body in its three print colours: warm grey, anthracite band, warm grey
     for (b = [[0, bandZ0, "#d9d5cc"], [bandZ0, bandZ1, "#3a3a3c"], [bandZ1, 200, "#d9d5cc"]])
         color(b[2]) half(cut) translate([0, 0, e*1.4]) intersection() { body(); translate([-100, -100, b[0]]) cube([200, 200, b[1] - b[0]]); }
-    color("Goldenrod") half(cut) translate([inW/2 - 5, spkY - spkL/2, spkZ - spkH/2 + e*1.4]) cube([5, spkL, spkH]);   // speaker, glued in the body
+    color("Goldenrod") half(cut) translate([0, 0, e*1.4]) speakerGhost();   // speaker, glued in the body
     color("#c0582b") half(cut) translate([0, 0, e*0.5]) sled();
     color("#222") half(cut) translate([0, 0, e*2.0]) neck();
     color("#222") half(cut) for (p = neckBolt) translate([p[0], p[1], bodyZ1 - deck - bossT - gromFlangeT + e*1.4]) grommet();
@@ -262,6 +266,9 @@ else if (PART == "neck")           neck();
 else if (PART == "grommet")        grommet();
 else if (PART == "foot")           foot();
 else if (PART == "template")       template();
+else if (PART == "ghost_mr60")     kitGhost();
+else if (PART == "ghost_ld2450")   ldGhost();
+else if (PART == "ghost_speaker")  speakerGhost();
 else if (PART == "print_body")     print_body();
 else if (PART == "print_plinth")   print_plinth();
 else if (PART == "print_sled")     print_sled();

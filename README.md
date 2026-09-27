@@ -92,7 +92,9 @@ marvin/
 ├── hardware/
 │   ├── cad/                      # parametric OpenSCAD source (marvin.scad, rev F)
 │   ├── stl/                      # print-ready STLs (generated)
-│   ├── scripts/                  # export_stl.sh, render_previews.sh, section_diagram.py
+│   ├── bambu/                    # Bambu Studio project, A1 + AMS lite (generated)
+│   ├── blender/                  # assembled model + print layout (generated)
+│   ├── scripts/                  # export_stl.sh, render_previews.sh, section_diagram.py, build_3mf.py, build_blend.sh
 │   └── archive/                  # earlier revisions (rev E: Fanou the lighthouse)
 ├── firmware/                     # ESP32-S3 firmware (planned)
 ├── host/                         # desktop fusion + companion (planned)
