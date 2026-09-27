@@ -43,6 +43,8 @@ class Sink:
     def on_targets(self, dev: Device, t_us: int, targets: list[ld2450.Target], points: list[tuple]) -> None: ...
     def on_vitals(self, dev: Device, t_us: int, vitals: protocol.Vitals) -> None: ...
     def on_log(self, dev: Device, t_us: int, text: str) -> None: ...
+    # AUDIO_IN: seq is the sample index of pcm[0] (u32), pcm int16 at 16 kHz (see protocol.AudioIn)
+    def on_audio(self, dev: Device, t_us: int, seq: int, pcm: np.ndarray) -> None: ...
 
 
 class Receiver:
@@ -59,6 +61,16 @@ class Receiver:
         self._tx_lock = threading.Lock()
         # one lidar revolution is assembled from many packets
         self._rev: dict[tuple, _Revolution] = {}
+        # extra AUDIO_IN consumers (robot_audio.RobotMicSource), called like Sink.on_audio
+        self._audio_listeners: list = []
+
+    def add_audio_listener(self, fn) -> None:
+        """Also call fn(dev, t_us, seq, pcm) for every AUDIO_IN (from the receiving thread)."""
+        self._audio_listeners.append(fn)
+
+    def remove_audio_listener(self, fn) -> None:
+        if fn in self._audio_listeners:
+            self._audio_listeners.remove(fn)
 
     def serve(self, duration: float | None = None, stop=None) -> None:
         start = time.monotonic()
@@ -125,6 +137,15 @@ class Receiver:
             self.sink.on_vitals(dev, hdr.t_us, v)
         elif hdr.type == protocol.LOG:
             self.sink.on_log(dev, hdr.t_us, payload.decode(errors="replace"))
+        elif hdr.type == protocol.AUDIO_IN:
+            try:
+                a = protocol.AudioIn.decode(payload)
+            except protocol.ProtocolError:
+                s.bad += 1
+                return
+            for fn in list(self._audio_listeners):
+                fn(dev, hdr.t_us, a.index, a.pcm)
+            self.sink.on_audio(dev, hdr.t_us, a.index, a.pcm)
 
     def _hello(self, hdr, payload, addr) -> None:
         try:

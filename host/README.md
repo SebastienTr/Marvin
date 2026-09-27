@@ -16,11 +16,16 @@ pip install -e ".[dev]"
 
 ```bash
 marvin-host demo                   # simulated robot + live 3D view, nothing else needed
-marvin-host run                    # wait for the real robot on the network, show it live
-marvin-host run --no-viewer        # console summary only (scans/s, radar frames/s, losses)
-marvin-host run --save day1.rrd    # record instead of showing; open later with `rerun day1.rrd`
+marvin-host ui --demo              # the app in the browser, with a simulated robot and week
+marvin-host run                    # wait for the real robot: viewer, app (http://localhost:8765) and face link
+marvin-host run --voice            # ... and talk to Marvin ("Marvin, ...") with the computer's mic
+marvin-host run --record day1.mvrec   # keep the raw sensor data; `marvin-host replay day1.mvrec` plays it back
+marvin-host talk                   # voice only, no robot needed
+marvin-host calibrate lidar --save # find the lidar's yaw (person moving in front of the robot)
 marvin-host sim --model d800       # pretend to be the robot, for another machine running `run`
 ```
+
+Voice needs the `voice` extra and Ollama: see [docs/voice.md](../docs/voice.md). The app: [docs/ui.md](../docs/ui.md). Recording, replay, calibration and wireless firmware updates: [docs/tools.md](../docs/tools.md).
 
 The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md). On macOS, allow incoming connections for Python the first time the firewall asks.
 
@@ -64,13 +69,18 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `brain.py` | Presence, seating, stillness and vital-sign reliability, as debounced events |
 | `face.py`, `raster.py` | The robot's eyes (reference renderer and behaviour) and the tiny rasterizer they use |
 | `link.py` | Host → robot face link: brain events (`FACE_EVENT`) and presence state (`FACE_STATE`, 10 Hz) to every robot with a screen |
+| `audio.py` | Audio contract (sources and sinks, 16 kHz mono) shared by the voice and the robot's audio |
+| `voice/` | Wake word, speech-to-text, local LLM and text-to-speech: talking to Marvin |
+| `robot_audio.py`, `camera_stream.py` | The robot's microphone and speaker over UDP, its MJPEG camera |
+| `ui/` | The app: a local web page with the face, today's timeline, breaks, history, settings |
+| `record.py`, `calibration.py` | Recording and replaying raw sessions, sensor calibration |
 | `cli.py` | The `marvin-host` command |
 
 Tests: `pytest` (includes a real LD19 packet and the LD2450 datasheet example, and a full simulator → UDP → receiver run).
 
 ## Roadmap
 
-1. Real sensors: UART readers in the firmware, the LD2450 speed sign and the MR60BHA2 bridge checked on hardware.
-2. The face on the robot's screen (port of `face.py`), driven by the host's events.
-3. Camera stream and camera/lidar extrinsic calibration.
-4. The companion layer: voice, a local LLM.
+1. Everything checked on the real hardware: sensors, screen, audio, camera, MR60BHA2 bridge.
+2. The voice through the robot's microphone and speaker instead of the computer's.
+3. Camera/lidar extrinsic calibration, and using the camera in the brain.
+4. A dedicated "Marvin" wake-word model (Google Speech Commands).

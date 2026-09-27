@@ -37,13 +37,27 @@ No configuration is needed on either side: the host does not need to know the ro
 | `0x03` | `LD2450` | robot → host | One raw 30-byte HLK-LD2450 target frame, unchanged |
 | `0x04` | `LOG` | robot → host | UTF-8 text |
 | `0x05` | `VITALS` | robot → host | MR60BHA2 readings: valid (u8), breath rate (u16, 0.01/min), heart rate (u16, 0.01/min), breathing wave (i16, ±32767), heartbeat wave (i16, ±32767), distance (u16, mm) |
+| `0x06` | `AUDIO_IN` | robot → host | Microphone: sample index (u32), then 320 × i16 PCM (see [Audio messages](#audio-messages)) |
 | `0x81` | `HOST_ACK` | host → robot | Host clock, microseconds (u64) |
 | `0x82` | `FACE_STATE` | host → robot | Presence state for the face, 17 bytes, ≈ 10 Hz (see [Face messages](#face-messages)) |
 | `0x83` | `FACE_EVENT` | host → robot | One brain event: event code (u8) |
+| `0x84` | `AUDIO_OUT` | host → robot | Speaker: stream id (u16), sample index (u32), then 1–480 × i16 PCM |
+| `0x85` | `AUDIO_CTRL` | host → robot | Audio command (u8), argument (u8) |
+| `0x86` | `SOUND` | host → robot | Built-in sound id (u8) |
 
 `VITALS` is sent by the simulators and by the real MR60BHA2 kit: the [MR60BHA2 bridge](../firmware/mr60_bridge/README.md) firmware runs on the kit's own ESP32-C6, reads the radar and sends its readings in this format (board id 4), so the host sees one stream.
 
-Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 Sense, 4 = MR60BHA2 kit (XIAO ESP32C6, vitals bridge), 255 = host-side simulator. Lidar models: 1 = D500 (STL-19P), 2 = D800 (STL-27L). Flag bit 0 = the sensor data is simulated.
+Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 Sense, 4 = MR60BHA2 kit (XIAO ESP32C6, vitals bridge), 255 = host-side simulator. Lidar models: 1 = D500 (STL-19P), 2 = D800 (STL-27L).
+
+`HELLO` flags:
+
+| Bit | Mask | Meaning |
+|---:|---:|---|
+| 0 | `0x01` | The sensor data is simulated |
+| 1 | `0x02` | Has a camera: MJPEG at `http://<robot ip>:81/stream` (see [Camera](#camera)) |
+| 2 | `0x04` | Has audio: speaker and microphone, `AUDIO_IN` / `AUDIO_OUT` / `AUDIO_CTRL` / `SOUND` |
+
+Bits 1 and 2 were added to v1 without a version bump: older robots send 0 there, and older hosts only look at bit 0. A robot sets a capability bit only once that part has started (a camera that failed to initialise is not announced). Other bits are reserved and sent as 0.
 
 The sensor frames travel **raw**, CRC included, so the host validates them exactly as it would on a serial port, and a recording can be replayed through the same parsers.
 
@@ -74,6 +88,63 @@ Fields without their valid bit are sent as 0. Coordinates are rounded to the mil
 
 Events are not repeated: a lost `FACE_EVENT` only loses that reaction, and the next `FACE_STATE` keeps the face consistent with the brain.
 
+## Audio messages
+
+Audio travels in both directions as **16 kHz mono signed 16-bit little-endian PCM** (the host contract in [`host/marvin_host/audio.py`](../host/marvin_host/audio.py)), in the same UDP envelope as everything else, to and from the same ports. Like the face messages, they were added to v1 without a version bump; a robot without audio ignores them, and only robots whose `HELLO` has flag bit 2 are sent them. Sound design, volume cap and latency budget: [audio.md](audio.md). Implementations: [`firmware/src/audio/`](../firmware/src/audio/) and [`host/marvin_host/robot_audio.py`](../host/marvin_host/robot_audio.py).
+
+**Sample indexes.** Each audio stream counts its samples from 0 (u32, wrapping after 74 hours). Every datagram carries the index of its first sample, so the receiver knows exactly where it goes: a datagram ahead of the expected index means samples were lost (filled with silence, up to a limit, so the rest stays in time), one behind means it is late or duplicated (dropped, or trimmed if it overlaps). This is independent of the header sequence number, which counts all messages of the sender.
+
+**`AUDIO_IN` (0x06), robot → host, 644 bytes, every 20 ms while the microphone is on:**
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 4 | Sample index of the first sample (u32). Restarts at 0 each time the microphone starts |
+| 4 | 640 | 320 samples (i16) |
+
+The header clock is the robot time of the first sample (to within a DMA block). The microphone is **off by default**: the robot streams only after an `AUDIO_CTRL` *mic start*, only to the linked host, and stops on *mic stop* or when the link drops (no `HOST_ACK` for 6 s). The host repeats *mic start* every second while it listens, so a lost command or a robot reboot does not end the stream. A host sees a restarted stream as an index that jumps back while the header clock moves forward.
+
+**`AUDIO_OUT` (0x84), host → robot, at most 982 bytes with the header:**
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 2 | Stream id (u16). A new id makes the robot drop whatever it has queued and start the new stream |
+| 2 | 4 | Sample index of the first sample in this stream (u32) |
+| 6 | 2 N | N samples (i16), 1 ≤ N ≤ 480 (30 ms). The host sends 320 (20 ms) |
+
+The robot keeps a jitter buffer: it starts playing once 100 ms are queued (or when nothing new has arrived for 60 ms, for a short sound), then plays at its I2S clock. The host paces the stream at real time plus a 150 ms lead (the first 150 ms go out at once). After a pause, the host starts a new stream id.
+
+**`AUDIO_CTRL` (0x85), host → robot, 2 bytes:** command (u8), argument (u8, 0 when unused). Unknown commands are ignored.
+
+| Command | Name | Argument | Effect |
+|---:|---|---|---|
+| 1 | `MIC_START` | – | Start streaming `AUDIO_IN` (idempotent; repeat every second while listening) |
+| 2 | `MIC_STOP` | – | Stop streaming `AUDIO_IN`; the PDM clock stops |
+| 3 | `PLAY_STOP` | – | Drop the queued `AUDIO_OUT` and the sound being played; datagrams of the stopped stream still in flight are ignored until the host starts another stream id |
+| 4 | `VOLUME` | 0–100 | Speaker volume (default 60): a gain of cap × (volume / 100)², the cap protecting the 1 W speaker |
+| 5 | `MIC_GAIN` | 0–36 | Microphone gain in dB (default 12) |
+
+**`SOUND` (0x86), host → robot, 1 byte:** play a built-in earcon, generated on the robot, mixed over any stream. Unknown ids are ignored.
+
+| Id | Name | Length | | Id | Name | Length |
+|---:|---|---:|---|---:|---|---:|
+| 1 | `chirp` | 140 ms | | 4 | `done` | 200 ms |
+| 2 | `beep` | 120 ms | | 5 | `error` | 360 ms |
+| 3 | `wake` | 200 ms | | 6 | `hello` | 430 ms |
+
+The largest host → robot datagram is `AUDIO_OUT`: robots with audio read datagrams up to 1 024 bytes, others 512.
+
+## Camera
+
+The camera does not use UDP: the robot serves it over **HTTP on TCP port 81**, and the host builds the URL from the address the `HELLO` came from (`protocol.camera_url(ip)`), when `HELLO` flag bit 1 is set.
+
+| URL | Response |
+|---|---|
+| `http://<ip>:81/stream` | `multipart/x-mixed-replace; boundary=marvinframe`: one JPEG per part, each part with `Content-Type: image/jpeg`, `Content-Length` and `X-Marvin-Time-Us` |
+| `http://<ip>:81/capture` | One JPEG (`Content-Length`, `X-Marvin-Time-Us`) |
+| `http://<ip>:81/` | An HTML page showing the stream |
+
+Each part is `--marvinframe` CRLF, its headers, an empty line, the JPEG, CRLF. `X-Marvin-Time-Us` is the robot clock when the frame was captured, the same clock as the UDP headers' `t_us`, so frames line up with the lidar and radar data. VGA (640 × 480), at most 10 frames/s by default. Up to 4 clients at once share each frame; a fifth gets `503`. Responses carry `Access-Control-Allow-Origin: *`. Host client: [`host/marvin_host/camera_stream.py`](../host/marvin_host/camera_stream.py).
+
 ## Sensor frames
 
 **LDROBOT lidar packet (47 bytes):** `0x54`, `0x2C`, speed (u16, deg/s), start angle (u16, 0.01°), 12 × (distance u16 mm, intensity u8), end angle (u16, 0.01°), timestamp (u16, ms, wraps at 30 000), CRC-8 (polynomial `0x4D`) over the first 46 bytes. Angles are clockwise seen from above. A distance of 0 means no return.
@@ -96,9 +167,12 @@ The host converts every point into the device frame (X right as seen facing the 
 | LD2450 | 10 frames/s | 10 | 0.5 kB/s |
 | Vitals | 10 messages/s | 10 | 0.3 kB/s |
 | Face state (host → robot) | 10 messages/s | 10 | 0.3 kB/s |
+| Microphone, `AUDIO_IN` (while listening) | 16 000 samples/s | 50 | 32 kB/s (33 kB/s with headers) |
+| Speaker, `AUDIO_OUT` (while speaking) | 16 000 samples/s | 50 | 32 kB/s (33 kB/s with headers) |
+| Camera, MJPEG over TCP (while watched) | VGA, 10 frames/s | – | ≈ 250–400 kB/s |
 
-Even the D800 uses under 1 Mbit/s, well within an ESP8266's Wi-Fi.
+Even the D800 uses under 1 Mbit/s, well within an ESP8266's Wi-Fi. On the robot, the D800, both audio directions and the camera add up to about 4 Mbit/s: comfortable on a good 2.4 GHz link, and the camera (the largest part) only streams while someone watches.
 
 ## Planned
 
-Camera (MJPEG over HTTP), microphone audio, more host → robot commands (sounds, speech) and clock synchronisation from `HOST_ACK` will come in a later version, with a version bump if the header changes.
+More host → robot commands and clock synchronisation from `HOST_ACK` will come in a later version, with a version bump if the header changes.

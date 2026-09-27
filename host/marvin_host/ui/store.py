@@ -1,0 +1,187 @@
+"""The day history: brain events, per-minute samples and the app settings, in one SQLite file.
+
+The file lives in the data directory, ``$MARVIN_DATA_DIR`` or ``$XDG_DATA_HOME/marvin`` or
+``~/.local/share/marvin``, as ``marvin.db``. Nothing leaves the computer. Deleting the file
+erases the history and the settings.
+
+Schema (``PRAGMA user_version = 1``)::
+
+    events   (id INTEGER PRIMARY KEY, ts REAL, kind TEXT, detail TEXT, data TEXT (JSON), t_us INTEGER)
+    samples  (ts REAL PRIMARY KEY, present REAL, seated REAL, breath REAL, heart REAL)
+    settings (key TEXT PRIMARY KEY, value TEXT (JSON))
+
+``ts`` is the host's wall clock (Unix seconds); ``t_us`` the robot's clock, kept for reference.
+A sample row summarises one minute: the fraction of it someone was present / seated, and the
+average breathing and heart rates over the reliable readings (NULL when there were none).
+
+The store is shared between threads (the brain's, the web server's): one connection, one lock.
+
+SPDX-License-Identifier: MIT
+"""
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import threading
+from datetime import date, timedelta
+from pathlib import Path
+
+from ..events import Event
+from .stats import StoredEvent, day_bounds, day_stats
+
+SCHEMA_VERSION = 1
+LOOKBACK_S = 36 * 3600          # events read before a day, to know the state at midnight
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY,
+    ts REAL NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL DEFAULT '{}',
+    t_us INTEGER
+);
+CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
+CREATE TABLE IF NOT EXISTS samples (
+    ts REAL PRIMARY KEY,
+    present REAL NOT NULL,
+    seated REAL NOT NULL,
+    breath REAL,
+    heart REAL
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"""
+
+
+def data_dir() -> Path:
+    """Where Marvin keeps its data on this computer."""
+    env = os.environ.get("MARVIN_DATA_DIR")
+    if env:
+        return Path(env).expanduser()
+    xdg = os.environ.get("XDG_DATA_HOME")
+    return (Path(xdg).expanduser() if xdg else Path.home() / ".local" / "share") / "marvin"
+
+
+def default_path() -> Path:
+    return data_dir() / "marvin.db"
+
+
+class EventStore:
+    """SQLite store. ``path=":memory:"`` keeps everything in memory (tests, demos)."""
+
+    def __init__(self, path: str | os.PathLike | None = None):
+        self.path = str(default_path() if path is None else path)
+        if self.path != ":memory:":
+            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        self._db = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
+        with self._lock:
+            if self.path != ":memory:":
+                self._db.execute("PRAGMA journal_mode=WAL")
+                self._db.execute("PRAGMA synchronous=NORMAL")
+            self._db.executescript(_SCHEMA)
+            self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+    def close(self) -> None:
+        with self._lock:
+            self._db.close()
+
+    # ---------------------------------------------------------------- events
+
+    def add(self, kind: str, ts: float, detail: str = "", data: dict | None = None,
+            t_us: int | None = None) -> StoredEvent:
+        payload = json.dumps(data or {}, default=_json_default)
+        with self._lock:
+            cur = self._db.execute("INSERT INTO events (ts, kind, detail, data, t_us) VALUES (?, ?, ?, ?, ?)",
+                                   (float(ts), kind, detail, payload, t_us))
+        return StoredEvent(float(ts), kind, detail, json.loads(payload), cur.lastrowid)
+
+    def add_event(self, event: Event, ts: float) -> StoredEvent:
+        """Stores a brain event received at wall-clock time ``ts``."""
+        return self.add(event.kind.value, ts, event.detail, event.data, event.t_us)
+
+    def events(self, start: float, end: float) -> list[StoredEvent]:
+        """Events with start <= ts < end, oldest first."""
+        return self._query("SELECT id, ts, kind, detail, data FROM events WHERE ts >= ? AND ts < ? "
+                           "ORDER BY ts, id", (start, end))
+
+    def recent(self, limit: int = 50, since_id: int = 0, exclude: tuple[str, ...] = ()) -> list[StoredEvent]:
+        """The latest events (newest first), only those with id > since_id."""
+        sql = "SELECT id, ts, kind, detail, data FROM events WHERE id > ?"
+        args: list = [since_id]
+        if exclude:
+            sql += f" AND kind NOT IN ({','.join('?' * len(exclude))})"
+            args += list(exclude)
+        return self._query(sql + " ORDER BY ts DESC, id DESC LIMIT ?", (*args, limit))
+
+    def _query(self, sql: str, args: tuple) -> list[StoredEvent]:
+        with self._lock:
+            rows = self._db.execute(sql, args).fetchall()
+        return [StoredEvent(ts, kind, detail, json.loads(data), i) for i, ts, kind, detail, data in rows]
+
+    # ---------------------------------------------------------------- samples
+
+    def add_sample(self, ts: float, present: float, seated: float,
+                   breath: float | None = None, heart: float | None = None) -> None:
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO samples VALUES (?, ?, ?, ?, ?)",
+                             (float(ts), float(present), float(seated), breath, heart))
+
+    def add_samples(self, rows) -> None:
+        """Many (ts, present, seated, breath, heart) rows in one transaction."""
+        with self._lock:
+            self._db.execute("BEGIN")
+            self._db.executemany("INSERT OR REPLACE INTO samples VALUES (?, ?, ?, ?, ?)", rows)
+            self._db.execute("COMMIT")
+
+    def samples(self, start: float, end: float) -> list[tuple[float, float | None, float | None]]:
+        """(ts, breath, heart) for start <= ts < end, oldest first."""
+        with self._lock:
+            return self._db.execute("SELECT ts, breath, heart FROM samples WHERE ts >= ? AND ts < ? ORDER BY ts",
+                                    (start, end)).fetchall()
+
+    # ---------------------------------------------------------------- settings
+
+    def get_settings(self) -> dict:
+        with self._lock:
+            rows = self._db.execute("SELECT key, value FROM settings").fetchall()
+        return {k: json.loads(v) for k, v in rows}
+
+    def set_settings(self, values: dict) -> None:
+        with self._lock:
+            self._db.execute("BEGIN")
+            try:
+                for k, v in values.items():
+                    self._db.execute("INSERT OR REPLACE INTO settings VALUES (?, ?)", (k, json.dumps(v)))
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+
+    # ---------------------------------------------------------------- statistics
+
+    def day(self, day: date, now: float, live: bool = True) -> dict:
+        """``stats.day_stats`` for one local day, reading what it needs from the database."""
+        lo, hi = day_bounds(day)
+        return day_stats(self.events(lo - LOOKBACK_S, hi), day, now, live,
+                         samples=self.samples(lo - LOOKBACK_S, hi))
+
+    def history(self, last: date, days: int, now: float, live: bool = True) -> list[dict]:
+        """Short summaries for the ``days`` days ending with ``last``, oldest first."""
+        out = []
+        for k in range(days - 1, -1, -1):
+            d = self.day(last - timedelta(days=k), now, live)
+            out.append({key: d[key] for key in ("date", "seated_s", "present_s", "sessions", "breaks", "longest_s")})
+        return out
+
+
+def _json_default(o):
+    if hasattr(o, "item"):          # numpy scalars
+        return o.item()
+    if isinstance(o, (tuple, set)):
+        return list(o)
+    return str(o)

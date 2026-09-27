@@ -9,6 +9,12 @@
 //   REAL (ESP32 only) the lidar on UART0 and the LD2450 on UART1 (sensors_real.h); no VITALS,
 //        the MR60BHA2 kit has its own bridge. A LOG with the sensor counters every 5 s.
 //
+// Optional media on the XIAO ESP32S3 Sense (flags in platformio.ini), announced in HELLO's flags:
+//   MARVIN_HAS_AUDIO   speaker and microphone over UDP (audio/audio_app.h): AUDIO_OUT, AUDIO_CTRL
+//                      and SOUND in, AUDIO_IN out.
+//   MARVIN_HAS_CAMERA  MJPEG over HTTP on port 81 (camera/camera_app.h).
+// A LOG with their counters every 10 s while they are in use.
+//
 // SPDX-License-Identifier: MIT
 #include <Arduino.h>
 
@@ -23,8 +29,19 @@
 #include "sensor_framing.h"
 #include "sensors_real.h"
 #include "sensors_sim.h"
+#if defined(MARVIN_HAS_OTA)
+#include "ota.h"
+#endif
 #if defined(MARVIN_HAS_SCREEN)
 #include "face/face_app.h"
+#endif
+#if defined(MARVIN_HAS_AUDIO)
+#include "audio/audio_app.h"
+#include "audio/audio_packets.h"
+#include "audio/earcons.h"
+#endif
+#if defined(MARVIN_HAS_CAMERA)
+#include "camera/camera_app.h"
 #endif
 
 #if __has_include("secrets.h")
@@ -50,6 +67,9 @@
 #ifndef MARVIN_LED_ACTIVE_LOW
 #define MARVIN_LED_ACTIVE_LOW 0
 #endif
+#ifndef MARVIN_BOOT_SOUND
+#define MARVIN_BOOT_SOUND 1                     // with audio: the "hello" earcon on the first link
+#endif
 
 // MARVIN_SENSORS=SIM or MARVIN_SENSORS=REAL, turned into a number the preprocessor can compare.
 #ifndef MARVIN_SENSORS
@@ -69,6 +89,10 @@
 #error "MARVIN_SENSORS must be SIM or REAL"
 #endif
 
+#if (defined(MARVIN_HAS_AUDIO) || defined(MARVIN_HAS_CAMERA)) && !defined(CONFIG_IDF_TARGET_ESP32S3)
+#error "MARVIN_HAS_AUDIO and MARVIN_HAS_CAMERA are for the XIAO ESP32S3 Sense (pins in docs/wiring.md)."
+#endif
+
 #if MARVIN_REAL_SENSORS && !defined(ARDUINO_ARCH_ESP32)
 #error "MARVIN_SENSORS=REAL needs an ESP32-S3 (lidar on UART0, LD2450 on UART1). The D1 mini (ESP8266) runs simulated sensors only: build it with MARVIN_SENSORS=SIM."
 #endif
@@ -79,6 +103,7 @@ constexpr int LIDAR_BATCH = 10;                 // LDROBOT packets per datagram
 constexpr uint32_t LINK_TIMEOUT_MS = 6000;
 constexpr uint32_t LIDAR_FLUSH_MS = 20;         // real sensors: send a partial batch after this
 constexpr uint32_t STATS_PERIOD_MS = 5000;      // real sensors: counters LOG period
+constexpr uint32_t MEDIA_STATS_PERIOD_MS = 10000;  // audio / camera counters LOG period, when in use
 constexpr uint8_t LIDAR_MODEL = MARVIN_REAL_SENSORS ? MARVIN_LIDAR_MODEL : MARVIN_SIM_LIDAR_MODEL;
 
 const char *lidar_name(uint8_t model) { return model == 2 ? "D800" : "D500"; }
@@ -120,7 +145,13 @@ void send_datagram(uint8_t *dgram, proto::Type type, size_t payload_len, uint64_
 void send(proto::Type type, size_t payload_len) { send_datagram(buf, type, payload_len, now_us()); }
 
 void send_hello() {
-  const uint8_t flags = MARVIN_REAL_SENSORS ? 0 : proto::FLAG_SIMULATED;
+  uint8_t flags = MARVIN_REAL_SENSORS ? 0 : proto::FLAG_SIMULATED;
+#if defined(MARVIN_HAS_CAMERA)
+  if (camera_app::ready()) flags |= proto::FLAG_CAMERA;
+#endif
+#if defined(MARVIN_HAS_AUDIO)
+  if (audio_app::ready()) flags |= proto::FLAG_AUDIO;
+#endif
   size_t n = proto::hello(buf + proto::HEADER_SIZE, mac, MARVIN_BOARD, flags, (int8_t)WiFi.RSSI(),
                           millis(), MARVIN_FW_VERSION);
   send(proto::HELLO, n);
@@ -142,6 +173,10 @@ void on_host_ack() {
   if (linked && udp.remoteIP() == host) return;
   host = udp.remoteIP();
   linked = true;
+#if defined(MARVIN_HAS_AUDIO) && MARVIN_BOOT_SOUND
+  static bool greeted = false;
+  if (!greeted) greeted = audio_app::play_sound(audio::SOUND_HELLO);  // first link since boot
+#endif
   Serial.printf("linked to host %s\n", host.toString().c_str());
   char msg[96];
 #if MARVIN_REAL_SENSORS
@@ -155,19 +190,32 @@ void on_host_ack() {
 
 // Reads the datagrams from the host.
 void poll_host() {
+#if defined(MARVIN_HAS_AUDIO)
+  static uint8_t in[proto::MAX_HOST_DATAGRAM];  // AUDIO_OUT is the largest host -> robot message
+#else
   static uint8_t in[512];
+#endif
   while (udp.parsePacket()) {
     int n = udp.read(in, sizeof(in));
     if (n < (int)proto::HEADER_SIZE || !proto::valid(in, n)) continue;
+    const bool from_host = linked && udp.remoteIP() == host;
+    (void)from_host;  // unused on boards with neither screen nor audio
     switch (in[3]) {
       case proto::HOST_ACK:
         if (n >= (int)proto::HEADER_SIZE + 8) on_host_ack();
         break;
+#if defined(MARVIN_HAS_AUDIO)
+      case proto::AUDIO_OUT:
+      case proto::AUDIO_CTRL:
+      case proto::SOUND:
+        if (from_host) audio_app::on_message(in[3], in + proto::HEADER_SIZE, n - proto::HEADER_SIZE);
+        break;
+#endif
       default:
         // other host -> robot messages are dispatched here
         // (type in[3], payload in + proto::HEADER_SIZE, n - proto::HEADER_SIZE bytes, sender udp.remoteIP())
 #if defined(MARVIN_HAS_SCREEN)
-        if (linked && udp.remoteIP() == host && n >= (int)proto::HEADER_SIZE)
+        if (from_host)
           face_app::on_message(in[3], in + proto::HEADER_SIZE, n - proto::HEADER_SIZE);  // queued, never blocks
 #endif
         break;
@@ -205,6 +253,57 @@ void link_step(uint32_t ms) {
   }
   led(linked ? (ms % 2000) < 100 : (ms % 250) < 125);
 }
+
+// ---- Media: audio and camera (XIAO ESP32S3 Sense) ---------------------------------------------
+
+#if defined(MARVIN_HAS_AUDIO) || defined(MARVIN_HAS_CAMERA)
+
+#if defined(MARVIN_HAS_AUDIO)
+uint8_t mic_dgram[proto::HEADER_SIZE + audio_packets::AUDIO_IN_HEADER + 2 * proto::AUDIO_IN_SAMPLES];
+#endif
+
+// After Wi-Fi is up (the camera server needs the network stack).
+void media_begin() {
+#if defined(MARVIN_HAS_AUDIO)
+  Serial.println(audio_app::begin() ? "audio: speaker on I2S1 (GPIO8/43/3), PDM mic on I2S0 (GPIO42/41)"
+                                    : "audio: disabled");
+#endif
+#if defined(MARVIN_HAS_CAMERA)
+  if (camera_app::begin())
+    Serial.printf("camera: %s, http://%s:%u/stream\n", camera_app::sensor_name(), WiFi.localIP().toString().c_str(),
+                  (unsigned)proto::CAMERA_PORT);
+#endif
+}
+
+void media_step(uint32_t ms) {
+  static uint32_t last_stats = 0;
+#if defined(MARVIN_HAS_AUDIO)
+  audio_app::set_linked(linked);
+  uint64_t t_us;
+  while (size_t n = audio_app::next_mic_payload(mic_dgram + proto::HEADER_SIZE, sizeof(mic_dgram) - proto::HEADER_SIZE, &t_us))
+    send_datagram(mic_dgram, proto::AUDIO_IN, n, t_us);
+#endif
+  if (ms - last_stats < MEDIA_STATS_PERIOD_MS) return;
+  last_stats = ms;
+  char msg[192];
+#if defined(MARVIN_HAS_AUDIO)
+  if (audio_app::stats_line(msg, sizeof(msg))) {
+    Serial.println(msg);
+    if (linked) send_log(msg);
+  }
+#endif
+#if defined(MARVIN_HAS_CAMERA)
+  if (camera_app::stats_line(msg, sizeof(msg))) {
+    Serial.println(msg);
+    if (linked) send_log(msg);
+  }
+#endif
+}
+
+#else
+void media_begin() {}
+void media_step(uint32_t) {}
+#endif
 
 // ---- Simulated sensors ------------------------------------------------------------------------
 
@@ -342,14 +441,24 @@ void setup() {
   connect_wifi();
   WiFi.macAddress(mac);
   udp.begin(proto::DEVICE_PORT);
+#if defined(MARVIN_HAS_OTA)
+  ota::Callbacks ota_callbacks;
+  ota_callbacks.on_start = [] { if (linked) send_log("OTA update started, back after the reboot"); };
+  ota::begin(mac, ota_callbacks);
+#endif
+  media_begin();
 #if MARVIN_REAL_SENSORS
   sensors_ready();
 #endif
 }
 
 void loop() {
+#if defined(MARVIN_HAS_OTA)
+  ota::handle();                     // an update blocks here until it reboots or fails
+#endif
   uint32_t ms = millis();
   link_step(ms);
+  media_step(ms);
   sensors_step(ms);
   // Simulated sensors idle for 10 ms while searching for the host; real ones must keep the UARTs drained.
   delay(linked || MARVIN_REAL_SENSORS ? 1 : 10);

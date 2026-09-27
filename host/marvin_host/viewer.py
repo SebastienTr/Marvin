@@ -165,6 +165,7 @@ class RerunSink(Sink):
         self._latest_mono = time.monotonic()
         self.scene_logged = False
         self._stop = threading.Event()
+        self.cameras: dict = {}              # robot address -> CameraStream
         self.brain = brain
         self.face: Face | None = None
         if brain is not None:
@@ -216,11 +217,30 @@ class RerunSink(Sink):
         h = dev.hello
         rr.log("log", rr.TextLog(f"{h.device_name}: {protocol.BOARDS.get(h.board, h.board)}, firmware {h.firmware}"
                                  f"{' (simulated sensors)' if h.simulated else ''}, RSSI {h.rssi} dBm"))
+        if h.has_camera and dev.addr not in self.cameras:
+            self._start_camera(dev)          # the robot's real camera wins over the simulated one
         if h.simulated and not self.scene_logged:
             log_scene()
             self.scene_logged = True
-            self.sim_camera = SimCamera()
-            threading.Thread(target=self._camera_loop, daemon=True).start()
+            if not h.has_camera:
+                self.sim_camera = SimCamera()
+                threading.Thread(target=self._camera_loop, daemon=True).start()
+
+    def _start_camera(self, dev: Device) -> None:
+        """MJPEG stream from the robot (http://<ip>:81/stream), logged as encoded JPEG on the robot's clock."""
+        from .camera_stream import CameraStream
+
+        m = CAMERA
+        scale = 2.0                          # the robot streams VGA (640 x 480); CameraModel is 320 x 240
+        rr.log("world/camera", rr.Pinhole(focal_length=m.focal * scale, width=int(m.width * scale),
+                                          height=int(m.height * scale), camera_xyz=rr.ViewCoordinates.RDF,
+                                          image_plane_distance=250), static=True)
+
+        def on_frame(frame) -> None:
+            self._time(frame.robot_t_us if frame.robot_t_us is not None else (self._device_time_now() or 0))
+            rr.log("world/camera", rr.EncodedImage(contents=frame.jpeg, media_type="image/jpeg"))
+
+        self.cameras[dev.addr] = CameraStream(protocol.camera_url(dev.addr[0]), on_frame=on_frame).start()
 
     def _camera_loop(self) -> None:
         """Renders the simulated camera at the device's clock, as fast as camera_fps allows."""
@@ -236,6 +256,8 @@ class RerunSink(Sink):
 
     def stop(self) -> None:
         self._stop.set()
+        for cam in self.cameras.values():
+            cam.stop()
 
     def on_scan(self, dev, t_us, points, intensities, speed_dps) -> None:
         self._seen(t_us)

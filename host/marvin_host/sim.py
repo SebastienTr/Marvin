@@ -19,9 +19,13 @@ LD2450_FOV_DEG = 60.0              # half-angle
 LD2450_RANGE_MM = 6000.0
 
 
-def scan_distances(angles_deg: np.ndarray, t: float) -> np.ndarray:
-    """Lidar distances (mm, inf = no return) for LDROBOT angles at time t."""
-    th = np.radians(np.asarray(angles_deg, dtype=np.float64) - frames.LIDAR.yaw_deg)
+def scan_distances(angles_deg: np.ndarray, t: float, yaw_deg: float | None = None) -> np.ndarray:
+    """Lidar distances (mm, inf = no return) for LDROBOT angles at time t.
+
+    `yaw_deg`: the lidar angle that points to the robot's front; None = the host's calibration (frames.LIDAR).
+    """
+    yaw = frames.LIDAR.yaw_deg if yaw_deg is None else yaw_deg
+    th = np.radians(np.asarray(angles_deg, dtype=np.float64) - yaw)
     return scene.ray_distances(-np.sin(th), -np.cos(th), scene.person_at(t))
 
 
@@ -54,6 +58,7 @@ class SimDevice:
     batch: int = 10                 # lidar packets per datagram
     noise_mm: float = 8.0
     seed: int = 0
+    yaw_offset_deg: float | None = None   # how the simulated lidar is mounted (None: as frames.LIDAR says)
 
     def __post_init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -96,7 +101,7 @@ class SimDevice:
         """n packets starting at start_deg; returns them and the next start angle."""
         step = 360.0 * SCAN_HZ / LIDAR_RATE[self.model]      # degrees between two points
         angles = (start_deg + step * np.arange(n * ldrobot.POINTS)) % 360.0
-        d = scan_distances(angles, t)
+        d = scan_distances(angles, t, self.yaw_offset_deg)
         valid = np.isfinite(d) & (d <= 12000)
         dist = np.where(valid, np.maximum(0, np.nan_to_num(d, posinf=0) + self.rng.normal(0, self.noise_mm, d.shape)), 0)
         inten = np.where(valid, np.where(d < 3000, 200, 120), 0)

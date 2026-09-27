@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Real sensors (`firmware/src/sensor_framing.*`, `sensors_real.*`): resynchronising framers for the LDROBOT lidar and the HLK-LD2450 (with its multi-target init sequence), UART drivers for the XIAO ESP32-S3; `xiao_esp32s3` builds the real robot, `xiao_esp32s3_sim` keeps simulated sensors. Unity tests run on the PC (`pio test -e native`).
 - The face on the robot (`firmware/src/face/`): C++ port of the face, identical to the Python reference frame for frame, a small ST7789 driver sending only what changed, and host → robot messages `FACE_STATE` and `FACE_EVENT` (`host/marvin_host/link.py`).
 - `firmware/mr60_bridge/`: firmware for the MR60BHA2 kit's ESP32-C6 that sends its vital signs to the host (`VITALS`, board 4).
+- The app (`host/marvin_host/ui/`, `docs/ui.md`): a local web page for computer and phone with the live face, today's timeline, breaks, 7-day history and settings; events and daily stats kept in SQLite on the computer. `marvin-host ui --demo` shows it with a simulated robot.
+- The voice (`host/marvin_host/voice/`, `docs/voice.md`): "Marvin" wake word, Whisper speech-to-text, a local LLM through Ollama and macOS/Piper speech, with the brain's context and break reminders; all local. `marvin-host talk`, `marvin-host run --voice`.
+- Audio and camera on the robot (`firmware/src/audio/`, `firmware/src/camera/`, `docs/audio.md`): I2S speaker with earcons and streamed speech, PDM microphone streamed to the host, MJPEG camera on port 81 shown in the viewer; protocol messages `AUDIO_IN`, `AUDIO_OUT`, `AUDIO_CTRL`, `SOUND` and HELLO capability flags.
+- Tools (`docs/tools.md`): wireless firmware updates (OTA, `xiao_esp32s3_ota`), raw session recording and replay (`.mvrec`), automatic or manual lidar yaw calibration.
 - PlatformIO platforms are pinned (espressif32 7.1.3, espressif8266 4.2.1).
 - `firmware/`: first PlatformIO firmware. Wi-Fi, host discovery and streaming with simulated sensors, on the Wemos D1 mini (ESP8266), the ESP32-S3 DevKitC and the XIAO ESP32S3.
 

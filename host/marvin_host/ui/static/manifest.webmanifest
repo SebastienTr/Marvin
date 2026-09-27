@@ -1,0 +1,10 @@
+{
+  "name": "Marvin",
+  "short_name": "Marvin",
+  "description": "Your desk companion: presence, sitting time and breaks.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#141211",
+  "theme_color": "#141211",
+  "icons": [{ "src": "/icon.png", "sizes": "240x240", "type": "image/png" }]
+}

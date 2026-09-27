@@ -18,6 +18,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+import numpy as np
+
 from .events import EventKind, PresenceState
 
 MAGIC = b"MV"
@@ -33,16 +35,46 @@ LIDAR = 0x02        # device -> host: u8 lidar model + N raw 47-byte LDROBOT pac
 LD2450 = 0x03       # device -> host: one raw 30-byte HLK-LD2450 frame
 LOG = 0x04          # device -> host: UTF-8 text
 VITALS = 0x05       # device -> host: MR60BHA2 readings (see Vitals)
+AUDIO_IN = 0x06     # device -> host: microphone PCM, u32 sample index + 320 x i16 (see AudioIn)
 HOST_ACK = 0x81     # host -> device: u64 host clock (us); the device then unicasts to the sender
 FACE_STATE = 0x82   # host -> device: presence state for the face, ~10 Hz (see FaceState)
 FACE_EVENT = 0x83   # host -> device: one brain event, u8 code (see FACE_EVENT_CODES)
+AUDIO_OUT = 0x84    # host -> device: PCM to play, u16 stream id + u32 sample index + N x i16 (see AudioOut)
+AUDIO_CTRL = 0x85   # host -> device: u8 command + u8 argument (see audio_ctrl)
+SOUND = 0x86        # host -> device: play a built-in sound, u8 id (see SOUNDS)
 
 # HELLO board ids
 BOARDS = {1: "Wemos D1 mini (ESP8266)", 2: "ESP32-S3 DevKitC", 3: "XIAO ESP32S3 Sense", 4: "MR60BHA2 kit (XIAO ESP32C6)",
           255: "simulator"}
 # LIDAR model ids
 LIDAR_MODELS = {1: "D500 (STL-19P)", 2: "D800 (STL-27L)"}
+# HELLO flags: bit 0 simulated sensor data; bits 1 and 2 are capabilities (older robots send 0)
 FLAG_SIMULATED = 0x01
+FLAG_CAMERA = 0x02     # MJPEG camera at camera_url(ip)
+FLAG_AUDIO = 0x04      # speaker and microphone: AUDIO_IN / AUDIO_OUT / AUDIO_CTRL / SOUND
+CAMERA_PORT = 81
+
+# Audio, both directions: 16 kHz mono signed 16-bit little-endian PCM (same as audio.py)
+AUDIO_RATE = 16_000
+AUDIO_IN_SAMPLES = 320          # 20 ms per AUDIO_IN datagram
+AUDIO_OUT_MAX_SAMPLES = 480     # at most 30 ms (960 bytes) per AUDIO_OUT datagram
+
+# AUDIO_CTRL commands (payload: command u8, argument u8)
+AUDIO_MIC_START = 1     # start (or keep) streaming AUDIO_IN; repeat it every second while listening
+AUDIO_MIC_STOP = 2
+AUDIO_PLAY_STOP = 3     # drop queued AUDIO_OUT and the sound being played
+AUDIO_VOLUME = 4        # argument: volume 0..100 (hard-capped in firmware for the 1 W speaker)
+AUDIO_MIC_GAIN = 5      # argument: microphone gain, dB 0..36
+
+# SOUND ids: name -> (id, duration in ms). firmware/src/audio/earcons.h, docs/audio.md.
+SOUNDS: dict[str, tuple[int, int]] = {
+    "chirp": (1, 140),
+    "beep": (2, 120),
+    "wake": (3, 200),
+    "done": (4, 200),
+    "error": (5, 360),
+    "hello": (6, 430),
+}
 # HELLO board ids that have the face screen: the host sends them FACE_STATE and FACE_EVENT
 SCREEN_BOARDS = frozenset({2, 3})
 
@@ -114,8 +146,21 @@ class Hello:
         return bool(self.flags & FLAG_SIMULATED)
 
     @property
+    def has_camera(self) -> bool:
+        return bool(self.flags & FLAG_CAMERA)
+
+    @property
+    def has_audio(self) -> bool:
+        return bool(self.flags & FLAG_AUDIO)
+
+    @property
     def device_name(self) -> str:
         return "marvin-" + self.device_id[-3:].hex()
+
+
+def camera_url(ip: str, path: str = "/stream") -> str:
+    """The robot's camera: `/stream` (MJPEG, multipart/x-mixed-replace) or `/capture` (one JPEG)."""
+    return f"http://{ip}:{CAMERA_PORT}{path}"
 
 
 @dataclass
@@ -189,3 +234,63 @@ def face_event(kind: EventKind) -> bytes | None:
     """FACE_EVENT payload for an event, or None if the robot has no code for it."""
     code = FACE_EVENT_CODES.get(kind)
     return None if code is None else bytes([code])
+
+
+@dataclass
+class AudioIn:
+    """AUDIO_IN payload: sample index (u32, samples since the stream started, wraps) + PCM.
+
+    The header's t_us is the robot time of the first sample. The robot restarts the index at 0
+    each time the microphone starts.
+    """
+
+    index: int
+    pcm: np.ndarray             # int16, AUDIO_IN_SAMPLES samples normally
+
+    def encode(self) -> bytes:
+        return struct.pack("<I", self.index & 0xFFFFFFFF) + np.asarray(self.pcm, dtype="<i2").tobytes()
+
+    @classmethod
+    def decode(cls, payload: bytes) -> "AudioIn":
+        if len(payload) < 4 or (len(payload) - 4) % 2:
+            raise ProtocolError("bad AUDIO_IN length")
+        (index,) = struct.unpack_from("<I", payload)
+        return cls(index, np.frombuffer(payload, dtype="<i2", offset=4).astype(np.int16))
+
+
+@dataclass
+class AudioOut:
+    """AUDIO_OUT payload: stream id (u16), sample index of the first sample in that stream (u32), PCM.
+
+    A new stream id makes the robot drop what it has queued; the index lets it place each datagram
+    (a lost one becomes silence, a late one is dropped). 1 to AUDIO_OUT_MAX_SAMPLES samples.
+    """
+
+    stream: int
+    index: int
+    pcm: np.ndarray
+
+    def encode(self) -> bytes:
+        pcm = np.asarray(self.pcm, dtype="<i2")
+        if not 1 <= len(pcm) <= AUDIO_OUT_MAX_SAMPLES:
+            raise ProtocolError(f"AUDIO_OUT carries 1 to {AUDIO_OUT_MAX_SAMPLES} samples, not {len(pcm)}")
+        return struct.pack("<HI", self.stream & 0xFFFF, self.index & 0xFFFFFFFF) + pcm.tobytes()
+
+    @classmethod
+    def decode(cls, payload: bytes) -> "AudioOut":
+        n2 = len(payload) - 6
+        if n2 < 2 or n2 % 2 or n2 // 2 > AUDIO_OUT_MAX_SAMPLES:
+            raise ProtocolError("bad AUDIO_OUT length")
+        stream, index = struct.unpack_from("<HI", payload)
+        return cls(stream, index, np.frombuffer(payload, dtype="<i2", offset=6).astype(np.int16))
+
+
+def audio_ctrl(command: int, argument: int = 0) -> bytes:
+    """AUDIO_CTRL payload."""
+    return bytes([command & 0xFF, max(0, min(255, int(argument)))])
+
+
+def sound(name_or_id: str | int) -> bytes:
+    """SOUND payload for a sound name (SOUNDS) or a raw id."""
+    sid = SOUNDS[name_or_id][0] if isinstance(name_or_id, str) else int(name_or_id)
+    return bytes([sid & 0xFF])
