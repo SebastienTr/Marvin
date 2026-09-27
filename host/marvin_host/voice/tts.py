@@ -99,6 +99,70 @@ def piper_dir() -> Path:
     return Path(os.environ.get("MARVIN_PIPER_DIR", Path.home() / ".local" / "share" / "marvin" / "piper"))
 
 
+PIPER_VOICES_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+
+
+def _https_context():
+    """A verified TLS context. python.org builds of Python on macOS ship without CA certificates
+    until "Install Certificates.command" is run; certifi's bundle (installed with the voice extra's
+    dependencies) avoids that step."""
+    import ssl
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+def download_piper_voice(name: str, directory: Path) -> Path:
+    """Downloads `<name>.onnx` and its `.onnx.json` from the rhasspy/piper-voices repository, e.g.
+    fr_FR-siwis-medium -> fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx."""
+    import urllib.request
+
+    locale, speaker, quality = name.split("-", 2)
+    base = f"{PIPER_VOICES_URL}/{locale.split('_')[0]}/{locale}/{speaker}/{quality}/{name}"
+    directory.mkdir(parents=True, exist_ok=True)
+    ctx = _https_context()
+    for suffix in (".onnx.json", ".onnx"):                  # the model last: its presence marks success
+        target = directory / f"{name}{suffix}"
+        tmp = target.with_name(target.name + ".part")
+        with urllib.request.urlopen(base + suffix + "?download=true", context=ctx, timeout=60) as r, \
+                open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f)
+        tmp.replace(target)
+    return directory / f"{name}.onnx"
+
+
+class FallbackTTS:
+    """Uses `primary` until it fails once, then `fallback` for good (with one warning), so a voice
+    that cannot be downloaded or loaded never leaves Marvin mute."""
+
+    def __init__(self, primary, fallback):
+        self.primary, self.fallback = primary, fallback
+        self._failed = False
+
+    def warm(self, language: str = "fr") -> None:
+        """Loads (and downloads if needed) the primary voice now rather than at the first answer."""
+        try:
+            self.primary.synthesize("Bonjour." if language == "fr" else "Hello.", language)
+        except Exception as e:                              # noqa: BLE001 - any failure means: fall back
+            self._fail(e)
+
+    def _fail(self, e: Exception) -> None:
+        if not self._failed:
+            log.warning("%s failed (%s); using %s instead", type(self.primary).__name__, e,
+                        type(self.fallback).__name__)
+        self._failed = True
+
+    def synthesize(self, text: str, language: str = "fr"):
+        if not self._failed:
+            try:
+                return self.primary.synthesize(text, language)
+            except Exception as e:                          # noqa: BLE001
+                self._fail(e)
+        return self.fallback.synthesize(text, language)
+
+
 class PiperTTS:
     """Piper voices, one per language. A missing voice is downloaded on first use (from Hugging
     Face, once); after that everything runs offline."""
@@ -125,10 +189,8 @@ class PiperTTS:
                     if not self.download:
                         raise RuntimeError(f"Piper voice {path} missing: python -m piper.download_voices "
                                            f"--download-dir {self.voice_dir} {name}")
-                    from piper.download_voices import download_voice
                     log.info("downloading Piper voice %s to %s (once)", name, self.voice_dir)
-                    self.voice_dir.mkdir(parents=True, exist_ok=True)
-                    download_voice(name, self.voice_dir)
+                    download_piper_voice(name, self.voice_dir)
                 self._loaded[name] = PiperVoice.load(str(path))
             return self._loaded[name]
 
@@ -193,10 +255,15 @@ def make_tts(kind: str = "auto", voice: str | None = None, language: str | None 
     # Piper first when installed: it synthesises a sentence in a fraction of the time `say` needs
     # to render one to a file (about 0.1-0.2 s against 0.9 s on an M3), which is most of the
     # delay before Marvin's first word.
-    try:
-        return PiperTTS(voices)
-    except RuntimeError:
-        pass
+    fallback: TTS | None = None
     if sys.platform == "darwin" and shutil.which("say"):
-        return MacSayTTS(voices)
-    return EspeakTTS(voices)
+        fallback = MacSayTTS(voices)
+    elif shutil.which("espeak-ng") or shutil.which("espeak"):
+        fallback = EspeakTTS(voices)
+    try:
+        piper = PiperTTS(voices)
+    except RuntimeError:
+        if fallback is None:
+            raise RuntimeError("no speech synthesis available: pip install piper-tts")
+        return fallback
+    return FallbackTTS(piper, fallback) if fallback is not None else piper

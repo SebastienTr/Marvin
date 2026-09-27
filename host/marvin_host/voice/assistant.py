@@ -571,7 +571,11 @@ class VoiceAssistant:
             if not text:
                 continue
             t = time.monotonic()
-            pcm, rate = self.tts.synthesize(text, job.language)
+            try:
+                pcm, rate = self.tts.synthesize(text, job.language)
+            except Exception:                               # noqa: BLE001 - never kill the speaker thread
+                log.exception("speech synthesis failed for %r", text)
+                continue
             if job.cancel.is_set():
                 return
             if first:
