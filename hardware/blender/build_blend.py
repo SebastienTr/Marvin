@@ -241,6 +241,16 @@ world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.95, 0.95,
 world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.7
 scene.world = world
 
+# the scene is in millimetres: give the viewport a matching depth range, otherwise the
+# default 0.01-1000 clipping causes z-fighting stripes in Solid and Material Preview
+cam.data.clip_start = 1.0
+for screen in bpy.data.screens:
+    for area in screen.areas:
+        for space in area.spaces:
+            if space.type == "VIEW_3D":
+                space.clip_start, space.clip_end = 1.0, 20000.0
+                space.overlay.show_floor = True
+
 out.parent.mkdir(parents=True, exist_ok=True)
 bpy.ops.wm.save_as_mainfile(filepath=str(out), compress=True)
 print("saved", out)
