@@ -2,7 +2,7 @@
 
 Prices are indicative. They were checked in September 2026 and move often. Pick the best-rated listing rather than the cheapest one, and allow 2–4 weeks for delivery.
 
-**Total: about €230 in parts with the D800 lidar, or about €190 with the D500** (prices checked 26 September 2026), in one AliExpress order. Seeed Studio's own shop (Germany warehouse) can be cheaper for the MR60BHA2 kit and the XIAO ESP32S3 Sense when they are in stock there. You provide the USB-C power source: a phone charger or a power bank.
+**Total: about €230 in parts with the D800 lidar, or about €190 with the D500** (prices checked 26 September 2026, before import fees, see below), in one AliExpress order. Seeed Studio's own shop (Germany warehouse) can be cheaper for the MR60BHA2 kit and the XIAO ESP32S3 Sense when they are in stock there. You provide the USB-C power source: a phone charger or a power bank.
 
 Rev F (the upright robot) uses exactly the same electronics as rev D and rev E. It only adds a smoked acrylic face window and a little TPU for the vibration damper.
 
@@ -63,6 +63,6 @@ The microphone is already on the XIAO Sense board: nothing to buy.
 - At about 1 A average draw, a 10 000 mAh power bank lasts roughly 5 hours. On a desk, a wall charger is simpler.
 - To flash the firmware, plug the same cable into your computer instead. Never connect both at once.
 
-## Also in the cart (not needed for SuperLens)
+## Import fees
 
-The September 2026 order also includes an ESP32 starter kit (breadboard, LEDs, resistors, sensors) and an ESP32-S3 N16R8 dev board, for other projects. They share the AliExpress shipping.
+AliExpress splits the cart into one order per seller, and since July 2026 each parcel entering the EU pays a small flat import fee (about €1–4, shown only after checkout in each order's details). For this build that meant 15 parcels and about **€40 of import fees on top of the cart total**: €275 paid for a €235 cart in September 2026. Buying fewer, larger items from the same seller keeps it down.
