@@ -100,6 +100,7 @@ def import_stl(path, name, mats, coll, loc=(0, 0, 0)):
     ob.name = ob.data.name = name
     for m in mats:
         ob.data.materials.append(m)
+    ob.data.polygons.foreach_set("use_smooth", [False] * len(ob.data.polygons))   # CAD parts: flat shading
     ob.location = loc
     link(ob, coll)
     return ob
@@ -209,6 +210,8 @@ for i, f in enumerate(sorted(stl_dir.glob("*.stl"))):
     cy = (min(v.y for v in bb) + max(v.y for v in bb)) / 2
     ob.location = (ox + BED / 2 - cx, BED / 2 - cy, 0)
 lay.hide_render = True
+# hidden in the viewport by default: tick the eye of "Print plates" in the outliner to see them
+bpy.context.view_layer.layer_collection.children[lay.name].hide_viewport = True
 
 # ------------------------------------------------------------------ light, camera, floor
 def aim(ob, target):
