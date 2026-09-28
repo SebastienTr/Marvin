@@ -15,6 +15,10 @@ memory, break reminders) runs in Java, the audio loop in the Python voice sideca
 ([docs/voice.md](../docs/voice.md#the-voice-sidecar)). The Python host (`marvin-host`) stays for the
 simulator, the Rerun viewer and replays; only one host can own UDP 47100 at a time.
 
+Before relying on it with real boards and a real model, run the manual
+[test plan](../docs/test-plan.md); to review the change, start with the
+[review guide](../docs/review-guide.md).
+
 ## Run it
 
 From the repository root, one command does everything (JDK, build, database, host):

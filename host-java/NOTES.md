@@ -847,3 +847,70 @@ All were addressed; the few parts done differently from the suggestion say why.
   when `ReplyStart` is sent.
 - Move the four listed lifecycle classes behind ports when the System panel comes, then empty
   `ArchitectureTest.BOOT_GLUE_KNOWN`.
+
+## Final verification
+
+An end-to-end run of both entry points from a clean state (no container, no volume, a data directory
+with only a Python host's `marvin.db`), with the Python simulator as the robot, a second simulated
+device, a stand-in Ollama and the voice sidecar in its test mode (`MARVIN_VOICE_ARGS=--fake`). The
+scripts are kept in `host-java/e2e/` (see its README). Nothing was broken, so no production code
+changed in this stage.
+
+### What exists
+
+- `host-java/e2e/`: `stub_ollama.py` (`/api/tags`, `/api/show`, streamed `/api/chat` with a
+  `get_weather` tool call, a lone `</think>` after the tool result and a `<think>` block),
+  `second_device.py` (an ESP32-S3 DevKitC that counts `HOST_ACK`, `FACE_STATE`, `FACE_EVENT`), `e2e.py`
+  (Playwright walk of every section at 390x844 DPR 2 and 1440x900, fails on any console error).
+- `docs/test-plan.md`: the owner's manual plan on a Mac with the real boards, voice and model.
+- `docs/review-guide.md`: reading order, module map, where parity is proven, known gaps.
+
+### Verified
+
+- `./marvin demo` (voice in test mode, scripted "Marvin bonjour"): `e2e.py` 23/23 (the lidar check
+  was made robust between runs: the canvas is compared, not the point count). The demo keeps its own
+  database and `voice.json`.
+- `./marvin up` from a clean state: PostgreSQL created, the SQLite copy imported once
+  (`269 events, 2682 samples, 30 conversation`), the imported break interval (42 min) and a marker
+  sentence found by the conversation search. `e2e.py` 23/23 at both sizes, no console errors:
+  Home, Robot (the lidar redrawn from `/api/robot/stream`), History (search, previous day), Settings,
+  Talk (voice switched on in the app, typed question answered over SSE, weather tool with the real
+  Open-Meteo forecast and the `</think>` leak removed, `<think>` block removed, inspector, Talk now,
+  mute and unmute, stop while speaking), a voice setting applied and written to `voice.json`.
+  Screenshots: 36 files, `demo-*` and `live-*`, phone and desktop.
+- SSE: `/api/stream` sends `hello`, `state`, `today`, `devices`, `voice`, `level`; `/api/robot/stream`
+  about 10 messages a second.
+- Two devices: the S3 got `HOST_ACK` each second, `FACE_STATE` at 10.1 Hz and the brain's
+  `FACE_EVENT`s; both listed (`2 of 2 connected`).
+- Wake word: the sidecar's scripted "Marvin bonjour" was heard (`bonjour`, source `voice`) and
+  answered, first word 0.72 s (end of speech 0.56 s, stub model).
+- Restart persistence (`./marvin restart`): conversation, settings and `voice.json` kept, the voice
+  came back on (remembered state), no second import.
+- Parity of the imported history: the Python host (`marvin-host ui`) on a copy of the same SQLite
+  file and the Java host give equal `/api/day` and `/api/conversation` for every past day and equal
+  search results; `/api/history` equal except `present_s`/`seated_s` of an empty day (`0.0` vs `0`,
+  the same JSON number).
+- Failures: Ollama stopped: the answer is the persona's `llm_down` phrase with the fix, Settings says
+  Ollama is not running, the next question after it is back is answered; the simulator killed: the
+  state goes `Marvin is offline` after about 10 s (as the Python host); the voice sidecar killed
+  with SIGKILL: restarted in 1 s, voice `on` again within 2 s; the real sidecar without PortAudio:
+  "No microphone (PortAudio library not found)" with its fix.
+- Resources, live, robot linked, voice on: 260 MB RSS.
+- `cd host-java && ./mvnw verify`: 200 tests, 0 failures, 1 skipped. `cd host && python3 -m pytest -q`:
+  305 passed, 3 skipped.
+
+### Known gaps
+
+- Not run on macOS, with the real boards, a real model, a microphone or Piper: that is
+  `docs/test-plan.md`. Real first-word latency is therefore unmeasured on the Java host.
+- A typed English question with no clear language gets the French filler (`Je regarde…`): the
+  conversation's default language is French until someone speaks, as in the Python host.
+- Going back to the Python host shows only its SQLite history; the import is one-shot (no sync in
+  either direction).
+- Everything listed under "Review fixes, Not done" still stands.
+
+### Hints for phase 3
+
+- `host-java/e2e/e2e.py` can become a CI job (demo mode, stub Ollama, fake sidecar) once Playwright
+  is in the CI image.
+- An export of the PostgreSQL history back to SQLite would make going back to the Python host lossless.
