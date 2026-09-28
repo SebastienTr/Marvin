@@ -15,7 +15,18 @@ flowchart LR
   BRAIN -. reminders .-> TTS
 ```
 
+**Two hosts run this voice.** `./marvin up` (the Java host, [host-java](../host-java/README.md))
+is the default way to run Marvin: the audio loop below runs in the **voice sidecar** (a Python
+process the Java host starts and watches), and the conversation (persona, context, model, tools,
+memory) runs in Java; see [The voice sidecar](#the-voice-sidecar). `marvin-host talk` and
+`marvin-host run --voice` (the Python host) still run everything in one Python process, and stay
+as tools. Both read the same `voice.json`, answer with the same prompts, and keep the same app.
+
 ## Install (Mac)
+
+With the Java host, `./marvin up` installs all of this into `host/.venv` the first time (a few
+minutes; `./marvin up --no-voice` skips it); only Ollama and its model are yours to install. By
+hand, for `marvin-host talk`:
 
 ```bash
 cd host
@@ -75,13 +86,13 @@ prefixed with `--voice-` (`--voice-llm-model`, `--voice-duplex`...).
 
 ### From the app
 
-With `marvin-host run` (or `marvin-host ui`), the app's **Talk** panel is the voice's control
+With `./marvin up` (or `marvin-host run`, or `marvin-host ui`), the app's **Talk** panel is the voice's control
 center ([ui.md](ui.md)): turn the voice on and off without restarting anything, see what Marvin
 heard and said (and what it chose not to answer, and why), how long each answer took, type a
 question, open a listening window without the name (**Talk now**), mute the microphone, stop
 Marvin mid-sentence. If something is missing (the `voice` extra, a microphone, Ollama, the model),
 the panel says what and how to fix it. Turning the voice on in the app is remembered: it starts
-with `marvin-host run` next time, as with `--voice`.
+with the host next time (`./marvin up`, or `marvin-host run`, as with `--voice`).
 
 **Settings > Voice** changes the model (from the list Ollama has), speech recognition, the speech
 backend and voice, the language, the wake word, the follow-up window, spoken break reminders,
@@ -415,6 +426,29 @@ knows the script, and the voice is a 220 Hz tone (20 ms per character). Phrase *
 buzzy tone at 110 + 20 *k* Hz and recognised by its pitch, so a core that relays a robot in a test
 can send the same audio as `AUDIO_IN` (`fake.speech(k, seconds)`). The VAD, wake word, listening
 windows, echo gate, pacing and every message are the real ones.
+
+### With the Java host
+
+The Java host starts the sidecar with itself (`python -m marvin_host.sidecar.voice --port 0` from
+`host/.venv`, or `$MARVIN_PYTHON`), waits for `READY` and the health check, and restarts it with a
+backoff (1 s, doubling, at most 60 s) if it stops; its warnings and errors go to the app's Log
+panel, and `/api/health` lists it as `voice`. A random token in the sidecar's environment keeps
+other local programs out. Turning the voice on opens a session; turning it off closes it (the
+process stays, so the settings panel can list the voices, and the next start is quick).
+
+The conversation is the Python host's, ported line for line and checked against it
+(`golden/conversation/vectors.json` in marvin-contracts): the same system prompt and context block,
+the same history (halved when full, forgotten after 3 minutes), the same model request (Spring AI's
+Ollama client: thinking off, `num_ctx` 8192, kept 30 minutes, the same rehearsal at start), the same
+tool loop and weather tool, the same handling of reasoning written into the answer and of tool calls
+written as text, the same break reminders and "welcome back". What the model streams is cut into
+sentences in Java and sent to the sidecar as it comes; the transcript, the latency breakdown and the
+reply inspector's data are built from what both sides measured.
+
+**Where it hears and speaks**: `audio_route` in `voice.json`: `computer` (the default: the
+computer's microphone and speaker, inside the sidecar), `robot` (the robot's, relayed by the Java
+host as `AUDIO_IN` and `AUDIO_OUT`), or `auto` (the robot's when one with a microphone and a
+speaker is connected, else the computer's).
 
 `marvin-host run` and `marvin-host talk` do not use the sidecar: they run `VoiceAssistant` in
 process, as before.

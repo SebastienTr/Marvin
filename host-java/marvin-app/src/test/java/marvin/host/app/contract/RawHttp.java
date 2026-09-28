@@ -16,13 +16,13 @@ import java.util.Map;
  * A tiny HTTP/1.1 client over a socket, so a test can send any {@code Host} header (the JDK client
  * cannot) and see the response exactly as sent.
  */
-final class RawHttp {
-    record Response(int status, Map<String, String> headers, byte[] body) {
-        String header(String name) {
+public final class RawHttp {
+    public record Response(int status, Map<String, String> headers, byte[] body) {
+        public String header(String name) {
             return headers.get(name.toLowerCase(Locale.ROOT));
         }
 
-        String text() {
+        public String text() {
             return new String(body, StandardCharsets.UTF_8);
         }
     }
@@ -30,7 +30,7 @@ final class RawHttp {
     private RawHttp() {
     }
 
-    static Response call(String address, int port, String method, String path, Map<String, String> headers, byte[] body)
+    public static Response call(String address, int port, String method, String path, Map<String, String> headers, byte[] body)
             throws IOException {
         try (Socket s = new Socket()) {
             s.connect(new InetSocketAddress(address, port), 5000);

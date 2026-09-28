@@ -35,6 +35,8 @@ SETTINGS = {
     "reminders": (None, bool), "welcome_back": (None, bool),
     # tools the model can call (voice/tools): all of them, the online ones, the weather's home
     "tools": ("tools", bool), "internet": ("internet", bool), "home_place": ("home_place", str),
+    # the listening chime, and where the Java host's voice hears and speaks (computer, robot, auto)
+    "chime": ("chime", bool), "audio_route": (None, str),
 }
 DEVICE_KEYS = ("input_device", "output_device")
 

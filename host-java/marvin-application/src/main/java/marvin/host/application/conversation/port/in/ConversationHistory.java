@@ -16,4 +16,7 @@ public interface ConversationHistory {
 
     /** Keeps an entry (the voice calls it for each line of the Talk panel). */
     void add(ConversationEntry entry);
+
+    /** The largest id kept so far, 0 when there is none. */
+    long maxId();
 }

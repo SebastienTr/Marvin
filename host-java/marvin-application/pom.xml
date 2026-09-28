@@ -20,6 +20,11 @@
       <groupId>marvin.host</groupId>
       <artifactId>marvin-domain</artifactId>
     </dependency>
+    <dependency>
+      <groupId>marvin.host</groupId>
+      <artifactId>marvin-contracts</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

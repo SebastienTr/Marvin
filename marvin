@@ -3,8 +3,9 @@
 #
 # Marvin's host, one command. Everything else happens in the app at http://localhost:8765/.
 #
-#   ./marvin up        start everything: PostgreSQL, the Java host (which starts its sidecars)
-#   ./marvin demo      the same with a simulated robot and a simulated past week
+#   ./marvin up        start everything: PostgreSQL, the Java host and its voice sidecar (--no-voice: without
+#                      setting up the voice's Python environment, a few minutes the first time)
+#   ./marvin demo      the same with a simulated robot and a simulated past week (--voice: with the voice)
 #   ./marvin down      stop what `up` or `demo` started (the data is kept)
 #   ./marvin status    what is running, and the host's health
 #   ./marvin logs      follow the host's log (-n N: the last N lines and exit)
@@ -20,6 +21,8 @@
 # Robot link: MARVIN_UDP_PORT (47100), MARVIN_TAP (forward the robot's datagrams to this UDP port for
 # the Python viewer: marvin-host run --port <it> --no-ui), MARVIN_RECORD (also record them to a
 # .mvrec[.gz] file), MARVIN_REPLAY (play a .mvrec recording instead of listening for robots).
+# Voice: MARVIN_CONFIG_DIR (where voice.json is, shared with the Python host), MARVIN_VOICE_SIDECAR
+# (false: no voice sidecar), MARVIN_PYTHON (the Python that runs it; default host/.venv).
 
 set -eu
 
@@ -220,9 +223,9 @@ ensure_venv() {
     # $1: "voice" (default: the voice's dependencies too) or "base" (the Python host only: the demo)
     extra=${1:-voice}
     if [ -x "$VENV/bin/python" ]; then
-        if [ "$extra" = voice ] && ! "$VENV/bin/python" -c 'import sounddevice, webrtcvad' 2>/dev/null; then
+        if [ "$extra" = voice ] && ! "$VENV/bin/python" -c 'import sounddevice, webrtcvad, grpc, grpc_health' 2>/dev/null; then
             step "Adding the voice to host/.venv (a few minutes) ..."
-            "$VENV/bin/python" -m pip install -q -e "$ROOT/host[voice]" || die "pip install failed (see above)"
+            "$VENV/bin/python" -m pip install -q -e "$ROOT/host[sidecar,voice]" || die "pip install failed (see above)"
         fi
         return 0
     fi
@@ -231,7 +234,7 @@ ensure_venv() {
     python3 -m venv "$VENV"
     "$VENV/bin/python" -m pip install -q --upgrade pip
     if [ "$extra" = voice ]; then
-        "$VENV/bin/python" -m pip install -q -e "$ROOT/host[voice]" || die "pip install failed (see above)"
+        "$VENV/bin/python" -m pip install -q -e "$ROOT/host[sidecar,voice]" || die "pip install failed (see above)"
     else
         "$VENV/bin/python" -m pip install -q -e "$ROOT/host" || die "pip install failed (see above)"
     fi
@@ -305,8 +308,10 @@ start_host() {
         fi
         db_env="MARVIN_DB_MODE=embedded"
     fi
-    if [ "$voice" = yes ]; then
+    if [ "$voice" = yes ] && python_ok; then
         ensure_venv voice
+    elif [ "$voice" = yes ]; then
+        warn "no Python 3.10+: Marvin starts without its voice (./marvin doctor)"
     elif [ "$mode" = demo ] && ! demo_python_ok; then
         ensure_venv base
     fi
@@ -385,15 +390,16 @@ stop_host() {
 # ------------------------------------------------------------------------------------ commands
 
 usage() {
-    sed -n '4,11p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '4,13p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 cmd_up() {
-    voice=no
+    voice=yes
     for a in "$@"; do
         case "$a" in
             --voice) voice=yes ;;
-            *) die "unknown option $a (./marvin up [--voice])" ;;
+            --no-voice) voice=no ;;
+            *) die "unknown option $a (./marvin up [--no-voice])" ;;
         esac
     done
     start_host live "$voice"
@@ -529,14 +535,14 @@ cmd_doctor() {
         ok "Python: $(python3 --version 2>&1)"
         if [ -x "$VENV/bin/python" ]; then
             ok "Python environment: host/.venv"
-            if "$VENV/bin/python" -c 'import sounddevice, webrtcvad' >/dev/null 2>&1; then
-                ok "voice extra installed"
+            if "$VENV/bin/python" -c 'import sounddevice, webrtcvad, grpc, grpc_health' >/dev/null 2>&1; then
+                ok "the voice's Python packages are installed (voice sidecar)"
             else
-                note "the voice extra is not installed in host/.venv"
-                fix "$VENV/bin/pip install -e \"host[voice]\" (or ./marvin up --voice)"
+                note "the voice's Python packages are not installed in host/.venv"
+                fix "./marvin up installs them (or: $VENV/bin/pip install -e \"host[sidecar,voice]\")"
             fi
         else
-            note "no host/.venv: the voice needs it; ./marvin up --voice creates it"
+            note "no host/.venv: the voice needs it; ./marvin up creates it"
         fi
     else
         note "no Python 3.10+: the voice, the simulator and the viewer need it"

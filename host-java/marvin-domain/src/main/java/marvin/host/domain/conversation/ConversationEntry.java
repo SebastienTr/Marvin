@@ -40,4 +40,19 @@ public record ConversationEntry(long id, double t, String kind, String text, Map
         m.put("text", text);
         return m;
     }
+
+    /** As the voice publishes it live: {@code id}, {@code t}, {@code kind}, {@code text}, then the data. */
+    public Map<String, Object> toLiveMap() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", id);
+        m.put("t", t);
+        m.put("kind", kind);
+        m.put("text", text);
+        data.forEach((k, v) -> {
+            if (!m.containsKey(k)) {
+                m.put(k, v);
+            }
+        });
+        return m;
+    }
 }

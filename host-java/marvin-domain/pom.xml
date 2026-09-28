@@ -15,6 +15,14 @@
   <name>Marvin domain</name>
   <description>Plain Java model and domain services, one package per bounded context: no framework, no I/O</description>
 
+  <dependencies>
+    <dependency>
+      <groupId>marvin.host</groupId>
+      <artifactId>marvin-contracts</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
   <build>
     <plugins>
       <plugin>

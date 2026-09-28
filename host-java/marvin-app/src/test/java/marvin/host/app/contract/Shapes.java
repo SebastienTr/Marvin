@@ -16,7 +16,8 @@ import tools.jackson.databind.node.ObjectNode;
  * type, a list by the distinct shapes of its items. Two shapes are compatible when their objects have the
  * same keys and their values are compatible; {@code null} is compatible with anything (the snapshot's
  * values are volatile: a field that was a number may be null now, and the other way round); an empty list
- * with any list.
+ * with any list. A reply's latency breakdown is an object of numbers whose stages depend on the path the
+ * answer took (a tool call adds some, a proactive sentence has none): any stages are accepted.
  */
 final class Shapes {
     private Shapes() {
@@ -69,6 +70,14 @@ final class Shapes {
         if (j.isString() && g.isString()) {
             if (!j.asString().equals(g.asString())) {
                 out.add(path + ": " + j.asString() + " instead of " + g.asString());
+            }
+            return;
+        }
+        if (j.isObject() && g.isObject() && path.endsWith(".latency")) {
+            for (Map.Entry<String, JsonNode> e : j.properties()) {
+                if (!isNull(e.getValue()) && !(e.getValue().isString() && e.getValue().asString().equals("number"))) {
+                    out.add(path + "." + e.getKey() + ": not a number");
+                }
             }
             return;
         }

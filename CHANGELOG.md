@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Java host (2026-09-28)
+- `host-java/`: the host core in Java 25 and Spring Boot 4.1 (hexagonal, bounded contexts, ArchUnit), built phase by phase from `docs/design.md` and checked against the Python host (`marvin-contracts`: protocol vectors, recordings, API snapshots, face and conversation vectors). It reaches parity with `marvin-host run`: the robot link (UDP protocol v1), the brain, the face, the history in PostgreSQL (the Python host's `marvin.db` imported once), the app unchanged, and the voice: the conversation in Java (Ollama through Spring AI, tools, memory, reminders), the audio loop in the Python voice sidecar it supervises (`host/marvin_host/sidecar/voice`, gRPC `marvin.voice.v1`).
+- `./marvin up` is now the way to run Marvin (PostgreSQL, the Java host and its voice); `./marvin demo`, `status`, `logs`, `doctor`, `down`. The `marvin-host` commands stay as tools: simulator, viewer, recording, replay, calibration.
+
 ### Software prototype (2026-09-27)
 - `docs/protocol.md`: robot → host UDP protocol v1. Zero-configuration discovery (`HELLO` broadcast, `HOST_ACK`), raw lidar and LD2450 frames in a 16-byte envelope.
 - `host/`: the `marvin-host` Python package. Parsers for LDROBOT and HLK-LD2450 frames, sensor extrinsics, UDP receiver with loss counting, live Rerun view and recording, and a simulated robot (room, walking person, D500 or D800 lidar). `marvin-host demo` runs everything on one computer. Tests with `pytest`.

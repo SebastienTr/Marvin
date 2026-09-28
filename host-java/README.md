@@ -6,12 +6,14 @@ bounded contexts that could later become services. The design is in
 [docs/design.md](../docs/design.md); the engineering log (decisions, deviations, known gaps, per
 migration phase) is in [NOTES.md](NOTES.md).
 
-Status: **phase 1b**, everything but the voice. The host owns the robot's UDP port (protocol v1,
-byte for byte as the Python host), runs the presence brain on it, feeds the robot's face, records,
-replays and taps the datagrams, keeps the history in PostgreSQL, and serves the app unchanged, with
-the Python host's API, event streams and access key. The voice comes with phase 2; until then the
-Talk panel says "Voice needs marvin-host run", and the Python host (`marvin-host run`) stays the
-complete one. Only one of the two can own UDP 47100 at a time.
+Status: **phase 2b, parity with the Python host**, and the default way to run Marvin (`./marvin up`).
+The host owns the robot's UDP port (protocol v1, byte for byte as the Python host), runs the presence
+brain on it, feeds the robot's face, records, replays and taps the datagrams, keeps the history in
+PostgreSQL, serves the app unchanged with the Python host's API, event streams and access key, and
+talks: the conversation (persona, context, Ollama through Spring AI, the tool loop and the weather,
+memory, break reminders) runs in Java, the audio loop in the Python voice sidecar it supervises
+([docs/voice.md](../docs/voice.md#the-voice-sidecar)). The Python host (`marvin-host`) stays for the
+simulator, the Rerun viewer and replays; only one host can own UDP 47100 at a time.
 
 ## Run it
 
@@ -19,7 +21,7 @@ From the repository root, one command does everything (JDK, build, database, hos
 
 ```bash
 ./marvin doctor     # what this machine has and how to fix what is missing
-./marvin up         # PostgreSQL (Docker) + the host; the app on http://localhost:8765/
+./marvin up         # PostgreSQL (Docker) + the host + the voice; the app on http://localhost:8765/
 ./marvin demo       # the same with a simulated robot and a simulated past week
 ./marvin status     # what runs, and the host's health
 ./marvin logs       # follow the log (-n 100: the last lines)
@@ -33,10 +35,14 @@ From the repository root, one command does everything (JDK, build, database, hos
   `marvin-postgres`, volume `marvin-pgdata`, `127.0.0.1:5433`) when Docker runs; otherwise the host
   starts its own PostgreSQL (data in `~/.local/share/marvin/pg`, no pgvector yet). `MARVIN_DB=docker`
   or `MARVIN_DB=embedded` forces one.
-- **Python**: the demo's simulated robot and past week come from the Python host (`host/.venv` if
-  it exists, else `python3` if it can import it, else `./marvin demo` creates `host/.venv` with the
-  base dependencies). The voice sidecar (phase 2) uses `host/.venv`; `./marvin up --voice` adds the
-  `voice` extra.
+- **Python**: the voice sidecar runs from `host/.venv`, which `./marvin up` creates with the
+  `sidecar` and `voice` extras the first time (a few minutes; `--no-voice` skips it). The demo's
+  simulated robot and past week also come from the Python host (`host/.venv` if it exists, else
+  `python3` if it can import it, else `./marvin demo` creates `host/.venv` with the base
+  dependencies; `./marvin demo --voice` adds the voice).
+- **The voice**: turned on and off in the app (Talk panel), settings in Settings > Voice, saved to
+  `~/.config/marvin/voice.json` (shared with `marvin-host talk`). It needs Ollama and its model
+  (`ollama pull qwen3:4b-instruct`); the panel says what is missing and how to fix it.
 - **The Python host's history**: on first start, `~/.local/share/marvin/marvin.db` (the Python
   host's SQLite file: events, minute samples, settings, conversation) is imported into PostgreSQL,
   once. Both hosts use the same data directory and the same access key (`ui_token`).
@@ -69,6 +75,8 @@ curl http://localhost:8765/api/health
 | `MARVIN_IMPORT` | `<data dir>/marvin.db` | The Python host's history to import once (empty: none) |
 | `MARVIN_PYTHON`, `MARVIN_REPO` | `host/.venv`, the repository | The Python for the sidecars, and where `host/` is |
 | `MARVIN_DEMO_SIMULATOR`, `MARVIN_DEMO_SEED` | `true`, `true` | Demo: the Python simulator as the robot; the simulated past week |
+| `MARVIN_CONFIG_DIR` | `~/.config/marvin` | Where `voice.json` is (also `$XDG_CONFIG_HOME/marvin`) |
+| `MARVIN_VOICE_SIDECAR`, `MARVIN_VOICE_ARGS` | `true`, none | Start the voice sidecar; more arguments for it (its test mode: `--fake,--say,2:Marvin bonjour`) |
 
 ### The app
 
@@ -84,7 +92,8 @@ cookie. `ApiContractIT` replays every request recorded from the Python host (mar
 `./marvin demo` runs the host on its own database (`marvin_demo`, emptied at every start: the
 owner's data is never touched), imports a simulated past week and past conversations made by the
 Python host's demo code, and starts the Python simulator as the robot. Time runs at its real pace
-(the Python demo runs 10 times faster), and the voice is not there yet.
+(the Python demo runs 10 times faster). The voice is the real one (`./marvin demo --voice` sets it
+up); the Python demo's scripted voice is not ported.
 
 ### A robot, a simulator, the viewer
 
@@ -112,7 +121,9 @@ cd host-java
 
 `*Test` classes run in `test` (surefire), `*IT` classes in `integration-test` (failsafe). The
 integration tests use `pgvector/pgvector:pg18` through Testcontainers and are skipped without
-Docker; the embedded-database test is skipped when run as root (PostgreSQL refuses root).
+Docker; the embedded-database test is skipped when run as root (PostgreSQL refuses root). The voice
+tests run the real Python sidecar in its test mode (`pip install -e "host[sidecar]"`) against a
+stand-in for Ollama; they are skipped when the sidecar cannot run.
 
 ## Modules
 
@@ -123,8 +134,8 @@ Docker; the embedded-database test is skipped when run as root (PostgreSQL refus
 | `marvin-adapter-web` | `marvin.host.adapter.web` | The app, its REST API and SSE (Spring MVC) | application |
 | `marvin-adapter-robot` | `marvin.host.adapter.robot` | UDP protocol v1, `.mvrec`, datagram tap | application |
 | `marvin-adapter-persistence` | `marvin.host.adapter.persistence` | PostgreSQL, one schema and one Flyway history per context | application |
-| `marvin-adapter-llm` | `marvin.host.adapter.llm` | Spring AI, Ollama | application |
-| `marvin-adapter-sidecar` | `marvin.host.adapter.sidecar` | gRPC to the Python sidecars, supervisor | application, contracts |
+| `marvin-adapter-llm` | `marvin.host.adapter.llm` | Spring AI's Ollama client (streamed chat, models), the tools' HTTPS requests | application |
+| `marvin-adapter-sidecar` | `marvin.host.adapter.sidecar` | The voice sidecar over gRPC, the process supervisor, the demo's simulator | application, contracts |
 | `marvin-app` | `marvin.host.app` | Spring Boot main, wiring; `ArchitectureTest` | everything |
 | `marvin-contracts` | `marvin.host.contracts.voice.v1` (generated) | Golden files from the Python host, `voice.proto` ([README](marvin-contracts/README.md)) | protobuf, gRPC |
 

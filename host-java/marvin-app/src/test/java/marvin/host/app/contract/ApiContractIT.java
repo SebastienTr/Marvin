@@ -9,6 +9,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,8 +30,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+
 import marvin.host.adapter.sidecar.PythonRuntime;
 import marvin.host.adapter.sidecar.SidecarProperties;
+import marvin.host.app.StubOllama;
+import marvin.host.application.conversation.port.in.VoiceControl;
+import marvin.host.application.conversation.port.out.JsonFetcher;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -38,20 +49,65 @@ import tools.jackson.databind.ObjectMapper;
  * (marvin-contracts golden/api) is replayed against the Java host in demo mode, with the same access
  * key, and must get the same status, the same headers, and a body of the same shape (the same values
  * where they are not volatile: error messages, settings, the access rules, the app's files). The voice
- * is not in the Java host yet: its endpoints must answer as the Python host does without a voice.
- * Both event streams are checked the same way.
+ * is the real one: the Python voice sidecar in its test mode (a scripted microphone, a fake Whisper and
+ * voice) and a stand-in for Ollama; the weather tool gets canned Open-Meteo answers. Both event streams
+ * are checked the same way, including the voice's live messages.
  *
- * <p>Needs Docker (PostgreSQL) and the Python host (the demo's simulated robot and past week).
+ * <p>Needs Docker (PostgreSQL) and the Python host (the demo's simulated robot and past week, the voice
+ * sidecar with the {@code sidecar} extra).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"server.address=0.0.0.0", "marvin.mode=demo", "marvin.robot.port=0",
                 "marvin.robot.calibration-file=no-such-calibration.json", "marvin.web.token=contract-key",
-                "marvin.import.sqlite=", "marvin.time-zone=UTC"})
+                "marvin.import.sqlite=", "marvin.time-zone=UTC", "marvin.sidecar.voice-args=--fake"})
 @Testcontainers(disabledWithoutDocker = true)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ApiContractIT {
     static final ObjectMapper JSON = new ObjectMapper();
-    static final Set<String> NO_VOICE_GETS = Set.of("voice", "voice_after_turns", "voice_options");
+    /** Recorded after the live turns: checked then. */
+    static final Set<String> AFTER_TURNS = Set.of("voice_after_turns", "conversation_search_after_turns",
+            "conversation_today_after_turns");
+    /** The stand-in for Ollama: a tool call for the weather, else a short answer. */
+    static final StubOllama OLLAMA;
+    static final Path CONFIG;
+
+    static {
+        try {
+            OLLAMA = new StubOllama();
+            OLLAMA.chat = body -> {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> messages = (List<Map<String, Object>>) body.get("messages");
+                Map<String, Object> last = messages.get(messages.size() - 1);
+                if ("user".equals(last.get("role")) && String.valueOf(last.get("content")).contains("weather")
+                        && body.get("tools") instanceof List<?> t && !t.isEmpty()) {
+                    return StubOllama.toolCall("get_weather", Map.<String, Object>of("place", "Paris"));
+                }
+                return StubOllama.text("It is ", "sunny in Paris, ", "twenty degrees.");
+            };
+            CONFIG = Files.createTempDirectory("marvin-contract-config");
+            Files.writeString(CONFIG.resolve("voice.json"), "{\"ollama_host\": \"" + OLLAMA.url() + "\"}\n");
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    @DynamicPropertySource
+    static void voice(DynamicPropertyRegistry r) {
+        r.add("marvin.config-dir", CONFIG::toString);
+    }
+
+    /** Open-Meteo, canned. */
+    @TestConfiguration
+    static class CannedWeather {
+        @Bean
+        @Primary
+        JsonFetcher cannedWeather() {
+            return (url, params, timeout) -> url.contains("geocoding")
+                    ? Map.of("results", List.of(Map.of("name", "Paris", "country", "France", "latitude", 48.85, "longitude", 2.35)))
+                    : Map.of("current", Map.of("time", "2026-09-21T09:30", "temperature_2m", 20.4, "weather_code", 0),
+                            "daily", Map.of("time", List.of("2026-09-21", "2026-09-22")));
+        }
+    }
     /** Python's json error text; the Java host says "invalid JSON: ..." (same status). */
     static final Set<String> OWN_MESSAGE = Set.of("bad_json");
 
@@ -68,6 +124,9 @@ class ApiContractIT {
 
     @Autowired
     SidecarProperties sidecars;
+
+    @Autowired
+    VoiceControl voice;
 
     static JsonNode index;
 
@@ -151,8 +210,7 @@ class ApiContractIT {
                     && !gold.get("error").equals(body.get("error"))) {
                 problems.add(name + ": error " + body.get("error") + " instead of " + gold.get("error"));
             }
-            if (gold.has("settings") && gold.has("about") && !withoutVoice(gold.get("settings")).equals(
-                    withoutVoice(body.get("settings")))) {
+            if (gold.has("settings") && gold.has("about") && !gold.get("settings").equals(body.get("settings"))) {
                 problems.add(name + ": settings " + body.get("settings") + " instead of " + gold.get("settings"));
             }
         } else if (snap.has("body_text")) {
@@ -166,16 +224,6 @@ class ApiContractIT {
             }
         }
         return problems;
-    }
-
-    /**
-     * The settings without {@code voice}: the Python recording turned the voice on through
-     * {@code /api/voice/on}, which the Java host (no voice yet) refuses.
-     */
-    static JsonNode withoutVoice(JsonNode settings) {
-        var copy = ((tools.jackson.databind.node.ObjectNode) settings).deepCopy();
-        copy.remove("voice");
-        return copy;
     }
 
     /**
@@ -216,7 +264,7 @@ class ApiContractIT {
         int checked = 0;
         for (JsonNode n : index.get("get")) {
             String name = n.asString();
-            if (NO_VOICE_GETS.contains(name)) {
+            if (AFTER_TURNS.contains(name)) {
                 continue;
             }
             JsonNode snap = golden("get/" + name + ".json");
@@ -230,44 +278,130 @@ class ApiContractIT {
         assertThat(problems).isEmpty();
     }
 
+    void waitForTheVoice() throws Exception {
+        long end = System.currentTimeMillis() + 60_000;
+        while (System.currentTimeMillis() < end && !voice.snapshot().state().equals("on")) {
+            if (voice.snapshot().state().equals("error")) {
+                org.junit.jupiter.api.Assumptions.assumeTrue(false, "the voice sidecar cannot run here: "
+                        + voice.snapshot().error());
+            }
+            Thread.sleep(100);
+        }
+        assertThat(voice.snapshot().state()).as("the voice").isEqualTo("on");
+    }
+
+    /**
+     * Every POST, in the order the Python host's were recorded, with the voice on as it was then (and the
+     * app setting off); then the live turns: Talk now, a typed question answered with the weather tool, a
+     * settings change; then what the voice and the conversation show afterwards. The event stream is read
+     * meanwhile: every message has a recorded shape, and the voice's live messages are there.
+     */
     @Test
     @Order(2)
-    void withoutAVoiceTheVoiceEndpointsAnswerAsThePythonHostDoesWithoutOne() throws Exception {
-        RawHttp.Response v = RawHttp.call("127.0.0.1", port, "GET", "/api/voice", null, null);
-        assertThat(v.status()).isEqualTo(200);
-        JsonNode body = JSON.readTree(v.body());
-        assertThat(body.get("voice").get("state").asString()).isEqualTo("unavailable");
-        assertThat(body.get("settings").isNull()).isTrue();
-        assertThat(body.get("transcript").isEmpty()).isTrue();
-        assertThat(Shapes.diff(Shapes.of(body.get("voice")),
-                Shapes.of(JSON.readTree("{\"state\":\"\",\"status\":\"\",\"muted\":false,\"error\":\"\",\"fix\":\"\"}")),
-                "voice")).isEmpty();
-        RawHttp.Response o = RawHttp.call("127.0.0.1", port, "GET", "/api/voice/options", null, null);
-        assertThat(o.status()).isEqualTo(404);
-        assertThat(o.text()).isEqualTo("{\"error\":\"voice control is not available\"}");
-        for (JsonNode n : index.get("post")) {
-            String name = n.asString();
-            if (!name.startsWith("voice")) {
+    void everyPostAndTheLiveTurnsAnswerLikeThePythonHost() throws Exception {
+        waitForTheRobot();
+        voice.start();
+        waitForTheVoice();
+        List<String[]> events = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Thread reader = Thread.ofVirtual().start(() -> {
+            try {
+                events.addAll(Sse.read("127.0.0.1", port, "/api/stream", 15_000));
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+        Thread.sleep(500);
+        List<String> problems = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        index.get("post").forEach(n -> names.add(n.asString()));
+        for (String name : names) {
+            JsonNode snap = golden("post/" + name + ".json");
+            problems.addAll(compare(name, snap, replay(snap, "127.0.0.1")));
+        }
+        waitForTheVoice();
+        for (String name : List.of("voice_listen_turn", "voice_ask")) {
+            JsonNode snap = golden("post/" + name + ".json");
+            problems.addAll(compare(name, snap, replay(snap, "127.0.0.1")));
+            Thread.sleep(name.equals("voice_ask") ? 3000 : 1000);
+        }
+        JsonNode last = golden("post/settings_break_50.json");
+        problems.addAll(compare("settings_break_50", last, replay(last, "127.0.0.1")));
+        for (String name : AFTER_TURNS) {
+            JsonNode snap = golden("get/" + name + ".json");
+            if (name.startsWith("conversation")) {
+                snap = withEveryEntryShape(snap);
+            }
+            problems.addAll(compare(name, snap, withoutToolCalls(replay(snap, "127.0.0.1"))));
+        }
+        assertThat(problems).isEmpty();
+
+        // the typed question: heard, answered with a tool call, what the model was given
+        JsonNode v = JSON.readTree(RawHttp.call("127.0.0.1", port, "GET", "/api/voice", null, null).body());
+        JsonNode reply = null;
+        for (JsonNode e : v.get("transcript")) {
+            if (e.get("kind").asString().equals("reply") && e.has("tools")) {
+                reply = e;
+            }
+        }
+        assertThat(reply).as("the weather reply").isNotNull();
+        assertThat(reply.get("text").asString()).endsWith("It is sunny in Paris, twenty degrees.");
+        assertThat(reply.get("tools").get(0).get("name").asString()).isEqualTo("get_weather");
+        assertThat(reply.get("tools").get(0).get("ok").asBoolean()).isTrue();
+        assertThat(reply.get("prompt").asString()).contains("The person says: What's the weather in Paris?");
+        assertThat(reply.get("latency").has("tools")).isTrue();
+
+        reader.join();
+        JsonNode gold = golden("sse.json").get("streams").get("/api/stream");
+        Set<String> seen = new java.util.TreeSet<>();
+        for (String[] e : events) {
+            seen.add(e[0]);
+            JsonNode g = gold.get("events").get(e[0]);
+            if (g == null) {
+                problems.add("/api/stream: event " + e[0] + " is not in the Python stream");
                 continue;
             }
-            JsonNode snap = golden("post/" + name + ".json");
-            RawHttp.Response r = replay(snap, "127.0.0.1");
-            assertThat(r.status()).as(name).isEqualTo(404);
-            assertThat(r.text()).as(name).isEqualTo("{\"error\":\"voice control is not available\"}");
+            JsonNode payload = JSON.readTree(e[1]);
+            if (e[0].equals("transcript")) {
+                ((tools.jackson.databind.node.ObjectNode) payload).remove("tools");     // see withoutToolCalls
+            }
+            problems.addAll(matchesOne(Shapes.of(payload), g.get("shapes"), "/api/stream " + e[0]));
         }
+        assertThat(problems).isEmpty();
+        assertThat(seen).contains("voice", "transcript", "level", "say");
+    }
+
+    /**
+     * The entries without {@code tools}: the Python recording's typed question got a scripted answer (its demo
+     * voice) with no tool call, the Java host's calls the weather tool, and its reply carries the calls, as
+     * the Python host's real voice's replies do.
+     */
+    static RawHttp.Response withoutToolCalls(RawHttp.Response r) {
+        JsonNode body = JSON.readTree(r.body());
+        for (String list : List.of("transcript", "entries", "results")) {
+            if (body.has(list)) {
+                body.get(list).forEach(e -> ((tools.jackson.databind.node.ObjectNode) e).remove("tools"));
+            }
+        }
+        return new RawHttp.Response(r.status(), r.headers(), JSON.writeValueAsBytes(body));
+    }
+
+    static List<String> matchesOne(JsonNode shape, JsonNode shapes, String path) {
+        List<String> why = List.of();
+        for (JsonNode s : shapes) {
+            List<String> d = Shapes.diff(shape, s, path);
+            if (d.isEmpty()) {
+                return List.of();
+            }
+            why = d;
+        }
+        return why;
     }
 
     @Test
     @Order(3)
-    void everyPostAnswersLikeThePythonHost() throws Exception {
+    void thePostRulesAreThePythonHostsOnes() throws Exception {
         List<String> problems = new ArrayList<>();
-        List<String> names = new ArrayList<>();
-        index.get("post").forEach(n -> names.add(n.asString()));
-        names.addAll(List.of("wrong_content_type", "cross_origin", "bad_json", "settings_break_50"));
-        for (String name : names) {
-            if (name.startsWith("voice")) {
-                continue;
-            }
+        for (String name : List.of("wrong_content_type", "cross_origin", "bad_json")) {
             JsonNode snap = golden("post/" + name + ".json");
             problems.addAll(compare(name, snap, replay(snap, "127.0.0.1")));
         }
@@ -297,7 +431,7 @@ class ApiContractIT {
     @Order(5)
     void bothStreamsCarryTheSameEvents() throws Exception {
         JsonNode sse = golden("sse.json").get("streams");
-        checkStream("/api/stream", sse.get("/api/stream"), List.of("hello", "today", "devices", "state"));
+        checkStream("/api/stream", sse.get("/api/stream"), List.of("hello", "today", "voice", "devices", "state"));
         checkStream("/api/robot/stream", sse.get("/api/robot/stream"), List.of("hello", "scene", "devices"));
     }
 
@@ -314,20 +448,7 @@ class ApiContractIT {
                 problems.add(path + ": event " + e[0] + " is not in the Python stream");
                 continue;
             }
-            JsonNode shape = Shapes.of(JSON.readTree(e[1]));
-            boolean ok = false;
-            List<String> why = List.of();
-            for (JsonNode s : g.get("shapes")) {
-                List<String> d = Shapes.diff(shape, s, path + " " + e[0]);
-                if (d.isEmpty()) {
-                    ok = true;
-                    break;
-                }
-                why = d;
-            }
-            if (!ok) {
-                problems.addAll(why);
-            }
+            problems.addAll(matchesOne(Shapes.of(JSON.readTree(e[1])), g.get("shapes"), path + " " + e[0]));
         }
         assertThat(problems).isEmpty();
     }

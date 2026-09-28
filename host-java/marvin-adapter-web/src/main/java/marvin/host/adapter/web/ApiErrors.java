@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.settings.InvalidSettingException;
 
 /** Errors as the app expects them: {@code {"error": "..."}}, 400 for a bad request. */
@@ -14,7 +15,8 @@ import marvin.host.domain.settings.InvalidSettingException;
 public class ApiErrors {
     private static final Logger log = LoggerFactory.getLogger(ApiErrors.class);
 
-    @ExceptionHandler({ApiController.BadRequest.class, InvalidSettingException.class})
+    @ExceptionHandler({ApiController.BadRequest.class, InvalidSettingException.class,
+            VoiceSettings.InvalidVoiceSettingException.class})
     public ResponseEntity<byte[]> badRequest(RuntimeException e) {
         return Responses.error(400, e.getMessage());
     }

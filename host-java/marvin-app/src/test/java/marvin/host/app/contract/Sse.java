@@ -13,11 +13,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Reads a Server-Sent Events stream for a while: {event, data, retry} per message. */
-final class Sse {
+public final class Sse {
     private Sse() {
     }
 
-    static List<String[]> read(String address, int port, String path, long millis) throws IOException {
+    public static List<String[]> read(String address, int port, String path, long millis) throws IOException {
         List<String[]> out = new ArrayList<>();
         try (Socket s = new Socket()) {
             s.connect(new InetSocketAddress(address, port), 5000);

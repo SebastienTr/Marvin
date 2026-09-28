@@ -8,6 +8,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArraySet;
 
+import marvin.host.application.conversation.port.out.VoiceListener;
 import marvin.host.application.presence.port.out.PresenceHistoryListener;
 import marvin.host.application.settings.port.out.SettingsListener;
 import marvin.host.application.system.port.out.HostLogListener;
@@ -19,7 +20,7 @@ import marvin.host.domain.system.LogEntry;
  * Fans out messages to the app's connected event streams (the Python {@code _Hub}). Each client has a
  * bounded queue: a stuck client misses messages, it never blocks the brain.
  */
-public final class EventHub implements PresenceHistoryListener, HostLogListener, SettingsListener {
+public final class EventHub implements PresenceHistoryListener, HostLogListener, SettingsListener, VoiceListener {
     static final int QUEUE = 256;
 
     /** One message: an SSE event name and its payload (serialized when sent). */
@@ -65,6 +66,12 @@ public final class EventHub implements PresenceHistoryListener, HostLogListener,
     }
 
     /** The devices list changed (connected, offline, back). */
+    /** The voice's state, conversation entries and live signals, as they come. */
+    @Override
+    public void onVoice(String kind, Map<String, Object> payload) {
+        publish(kind, payload);
+    }
+
     public void devicesChanged(List<Map<String, Object>> devices) {
         publish("devices", devices);
     }

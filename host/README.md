@@ -2,6 +2,8 @@
 
 The desktop side of Marvin: the robot's big brain. Today it receives the robot's sensor stream, places every point in the robot's frame and shows it live in [Rerun](https://rerun.io). A simulator produces the same stream, so all of this runs before any hardware arrives.
 
+> **To run Marvin, use `./marvin up`** from the repository root: the Java host ([host-java](../host-java/README.md)), which starts this package's voice sidecar. The commands below are the first host, complete and kept as tools: the simulator, the Rerun viewer, recording and replay, calibration, and a voice in one process.
+
 ## Install
 
 Python 3.10 or newer.

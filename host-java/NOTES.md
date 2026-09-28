@@ -562,3 +562,154 @@ phase. Later phases read this before starting.
   `say` (drop `reply_id` from `say` for payload parity) and map `Status` to `/api/voice`.
 - **End-to-end tests**: run the sidecar with `--fake --say ...` (or feed `fake.speech(k, s)` on the
   robot route) and a stub model; typed questions only need `Ask`.
+
+## Phase 2b: the conversation in Java, the supervisor, parity
+
+### What exists
+
+- **Conversation domain** (`domain.conversation`, plain Java, ported line for line and checked
+  against the Python host's own output, `golden/conversation/vectors.json` made by
+  `marvin-contracts/tools/conversation_vectors.py`): `Persona` (system prompt per language, with or
+  without tools; context block with simulated sensors, vitals, recent events, the home place; the
+  user message; the phrases said without the model), `SpeechText` (`looks_like_payload`,
+  `strip_payload`, `payload_tool_calls`, `strip_thinking`, `clean_for_speech`, `guess_language`),
+  `SentenceSplitter`, `ToolCall`, `ChatMessage`, `ConversationMemory` (append-only, halved by turns,
+  forgotten after 3 minutes), `ProactiveSpeech` (break reminders, welcome back, one per 10 minutes),
+  `VoiceSettings` (voice.json keys, `validate` with the Python messages, app settings and defaults,
+  `VoiceConfig`), `VoiceSnapshot`; `tool.ToolSpec`, `ToolArguments`, `ToolResult`, `ToolError`,
+  `Weather` (schema, WMO words, place choice, the result the model reads). `domain.shared.JsonText`:
+  JSON for the domain (`raw_decode`, and `json.dumps` with Python's separators and float `repr`).
+- **Use cases** (`application.conversation`): `AnswerLoop` (`VoiceAssistant._answer`: the model
+  streamed, held-back payloads, the streaming `</think>` guard, tool rounds with fillers, the
+  no-answer sentence, models without tools asked again without them, latency), `VoiceService`
+  (`VoiceController` + the conversation half of `VoiceAssistant`: Ollama check and the rehearsal at
+  start, the session, turns, transcript entries with latency and inspector data, interruptions,
+  proactive speech, settings, commands, options), `tools.ToolRegistry` (offered tools, constant
+  schemas, safe calls with timeouts), `tools.WeatherTool` (Open-Meteo, places kept for the session,
+  forecasts 10 minutes). Ports: `LanguageModel`, `VoiceSidecar` (settings, signals, commands,
+  options), `VoiceSettingsStore`, `JsonFetcher`, `VoiceListener`; `VoiceControl` is the app's.
+- **Adapters**: `OllamaLanguageModel` (Spring AI's low-level `OllamaApi`: streamed `/api/chat` with
+  `think: false`, `temperature` 0.6, `num_predict` 200, `num_ctx` 8192, `keep_alive` 30m; errors
+  worded as `llm.py`), `HttpJsonFetcher` (the tools' HTTPS, system proxy); `VoiceSettingsFile`
+  (`voice.json` in `$MARVIN_CONFIG_DIR`, `$XDG_CONFIG_HOME/marvin` or `~/.config/marvin`, written as
+  Python writes it); `SupervisedProcess` (start, READY line, logs by level, backoff 1 s → 60 s,
+  SIGTERM then SIGKILL after 5 s, JVM shutdown hook), `GrpcVoiceSidecar` (the process, health check,
+  a random token, one session kept open while wanted and re-opened after a restart, robot links
+  replayed, `AUDIO_IN` relayed, speaker frames / controls / sounds out, options),
+  `SimulatorSidecar` on the same supervisor.
+- **Web**: every voice endpoint of `server.py` (`/api/voice`, `/options`, `/settings`, `/on`
+  and `/off` also set the app's `voice` setting, `/ask`, `/listen`, `/mute`, `/stop-speaking`, the
+  same messages and statuses), `voice` right after `today` on `/api/stream`, the voice's `voice`,
+  `transcript`, `level`, `utterance`, `partial`, `say` messages through `EventHub`.
+- **Wiring** (`VoiceWiring`): the sidecar starts with the host, the voice too if it was on; the
+  voice's errors and notes in the Log panel; `RobotAudioRelay` (robot link ↔ sidecar); `voice` in
+  `/api/health`.
+- **`./marvin up`** sets up `host/.venv` with `host[sidecar,voice]` the first time (`--no-voice`
+  skips it), `./marvin demo --voice` likewise; `doctor` checks gRPC too. Docs: README, host/README,
+  host-java/README, docs/voice.md ("Two hosts run this voice", "With the Java host").
+
+### Decisions and deviations
+
+1. **Sentences are cut in Java too.** The `</think>` guard and the held-back logic decide on
+   sentences (what "was said" when the tag comes), and the history keeps what the model said, so
+   `AnswerLoop` runs the same `SentenceSplitter` as `assistant.py` and sends each sentence as a
+   `TextPiece` ending with `\n`; the sidecar's splitter then releases each piece at once (a line
+   break ends a sentence). Sentences that clean to nothing (JSON, markup) are not sent.
+2. **Spring AI's `OllamaApi`, not `ChatModel`/`ChatClient`**: those run tools themselves; the tool
+   loop, fillers, held-back payloads and `</think>` are Marvin's. Differences from `llm.py`'s body:
+   `"tools": []` when there are none (Ollama reads it as none; warm-up and questions still send the
+   same body), key order, no `tool_call_id` (Ollama uses `tool_name`). Spring AI throws on a final
+   chunk without `done_reason` and ignores an in-stream `{"error": ...}` line; both surface as
+   "cannot reach Ollama" (Ollama sends `done_reason` and reports errors by status).
+3. **The sidecar process runs with the host**; the voice on or off opens or closes its session. The
+   settings panel can list the voices while the voice is off, and turning it on skips a process
+   start. Health reports it `disabled` (not `down`) while it does not serve: the host is healthy
+   without a voice.
+4. **Start checks** as `control.preflight`: Ollama must answer and have the model; the audio checks
+   (voice extra, microphone, robot) come from the sidecar's `Status` ERROR with its fix. Start, stop
+   and restart run one at a time, in order; a newer one supersedes an older one still running.
+5. **Latency breakdown** = the sidecar's listening stages (`Heard`), the core's (`llm_first_token`,
+   `tools`, `llm_first_token_2`, `first_chunk`), the sidecar's speaking stages (`tts`, `audio_start`,
+   `filler_start`, `total`); `reply_start` is dropped; `first_word_s` = endpoint + audio_start.
+   The reply's text is what the sidecar said (`ReplySpoken.text`). On `llm_down` the sentence is said
+   only when nothing else was (Python appends it). A question dropped before it was answered
+   (`Interrupted` with no `ReplySpoken` within 3 s) leaves no reply entry, as in Python.
+6. **Proactive speech** is skipped in the core while a turn runs or the voice thinks or speaks
+   (Python asked the engine); a skipped reminder may come at the next `still_long`.
+7. **Commands answer with the new state**: `/api/voice/listen` (0.5 s), `/ask` and `/mute` (0.3 s)
+   wait for the sidecar's next `Status`, so the answer shows `listening` and `listen_s` as Python's
+   synchronous engine did.
+8. **New voice.json keys**: `audio_route` (`computer`, the default and Python's behaviour; `robot`;
+   `auto`: the robot when one with audio is connected) and `chime` (read by the sidecar); the Python
+   loader knows both (no "unknown keys" warning).
+9. **Contract addition**: `VoiceChoice.locale` (the app shows macOS voices with their locale); the
+   Python sidecar fills it; the generated code was refreshed.
+10. **The application layer logs** through `java.util.logging` (no dependency; Boot bridges it to
+    SLF4J): model failures, tool calls, proactive skips, warm-up timings, as the Python modules log.
+11. **Process pipes are read on platform threads.** A blocking native read pins a virtual thread's
+    carrier; with two CPUs, the voice sidecar's two pipes took both carriers and the web server
+    (virtual threads) stopped answering. Found by running `./marvin up`; `SupervisedProcessTest`
+    checks it.
+12. **Build**: `grpc-netty-shaded` and `grpc-services` (health client; without its Gson and
+    protobuf-util), Guava pinned to `33.6.0-jre` (gRPC mixes flavours), Gson 2.14.0 (gRPC needs more
+    than Boot manages); `marvin-contracts` is now a runtime dependency of the app.
+13. **The contract test runs the real voice** (the sidecar in `--fake` mode, a stand-in for Ollama,
+    canned Open-Meteo): every recorded POST in the recorded order with the voice on, then Talk now, a
+    typed weather question and the after-turn GETs. Two tolerances, both in the test: latency objects
+    are compared as objects of numbers (their stages depend on the path), and a reply's `tools` is
+    accepted (the Python recording's scripted answer had no tool call; the real Python voice adds it).
+14. **Demo**: the voice is the real one; the Python demo's scripted voice (`DemoVoice`) is not
+    ported. The Talk panel's "Voice needs marvin-host run" no longer shows.
+
+### Verified
+
+- `cd host-java && ./mvnw verify`: 183 tests, 0 failures, 1 skipped (embedded database as root).
+  New: `ConversationVectorsTest` (domain vs Python: 8 prompts, 21 phrases, 32 context blocks, text
+  cleaning, 48 splitter runs, languages, settings checks and messages, the tools list byte for byte,
+  memory halving, proactive speech), `ToolVectorsTest` (12 weather answers, errors, record, cache),
+  `AnswerLoopTest` (test_voice_tools.py's loop cases: one tool call, offline tool, unknown tool,
+  capped rounds, tool call as text, `</think>` after a tool result and while streaming, first clause,
+  model down, no tool support, cancel), `VoiceServiceTest` (13: Ollama checks, rehearsal, turn and
+  entries, failure, interruption and dropped question, reminders, live signals, commands while off,
+  settings and restart, robot route, options, today's entries back), `OllamaLanguageModelTest`
+  (stub Ollama: body and options, streaming, tool calls, cancel, 400 tools / 404 / 500 / refused),
+  `VoiceSettingsFileTest`, `SupervisedProcessTest` (backoff, logs, SIGTERM, SIGKILL after 5 s,
+  platform threads), `GrpcVoiceSidecarIT` (real Python sidecar: heard question answered with
+  streamed text, options, **robot route** with relayed synthetic `AUDIO_IN` heard and speaker frames
+  out, MIC_START/MIC_STOP, restart after a kill), `VoiceEndToEndIT` (host + real sidecar + stub
+  Ollama: a spoken question → heard entry, streamed reply said and kept with latency, context,
+  prompt, model; the rehearsal body equals the question's; SSE `level`, `utterance`, `partial`,
+  `say`, `transcript`, `voice`), `ApiContractIT` with the voice (above), ArchUnit green.
+- `cd host && python3 -m pytest -q`: 302 passed, 3 skipped. `conversation_vectors.py` is
+  deterministic (in `generate_all.py --no-api`, so CI checks it).
+- `./marvin demo` with the sidecar's test arguments (`marvin.sidecar.voice-args`) and a stand-in Ollama: scripted
+  questions heard, answered and spoken; a weather question called the real Open-Meteo (tools 1.7 s)
+  with the filler first; SSE carried ~16 `level`/s, `say` with envelopes, `transcript`, `voice`.
+- `./marvin up` from scratch (as root, Docker): JDK downloaded, `host/.venv` created with
+  `host[sidecar,voice]`, host healthy (`voice` up after start), voice on → "No microphone (PortAudio
+  library not found)" with the fix (no sound card here), options list Ollama's models; one line per
+  voice error in the Log panel.
+
+### Known gaps
+
+- **No real audio or models here**: microphone, speakers, faster-whisper, MLX, Piper and `say` were
+  not exercised (no sound card, no Ollama model in this container); macOS not tested.
+- **Robot audio** tested with the sidecar's test mode and synthetic frames through the real relay,
+  not with the robot's firmware.
+- `marvin-host run --voice-*` command-line overrides have no Java equivalent (voice.json and the
+  app only). `Transcribe` is not used by the core yet. Quiet hours do not silence reminders (as in
+  Python).
+- README.fr.md still describes `marvin-host` as the way to run the host.
+- `/api/voice/options` answers without backends and voices (only `auto`) while the sidecar is not
+  serving yet (the first seconds after start).
+
+### Hints for phase 3
+
+- The context block is `Persona.contextBlock`; the memory context assembler (design 5.3) replaces it
+  and `ConversationMemory` (in-memory, per host run) becomes the event log + episodes. Keep the
+  system prompt constant and the history append-only (the rehearsal in `VoiceService.warmUp` must
+  keep matching real questions).
+- New tools: a `ToolRegistry.Tool` (a `ToolSpec` + `ToolFunction`) added where `WeatherTool.registry`
+  builds the list; their schemas must stay byte-stable for a given setting.
+- The app may change from phase 3: the face drawn in the browser, a System panel from
+  `SupervisedProcess` (state, restarts, last lines) and `FrameDispatcher.timings()`.

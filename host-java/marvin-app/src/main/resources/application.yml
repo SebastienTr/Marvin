@@ -36,6 +36,9 @@ marvin:
     # access key for other devices: auto (kept in <data-dir>/ui_token, shared with the Python host), off, or a key
     token: ${MARVIN_UI_TOKEN:auto}
     data-dir: ${marvin.data-dir}
+  # where voice.json is (the voice's settings, shared with the Python host); empty: $MARVIN_CONFIG_DIR,
+  # $XDG_CONFIG_HOME/marvin or ~/.config/marvin
+  config-dir: ${MARVIN_CONFIG_DIR:}
   history:
     # no new brain state for this long: the robot is offline
     offline-after-s: 15
@@ -49,6 +52,10 @@ marvin:
     # demo mode: the Python simulator as the robot, and a simulated past week
     simulator: ${MARVIN_DEMO_SIMULATOR:true}
     seed: ${MARVIN_DEMO_SEED:true}
+    # the voice sidecar (python -m marvin_host.sidecar.voice), started with the host
+    voice: ${MARVIN_VOICE_SIDECAR:true}
+    # more arguments for it, e.g. its test mode: --fake,--say,2:Marvin bonjour
+    voice-args: ${MARVIN_VOICE_ARGS:}
   db:
     # external: the PostgreSQL at spring.datasource.url (Docker); embedded: started by the host
     mode: ${MARVIN_DB_MODE:external}

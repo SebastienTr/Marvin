@@ -26,8 +26,6 @@ import marvin.host.adapter.sidecar.SidecarProperties;
 import marvin.host.adapter.web.EventHub;
 import marvin.host.adapter.web.Views;
 import marvin.host.application.conversation.ConversationService;
-import marvin.host.application.conversation.UnavailableVoice;
-import marvin.host.application.conversation.port.in.VoiceControl;
 import marvin.host.application.conversation.port.out.ConversationStore;
 import marvin.host.application.face.FaceService;
 import marvin.host.application.presence.PresenceHistoryService;
@@ -138,12 +136,6 @@ public class HostWiring {
         return new ConversationService(store, days);
     }
 
-    @Bean
-    public VoiceControl voiceControl() {
-        return new UnavailableVoice("The voice is not in the Java host yet",
-                "Use marvin-host run for the voice for now.");
-    }
-
     @Bean(destroyMethod = "")
     public HostLogService hostLogService(Clocks clocks, EventHub hub) {
         HostLogService hostLog = new HostLogService(clocks);
@@ -167,10 +159,11 @@ public class HostWiring {
 
     @Bean
     public RobotLinkService robotLinkService(Extrinsics extrinsics, SystemHostClock clock, PresenceService presence,
-                                             HostLog hostLog, EventHub hub, ObjectProvider<RobotLinkQuery> query) {
+                                             HostLog hostLog, EventHub hub, ObjectProvider<RobotLinkQuery> query,
+                                             ObjectProvider<RobotAudioRelay> audio) {
         DeviceNotices notices = new DeviceNotices(hostLog, hub, () -> Views.devicesOf(query.getObject()));
         return new RobotLinkService(extrinsics, clock, List.of(new PresenceFeed(presence)),
-                List.of(HostWiring::logNotice, notices));
+                List.of(HostWiring::logNotice, notices, n -> audio.getObject().onNotice(n)));
     }
 
     @Bean

@@ -15,13 +15,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import marvin.host.application.presence.port.in.PresenceHistory;
+import marvin.host.application.conversation.port.in.VoiceControl;
 import marvin.host.application.robot.port.in.RobotLinkQuery;
 import marvin.host.application.settings.port.in.ManageSettings;
 
 /**
  * The app's two Server-Sent Event streams, as the Python host sends them:
  * <ul>
- * <li>{@code /api/stream}: {@code hello} (the settings), {@code today}, {@code devices}, then the live
+ * <li>{@code /api/stream}: {@code hello} (the settings), {@code today}, {@code voice}, {@code devices}, then the live
  * {@code state} twice a second, and whatever the hub carries ({@code event}, followed by {@code today};
  * {@code log}, {@code settings}, {@code devices}, the voice's messages);</li>
  * <li>{@code /api/robot/stream}, open only while the Robot panel is on screen: the sensor
@@ -39,15 +40,17 @@ public class StreamController implements SmartLifecycle {
     private final PresenceHistory history;
     private final ManageSettings settings;
     private final RobotLinkQuery robot;
+    private final VoiceControl voice;
     private volatile boolean running;
 
     public StreamController(EventHub hub, LiveState live, PresenceHistory history, ManageSettings settings,
-                            RobotLinkQuery robot) {
+                            RobotLinkQuery robot, VoiceControl voice) {
         this.hub = hub;
         this.live = live;
         this.history = history;
         this.settings = settings;
         this.robot = robot;
+        this.voice = voice;
     }
 
     @GetMapping("/api/stream")
@@ -57,6 +60,9 @@ public class StreamController implements SmartLifecycle {
         try {
             sse(out, "hello", Map.of("settings", settings.current().toMap()), 3000);
             sse(out, "today", Views.day(history.today()), 0);
+            if (voice.available()) {
+                sse(out, "voice", voice.snapshot().toMap(), 0);
+            }
             sse(out, "devices", Views.devices(robot.devices()), 0);
             long nextState = 0;
             while (running) {

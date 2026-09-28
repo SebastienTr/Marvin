@@ -65,10 +65,10 @@
       <artifactId>spring-boot-resttestclient</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- the voice sidecar's gRPC contract at run time; the golden files for the contract tests -->
     <dependency>
       <groupId>marvin.host</groupId>
       <artifactId>marvin-contracts</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.tngtech.archunit</groupId>

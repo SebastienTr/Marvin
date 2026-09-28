@@ -15,7 +15,7 @@ import sys
 
 from _common import TOOLS
 
-DETERMINISTIC = ["protocol_vectors.py", "recordings.py", "face_vectors.py"]
+DETERMINISTIC = ["protocol_vectors.py", "recordings.py", "face_vectors.py", "conversation_vectors.py"]
 
 
 def main() -> None:

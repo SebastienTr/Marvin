@@ -24,6 +24,7 @@ import marvin.host.application.robot.port.in.RobotLinkQuery;
 import marvin.host.application.settings.port.in.ManageSettings;
 import marvin.host.application.system.port.in.HostLog;
 import marvin.host.application.system.HostLogService;
+import marvin.host.domain.conversation.ConversationEntry;
 import marvin.host.domain.shared.Clocks;
 import tools.jackson.core.JacksonException;
 
@@ -153,24 +154,33 @@ public class ApiController {
         return Responses.json(voicePayload(voice));
     }
 
-    /** Without a voice, as the Python host answers when it has none. */
+    /** The voice, its settings and the recent conversation; without a voice, as the Python host answers when it has none. */
     static Map<String, Object> voicePayload(VoiceControl voice) {
-        Map<String, Object> v = new LinkedHashMap<>();
-        v.put("state", "unavailable");
-        v.put("status", "off");
-        v.put("muted", false);
-        v.put("error", voice.unavailableReason());
-        v.put("fix", voice.unavailableFix());
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("voice", v);
-        m.put("settings", null);
-        m.put("transcript", List.of());
+        if (!voice.available()) {
+            Map<String, Object> v = new LinkedHashMap<>();
+            v.put("state", "unavailable");
+            v.put("status", "off");
+            v.put("muted", false);
+            v.put("error", voice.unavailableReason());
+            v.put("fix", voice.unavailableFix());
+            m.put("voice", v);
+            m.put("settings", null);
+            m.put("transcript", List.of());
+            return m;
+        }
+        m.put("voice", voice.snapshot().toMap());
+        m.put("settings", voice.appSettings());
+        m.put("transcript", voice.recent(0).stream().map(ConversationEntry::toLiveMap).toList());
         return m;
     }
 
     @GetMapping("/api/voice/options")
     public ResponseEntity<byte[]> voiceOptions() {
-        return Responses.error(404, "voice control is not available");
+        if (!voice.available()) {
+            return Responses.error(404, "voice control is not available");
+        }
+        return Responses.json(voice.options());
     }
 
     /** Anything else. */
@@ -196,8 +206,62 @@ public class ApiController {
     @PostMapping({"/api/voice/settings", "/api/voice/on", "/api/voice/off", "/api/voice/ask", "/api/voice/listen",
             "/api/voice/mute", "/api/voice/stop-speaking"})
     public ResponseEntity<byte[]> voicePost(HttpServletRequest rq) {
-        body(rq);                                               // bad JSON is still a 400, as in Python
-        return Responses.error(404, "voice control is not available");
+        Object body = body(rq);                                 // bad JSON is a 400 even without a voice
+        if (!voice.available()) {
+            return Responses.error(404, "voice control is not available");
+        }
+        if (!(body instanceof Map<?, ?> b)) {
+            throw new BadRequest("send a JSON object");
+        }
+        try {
+            switch (rq.getRequestURI()) {
+                case "/api/voice/settings" -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, ?> update = (Map<String, ?>) b;
+                    voice.updateSettings(update);
+                }
+                case "/api/voice/on" -> {
+                    voice.start();
+                    if (!settings.current().voice()) {
+                        settings.update(Map.of("voice", true));       // and at the next start of the host
+                    }
+                }
+                case "/api/voice/off" -> {
+                    voice.stop();
+                    if (settings.current().voice()) {
+                        settings.update(Map.of("voice", false));
+                    }
+                }
+                case "/api/voice/ask" -> {
+                    if (!(b.get("text") instanceof String text)) {
+                        throw new BadRequest("text must be a string");
+                    }
+                    voice.ask(text);
+                }
+                case "/api/voice/listen" -> {
+                    Object on = b.containsKey("on") ? b.get("on") : Boolean.TRUE;
+                    if (!(on instanceof Boolean o)) {
+                        throw new BadRequest("on must be true or false");
+                    }
+                    voice.listenNow(o);
+                }
+                case "/api/voice/mute" -> {
+                    if (!(b.get("muted") instanceof Boolean muted)) {
+                        throw new BadRequest("muted must be true or false");
+                    }
+                    voice.mute(muted);
+                }
+                default -> voice.stopSpeaking();
+            }
+        } catch (VoiceControl.VoiceOff e) {
+            return Responses.error(409, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequest(e.getMessage());
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("voice", voice.snapshot().toMap());
+        m.put("settings", voice.appSettings());
+        return Responses.json(m);
     }
 
     private Map<String, Object> settingsPayload() {

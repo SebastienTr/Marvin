@@ -38,4 +38,9 @@ public final class ConversationService implements ConversationHistory {
     public void add(ConversationEntry entry) {
         store.add(entry);
     }
+
+    @Override
+    public long maxId() {
+        return store.maxId();
+    }
 }

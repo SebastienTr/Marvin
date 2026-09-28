@@ -455,13 +455,15 @@ class Backend(_message.Message):
     def __init__(self, name: _Optional[str] = ..., installed: _Optional[bool] = ..., why: _Optional[str] = ...) -> None: ...
 
 class VoiceChoice(_message.Message):
-    __slots__ = ("id", "engine", "language", "installed")
+    __slots__ = ("id", "engine", "language", "installed", "locale")
     ID_FIELD_NUMBER: _ClassVar[int]
     ENGINE_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     INSTALLED_FIELD_NUMBER: _ClassVar[int]
+    LOCALE_FIELD_NUMBER: _ClassVar[int]
     id: str
     engine: str
     language: str
     installed: bool
-    def __init__(self, id: _Optional[str] = ..., engine: _Optional[str] = ..., language: _Optional[str] = ..., installed: _Optional[bool] = ...) -> None: ...
+    locale: str
+    def __init__(self, id: _Optional[str] = ..., engine: _Optional[str] = ..., language: _Optional[str] = ..., installed: _Optional[bool] = ..., locale: _Optional[str] = ...) -> None: ...

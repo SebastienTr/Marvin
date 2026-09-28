@@ -81,7 +81,7 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 2. **Print** following [docs/printing.md](docs/printing.md). Print the 5-minute lidar template first.
 3. **Solder** two header strips, then **wire** the 29 connections in [docs/wiring.md](docs/wiring.md). The guide is written for first-timers.
 4. **Assemble** following [docs/assembly.md](docs/assembly.md).
-5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) already talk to each other with simulated sensors (a Wemos D1 mini is enough to try the firmware); the real-sensor firmware waits for the first build. The host turns what it sees into events, a face, a local voice and an app for your phone (`marvin-host demo`, `marvin-host ui --demo`).
+5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) already talk to each other with simulated sensors (a Wemos D1 mini is enough to try the firmware); the real-sensor firmware waits for the first build. The host turns what it sees into events, a face, a local voice and an app for your phone: `./marvin up` starts it (`./marvin demo` without a robot, `./marvin doctor` says what is missing). The Python host's `marvin-host` commands stay as tools: the simulator, the viewer, replays.
 
 The body parts are ready to print; the head parts arrive with the head CAD.
 
@@ -97,8 +97,8 @@ marvin/
 │   ├── scripts/                  # export_stl.sh, render_previews.sh, section_diagram.py, build_3mf.py, build_blend.sh
 │   └── archive/                  # earlier revisions (rev E: Fanou the lighthouse)
 ├── firmware/                     # ESP32 firmware (prototype)
-├── host/                         # desktop receiver, viewer, simulator
-├── host-java/                    # next-generation host core (Java, in progress; ./marvin runs it)
+├── host/                         # Python: simulator, viewer, replay tools, the voice sidecar (and the first host)
+├── host-java/                    # the host core (Java): ./marvin runs it
 ├── docs/                         # BOM, wiring, printing, assembly, architecture
 │   ├── protocol.md               # robot ↔ host UDP protocol
 │   ├── design.md                 # Marvin's brain: next-generation host design (memory, agents, Java core)

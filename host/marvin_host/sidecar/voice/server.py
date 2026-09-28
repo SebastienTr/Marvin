@@ -123,7 +123,7 @@ def options() -> pb.VoiceOptions:
         for v in control.piper_voices():
             out.voices.add(id=v["name"], engine="piper", language=v["name"][:2], installed=v["installed"])
     for v in control.say_voices():
-        out.voices.add(id=v["name"], engine="say", language=v["locale"][:2], installed=True)
+        out.voices.add(id=v["name"], engine="say", language=v["locale"][:2], installed=True, locale=v["locale"])
     return out
 
 

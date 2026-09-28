@@ -307,4 +307,5 @@ message VoiceChoice {
   string engine = 2;                // piper | say | espeak
   string language = 3;
   bool installed = 4;
+  string locale = 5;                // e.g. fr_FR (macOS voices), empty when unknown
 }
