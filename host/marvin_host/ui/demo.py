@@ -19,6 +19,7 @@ SPDX-License-Identifier: MIT
 """
 from __future__ import annotations
 
+import json
 import math
 import random
 import threading
@@ -256,6 +257,10 @@ class DemoVoice:
         self._emit("heard", text=text, language="en", source="typed")
         self._set("thinking")
         seq = self._seq
+        if is_weather_question(text):           # the model calls get_weather (with demo data), then answers
+            self._later(1.1, lambda: self._speak(WEATHER_ANSWER, dict(WEATHER_LATENCY), seq=seq, question=text,
+                                                 tools=[dict(WEATHER_CALL)]))
+            return
         self._later(0.7, lambda: self._speak(self.answer(text), {
             "endpoint": 0.0, "stt": 0.0, "llm_first_token": 0.24, "first_chunk": 0.38, "tts": 0.13,
             "audio_start": 0.52}, seq=seq, question=text))
@@ -363,7 +368,7 @@ class DemoVoice:
                 "model": self.MODEL}
 
     def _speak(self, text: str, latency: dict, proactive: bool = False, seq: int | None = None,
-               question: str = "") -> None:
+               question: str = "", tools: list | None = None) -> None:
         if seq is not None and seq != self._seq:
             return
         self._set("speaking")
@@ -371,6 +376,8 @@ class DemoVoice:
         seq = self._seq
 
         what = {} if proactive else self._prompt(question)
+        if tools:
+            what["tools"] = tools
 
         def done():
             if seq != self._seq:
@@ -431,6 +438,24 @@ class DemoVoice:
             fn(kind, data)
 
 
+WEATHER_WORDS = ("weather", "météo", "meteo", "temperature", "température", "rain", "pluie", "forecast")
+# the demo's pretend weather: clearly marked as such, never a real forecast
+WEATHER_CALL = {"name": "get_weather", "arguments": {"place": "Nice", "day": "now"}, "ok": True, "seconds": 0.41,
+                "result": json.dumps({"place": "Nice, France (demo data)", "when": "now (demo)",
+                                      "conditions": "partly cloudy", "temperature_c": 21, "feels_like_c": 21,
+                                      "wind_kmh": 12, "precipitation_mm": 0.0, "today_min_c": 17, "today_max_c": 24,
+                                      "today_rain_chance_percent": 10}, ensure_ascii=False)}
+WEATHER_ANSWER = ("Let me check… In Nice it's twenty-one degrees and partly cloudy, with a light breeze. "
+                  "These are demo numbers, not a real forecast.")
+WEATHER_LATENCY = {"endpoint": 0.0, "stt": 0.0, "llm_first_token": 0.23, "tools": 0.41, "llm_first_token_2": 0.2,
+                   "first_chunk": 0.97, "tts": 0.13, "audio_start": 1.12, "filler_start": 0.38}
+
+
+def is_weather_question(text: str) -> bool:
+    q = text.lower()
+    return any(w in q for w in WEATHER_WORDS)
+
+
 def _sentences(text: str) -> list[str]:
     out, cur = [], ""
     for word in text.split():
@@ -461,8 +486,8 @@ def scripted_prompt(question: str, t: float, seated_min: float, vitals=None) -> 
 
 # a few past conversations: (question, answer, minutes seated) or ("ignored", text, reason, dbfs)
 PAST_TALK = [
-    ("What's the weather like outside?", "I have no window and no internet, so I honestly can't tell. "
-     "The light on your face suggests daytime.", 20),
+    ("Can you see the window from here?", "My lidar sees the wall it is in, not whether it's open. "
+     "I'd trust your ears over mine on that.", 20),
     ("How long have I been sitting?", "About forty minutes. A short walk in ten would be a good idea.", 40),
     ("Remind me what I was doing before lunch?", "I only know when you sat and stood, not what you did. "
      "You worked for about two hours before lunch.", 5),

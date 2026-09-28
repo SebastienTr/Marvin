@@ -27,6 +27,7 @@ from typing import Protocol
 import numpy as np
 
 from .io import read_wav
+from .net import https_context as _https_context
 
 log = logging.getLogger("marvin.voice.tts")
 
@@ -100,18 +101,6 @@ def piper_dir() -> Path:
 
 
 PIPER_VOICES_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
-
-
-def _https_context():
-    """A verified TLS context. python.org builds of Python on macOS ship without CA certificates
-    until "Install Certificates.command" is run; certifi's bundle (installed with the voice extra's
-    dependencies) avoids that step."""
-    import ssl
-    try:
-        import certifi
-        return ssl.create_default_context(cafile=certifi.where())
-    except ImportError:
-        return ssl.create_default_context()
 
 
 def download_piper_voice(name: str, directory: Path) -> Path:

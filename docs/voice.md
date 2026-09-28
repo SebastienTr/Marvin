@@ -3,7 +3,9 @@
 Say "Marvin" and ask. Marvin listens with the computer's microphone (the robot's own microphone
 later), understands with Whisper, thinks with a local language model through Ollama, and answers
 aloud with the system voice. **Nothing leaves the computer**: no cloud API, no account, no
-telemetry. Models are downloaded once, then everything works offline.
+telemetry. Models are downloaded once, then everything works offline. The one exception is
+opt-out and explicit: online [tools](#tools) such as the weather send a place name to a free
+public service; the **Internet** switch turns them off.
 
 ```mermaid
 flowchart LR
@@ -82,7 +84,8 @@ the panel says what and how to fix it. Turning the voice on in the app is rememb
 with `marvin-host run` next time, as with `--voice`.
 
 **Settings > Voice** changes the model (from the list Ollama has), speech recognition, the speech
-backend and voice, the language, the wake word, the follow-up window and spoken break reminders.
+backend and voice, the language, the wake word, the follow-up window, spoken break reminders,
+tools and the Internet switch, and the home location for the weather.
 They are saved to `voice.json` below, so `marvin-host talk` uses them too, and the voice restarts
 with them. Options given on the `run` command line (`--voice-llm-model ...`) win over the file for
 that session, until the same setting is changed in the app.
@@ -109,8 +112,113 @@ options given on that command line into it, keeping the rest. Example:
 ```
 
 Other keys: `ollama_host`, `tts_voice`, `default_language`, `wake`, `follow_up_s`,
-`listen_window_s`, `speculative_stt`, and for `run` only `reminders` (spoken break reminders,
-default true) and `welcome_back` (default false).
+`listen_window_s`, `speculative_stt`, `tools` (default true), `internet` (online tools, default
+true), `home_place` (the weather's place when none is said, e.g. `"Nice"`, default empty), and for
+`run` only `reminders` (spoken break reminders, default true) and `welcome_back` (default false).
+
+## Tools
+
+The model can call tools for live information the context block does not give. There is one
+today: **`get_weather`**, the weather now, today or tomorrow, anywhere. "Marvin, quel temps
+fait-il ?", "Will it rain tomorrow in Lyon?".
+
+```mermaid
+sequenceDiagram
+  participant A as Assistant
+  participant M as Ollama
+  participant T as get_weather
+  A->>M: question (+ the same tools list as always)
+  M-->>A: tool_calls: get_weather(day="now")
+  A->>A: says "Je regarde…" (online tool)
+  A->>T: run (validated arguments, timeout)
+  T-->>A: {"place": "Nice, France", "temperature_c": 21, "conditions": "partly cloudy", ...}
+  A->>M: question, the call, its result
+  M-->>A: "Il fait vingt et un degrés à Nice, un peu nuageux." (spoken as usual)
+```
+
+How it works ([`voice/tools/`](../host/marvin_host/voice/tools), [`assistant.py`](../host/marvin_host/voice/assistant.py)):
+
+- Every request carries the same `tools` list (OpenAI-style function schemas, keys sorted, tools
+  sorted by name: the same bytes every time). Ollama renders it into the prompt next to the system
+  message, so like the system prompt it is part of what Ollama caches; the warm-up sends it too.
+  The list changes only when a setting changes (tools, Internet), which costs one uncached question.
+- When the model calls tools (Ollama streams `message.tool_calls`, usually in one chunk with empty
+  content), nothing more of that response is spoken. The assistant runs the calls, adds the
+  assistant message with its `tool_calls` and one `{"role": "tool", "content": ..., "tool_name": ...}`
+  message per call (plus `tool_call_id` when Ollama gave the call an id), and asks again. What the
+  model says then is spoken as usual. At most 3 rounds (`max_tool_rounds`); after that further calls
+  are ignored and, if the model said nothing, Marvin says it found no answer.
+- **No dead air**: while an online tool runs, Marvin says a short filler from `persona.PHRASES`
+  ("Je regarde…" / "Let me check…"). Only for tools marked `online` (a network round trip is 0.3 to
+  1 s), or any tool created with `filler=True`; offline tools answer in milliseconds and get none.
+  The filler is spoken, shown in the conversation, but not kept in the model's history, and not
+  counted as the answer's first word.
+- **Robustness**: a call to an unknown tool, bad arguments (checked against the schema's required
+  keys, types and enums), an exception or a timeout all become an error result the model can talk
+  about ("the weather service did not answer in time"); nothing crashes the assistant. Some small
+  models write the call as text (a JSON object, `<tool_call>` tags, a code block) instead of a real
+  call: a reply that starts like that is held back, read as a tool call when it is one, and JSON is
+  never spoken in any case (`clean_for_speech` drops it).
+- **History**: the whole exchange (question, calls, results, answer) is kept, so the next question's
+  prefix is unchanged; when the history is halved, whole turns go, a tool exchange is never split.
+- **Models without tools** (Ollama answers "does not support tools", e.g. `gemma3`): Marvin asks
+  again without tools and stops offering them to that model; the persona then says it has no internet.
+- **The inspector** (the app's "why did Marvin say that") lists each call with its arguments,
+  result or error and duration, and the timing bar gets **Tools** and **Model (again)**.
+
+### The weather
+
+`get_weather(place?, day?)`: `place` is a city or town (default: `home_place`), `day` is `now`
+(default: current conditions and today's range), `today` or `tomorrow`. It uses
+[Open-Meteo](https://open-meteo.com) (free, no account, no API key): the geocoding API for the
+place, then the forecast API. The result has the units in its keys (`temperature_c`, `wind_kmh`,
+`rain_chance_percent`) and the weather code in plain English ("light rain"). Places are looked up
+once per session and forecasts reused for 10 minutes (one forecast serves now, today and
+tomorrow), so "and tomorrow?" costs nothing. Both requests share a 4 s budget. Without a place and
+without `home_place`, the tool asks the model to ask the person which city.
+
+**Privacy**: only the place name (to the geocoding API) and its coordinates (to the forecast API)
+are sent, nothing about the person, the room or the conversation. **Internet off**
+(`"internet": false`, or the switch in Settings > Voice) removes online tools from the list: Marvin
+is fully offline again and says it has no internet.
+
+**Latency**: a question that needs the weather costs about one extra model turn plus the requests:
+the first token of the call (as usual), 0.3-1 s for Open-Meteo (the filler covers it), then the
+second request's first token (the prompt is cached, so it is short). Questions that need no tool
+cost nothing more than the tool definitions in the cached prompt.
+
+### Adding a tool
+
+A tool is a function and a description. Write the function (keyword arguments in, a short text or
+a small dict out; raise `ToolError` with a message for the model when it cannot answer), describe
+it with a `Tool`, and add it to `default_registry` in
+[`voice/tools/__init__.py`](../host/marvin_host/voice/tools/__init__.py). An offline example:
+
+```python
+from marvin_host.voice.tools import Tool, ToolError
+
+FACTORS = {("km", "mi"): 0.621371, ("mi", "km"): 1.609344, ("kg", "lb"): 2.204623, ("lb", "kg"): 0.453592}
+
+def convert(value: float, from_unit: str, to_unit: str) -> dict:
+    factor = FACTORS.get((from_unit, to_unit))
+    if factor is None:
+        raise ToolError(f"cannot convert {from_unit} to {to_unit}")
+    return {"value": round(value * factor, 2), "unit": to_unit}
+
+CONVERT = Tool(
+    "convert_units", "Convert a distance or a weight between metric and imperial units.",
+    {"type": "object",
+     "properties": {"value": {"type": "number"},
+                    "from_unit": {"type": "string", "enum": ["km", "mi", "kg", "lb"]},
+                    "to_unit": {"type": "string", "enum": ["km", "mi", "kg", "lb"]}},
+     "required": ["value", "from_unit", "to_unit"]},
+    convert, timeout=1.0)          # online=True if it needs the internet (the Internet switch applies)
+```
+
+Keep descriptions short and stable (they are in every prompt), results small (the model reads
+them), and put units in the key names. Test it with `ToolRegistry([CONVERT]).call("convert_units",
+{...})`, and the whole loop with `FakeLLM([ToolCall("convert_units", {...}), "Ten kilometres is
+about six miles."])` (see `tests/test_voice_tools.py`).
 
 ## It never answers itself
 
@@ -171,6 +279,9 @@ latency: first word 1.35 s after you stopped talking (end of speech 0.55, speech
   (speculative), model first token 0.25, first chunk 0.40, synthesis 0.20 s)
 ```
 
+After a tool call the line also has `tools 0.52, model again 0.21` (seconds in the tools, and to the
+second request's first token); "first word" is then the answer's, not the filler's.
+
 What to expect on an Apple Silicon Mac with the defaults (estimates; the log tells the truth):
 
 | Stage | Time | How it is kept short |
@@ -227,9 +338,11 @@ The code is in [`host/marvin_host/voice/`](../host/marvin_host/voice):
 | `vad.py` | WebRTC / energy VAD, `Segmenter`: 20 ms frames in, utterances out (300 ms pre-roll, ends after 0.55 s of silence) |
 | `wake.py` | `WakeWordDetector` interface, `TranscriptWakeWord`, fuzzy "Marvin" matching |
 | `stt.py` | `MlxWhisperSTT` (GPU), `WhisperSTT` (CPU, "Marvin" as a hotword), `make_stt`; language detection restricted to French and English |
-| `llm.py` | `OllamaLLM` (`/api/chat`, streamed, standard library only), `FakeLLM` |
+| `llm.py` | `OllamaLLM` (`/api/chat`, streamed, tool calls, standard library only), `ToolCall`, `FakeLLM` (scriptable tool calls) |
+| `tools/` | `Tool`, `ToolRegistry` (schemas, validation, safe calls), `get_weather` (Open-Meteo) |
+| `net.py` | Verified HTTPS (certifi when installed) for downloads and online tools |
 | `persona.py` | The system prompt, the brain context, the sentences said without the model |
-| `text.py` | Streaming chunker (first clause early, then sentences), markdown and emoji removal |
+| `text.py` | Streaming chunker (first clause early, then sentences), markdown, emoji and JSON removal, tool calls written as text |
 | `tts.py` | `MacSayTTS`, `PiperTTS`, `EspeakTTS` |
 | `echo.py` | `EchoGate` (half duplex), `EchoFilter` (its own words) |
 | `filters.py` | What Whisper invents: speech evidence, decoder scores, known hallucinations, follow-up rules |
@@ -260,7 +373,9 @@ typed question, answered aloud), `listen_now()` (a listening window without the 
 - A pause longer than 0.55 s in the middle of a question ends it; raise `end_silence_ms` if you
   speak slowly.
 - One speaker at a time, no speaker identification.
-- The model has no internet, calendar or tools yet, and says so.
+- One tool so far (the weather). No calendar, no reminders, no web search.
+- How well a model calls tools varies: small models (1.7-4B) sometimes call the weather when they
+  should not, or not when they should. Watch the inspector.
 
 ## Future: a real wake-word model
 

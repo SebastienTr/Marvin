@@ -356,6 +356,18 @@
           <div class="field">
             <label class="switch"><input id="v-reminders" type="checkbox"><span>Say when it's time for a break</span></label>
           </div>
+          <fieldset class="field tools-field">
+            <legend>Tools</legend>
+            <label class="switch"><input id="v-tools" type="checkbox"><span>Let Marvin use tools</span></label>
+            <label class="switch"><input id="v-internet" type="checkbox"><span>Internet</span></label>
+            <p class="hint" id="v-internet-hint">Online tools send only what they need: the weather sends the place name to Open-Meteo, nothing about you. Off: Marvin stays fully offline.</p>
+            <ul class="tool-list" id="v-tool-list" aria-label="Available tools"></ul>
+          </fieldset>
+          <div class="field">
+            <label for="v-home">Home location</label>
+            <input id="v-home" type="text" maxlength="80" autocomplete="address-level2" spellcheck="false" placeholder="e.g. Nice">
+            <p class="hint">For the weather when you don't say where. Leave empty and Marvin asks.</p>
+          </div>
         </fieldset>
         <p class="form-error" id="voice-error" role="alert" hidden></p>
         <div class="actions"><span class="saved muted" id="voice-saved" role="status"></span><button type="submit" class="btn primary">Apply</button></div>

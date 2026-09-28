@@ -8,7 +8,8 @@ Install with `pip install -e ".[voice]"`, see docs/voice.md.
 
 Modules: io (mic, speakers, WAV), vad (voice activity, utterances), wake (the wake word),
 stt (Whisper on GPU or CPU), echo (never answering itself), filters (what Whisper invents),
-llm (Ollama), persona (system prompt and context), text (sentence splitting),
+llm (Ollama), tools (what the model can call: the weather), net (HTTPS),
+persona (system prompt and context), text (sentence splitting),
 tts (say, Piper, espeak-ng), assistant (the orchestrator), proactive (reminders),
 control (on and off at run time, for the app), cli.
 

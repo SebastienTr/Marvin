@@ -4,10 +4,15 @@ The assistant speaks the first sentence while the model is still writing the sec
 reply is cut as it arrives. A sentence ends at . ! ? or … followed by a space (not "3.5", not
 "M. Dupont"), or at a line break.
 
+A model given tools sometimes writes the tool call as text (a JSON object, `<tool_call>` tags)
+instead of calling it: `payload_tool_calls` reads such calls back, and `clean_for_speech` never lets
+JSON or tool-call markup reach the speaker.
+
 SPDX-License-Identifier: MIT
 """
 from __future__ import annotations
 
+import json
 import re
 
 # "M. Dupont", "Dr. Who", "etc. " would otherwise end a sentence
@@ -17,11 +22,70 @@ _END = re.compile(r"([.!?…]+[\"»”')\]]*)(\s+)|(\n+)")
 _CLAUSE = re.compile(r"(?<=[^\d\s])([,;:—])(\s+|$)")          # not "3,5" or "14:30"
 _FIRST_END = re.compile(r"(?<=[^\d\s])([.!?…]+[\"»”')\]]*)$")   # a sentence end at the end of the buffer
 _EMOJI = re.compile("[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F1E6-\U0001F1FF‍️]")
+_TOOL_TAG = re.compile(r"<\|?/?(tool_call|tool_calls|function_call|functions?)\|?>", re.I)
+_BRACES = re.compile(r"\{[^{}]*\}")
+_JSON_KEY = re.compile(r'"[A-Za-z_][\w-]*"\s*:\s*["{\[\d-]')    # "key": value
+_EMPTY_LIST = re.compile(r"\[[\s,]*\]")
+# how tool calls written as text begin: a reply starting with a prefix of one of these waits
+_OPENINGS = ("<tool_call>", "<|tool_call|>", "<function_call>", "<functions>", "```")
+
+
+def looks_like_payload(text: str) -> bool | None:
+    """Whether a reply starts like a tool call written as text (JSON, a code block, a tag) rather
+    than like a sentence, decided on its first characters so the reply can be held back. None:
+    not sure yet ("<tool_c" may become a tag), wait for more."""
+    t = text.lstrip()
+    if not t:
+        return None
+    if t[:1] in ("{", "[") or t.startswith("```") or _TOOL_TAG.match(t):
+        return True
+    if any(o.startswith(t) and len(t) < len(o) for o in _OPENINGS):
+        return None
+    return False
+
+
+def strip_payload(text: str) -> str:
+    """`text` without JSON objects and tool-call tags; "" if what is left still looks like a piece
+    of JSON (a streamed chunk can hold half an object)."""
+    t = _TOOL_TAG.sub(" ", text)
+    while True:
+        n = _BRACES.sub(" ", t)
+        if n == t:
+            break
+        t = n
+    if "{" in t or "}" in t or _JSON_KEY.search(t):
+        return ""
+    return _EMPTY_LIST.sub(" ", t)
+
+
+def payload_tool_calls(text: str) -> list[dict]:
+    """Tool calls written as text: every JSON object in `text` (bare, in a code block or between
+    `<tool_call>` tags, or a list of them) that has a "name" (or a "function"). [] if none."""
+    t = _TOOL_TAG.sub("\n", re.sub(r"```(?:json)?", "\n", text))
+    dec = json.JSONDecoder()
+    found: list[dict] = []
+    i = 0
+    while i < len(t):
+        if t[i] not in "{[":
+            i += 1
+            continue
+        try:
+            obj, end = dec.raw_decode(t, i)
+        except ValueError:
+            i += 1
+            continue
+        for o in (obj if isinstance(obj, list) else [obj]):
+            if isinstance(o, dict) and (isinstance(o.get("name"), str) or isinstance(o.get("function"), dict)):
+                found.append(o)
+        i = end
+    return found
 
 
 def clean_for_speech(text: str) -> str:
-    """Removes markdown, URLs and emoji; the model is asked not to produce them, but may."""
+    """Removes markdown, URLs, emoji and anything that looks like JSON or a tool call; the model is
+    asked not to produce them, but may."""
     t = re.sub(r"```.*?```", " ", text, flags=re.S)
+    t = strip_payload(t)
     t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)          # [label](link) -> label
     t = re.sub(r"https?://\S+", "", t)
     t = re.sub(r"^\s*(#+|[-*•]|\d+[.)])\s+", "", t, flags=re.M)   # headings, bullets, numbered lists

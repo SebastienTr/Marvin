@@ -71,7 +71,7 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `face.py`, `raster.py` | The robot's eyes (reference renderer and behaviour) and the tiny rasterizer they use |
 | `link.py` | Host → robot face link: brain events (`FACE_EVENT`) and presence state (`FACE_STATE`, 10 Hz) to every robot with a screen |
 | `audio.py` | Audio contract (sources and sinks, 16 kHz mono) shared by the voice and the robot's audio |
-| `voice/` | Wake word, speech-to-text, local LLM and text-to-speech: talking to Marvin |
+| `voice/` | Wake word, speech-to-text, local LLM and text-to-speech: talking to Marvin; `voice/tools/`: tools the model can call (the weather) |
 | `robot_audio.py`, `camera_stream.py` | The robot's microphone and speaker over UDP, its MJPEG camera |
 | `ui/` | The app: a local web page with the face, today's timeline, breaks, history, the conversation (kept, searchable, each answer explained) and voice controls, the robot's devices and sensors, the log, settings |
 | `record.py`, `calibration.py` | Recording and replaying raw sessions, sensor calibration |

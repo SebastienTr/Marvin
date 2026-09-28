@@ -33,6 +33,8 @@ SETTINGS = {
     "speculative_stt": ("speculative_stt", bool), "end_silence_ms": (None, float),
     # run --voice only: spoken break reminders and "welcome back" (voice/proactive.py)
     "reminders": (None, bool), "welcome_back": (None, bool),
+    # tools the model can call (voice/tools): all of them, the online ones, the weather's home
+    "tools": ("tools", bool), "internet": ("internet", bool), "home_place": ("home_place", str),
 }
 DEVICE_KEYS = ("input_device", "output_device")
 

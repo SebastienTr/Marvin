@@ -43,11 +43,26 @@ explicitly asked. Start with the answer itself, no preamble.
 - Calm, grown-up, warm without gushing. Dry humour, sparingly. You share a name with a famously \
 gloomy android; you may allude to it very rarely, never twice in a conversation.
 - Answer in {language}, the language you are spoken to in.
-- If you do not know or cannot do something (you have no internet access, no calendar, no \
-arms), say so plainly in one sentence.
+- If you do not know or cannot do something ({limits}), say so plainly in one sentence.
 - Each message from the person starts with a context block from your clock and sensors. Use it \
 only when it helps; never recite it. Mention breathing or heart rate only if asked or if it clearly \
 matters, and never as a medical opinion. When asked for them and the context gives them, say the numbers; when it does not, say why in one sentence, using what the context says. Never promise a reading the context does not show.
+{tools}"""
+
+LIMITS = "you have no internet access, no calendar, no arms"
+LIMITS_WITH_TOOLS = "you have no calendar, no arms, and no internet beyond your tools"
+
+# Added to the persona when the model is given tools (the text never changes with the tools
+# offered, only whether there are any: the system prompt stays cacheable)
+TOOLS = """
+Tools:
+- You have tools for live information the context block does not give (for instance the weather). \
+Call a tool only when the question needs it; never for the time or the date, which the context gives.
+- Never invent weather or any other live data: call the tool, or say you cannot know.
+- When a tool answers, give the result in one or two short spoken sentences, numbers written the \
+way they are said ("vingt et un degrés", "twelve kilometres an hour"), no symbols or abbreviations.
+- If a tool reports an error, say so simply in one sentence, or ask for what is missing (for \
+instance which city).
 """
 
 # Sentences said without the language model. Keys: phrase name, then language.
@@ -71,6 +86,16 @@ PHRASES: dict[str, dict[str, str]] = {
     "welcome_back": {
         "fr": "Re-bonjour.",
         "en": "Welcome back.",
+    },
+    # said while a tool that takes a moment runs (an online one), so there is no dead air
+    "checking": {
+        "fr": "Je regarde…",
+        "en": "Let me check…",
+    },
+    # the model called tools but said nothing after them
+    "no_answer": {
+        "fr": "Je n'ai pas trouvé de réponse, désolé.",
+        "en": "I couldn't find an answer, sorry.",
     },
 }
 
@@ -147,11 +172,12 @@ def context_facts(state: PresenceState | None, events: Iterable[Event] = (),
     return facts
 
 
-def persona_prompt(language: str = "fr") -> str:
+def persona_prompt(language: str = "fr", tools: bool = False) -> str:
     """The system prompt. It does not change from one question to the next (only with the
-    language), so the model server can reuse its cached processing: the live context goes into
-    the user message instead (`user_message`)."""
-    return PERSONA.format(language=LANGUAGE_NAMES.get(language, language))
+    language, and whether the model is given tools), so the model server can reuse its cached
+    processing: the live context goes into the user message instead (`user_message`)."""
+    return PERSONA.format(language=LANGUAGE_NAMES.get(language, language),
+                          limits=LIMITS_WITH_TOOLS if tools else LIMITS, tools=TOOLS if tools else "")
 
 
 def context_block(state: PresenceState | None = None, events: Iterable[Event] = (),

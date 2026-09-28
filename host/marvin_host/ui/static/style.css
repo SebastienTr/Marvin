@@ -447,8 +447,11 @@ body[data-view="talk"] .foot { display: none; }
 .tseg:first-child { border-radius: 4px 2px 2px 4px; }
 .tseg:last-child { border-radius: 2px 4px 4px 2px; }
 .tseg.rest { background: repeating-linear-gradient(135deg, var(--line-strong) 0 2px, transparent 2px 5px); }
-.t0 { background: #5a4f47; } .t1 { background: #7d7166; } .t2 { background: #a39a8e; }
-.t3 { background: #c6bdb0; } .t4 { background: #e2dace; } .t5 { background: #f7f2ea; }
+.t0 { background: #54493f; } .t1 { background: #6e6258; } .t2 { background: #887c71; }
+.t3 { background: #a39a8e; } .t4 { background: #bdb4a7; } .t5 { background: #d6cec1; }
+.t6 { background: #ebe4d9; } .t7 { background: #f9f5ee; }
+/* time spent in tools (the network): the accent, softened, so it stands apart from the model's grey */
+.tseg.tool, .tlegend .sw.tool { background: repeating-linear-gradient(135deg, rgba(238, 118, 38, 0.75) 0 3px, rgba(238, 118, 38, 0.45) 3px 6px); }
 .tlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tlegend li { display: inline-flex; align-items: center; gap: 6px; }
 .tlegend .sw { width: 8px; height: 8px; border-radius: 2px; }
@@ -456,6 +459,13 @@ body[data-view="talk"] .foot { display: none; }
 .tlegend b { font-weight: 500; color: var(--text); }
 .insp-total { margin-top: 6px; color: var(--muted); }
 .insp-foot { color: var(--muted); }
+/* tool calls: one line each, the call in monospace, its duration on the right, the result below */
+.insp-tools { display: grid; gap: 8px; }
+.insp-tool { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; }
+.insp-tool code { font-size: 0.75rem; overflow-wrap: anywhere; word-break: normal; }
+.insp-tool .dur { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.75rem; white-space: nowrap; }
+.insp-tool .res { grid-column: 1 / -1; color: var(--muted); overflow-wrap: anywhere; }
+.insp-tool .res.bad { color: var(--accent-text); }
 .insp-prompt summary { cursor: pointer; color: var(--muted); width: fit-content; border-radius: 6px; }
 .insp-prompt summary:hover { color: var(--text); }
 .insp-prompt pre {
@@ -684,6 +694,18 @@ input:disabled, select:disabled { opacity: 0.4; }
 .switch input:checked { background: var(--accent); border-color: var(--accent); }
 .switch input:checked::after { transform: translateX(16px); background: var(--text); }
 .switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.tools-field .switch { display: flex; width: fit-content; }
+.tools-field .hint { margin-top: 4px; }
+.tool-list { display: grid; gap: 6px; margin-top: 12px; }
+.tool-list li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: baseline;
+  padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line);
+}
+.tool-list code { font-size: 0.8125rem; }
+.tool-list .desc { grid-column: 1 / -1; font-size: 0.8125rem; color: var(--muted); }
+.tool-list .state { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+.tool-list .state.on { color: var(--accent-text); }
+.tool-list li.off code { color: var(--muted); }
 .segmented { display: inline-flex; background: var(--surface-2); border-radius: 12px; padding: 3px; border: 1px solid var(--line); flex-wrap: wrap; }
 .segmented label { cursor: pointer; }
 .segmented input { position: absolute; opacity: 0; }

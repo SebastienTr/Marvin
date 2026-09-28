@@ -28,6 +28,12 @@ time; `run()` does the listening (VAD, Whisper) in the caller's thread (or a bac
 first clause is heard while the model is still writing. Listening decisions use audio time
 (seconds of audio captured), so a recording replays the same way at any speed.
 
+Tools (voice/tools, docs/voice.md): the model is offered the tools switched on in the settings, the
+same list with every request. When it calls some, nothing more of that response is spoken; an
+online tool gets a short filler ("Let me check…") while it runs, the calls and their results are
+added to the conversation, and the model is asked again; what it says then is spoken as usual. At
+most `max_tool_rounds` rounds, then it must answer. The whole exchange goes into the history.
+
 SPDX-License-Identifier: MIT
 """
 from __future__ import annotations
@@ -48,9 +54,10 @@ import numpy as np
 from ..audio import FRAME_MS, SAMPLE_RATE, AudioSink, AudioSource
 from . import filters, persona
 from .echo import EchoFilter, EchoGate
-from .llm import LLM, LLMUnavailable
+from .llm import LLM, LLMUnavailable, ToolCall
 from .stt import STT, Transcript
-from .text import SentenceSplitter, clean_for_speech, guess_language
+from .text import SentenceSplitter, clean_for_speech, guess_language, looks_like_payload, payload_tool_calls
+from .tools import ToolRegistry
 from .tts import TTS
 from .vad import Segment, Segmenter, SegmenterConfig, Vad, make_vad
 from .wake import TranscriptWakeWord, WakeMatch, WakeWordDetector, match_wake_word
@@ -87,6 +94,11 @@ class VoiceConfig:
     chime: bool = True                      # soft chime when listening after "Marvin."
     memory_turns: int = 8                   # question/answer pairs kept (then the older half is dropped)
     memory_reset_s: float = 180.0           # forget the conversation after this much silence
+    # tools the model can call (voice/tools)
+    tools: bool = True                      # False: no tools at all
+    internet: bool = True                   # False: no online tools (the weather): fully offline
+    home_place: str = ""                    # the weather's place when none is asked for, e.g. "Nice"
+    max_tool_rounds: int = 3                # tool calls, answer, calls again...: then it must answer
     # echo and latency
     duplex: bool = False                    # True: keep listening while speaking (headset, echo-cancelling robot)
     echo_tail_s: float = 0.8                # half duplex: still deaf this long after the speaker stops
@@ -118,12 +130,18 @@ def chime(rate: int = SAMPLE_RATE) -> np.ndarray:
 _DONE = object()
 
 
+class _Filler(str):
+    """A few words said while a tool runs ("Let me check…"): spoken, but not the answer (not in the
+    history, not counted as the first word of the answer)."""
+
+
 class VoiceAssistant:
     """See the module docstring. Components not passed in are built from `config`."""
 
     def __init__(self, source: AudioSource, sink: AudioSink, brain=None, config: VoiceConfig | None = None, *,
                  stt: STT | None = None, llm: LLM | None = None, tts: TTS | None = None,
                  vad: Vad | None = None, wake: WakeWordDetector | None = None,
+                 tools: ToolRegistry | None = None,
                  on_status: Callable[[str], None] | None = None,
                  on_transcript: Callable[[str], None] | None = None,
                  on_reply: Callable[[str], None] | None = None):
@@ -134,11 +152,19 @@ class VoiceAssistant:
         if stt is None:
             from .stt import make_stt
             stt = make_stt(c.stt, c.stt_model, languages)
+        if tools is None:
+            from .tools import default_registry
+            tools = default_registry(enabled=c.tools, internet=c.internet, home_place=c.home_place)
+        self.tools = tools
         if llm is None:
             from .llm import OllamaLLM
             llm = OllamaLLM(c.llm_model, c.ollama_host)
-            if llm.available():     # rehearse a real first question: model loaded, prompt cached
-                llm.warm_up(persona.persona_prompt(self.language), persona.user_message("Bonjour."))
+            if llm.available():     # rehearse a real first question: model loaded, prompt (and tools) cached
+                schemas = tools.ollama_tools()
+                llm.warm_up(persona.persona_prompt(self.language, tools=bool(schemas)),
+                            persona.user_message("Bonjour."), tools=schemas)
+                if schemas and not llm.supports_tools:      # found out during the rehearsal: again, without
+                    llm.warm_up(persona.persona_prompt(self.language), persona.user_message("Bonjour."))
         if tts is None:
             from .tts import make_tts
             tts = make_tts(c.tts, c.tts_voice, c.language or c.default_language)
@@ -733,7 +759,16 @@ class VoiceAssistant:
                         else:
                             self._set_status(Status.LISTENING)
 
-    def _messages(self, job: _Job) -> tuple[list[dict], str]:
+    def _tool_schemas(self) -> list[dict] | None:
+        """Ollama's tools list: the same object for every request while the settings stay."""
+        if self.tools is None or not getattr(self.llm, "supports_tools", True):
+            return None
+        return self.tools.ollama_tools()
+
+    def _stream(self, messages: list[dict], schemas: list[dict] | None):
+        return self.llm.stream_chat(messages, tools=schemas) if schemas else self.llm.stream_chat(messages)
+
+    def _messages(self, job: _Job, schemas: list[dict] | None = None) -> tuple[list[dict], str]:
         state, events = None, ()
         if self.brain is not None:
             state = copy.copy(self.brain.state)
@@ -747,7 +782,8 @@ class VoiceAssistant:
             self.history.clear()
         job.context = persona.context_block(state, events)
         user = persona.user_message(job.text, language=job.language, context=job.context)
-        return [{"role": "system", "content": persona.persona_prompt(job.language)}, *self.history,
+        return [{"role": "system", "content": persona.persona_prompt(job.language, tools=bool(schemas))},
+                *self.history,
                 {"role": "user", "content": user}], user
 
     def _speaker(self, job: _Job, sentences: queue.Queue, lat: dict) -> None:
@@ -758,6 +794,7 @@ class VoiceAssistant:
             s = sentences.get()
             if s is _DONE or job.cancel.is_set():
                 return
+            filler = isinstance(s, _Filler)
             text = clean_for_speech(s)
             if not text:
                 continue
@@ -772,7 +809,11 @@ class VoiceAssistant:
                 continue
             if job.cancel.is_set():
                 return
-            if first:
+            if filler:
+                lat.setdefault("filler_start", time.monotonic() - job.t_heard)
+                self.gate.speaking(True)
+                self._set_status(Status.SPEAKING)
+            elif first:
                 lat["tts"] = time.monotonic() - t
                 lat["audio_start"] = time.monotonic() - job.t_heard
                 self.gate.speaking(True)
@@ -783,8 +824,9 @@ class VoiceAssistant:
                 self._emit("say", text=text, seconds=round(len(pcm) / rate, 3), envelope=envelope(pcm, rate))
 
     def _speak_all(self, job: _Job, produce: Callable[[Callable[[str], None]], None], lat: dict) -> str:
-        """Runs `produce(emit)` (which calls emit(chunk) as text becomes available) with a speaker
-        thread, waits until everything is played, and returns what was said."""
+        """Runs `produce(emit)` (which calls emit(chunk) as text becomes available, and
+        emit.filler(text) for a few words said while a tool runs) with a speaker thread, waits until
+        everything is played, and returns what was said."""
         sentences: queue.Queue = queue.Queue()
         said: list[str] = []
 
@@ -792,6 +834,8 @@ class VoiceAssistant:
             said.append(chunk)
             self.echo.speaking(" ".join(said))      # filter it before it is even played
             sentences.put(chunk)
+
+        emit.filler = lambda text: emit(_Filler(text))
 
         spk = threading.Thread(target=self._speaker, args=(job, sentences, lat), name="marvin-voice-speaker",
                                daemon=True)
@@ -816,25 +860,94 @@ class VoiceAssistant:
                 self.on_reply(text)
 
     def _answer(self, job: _Job) -> None:
-        messages, user = self._messages(job)
+        schemas = self._tool_schemas()
+        messages, user = self._messages(job, schemas)
         lat = self.last_latency
         t = time.monotonic()
         failure: list[str] = []
         hint: list[str] = []
+        exchange: list[dict] = []           # tool calls and results: sent again, then kept in the history
+        calls: list[dict] = []              # the same, as the app shows them
+        answer: list[str] = []              # what the model said (a filler aside)
 
         def produce(emit):
-            splitter = SentenceSplitter()
+            def say(s: str) -> None:
+                lat.setdefault("first_chunk", time.monotonic() - t)
+                answer.append(s)
+                emit(s)
+
+            filler = False
+            rounds = 0
             try:
-                for piece in self.llm.stream_chat(messages):
-                    if job.cancel.is_set():
-                        return
-                    lat.setdefault("llm_first_token", time.monotonic() - t)
-                    for s in splitter.feed(piece):
-                        lat.setdefault("first_chunk", time.monotonic() - t)
-                        emit(s)
-                for s in splitter.flush():
-                    lat.setdefault("first_chunk", time.monotonic() - t)
-                    emit(s)
+                while True:
+                    splitter = SentenceSplitter()
+                    t_req = time.monotonic()
+                    first = True
+                    text: list[str] = []
+                    held: bool | None = None            # the reply looks like a tool call written as text
+                    tool_calls: list[ToolCall] = []
+                    for piece in self._stream(messages + exchange, schemas):
+                        if job.cancel.is_set():
+                            return
+                        if first:
+                            first = False
+                            if rounds == 0:
+                                lat.setdefault("llm_first_token", time.monotonic() - t)
+                            else:
+                                lat["llm_first_token_2"] = lat.get("llm_first_token_2", 0.0) + time.monotonic() - t_req
+                        if isinstance(piece, ToolCall):
+                            tool_calls.append(piece)
+                            continue
+                        text.append(piece)
+                        if held is None:                # decided on the first characters
+                            so_far = "".join(text)
+                            held = looks_like_payload(so_far)
+                            if held is None:
+                                continue
+                            piece = so_far
+                        if held:
+                            continue
+                        for s in splitter.feed(piece):
+                            say(s)
+                    content = "".join(text)
+                    if held is None and content.strip():    # too short to decide: treat it as text
+                        held = True
+                    if held:
+                        tool_calls += [c for c in map(ToolCall.parse, payload_tool_calls(content)) if c is not None]
+                    if tool_calls and self.tools is not None and rounds < self.config.max_tool_rounds:
+                        # what was not spoken yet of this response is dropped (the splitter's rest)
+                        if not filler and not answer and any(
+                                (tl := self.tools.get(c.name)) is not None and tl.says_filler for c in tool_calls):
+                            emit.filler(persona.phrase("checking", job.language))
+                            filler = True
+                        t_tools = time.monotonic()
+                        results = []
+                        for c in tool_calls:
+                            results.append(self.tools.call(c.name, c.arguments, {"language": job.language}))
+                            if job.cancel.is_set():
+                                return
+                        lat["tools"] = lat.get("tools", 0.0) + time.monotonic() - t_tools
+                        exchange.append({"role": "assistant", "content": "" if held else content,
+                                         "tool_calls": [c.message() for c in tool_calls]})
+                        for c, res in zip(tool_calls, results):
+                            # "tool_name" for Ollama (0.9 and later), "tool_call_id" when the call had an id
+                            msg = {"role": "tool", "content": res.content, "tool_name": c.name}
+                            if c.id:
+                                msg["tool_call_id"] = c.id
+                            exchange.append(msg)
+                            calls.append(res.record())
+                        rounds += 1
+                        continue
+                    if tool_calls:
+                        log.warning("ignoring %d more tool call(s) after %d round(s)", len(tool_calls), rounds)
+                    if held and not tool_calls:         # it was not a tool call after all: say what can be said
+                        for s in splitter.feed(content):
+                            say(s)
+                    for s in splitter.flush():
+                        say(s)
+                    if not clean_for_speech(" ".join(answer)) and (rounds or held or tool_calls):
+                        say(persona.phrase("no_answer", job.language))
+                    return
             except LLMUnavailable as e:
                 log.error("%s. %s", e, e.hint)
                 failure.append("llm_down")
@@ -846,12 +959,14 @@ class VoiceAssistant:
                 emit(persona.phrase("error", job.language))
 
         text = self._speak_all(job, produce, lat)
+        said_answer = clean_for_speech(" ".join(answer))
         lat["total"] = time.monotonic() - job.t_heard
 
         def emit_reply(**kw):
             # what the model was given, for the app's "why did Marvin say that"
+            extra = {"tools": calls} if calls else {}
             self._emit("reply", text=text, language=job.language, latency=dict(lat), proactive=False,
-                       context=job.context, prompt=user, model=self.model_name,
+                       context=job.context, prompt=user, model=self.model_name, **extra,
                        **{"interrupted": False, "error": None, "hint": "", **kw})
 
         if failure:
@@ -859,14 +974,14 @@ class VoiceAssistant:
             return
         if job.cancel.is_set():
             log.info("interrupted")
-            if text:
-                self._remember(user, text + " …")
+            if said_answer or exchange:
+                self._remember(user, (said_answer + " …").strip(), exchange)
             emit_reply(interrupted=True)
             return
         log.info("said: %s", text)
         self._last_reply = text
         log.info("latency: %s", format_latency(lat))
-        self._remember(user, text)
+        self._remember(user, said_answer, exchange)
         emit_reply()
         if self.on_reply:
             try:
@@ -879,17 +994,19 @@ class VoiceAssistant:
         """The language model's name, as the app shows it."""
         return str(getattr(self.llm, "model", None) or self.config.llm_model)
 
-    def _remember(self, question: str, answer: str) -> None:
-        """Keeps the conversation for the next question. The model server reuses its work on
-        everything up to the first message that changed, so the history only ever grows at the end:
-        dropping the oldest turn every time would change the start of it at each question and make
-        the model read the whole conversation again (10 s and more with a large model). When it is
-        full, the older half goes at once, so that happens once every few questions."""
-        self.history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
-        turns = len(self.history) // 2
-        if turns > self.config.memory_turns:
+    def _remember(self, question: str, answer: str, exchange: list[dict] | tuple = ()) -> None:
+        """Keeps the conversation for the next question: the question, the tool calls and results
+        in between (`exchange`), and the answer. The model server reuses its work on everything up
+        to the first message that changed, so the history only ever grows at the end: dropping the
+        oldest turn every time would change the start of it at each question and make the model read
+        the whole conversation again (10 s and more with a large model). When it is full, the older
+        half of the turns goes at once, so that happens once every few questions. A turn is
+        everything from a question to the next one: a tool exchange is never cut in two."""
+        self.history += [{"role": "user", "content": question}, *exchange, {"role": "assistant", "content": answer}]
+        starts = [i for i, m in enumerate(self.history) if m["role"] == "user"]
+        if len(starts) > self.config.memory_turns:
             keep = max(1, self.config.memory_turns // 2)
-            del self.history[:-2 * keep]
+            del self.history[:starts[-keep]]
         self._last_turn = time.monotonic()
 
 
@@ -915,6 +1032,10 @@ def format_latency(lat: dict) -> str:
     parts.append(stt + (" (speculative)" if lat.get("speculative") else ""))
     if "llm_first_token" in lat:
         parts.append(f"model first token {lat['llm_first_token']:.2f}")
+    if "tools" in lat:
+        parts.append(f"tools {lat['tools']:.2f}")
+    if "llm_first_token_2" in lat:
+        parts.append(f"model again {lat['llm_first_token_2']:.2f}")
     if "first_chunk" in lat:
         parts.append(f"first chunk {lat['first_chunk']:.2f}")
     if "tts" in lat:

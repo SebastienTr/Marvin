@@ -49,8 +49,9 @@ PIPER_VOICES = ("fr_FR-siwis-medium", "fr_FR-tom-medium", "fr_FR-upmc-medium", "
                 "en_GB-alan-medium", "en_GB-northern_english_male-medium", "en_US-lessac-medium",
                 "en_US-ryan-high")
 APP_KEYS = ("llm_model", "stt", "stt_model", "tts", "tts_voice", "language", "wake", "follow_up_s",
-            "reminders", "welcome_back")
+            "reminders", "welcome_back", "tools", "internet", "home_place")
 DEFAULTS = {"reminders": True, "welcome_back": False}
+MAX_HOME_PLACE = 80
 
 OFF, STARTING, ON, STOPPING, ERROR = "off", "starting", "on", "stopping", "error"
 
@@ -99,7 +100,14 @@ def validate(update: dict) -> dict:
             v = None if v in ("auto", "") else v
             if v not in LANGUAGES:
                 raise ValueError('language must be "auto", "fr" or "en"')
-        elif key in ("wake", "reminders", "welcome_back"):
+        elif key == "home_place":
+            v = "" if v is None else v
+            if not isinstance(v, str):
+                raise ValueError("home_place must be a place name, e.g. Nice")
+            v = " ".join(v.split())
+            if len(v) > MAX_HOME_PLACE or not v.isprintable() or any(c in v for c in "{}<>[]\\\"`"):
+                raise ValueError(f"home_place must be a place name of at most {MAX_HOME_PLACE} characters, e.g. Nice")
+        elif key in ("wake", "reminders", "welcome_back", "tools", "internet"):
             if not isinstance(v, bool):
                 raise ValueError(f"{key} must be true or false")
         elif key == "follow_up_s":
@@ -173,7 +181,15 @@ def options(settings: dict) -> dict:
         "voices": {"piper": piper_voices() if tts["piper"] else [], "say": say_voices()},
         "languages": ["auto", "fr", "en"],
         "platform": sys.platform,
+        "tools": tools_catalog(),
     }
+
+
+def tools_catalog() -> list[dict]:
+    """The tools Marvin has, [{"name", "description", "online"}]: the settings panel shows which
+    are on (all of them with "tools", the online ones only with "internet")."""
+    from .tools import catalog
+    return catalog()
 
 
 def voice_cli_default(key: str):
@@ -293,7 +309,8 @@ class VoiceController:
         from .assistant import VoiceConfig
         d = VoiceConfig()
         out = {"llm_model": d.llm_model, "stt": d.stt, "stt_model": None, "tts": d.tts, "tts_voice": None,
-               "language": None, "wake": d.wake, "follow_up_s": d.follow_up_s, **DEFAULTS}
+               "language": None, "wake": d.wake, "follow_up_s": d.follow_up_s, "tools": d.tools,
+               "internet": d.internet, "home_place": d.home_place, **DEFAULTS}
         out.update({k: s[k] for k in APP_KEYS if k in s})
         return out
 
@@ -551,7 +568,7 @@ class VoiceController:
                         proactive=bool(data.get("proactive")), error=data.get("error"),
                         hint=data.get("hint", ""),
                         # what the model was given (the app's "why did Marvin say that")
-                        **{k: data[k] for k in ("context", "prompt", "model") if data.get(k)})
+                        **{k: data[k] for k in ("context", "prompt", "model", "tools") if data.get(k)})
         elif kind == "ignored":
             extra = {"dbfs": data["dbfs"]} if data.get("dbfs") is not None else {}
             self._entry("ignored", data["t"], text=data.get("text", ""), reason=data.get("reason", ""), **extra)

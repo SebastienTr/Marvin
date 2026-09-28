@@ -512,6 +512,8 @@
     { key: "queue", label: "Backlog", hint: "audio waiting to be heard" },
     { key: "stt", label: "Recognition", hint: "speech to text" },
     { key: "llm_first_token", label: "Model", hint: "until the model's first word" },
+    { key: "tools", label: "Tools", hint: "running the tools the model asked for", tool: true },
+    { key: "llm_first_token_2", label: "Model (again)", hint: "until the model's first word, with the tools' results" },
     { key: "first_chunk", label: "First sentence", hint: "until the model finished a first clause" },
     { key: "tts", label: "Synthesis", hint: "turning it into speech" },
   ];
@@ -528,7 +530,10 @@
     if (lat.queue >= 0.05) add("queue", lat.queue);
     add("stt", lat.stt);
     add("llm_first_token", lat.llm_first_token);
-    if (lat.first_chunk != null) add("first_chunk", lat.first_chunk - (lat.llm_first_token || 0));
+    add("tools", lat.tools);
+    add("llm_first_token_2", lat.llm_first_token_2);
+    const before = (lat.llm_first_token || 0) + (lat.tools || 0) + (lat.llm_first_token_2 || 0);
+    if (lat.first_chunk != null) add("first_chunk", lat.first_chunk - before);
     add("tts", lat.tts);
     return out;
   }
@@ -541,6 +546,45 @@
   function section(title) {
     const sec = el("section", "insp-sec");
     sec.append(el("h3", null, title));
+    return sec;
+  }
+
+  // "get_weather(place: "Nice", day: "now")"
+  function toolCallText(c) {
+    const args = Object.entries(c.arguments || {}).map(([k, v]) => `${k}: ${JSON.stringify(v)}`);
+    return `${c.name}(${args.join(", ")})`;
+  }
+
+  // units written in result keys (voice/tools): "temperature_c" reads "temperature 21 °C"
+  const UNIT_SUFFIXES = [["_c", "°C"], ["_kmh", "km/h"], ["_mm", "mm"], ["_percent", "%"], ["_s", "s"]];
+
+  // a tool's result, for reading: JSON objects as "key value · key value", with their units
+  function toolResultText(text) {
+    try {
+      const o = JSON.parse(text);
+      if (o && typeof o === "object" && !Array.isArray(o)) {
+        return Object.entries(o).map(([k, v]) => {
+          const u = UNIT_SUFFIXES.find(([suf]) => k.endsWith(suf) && typeof v === "number");
+          const label = (u ? k.slice(0, -u[0].length) : k).replace(/_/g, " ");
+          const value = typeof v === "object" ? JSON.stringify(v) : String(v);
+          return `${label} ${value}${u ? ` ${u[1]}` : ""}`;
+        }).join(" · ");
+      }
+    } catch (err) { /* plain text */ }
+    return text;
+  }
+
+  function toolsSection(calls, fillerAt) {
+    const sec = section(calls.length === 1 ? "Tool used" : `Tools used (${calls.length})`);
+    const ul = el("ul", "insp-tools");
+    for (const c of calls) {
+      const li = el("li", "insp-tool");
+      li.append(el("code", null, toolCallText(c)), el("span", "dur", c.seconds != null ? fmtSeconds(c.seconds) : ""));
+      li.append(c.ok === false ? el("p", "res bad", `Error: ${c.error || "failed"}`) : el("p", "res", toolResultText(c.result || "")));
+      ul.append(li);
+    }
+    sec.append(ul);
+    if (fillerAt != null) sec.append(el("p", "insp-total", "Marvin said a few words while the tool ran, so there was no silence."));
     return sec;
   }
 
@@ -567,8 +611,11 @@
       bar.setAttribute("role", "img");
       bar.setAttribute("aria-label", segs.map((x) => `${x.label} ${fmtSeconds(x.v)}`).join(", "));
       const sum = Math.max(total, segs.reduce((a, x) => a + x.v, 0));
+      // the model's stages keep the grey ramp (lighter = later), tools stand apart
+      let shade = 0;
+      const cls = segs.map((x) => (x.tool ? "tool" : `t${shade++}`));
       segs.forEach((x, i) => {
-        const seg = el("span", `tseg t${i}`);
+        const seg = el("span", `tseg ${cls[i]}`);
         seg.style.flexGrow = String(Math.max(0.001, x.v / sum));
         seg.title = `${x.label}: ${fmtSeconds(x.v)} (${x.hint})`;
         bar.append(seg);
@@ -578,7 +625,7 @@
       const legend = el("ul", "tlegend");
       segs.forEach((x, i) => {
         const li = el("li");
-        li.append(el("i", `sw t${i}`), el("span", null, x.label), el("b", null, fmtSeconds(x.v)));
+        li.append(el("i", `sw ${cls[i]}`), el("span", null, x.label), el("b", null, fmtSeconds(x.v)));
         li.title = x.hint;
         legend.append(li);
       });
@@ -594,6 +641,7 @@
       }
       box.append(sec);
     }
+    if (e.tools && e.tools.length) box.append(toolsSection(e.tools, (e.latency || {}).filler_start));
     const facts = contextFacts(e.context);
     if (facts.length) {
       const sec = section("What Marvin knew");
@@ -2009,6 +2057,27 @@
     $("v-wake").checked = s.wake;
     $("v-follow").value = s.follow_up_s;
     $("v-reminders").checked = s.reminders;
+    $("v-tools").checked = s.tools !== false;
+    $("v-internet").checked = s.internet !== false;
+    $("v-home").value = s.home_place || "";
+    renderToolList();
+  }
+
+  // the tools Marvin has, and whether the switches above leave each one on
+  function renderToolList() {
+    const list = $("v-tool-list");
+    const tools = (voiceOptions && voiceOptions.tools) || [];
+    const on = $("v-tools").checked, internet = $("v-internet").checked;
+    $("v-internet").disabled = !on;
+    list.hidden = !tools.length;
+    list.replaceChildren(...tools.map((t) => {
+      const active = on && (internet || !t.online);
+      const li = el("li", active ? "on" : "off");
+      const state = !on ? "Off" : active ? "On" : "Off: needs the internet";
+      li.append(el("code", null, t.name), el("span", `state${active ? " on" : ""}`, state),
+        el("span", "desc", t.description + (t.online ? " Online." : " Works offline.")));
+      return li;
+    }));
   }
 
   async function loadSettings() {
@@ -2061,6 +2130,8 @@
       }
     });
     $("v-tts").addEventListener("change", fillVoices);
+    $("v-tools").addEventListener("change", renderToolList);
+    $("v-internet").addEventListener("change", renderToolList);
     $("settings-form").addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const err = $("settings-error");
@@ -2096,6 +2167,9 @@
         wake: $("v-wake").checked,
         follow_up_s: Number($("v-follow").value),
         reminders: $("v-reminders").checked,
+        tools: $("v-tools").checked,
+        internet: $("v-internet").checked,
+        home_place: $("v-home").value.trim(),
       };
       try {
         const r = await post("/api/voice/settings", body);
