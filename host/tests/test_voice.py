@@ -1129,3 +1129,16 @@ def test_envelope():
     pcm = np.concatenate([np.zeros(8000), 8000 * np.sin(2 * np.pi * 220 * t[:8000])]).astype(np.int16)
     env = envelope(pcm, 16000)
     assert len(env) == 20 and env[0] == 0.0 and env[-1] > 0.7
+
+
+def test_a_chosen_voice_only_reads_its_own_language():
+    from marvin_host.voice.tts import voice_language, voices_for
+    say = [("Daniel", "en_GB"), ("Thomas (Enhanced)", "fr_FR")]
+    # an English voice picked while the conversation is French must not read French text
+    assert voices_for("auto", "en_GB-alan-medium", "fr", say)["piper"] == {"en": "en_GB-alan-medium"}
+    assert voices_for("auto", "Daniel", "fr", say) == {"piper": None, "say": {"en": "Daniel"}, "espeak": None}
+    assert voices_for("auto", "Thomas", "en", say)["say"] == {"fr": "Thomas"}
+    assert voices_for("say", "Unknown", "fr", say)["say"] == {"fr": "Unknown"}   # cannot tell: the language asked
+    assert voices_for("auto", None, "fr", say) == {"piper": None, "say": None, "espeak": None}
+    assert voice_language("/voices/fr_FR-siwis-medium.onnx") == "fr"
+    assert voice_language("en-gb") == "en" and voice_language("fr") == "fr"

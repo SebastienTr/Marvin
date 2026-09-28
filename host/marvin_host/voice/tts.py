@@ -239,29 +239,82 @@ class FakeTTS:
 BACKENDS = ("auto", "say", "piper", "espeak")
 
 
+PIPER_NAME = re.compile(r"^[a-z]{2,3}_[A-Z]{2}-[\w]+-(x_low|low|medium|high)$")
+
+
+def is_piper_voice(voice: str) -> bool:
+    return voice.endswith(".onnx") or bool(PIPER_NAME.match(voice))
+
+
+def voice_language(voice: str, say_voices: list[tuple[str, str]] = ()) -> str | None:
+    """The language a voice speaks: a Piper voice ("fr_FR-siwis-medium" or its .onnx file) -> "fr",
+    an espeak voice ("en-gb", "fr") -> "en", "fr", a macOS `say` voice ("Daniel") -> its locale's
+    language. None if it cannot tell."""
+    for name, locale in say_voices:
+        if voice in (name, name.split(" (")[0]):
+            return locale.split("_")[0]
+    base = Path(voice).name
+    m = re.match(r"^([a-z]{2,3})(?:[_-][A-Za-z]{2,3}\b|$)", base)
+    return m.group(1) if m else None
+
+
+def _say_voices() -> list[tuple[str, str]]:
+    if sys.platform != "darwin" or not shutil.which("say"):
+        return []
+    try:
+        out = subprocess.run(["say", "-v", "?"], capture_output=True, text=True, timeout=5, check=False).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return parse_say_voices(out)
+
+
+def voices_for(kind: str, voice: str | None, language: str | None,
+               say_voices: list[tuple[str, str]] = ()) -> dict[str, dict[str, str] | None]:
+    """The voice overrides each backend gets, {"piper": {...}, "say": {...}, "espeak": {...}}.
+
+    A chosen voice only replaces the default voice of the language it speaks (French text is never
+    read by an English voice, nor the other way round), and only for the backend it belongs to: a
+    `say` voice is not handed to Piper, which would try to download it."""
+    out: dict[str, dict[str, str] | None] = {"piper": None, "say": None, "espeak": None}
+    if not voice:
+        return out
+    lang = voice_language(voice, say_voices) or language or "fr"
+    if kind in ("piper", "say", "espeak"):
+        owner = kind
+    elif is_piper_voice(voice):
+        owner = "piper"
+    elif any(voice in (n, n.split(" (")[0]) for n, _ in say_voices):
+        owner = "say"
+    else:
+        owner = "espeak"
+    out[owner] = {lang: voice}
+    log.info("voice %s for %s text (%s)", voice, lang, owner)
+    return out
+
+
 def make_tts(kind: str = "auto", voice: str | None = None, language: str | None = None) -> TTS:
     """'say', 'piper', 'espeak' or 'auto' (Piper if installed, else say on macOS, else espeak-ng).
-    `voice` overrides the voice for `language` (a `say` voice name, a Piper voice name or .onnx
-    path, an espeak voice)."""
-    voices = {language or "fr": voice} if voice else None
-    if kind == "say":
-        return MacSayTTS(voices)
-    if kind == "piper":
-        return PiperTTS(voices)
-    if kind == "espeak":
-        return EspeakTTS(voices)
-    if kind != "auto":
+    `voice` (a `say` voice name, a Piper voice name or .onnx path, an espeak voice) replaces the
+    default voice of the language it speaks (`language` if that cannot be told), see `voices_for`."""
+    if kind not in BACKENDS:
         raise ValueError(f"unknown TTS backend {kind!r}, expected one of {BACKENDS}")
+    v = voices_for(kind, voice, language, _say_voices() if voice else [])
+    if kind == "say":
+        return MacSayTTS(v["say"])
+    if kind == "piper":
+        return PiperTTS(v["piper"])
+    if kind == "espeak":
+        return EspeakTTS(v["espeak"])
     # Piper first when installed: it synthesises a sentence in a fraction of the time `say` needs
     # to render one to a file (about 0.1-0.2 s against 0.9 s on an M3), which is most of the
     # delay before Marvin's first word.
     fallback: TTS | None = None
     if sys.platform == "darwin" and shutil.which("say"):
-        fallback = MacSayTTS(voices)
+        fallback = MacSayTTS(v["say"])
     elif shutil.which("espeak-ng") or shutil.which("espeak"):
-        fallback = EspeakTTS(voices)
+        fallback = EspeakTTS(v["espeak"])
     try:
-        piper = PiperTTS(voices)
+        piper = PiperTTS(v["piper"])
     except RuntimeError:
         if fallback is None:
             raise RuntimeError("no speech synthesis available: pip install piper-tts")
