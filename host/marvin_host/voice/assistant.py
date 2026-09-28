@@ -102,6 +102,7 @@ class _Job:
     language: str
     t_heard: float = 0.0                    # monotonic time the question's segment was complete
     cancel: threading.Event = field(default_factory=threading.Event)
+    context: str = ""                       # the context block sent with the question (for the app)
 
 
 def chime(rate: int = SAMPLE_RATE) -> np.ndarray:
@@ -163,6 +164,7 @@ class VoiceAssistant:
         self._level_n = 0
         self._utt: int | None = None                         # utterance being heard (its uid)
         self._seg_started: float | None = None               # start of the utterance being judged
+        self._seg_dbfs: float | None = None                  # its loudness (for "ignored" events)
         self.gate = EchoGate(sink, c.echo_tail_s, enabled=not c.duplex, clock=self._capture_time)
         self.history: list[dict] = []
         self._last_reply = ""                                # for "oui" / "non" follow-ups
@@ -330,10 +332,14 @@ class VoiceAssistant:
         """Calls `fn(kind, data)` from the assistant's threads (keep it quick) for:
 
         - "status": {"status": "idle" | "listening" | "thinking" | "speaking"}
-        - "heard": {"text", "language", "source": "voice" | "typed"}: a question Marvin answers
+        - "heard": {"text", "language", "source": "voice" | "typed", "raw"?}: a question Marvin
+          answers ("raw": the full transcript, when it differs from the question, e.g. the name)
         - "reply": {"text", "language", "latency": {stage: seconds}, "interrupted": bool,
-          "proactive": bool, "error": None | "llm_down" | "error", "hint": str}
-        - "ignored": {"text", "reason"}: an utterance Marvin chose not to answer
+          "proactive": bool, "error": None | "llm_down" | "error", "hint": str}; answers also
+          carry what the model was given: "context" (the context block), "prompt" (the whole
+          user message) and "model"
+        - "ignored": {"text", "reason", "dbfs"?}: an utterance Marvin chose not to answer, and how
+          loud it was
         - "muted": {"muted": bool}
         - "level": {"mic": 0..1, "speech": bool, "gated": bool}: the microphone's loudness, ~16 Hz
         - "utterance": {"state": "start" | "end" | "done", "uid"}: someone talks, stops, is judged
@@ -523,27 +529,38 @@ class VoiceAssistant:
             self.language = tr.language
         return self.language
 
+    def _level(self) -> dict:
+        """The loudness of the utterance being judged, for the app (dBFS, loudest half)."""
+        return {} if self._seg_dbfs is None else {"dbfs": round(self._seg_dbfs, 1)}
+
     def _own_voice(self, text: str, started: float | None = None) -> bool:
         if self.echo.is_own_voice(text, started):
             log.info("heard: %s (ignored: own voice)", text)
-            self._emit("ignored", text=text, reason="own voice")
+            self._emit("ignored", text=text, reason="own voice", **self._level())
             return True
         return False
 
     def _ignored(self, text: str, reason: str, quiet: bool = False) -> None:
         (log.debug if quiet else log.info)("heard: %s (ignored: %s)", text or "…", reason)
         if not quiet:
-            self._emit("ignored", text=text, reason=reason)
+            self._emit("ignored", text=text, reason=reason, **self._level())
 
     def _close_conversation(self, text: str, reason: str) -> None:
         log.info("heard: %s (conversation closed: %s)", text, reason)
-        self._emit("ignored", text=text, reason=f"conversation closed: {reason}")
+        self._emit("ignored", text=text, reason=f"conversation closed: {reason}", **self._level())
         with self._lock:
             self._listen_until = None
             if self._status == Status.LISTENING:
                 self._set_status(Status.IDLE)
 
     def _on_segment(self, seg: Segment, t_cap: float) -> None:
+        self._seg_dbfs = filters.loud_dbfs(seg.pcm) if len(seg.pcm) else None
+        try:
+            self._judge(seg, t_cap)
+        finally:
+            self._seg_dbfs = None
+
+    def _judge(self, seg: Segment, t_cap: float) -> None:
         c = self.config
         now_audio = self.segmenter.time
         lat = {"endpoint": max(0.0, now_audio - seg.t_speech_end) if seg.t_speech_end else c.segmenter.end_silence_s,
@@ -648,7 +665,9 @@ class VoiceAssistant:
                 lat: dict | None = None, source: str = "voice") -> None:
         log.info("heard (%s): %s", language, text)
         self.last_latency = dict(lat or {})
-        self._emit("heard", text=text, language=language, source=source)
+        raw = (tr.text or "").strip() if tr is not None else ""
+        extra = {"raw": raw} if raw and raw != text else {}
+        self._emit("heard", text=text, language=language, source=source, **extra)
         if self.on_transcript:
             try:
                 self.on_transcript(text)
@@ -726,7 +745,8 @@ class VoiceAssistant:
         if self.history and now - self._last_turn > self.config.memory_reset_s:
             log.debug("conversation forgotten after %.0f s of silence", now - self._last_turn)
             self.history.clear()
-        user = persona.user_message(job.text, state, events, language=job.language)
+        job.context = persona.context_block(state, events)
+        user = persona.user_message(job.text, language=job.language, context=job.context)
         return [{"role": "system", "content": persona.persona_prompt(job.language)}, *self.history,
                 {"role": "user", "content": user}], user
 
@@ -829,7 +849,9 @@ class VoiceAssistant:
         lat["total"] = time.monotonic() - job.t_heard
 
         def emit_reply(**kw):
+            # what the model was given, for the app's "why did Marvin say that"
             self._emit("reply", text=text, language=job.language, latency=dict(lat), proactive=False,
+                       context=job.context, prompt=user, model=self.model_name,
                        **{"interrupted": False, "error": None, "hint": "", **kw})
 
         if failure:
@@ -851,6 +873,11 @@ class VoiceAssistant:
                 self.on_reply(text)
             except Exception:
                 log.exception("on_reply failed")
+
+    @property
+    def model_name(self) -> str:
+        """The language model's name, as the app shows it."""
+        return str(getattr(self.llm, "model", None) or self.config.llm_model)
 
     def _remember(self, question: str, answer: str) -> None:
         """Keeps the conversation for the next question. The model server reuses its work on

@@ -8,7 +8,8 @@ Optional parts, when marvin-host passes them in:
 - ``sink``: a ``UISink`` (sink.py) on the receiver: devices, link quality and the sensor mini-views
   (Robot panel);
 - ``voice``: a ``VoiceController`` (voice/control.py): the conversation, and the voice turned on
-  and off and configured from the app (Talk panel).
+  and off and configured from the app (Talk panel). The conversation is kept in the store, so it
+  survives a restart and the History panel can show and search past days.
 
 The Log panel gathers the brain's events, the devices' LOG messages and the host's warnings.
 
@@ -70,6 +71,7 @@ DEFAULT_SETTINGS = {
     "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00"},
     "voice": False,             # the voice starts with marvin-host (turned on and off in the app)
     "clock": "24h",             # "24h" or "12h"
+    "ui_sounds": True,          # short sounds in the browser (listening opens and closes, replies)
 }
 
 
@@ -97,9 +99,9 @@ def validate_settings(update: dict, current: dict) -> dict:
                     raise ValueError(f"unknown setting quiet_hours.{k}")
                 q[k] = v
             out[key] = q
-        elif key == "voice":
+        elif key in ("voice", "ui_sounds"):
             if not isinstance(value, bool):
-                raise ValueError("voice must be true or false")
+                raise ValueError(f"{key} must be true or false")
             out[key] = value
         elif key == "clock":
             if value not in ("24h", "12h"):
@@ -241,6 +243,8 @@ class UIServer:
         if sink is not None:
             sink.add_listener(self._on_sink)
         if voice is not None:
+            if hasattr(voice, "attach_store") and getattr(voice, "store", None) is None:
+                voice.attach_store(self.store)      # the conversation is kept with the history
             voice.add_listener(self._on_voice)
 
     # ---------------------------------------------------------------- lifecycle
@@ -449,6 +453,10 @@ class UIServer:
             "breath_rate": None if s.breath_rate is None else round(float(s.breath_rate), 1),
             "heart_rate": None if s.heart_rate is None else round(float(s.heart_rate), 1),
             "targets": int(s.targets),
+            "vitals_sensor": bool(s.vitals_sensor),
+            # the robot said its sensor data is simulated (HELLO flag): the person, the room and
+            # the vital signs come from a simulated scene
+            "simulated": bool(s.simulated),
             "expression": self._face.expression if self._face is not None else None,
             "status": st["text"],
             "detail": st["detail"],
@@ -770,6 +778,13 @@ class _Handler(BaseHTTPRequestHandler):
             since = _query_int(query, "since", 0, 0, 2**62)
             sources = {x for x in query.get("source", [""])[0].split(",") if x} or None
             return self._json({"entries": app.log_entries(limit, sources, since)})
+        if path == "/api/conversation":
+            if "q" in query:
+                q = query["q"][0].strip()[:200]
+                limit = _query_int(query, "limit", 100, 1, 100)
+                return self._json({"q": q, "results": app.store.search_conversation(q, limit)})
+            d = _query_date(query, app.clock(), key="day")
+            return self._json({"day": d.isoformat(), "entries": app.store.conversation_day(d)})
         if path == "/api/voice":
             return self._json(app.voice_payload())
         if path == "/api/voice/options":
@@ -931,13 +946,13 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
-def _query_date(query: dict, now: float) -> date:
-    if "date" not in query:
+def _query_date(query: dict, now: float, key: str = "date") -> date:
+    if key not in query:
         return stats.local_day(now)
     try:
-        return date.fromisoformat(query["date"][0])
+        return date.fromisoformat(query[key][0])
     except ValueError:
-        raise ValueError("date must be YYYY-MM-DD") from None
+        raise ValueError(f"{key} must be YYYY-MM-DD") from None
 
 
 def _query_int(query: dict, key: str, default: int, lo: int, hi: int) -> int:

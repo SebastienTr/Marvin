@@ -34,6 +34,8 @@
   <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
   <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.5v8M7 6.5a7 7 0 1 0 10 0"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
 </svg>
 
 <a class="skip" href="#main">Skip to content</a>
@@ -42,6 +44,10 @@
   <div class="brand">
     <span class="wordmark">Marvin</span>
     <span class="conn" id="conn" role="status"><span class="dot" aria-hidden="true"></span><span id="conn-text">Connecting</span></span>
+    <button type="button" class="sim-badge" id="sim-badge" aria-describedby="sim-tip" aria-expanded="false" hidden>
+      <span class="sim-mark" aria-hidden="true"></span><span class="sim-long">Simulated sensors</span><span class="sim-short" aria-hidden="true">Simulated</span>
+      <span class="sim-tip" id="sim-tip" role="tooltip">The robot says its sensor data is simulated: the person, the room and the vital signs come from a simulated scene, not from real sensors.</span>
+    </button>
   </div>
   <nav class="tabs" aria-label="Sections">
     <a href="#home" data-view="home"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>Home</span></a>
@@ -117,9 +123,8 @@
   <section class="view view-talk" aria-labelledby="talk-h">
     <div class="card talk" id="talk-card">
       <div class="talk-head">
-        <div class="orb" id="orb" data-status="off" aria-hidden="true">
-          <span class="orb-core"></span><span class="orb-ring"></span>
-          <span class="orb-bars"><i></i><i></i><i></i><i></i></span>
+        <div class="mini-face" id="mini-face" data-status="off" aria-hidden="true">
+          <canvas id="mini-face-canvas" width="96" height="96"></canvas>
         </div>
         <div class="talk-title">
           <h2 id="talk-h">Conversation</h2>
@@ -149,6 +154,9 @@
         <button type="button" class="pill" id="mute" aria-pressed="false" aria-label="Mute the microphone"><svg class="icon sm" aria-hidden="true"><use href="#i-mic-off"/></svg><span id="mute-label">Mute</span></button>
         <button type="button" class="pill" id="stop-speaking"><svg class="icon sm" aria-hidden="true"><use href="#i-stop"/></svg><span>Stop</span></button>
       </div>
+      <button type="button" class="now-line" id="now-line" hidden aria-label="What Marvin knows right now. Open the Robot panel">
+        <span class="now-items" id="now-items"></span><svg class="icon sm" aria-hidden="true"><use href="#i-chevron"/></svg>
+      </button>
       <form class="ask" id="ask-form" autocomplete="off">
         <label for="ask-input" class="sr">Ask Marvin</label>
         <input id="ask-input" type="text" maxlength="500" placeholder="Ask Marvin something" enterkeyhint="send">
@@ -247,6 +255,22 @@
       <div class="row"><h2 id="week-h">Last 7 days</h2><span class="muted" id="week-avg"></span></div>
       <ol class="week" id="week"></ol>
     </section>
+
+    <section class="card convo-card" aria-labelledby="convo-h" id="convo-card">
+      <div class="row wrap">
+        <h2 id="convo-h">Conversations</h2>
+        <span class="muted day-label" id="convo-day"></span>
+      </div>
+      <form class="convo-search" id="convo-search" role="search" autocomplete="off">
+        <label for="convo-q" class="sr">Search what was said</label>
+        <svg class="icon sm" aria-hidden="true"><use href="#i-search"/></svg>
+        <input id="convo-q" type="search" maxlength="200" placeholder="Search what was said" enterkeyhint="search">
+      </form>
+      <p class="convo-count muted" id="convo-count" role="status" aria-live="polite"></p>
+      <ol class="convo" id="convo" aria-label="Conversation that day"></ol>
+      <ol class="convo-results" id="convo-results" aria-label="Search results" hidden></ol>
+      <p class="empty muted" id="convo-empty" hidden>No conversation that day.</p>
+    </section>
   </section>
 
   <!-- ============================================================ settings -->
@@ -254,7 +278,7 @@
     <h1 class="view-title" id="settings-h" tabindex="-1">Settings</h1>
     <div class="settings-grid">
       <form class="card form" id="settings-form" aria-labelledby="general-h">
-        <h2 id="general-h">Breaks and clock</h2>
+        <h2 id="general-h">Breaks, clock and sounds</h2>
         <div class="field">
           <label for="f-break">Break reminder</label>
           <div class="inline"><input id="f-break" name="break" type="number" min="1" max="240" step="1" inputmode="numeric" required><span class="muted">minutes seated</span></div>
@@ -272,6 +296,10 @@
             <label><input type="radio" name="clock" value="12h"><span>12-hour</span></label>
           </div>
         </fieldset>
+        <div class="field">
+          <label class="switch"><input id="f-sounds" type="checkbox"><span>Sounds in the app</span></label>
+          <p class="hint">Soft notes when Marvin starts and stops listening, when he did not catch what you said, and when he answers. Played by this browser, quietly.</p>
+        </div>
         <p class="form-error" id="settings-error" role="alert" hidden></p>
         <div class="actions"><span class="saved muted" id="settings-saved" role="status"></span><button type="submit" class="btn primary">Save</button></div>
       </form>

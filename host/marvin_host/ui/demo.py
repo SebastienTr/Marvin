@@ -7,7 +7,8 @@ then leaves for a while, and comes back. Time can run faster than real time (``s
 demo's ``clock`` runs at the same pace, so the app's durations and timeline follow.
 
 ``seed_history`` writes a believable past week (and today until now) into a store, so the day
-timeline and the week chart have something to show. Only ever use it on a throwaway database.
+timeline and the week chart have something to show; ``seed_conversations`` adds a few past days
+of conversation with Marvin (History panel). Only ever use them on a throwaway database.
 
 With a ``sink`` (the app's ``UISink``), ``DemoRobot`` also plays two devices for the Robot panel, in
 real time whatever the speed: the robot (lidar scans, LD2450 frames, link counters) and the
@@ -27,7 +28,8 @@ from datetime import datetime, time as dtime, timedelta
 import numpy as np
 
 from .. import frames, protocol, scene, sim
-from ..events import EventKind as K
+from ..events import EventKind as K, PresenceState
+from ..voice import persona
 from ..receiver import Device
 from .stats import local_day
 
@@ -57,6 +59,10 @@ class DemoRobot:
         self.brain = brain
         self.sink = sink
         self.devices = DemoDevices(sink) if sink is not None else None
+        # the brain is told the data is simulated, as a real simulated robot says in its HELLO
+        self.dev = self.devices.robot if self.devices is not None else Device(
+            protocol.Hello(bytes.fromhex("024d56a1b2c3"), 3, protocol.FLAG_SIMULATED, -58, 0, "0.6.0"),
+            ("192.168.1.42", protocol.DEVICE_PORT))
         self.speed = float(speed)
         self.visits = visits
         self.wall0 = time.time() if wall0 is None else wall0
@@ -102,7 +108,7 @@ class DemoRobot:
                 time.sleep(0.01)
             if self._stop.is_set():
                 return
-            step(self.brain, t, v)
+            step(self.brain, t, v, self.dev)
             if self.devices is not None:
                 self.devices.step(t)
             v += STEP_S
@@ -178,17 +184,21 @@ class DemoVoice:
     ``stop_speaking``, ``add_listener``...): a scripted past conversation, and canned answers to
     typed questions, drawn from the brain. It hears nothing and says nothing aloud."""
 
-    SCRIPT = [   # minutes ago, kind, text, extra
-        (38, "heard", "Marvin, good morning. Anything I should know?", {}),
+    MODEL = "qwen3:4b-instruct"             # what the scripted answers pretend to come from
+    SCRIPT = [   # minutes ago, kind, text, extra ("seated": minutes seated, for the context)
+        (38, "heard", "Good morning. Anything I should know?",
+         {"raw": "Marvin, good morning. Anything I should know?"}),
         (38, "reply", "Good morning. You sat down at nine and haven't moved much. The coffee is still warm, I assume.",
          {"latency": {"endpoint": 0.55, "stt": 0.18, "llm_first_token": 0.21, "first_chunk": 0.34, "tts": 0.14,
-                      "audio_start": 0.71, "speculative": 1.0}}),
-        (31, "ignored", "Thanks for watching!", {"reason": "known hallucination"}),
-        (22, "heard", "What's my heart rate right now?", {}),
+                      "audio_start": 0.71, "speculative": 1.0}, "seated": 12}),
+        (31, "ignored", "Thanks for watching!", {"reason": "known hallucination", "dbfs": -41.5}),
+        (30, "ignored", "", {"reason": "too quiet (-53 dBFS)", "dbfs": -53.2}),
+        (30, "ignored", "", {"reason": "only 0.18 s of speech", "dbfs": -36.8}),
+        (22, "heard", "What's my heart rate right now?", {"raw": "Marvin, what's my heart rate right now?"}),
         (22, "reply", "About 66 beats a minute, and you're breathing 14 times a minute. Calm, as far as I can tell.",
          {"latency": {"endpoint": 0.55, "stt": 0.09, "llm_first_token": 0.19, "first_chunk": 0.30, "tts": 0.12,
-                      "audio_start": 0.62, "speculative": 1.0}}),
-        (21, "ignored", "Oui, je sais.", {"reason": "conversation closed: thanks"}),
+                      "audio_start": 0.62, "speculative": 1.0}, "seated": 28, "vitals": (14.0, 66.0)}),
+        (21, "ignored", "Oui, je sais.", {"reason": "conversation closed: thanks", "dbfs": -33.9}),
         (4, "reply", "You've been sitting for 50 minutes. Time to stretch?", {"proactive": True}),
     ]
 
@@ -215,12 +225,21 @@ class DemoVoice:
 
     def start(self) -> DemoVoice:
         now = self.clock()
+        question = ""
         for minutes, kind, text, extra in self.SCRIPT:
+            extra = dict(extra)
+            t = now - minutes * 60
+            seated, vitals = extra.pop("seated", None), extra.pop("vitals", None)
             data = {"text": text, **extra}
+            if kind == "heard":
+                question = text
+                data = {"language": "en", "source": "voice", **data}
             if kind == "reply":
                 data = {"language": "en", "latency": {}, "interrupted": False, "proactive": False, "error": None,
                         "hint": "", **data}
-            self._emit(kind, now - minutes * 60, **data)
+                if not data["proactive"]:
+                    data.update(scripted_prompt(question, t, seated or 0, vitals))
+            self._emit(kind, t, **data)
         return self
 
     def close(self) -> None:
@@ -239,7 +258,7 @@ class DemoVoice:
         seq = self._seq
         self._later(0.7, lambda: self._speak(self.answer(text), {
             "endpoint": 0.0, "stt": 0.0, "llm_first_token": 0.24, "first_chunk": 0.38, "tts": 0.13,
-            "audio_start": 0.52}, seq=seq))
+            "audio_start": 0.52}, seq=seq, question=text))
 
     SPOKEN = "What time is it?"               # what the demo "hears" after Talk now
 
@@ -293,7 +312,8 @@ class DemoVoice:
                           (1.2, end), (0.5, heard),
                           (0.7, lambda: self._speak(self.answer(self.SPOKEN), {
                               "endpoint": 0.5, "stt": 0.08, "llm_first_token": 0.22, "first_chunk": 0.35,
-                              "tts": 0.12, "audio_start": 0.61, "speculative": 1.0}, seq=seq))])
+                              "tts": 0.12, "audio_start": 0.61, "speculative": 1.0}, seq=seq,
+                              question=self.SPOKEN))])
 
     def mute(self, muted: bool = True) -> None:
         if muted != self.muted:
@@ -331,19 +351,33 @@ class DemoVoice:
         return ("This is the demo, so I have no language model to think with. Install Ollama and start "
                 "marvin-host run to talk to me for real.")
 
-    def _speak(self, text: str, latency: dict, proactive: bool = False, seq: int | None = None) -> None:
+    def _prompt(self, question: str) -> dict:
+        """What a real assistant would have sent the model: the brain's context and the question."""
+        state = getattr(self.brain, "state", None)
+        try:
+            events = list(getattr(self.brain, "events", ()))
+        except RuntimeError:
+            events = []
+        context = persona.context_block(state, events)
+        return {"context": context, "prompt": persona.user_message(question, language="en", context=context),
+                "model": self.MODEL}
+
+    def _speak(self, text: str, latency: dict, proactive: bool = False, seq: int | None = None,
+               question: str = "") -> None:
         if seq is not None and seq != self._seq:
             return
         self._set("speaking")
         self._saying = text
         seq = self._seq
 
+        what = {} if proactive else self._prompt(question)
+
         def done():
             if seq != self._seq:
                 return
             self._saying = ""
             self._emit("reply", text=text, language="en", latency=latency, interrupted=False, proactive=proactive,
-                       error=None, hint="")
+                       error=None, hint="", **what)
             self._set("listening")
             self._later(3.0, lambda: self._idle(seq))
 
@@ -413,6 +447,72 @@ def _envelope(text: str, seconds: float, hz: int = 20) -> list[float]:
     rnd = random.Random(text)
     return [round(max(0.0, 0.25 + 0.6 * abs(math.sin(i * 1.7)) * rnd.random() - (0.2 if i % 7 == 6 else 0)), 2)
             for i in range(n)]
+
+
+def scripted_prompt(question: str, t: float, seated_min: float, vitals=None) -> dict:
+    """The context and message a scripted answer pretends to have been given, at time ``t``."""
+    st = PresenceState(present=True, seated=seated_min > 0, seated_s=seated_min * 60, distance_m=0.9,
+                       breath_rate=vitals[0] if vitals else None, heart_rate=vitals[1] if vitals else None,
+                       vitals_sensor=True, simulated=True, targets=1)
+    context = persona.context_block(st, now=datetime.fromtimestamp(t))
+    return {"context": context, "prompt": persona.user_message(question, language="en", context=context),
+            "model": DemoVoice.MODEL}
+
+
+# a few past conversations: (question, answer, minutes seated) or ("ignored", text, reason, dbfs)
+PAST_TALK = [
+    ("What's the weather like outside?", "I have no window and no internet, so I honestly can't tell. "
+     "The light on your face suggests daytime.", 20),
+    ("How long have I been sitting?", "About forty minutes. A short walk in ten would be a good idea.", 40),
+    ("Remind me what I was doing before lunch?", "I only know when you sat and stood, not what you did. "
+     "You worked for about two hours before lunch.", 5),
+    ("Tell me something cheerful.", "Your breathing is slow and even. For a desk robot, that counts as good news.",
+     30),
+    ("Am I breathing normally?", "Fourteen breaths a minute, calm and regular. I'm not a doctor, though.", 25),
+    ("ignored", "Thank you.", "known hallucination", -44.0),
+    ("ignored", "", "mostly silence (0.31 of 1.80 s voiced)", -47.5),
+    ("Should I take a break?", "You've been at it for fifty minutes. Yes, stand up and stretch.", 50),
+    ("Thanks for the reminder earlier.", "Any time. That is rather the point of me.", 0),
+]
+
+
+def seed_conversations(store, now: float, days: int = 3, seed: int = 11) -> None:
+    """Writes a few conversations with Marvin on the last ``days`` working days before ``now``'s
+    day (someone was at the desk on those, see ``seed_history``), into ``store`` (History panel).
+    Only ever use it on a throwaway database."""
+    today = local_day(now)
+    workdays = [d for d in (today - timedelta(days=k) for k in range(1, 3 * days + 3)) if d.weekday() < 5][:days]
+    for day in reversed(workdays):
+        rng = random.Random(f"{seed}-{day.isoformat()}")
+        t = _at(day, rng.uniform(8.6, 9.3))
+        n = 0
+
+        def put(kind, ts, text, **data):
+            nonlocal n
+            store.add_conversation({"id": int(ts * 1000) + n, "t": ts, "kind": kind, "text": text, **data})
+            n += 1
+
+        put("note", t, "Voice on: say “Marvin, …”")
+        for item in rng.sample(PAST_TALK, rng.randint(3, 5)):
+            t += rng.uniform(25, 110) * 60
+            if item[0] == "ignored":
+                put("ignored", t, item[1], reason=item[2], dbfs=item[3])
+                continue
+            question, answer, seated = item
+            put("heard", t, question, language="en", source="voice", raw=f"Marvin, {question[0].lower()}{question[1:]}")
+            vitals = (round(rng.gauss(14, 0.8), 1), round(rng.gauss(66, 3), 1)) if seated >= 5 else None
+            lat = {"endpoint": 0.55, "stt": round(rng.uniform(0.08, 0.2), 2),
+                   "llm_first_token": round(rng.uniform(0.18, 0.3), 2), "tts": round(rng.uniform(0.1, 0.16), 2),
+                   "speculative": 1.0}
+            lat["first_chunk"] = round(lat["llm_first_token"] + rng.uniform(0.08, 0.2), 2)
+            lat["audio_start"] = round(lat["stt"] + lat["first_chunk"] + lat["tts"] + 0.02, 2)
+            put("reply", t + 2, answer, language="en", latency=lat,
+                first_word_s=round(lat["endpoint"] + lat["audio_start"], 2), interrupted=False, proactive=False,
+                error=None, hint="", **scripted_prompt(question, t, seated, vitals))
+        if rng.random() < 0.7:
+            t += rng.uniform(20, 60) * 60
+            put("reply", t, "You've been sitting for 50 minutes. Time to stretch?", language="en", latency={},
+                first_word_s=None, interrupted=False, proactive=True, error=None, hint="")
 
 
 # ------------------------------------------------------------------------------ past week

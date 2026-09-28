@@ -72,9 +72,10 @@ def add_cli(subparsers) -> argparse.ArgumentParser:
     return p
 
 
-def demo_voice(brain, robot, folder: Path):
+def demo_voice(brain, robot, folder: Path, store: EventStore | None = None):
     """The demo's voice: the real one if everything it needs is there (it then waits to be turned
-    on), else ``DemoVoice``'s scripted conversation, already on. Settings go to ``folder``."""
+    on), else ``DemoVoice``'s scripted conversation, already on. Settings go to ``folder``, the
+    conversation to ``store``."""
     from ..voice import cli as voice_cli
     from ..voice.control import VoiceController, VoiceUnavailable, preflight
     from .demo import DemoVoice
@@ -85,9 +86,14 @@ def demo_voice(brain, robot, folder: Path):
     except VoiceUnavailable as e:
         ctl = VoiceController(brain, factory=lambda config, settings: DemoVoice(brain, robot.clock),
                               check=None, path=path, clock=robot.clock)
+        if store is not None:
+            ctl.attach_store(store)
         ctl.start(wait=True)
         return ctl, f"scripted voice ({e}; the real one needs it)"
-    return VoiceController(brain, path=path), "the real voice, off until you turn it on"
+    ctl = VoiceController(brain, path=path, clock=robot.clock)
+    if store is not None:
+        ctl.attach_store(store)
+    return ctl, "the real voice, off until you turn it on"
 
 
 def main(args) -> None:
@@ -96,7 +102,7 @@ def main(args) -> None:
     try:
         if args.demo:
             from ..brain import Brain
-            from .demo import DemoRobot, seed_history
+            from .demo import DemoRobot, seed_conversations, seed_history
             tmp = Path(tempfile.mkdtemp(prefix="marvin-demo-"))
             cleanup.append(lambda: shutil.rmtree(tmp, ignore_errors=True))
             brain = Brain()
@@ -105,7 +111,8 @@ def main(args) -> None:
             store = EventStore(tmp / "marvin.db")
             cleanup.insert(0, store.close)
             seed_history(store, robot.clock())
-            voice, what = demo_voice(brain, robot, tmp)
+            seed_conversations(store, robot.clock())
+            voice, what = demo_voice(brain, robot, tmp, store)
             cleanup.insert(0, voice.close)
             server = UIServer(brain, host=args.ui_host, port=args.ui_port, store=store,
                               token=_token(args.ui_token), clock=robot.clock, sink=sink, voice=voice)
@@ -130,10 +137,13 @@ def main(args) -> None:
             brain = Brain()
             sink = UISink().start()
             cleanup.insert(0, sink.stop)
+            store = EventStore()
+            cleanup.append(store.close)
             voice = VoiceController(brain)
+            voice.attach_store(store)                   # the conversation survives a restart
             cleanup.insert(0, voice.close)
-            server = UIServer(brain, host=args.ui_host, port=args.ui_port, token=_token(args.ui_token),
-                              sink=sink, voice=voice).start()
+            server = UIServer(brain, host=args.ui_host, port=args.ui_port, store=store,
+                              token=_token(args.ui_token), sink=sink, voice=voice).start()
             cleanup.insert(0, server.stop)
             if server.settings.get("voice"):
                 voice.start()

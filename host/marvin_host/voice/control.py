@@ -5,11 +5,13 @@ extra, a microphone, Ollama and the model) and says how to fix what is missing, 
 assistant from the owner's settings (voice.json, the same file `marvin-host talk` reads), starts it
 in the background (loading the models takes a few seconds), restarts it when the settings change,
 and stops it. It keeps the recent conversation and passes the assistant's events on to several
-listeners (the app's live stream).
+listeners (the app's live stream). With a store (`attach_store`, the app's SQLite file), every
+conversation entry is kept there too, and the recent ones come back after a restart.
 
     ctl = VoiceController(brain)                  # nothing starts yet
     ctl.add_listener(lambda kind, payload: ...)   # "voice" (state), "transcript" (one entry) and
                                                   # the live signals in LIVE_KINDS
+    ctl.attach_store(store)                       # optional: keep the conversation (ui/store.py)
     ctl.start()                                   # background; ctl.snapshot()["state"] says how it goes
     ctl.ask("Quelle heure est-il ?")
     ctl.stop()
@@ -29,6 +31,7 @@ import sys
 import threading
 import time
 import urllib.error
+from datetime import datetime, time as dtime
 import urllib.request
 from collections import deque
 from pathlib import Path
@@ -238,6 +241,45 @@ class VoiceController:
         self._op = threading.Lock()             # one start / stop / restart at a time
         self._thread: threading.Thread | None = None
         self._closed = False
+        self.store = None
+
+    # ------------------------------------------------------------ history
+
+    def attach_store(self, store, limit: int | None = None) -> None:
+        """Keeps every conversation entry in `store` (an `EventStore`) from now on, and brings back
+        today's last entries (at most `limit`, default: the history size) so the conversation
+        survives a restart. Entries already in memory are saved too."""
+        if self.store is store:
+            return
+        limit = self.transcript.maxlen if limit is None else limit
+        now = self.clock()
+        midnight = datetime.combine(datetime.fromtimestamp(now).date(), dtime()).timestamp()
+        try:
+            for e in list(self.transcript):
+                store.add_conversation(e)
+            past = store.conversation(midnight, now + 86400, limit)
+            top = store.max_conversation_id()
+        except Exception:                       # noqa: BLE001 - the voice works without its history
+            log.exception("could not read the conversation history")
+            return
+        with self._lock:
+            known = {e["id"] for e in self.transcript}
+            merged = sorted([e for e in past if e["id"] not in known] + list(self.transcript), key=lambda e: e["id"])
+            self.transcript.clear()
+            self.transcript.extend(merged[-self.transcript.maxlen:])
+            # ids keep growing: above everything already stored, whatever the clock says
+            nxt = next(self._ids)
+            self._ids = itertools.count(max(nxt, top + 1))
+            self.store = store
+
+    def _keep(self, e: dict) -> None:
+        store = self.store
+        if store is None:
+            return
+        try:
+            store.add_conversation(e)
+        except Exception:                       # noqa: BLE001
+            log.exception("could not save a conversation entry")
 
     # ------------------------------------------------------------ settings
 
@@ -465,6 +507,7 @@ class VoiceController:
             "fix": self.fix,
             "model": s.get("llm_model") or voice_cli_default("llm_model"),
             "wake": bool(s.get("wake", True)),
+            "chime": bool(s.get("chime", True)),    # the assistant's own chime when it starts listening
             # seconds left to speak without the name (None outside a listening window)
             "listen_s": (va.listen_remaining() if (va is not None and self.state == ON
                                                     and hasattr(va, "listen_remaining")) else None),
@@ -478,8 +521,10 @@ class VoiceController:
             self._publish("voice", self.snapshot())
 
     def _entry(self, kind: str, t: float | None = None, **data) -> dict:
-        e = {"id": next(self._ids), "t": t or self.clock(), "kind": kind, **data}
-        self.transcript.append(e)
+        with self._lock:
+            e = {"id": next(self._ids), "t": t or self.clock(), "kind": kind, **data}
+            self.transcript.append(e)
+        self._keep(e)
         self._publish("transcript", e)
         return e
 
@@ -493,8 +538,9 @@ class VoiceController:
             self.muted = data["muted"]
             self._publish("voice", self.snapshot())
         elif kind == "heard":
+            extra = {"raw": data["raw"]} if data.get("raw") else {}
             self._entry("heard", data["t"], text=data["text"], language=data.get("language"),
-                        source=data.get("source", "voice"))
+                        source=data.get("source", "voice"), **extra)
         elif kind == "reply":
             lat = {k: round(float(v), 3) for k, v in (data.get("latency") or {}).items()}
             first = None
@@ -503,9 +549,12 @@ class VoiceController:
             self._entry("reply", data["t"], text=data["text"], language=data.get("language"),
                         latency=lat, first_word_s=first, interrupted=bool(data.get("interrupted")),
                         proactive=bool(data.get("proactive")), error=data.get("error"),
-                        hint=data.get("hint", ""))
+                        hint=data.get("hint", ""),
+                        # what the model was given (the app's "why did Marvin say that")
+                        **{k: data[k] for k in ("context", "prompt", "model") if data.get(k)})
         elif kind == "ignored":
-            self._entry("ignored", data["t"], text=data.get("text", ""), reason=data.get("reason", ""))
+            extra = {"dbfs": data["dbfs"]} if data.get("dbfs") is not None else {}
+            self._entry("ignored", data["t"], text=data.get("text", ""), reason=data.get("reason", ""), **extra)
         elif kind in LIVE_KINDS:
             self._publish(kind, data)           # live only: not kept in the transcript
 

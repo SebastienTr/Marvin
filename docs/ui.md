@@ -18,7 +18,7 @@ the voice turning on and off, and warnings.
 </p>
 
 <p align="center">
-  <img src="images/ui_conversation.png" alt="The Talk panel on a phone: the conversation, Marvin writing his answer word by word as he says it, the listening strip showing his voice, and the Talk now, Mute and Stop buttons above a text box" width="300">
+  <img src="images/ui_conversation.png" alt="The Talk panel on a phone: Marvin's small live eyes next to the title, a Simulated sensors badge in the header, the conversation with a sentence Marvin did not answer and why, Marvin writing his answer word by word as he says it, the listening strip showing his voice, the Talk now, Mute and Stop buttons, and a line with what Marvin knows right now above the text box" width="300">
 </p>
 
 <p align="center">
@@ -37,8 +37,9 @@ The demo keeps nothing: its history lives in a temporary folder that is deleted 
 
 The demo also plays the robot and the vital signs radar for the Robot panel, and, when there is
 no language model to talk to, a scripted conversation (typed questions get canned answers from
-the simulated brain). With Ollama and the `voice` extra installed, the demo offers the real voice
-instead, off until you turn it on.
+the simulated brain), with a few past days of conversation to browse and search in History.
+With Ollama and the `voice` extra installed, the demo offers the real voice instead, off until you
+turn it on.
 
 With the real robot, the app starts with `marvin-host run` (turn it off with `--no-ui`).
 `marvin-host ui` runs the brain and the app without the Rerun viewer, which is lighter for
@@ -60,10 +61,14 @@ beside the face and the day, so the Talk tab disappears.
 | Break | How long you have been sitting, against the break reminder (50 minutes by default). The bar turns orange when it is time to stand up. Standing up resets it. |
 | Today | A timeline of the day: when you were around (dark), when you were seated (light), and break reminders (orange dots). Below it: time seated, sitting sessions, breaks, longest streak, when you arrived and last left, and your average breathing and heart rate. |
 | Recent | What happened, in plain words: you came in, sat down, stood up after 47 minutes, break reminders. |
+| Header | The connection ("Live", "Reconnecting", "Robot offline") and, when the robot says its sensor data is simulated (a D1 mini, `marvin-host sim`, the demo), a calm **Simulated sensors** badge: hover, focus or tap it to read that the person, the room and the vital signs come from a simulated scene, not from real sensors. |
 | **Talk** | |
-| State | A small shape tells what Marvin is doing: still (voice off), breathing slowly (asleep, waiting for "Marvin"), an orange ring that swells with your voice (listening), a turning arc (thinking), bars that move with Marvin's voice (speaking). With reduced motion, the shapes stay still. |
+| Marvin's eyes | A small live rendering of Marvin's face, drawn in the browser with the same shapes and colours as the robot's screen ([`face.py`](../host/marvin_host/face.py)), at the screen's refresh rate: sleepy while the voice is off, calm and blinking while it waits, attentive and a little wider with your voice while it listens (with a thin orange ring), glancing up and aside while it thinks, moving with its own voice while it speaks. With reduced motion, the eyes only change expression. |
 | Listening strip | Above the buttons, a wave of what the microphone hears (orange while Marvin listens, grey while it waits for its name) or of Marvin's own voice while he speaks, with a word on what is going on: "Say “Marvin, …”", "Listening…", "Understanding…", "Thinking…", "Stopped listening" when the listening window closes. |
-| Conversation | Live: while you speak, your bubble forms with a small wave and the words understood so far (dashed until it knows you talk to Marvin), then shimmers while the words are understood; Marvin's bubble shows three dots while he thinks, then writes itself word by word as he says it. What Marvin heard (typed questions say so), what it answered, what it said on its own (a break reminder, dashed), and, discreetly, what it heard but did not answer and why ("known hallucination", "own voice", "conversation closed"). Tap the time under an answer, like `1.3 s`, to see where the time went: end of speech, recognition, model, synthesis. |
+| Conversation | Live: while you speak, your bubble forms with a small wave and the words understood so far (dashed until it knows you talk to Marvin), then shimmers while the words are understood; Marvin's bubble shows three dots while he thinks, then writes itself word by word as he says it. What Marvin heard (typed questions say so), what it answered, what it said on its own (a break reminder, dashed), and, discreetly, what it heard but did not answer. Consecutive ignored sounds and sentences fold into one line ("3 sounds ignored", "2 sentences not answered", which grows as more come); open it to see each one, why it was not answered ("known hallucination", "own voice", "too quiet", "conversation closed") and how loud it was (dBFS). The conversation is kept with the history: it is still there after a restart. |
+| Why Marvin said that | Tap an answer, or the time under it (like `1.2 s`), to open its inspector: what Marvin heard (and the raw transcript when it differs, e.g. with "Marvin," in front), where the time went as a small bar (end of speech, recognition, model, first sentence, synthesis, with the numbers), what Marvin knew when it answered (the facts of the context block sent with the question: the time, presence, how long you have been seated, breathing and heart rate, simulated sensors), the model and the language, and the exact message sent to the model. |
+| Now | One discreet line above the text box: what Marvin knows right now (you are here or seated for how long, how far, breathing and heart rate when the radar reads them, "simulated" when it is). On a narrow screen the least useful parts go first. Tap it to open the Robot panel. |
+| Sounds | Short soft notes played by the browser (synthesised, no audio files): two rising notes when listening opens, two falling ones when it closes without a question, a low blip when Marvin did not catch what you said while listening, a faint tick when an answer starts. Marvin already chimes on the computer's speaker when it starts listening, so the browser's "listening" note only plays when this page pressed **Talk now** (you hear at once that it worked), or when the voice's own chime is turned off (`"chime": false` in `voice.json`); the follow-up window after each answer makes no sound. Browsers allow sound only after a gesture: nothing plays before your first click or key press on the page. On by default; **Settings** turns them off. |
 | Controls | **Voice** on and off without restarting `marvin-host` (it is remembered: the voice starts with `marvin-host` next time). **Talk now**: a listening window without saying "Marvin", as if you had just said the name: whatever you say next is the question, even a single word. The button turns orange while Marvin listens, a thin line under the wave shows the time left (it waits while you talk), and pressing it again stops listening. **Mute**: the microphone is ignored (reminders and typed questions still work). **Stop**: Marvin stops talking. The text box asks a question in writing; Marvin answers aloud and in the conversation. |
 | Problems | If the voice cannot start, the panel says why and how to fix it: the `voice` extra is not installed (`pip install -e ".[voice]"`), no microphone, Ollama not running (`ollama serve`), the model not pulled (`ollama pull qwen3:4b-instruct`). **Try again** after fixing it. |
 | **Robot** | |
@@ -75,8 +80,9 @@ beside the face and the day, so the Talk tab disappears.
 | **History** | |
 | Day | Any day's timeline and numbers; the arrows go back in time. |
 | Last 7 days | Time seated per day. Tap a day to see its timeline. |
+| Conversations | The conversation of the day shown above, with the same bubbles as Talk (read-only; answers still open their inspector), and a search over everything said on any day: each matching line with its date and time; tap one to jump to that day and to the line. |
 | **Settings** | |
-| Breaks and clock | Break reminder interval, quiet hours, 12- or 24-hour clock. |
+| Breaks, clock and sounds | Break reminder interval, quiet hours, 12- or 24-hour clock, and the app's sounds (applied at once). |
 | Voice | Language model (the models installed in Ollama), speech recognition (MLX or faster-whisper, and the Whisper model), speech (say, Piper, espeak-ng, and the voice: installed Piper voices, a few to download, and the macOS voices), language (auto, French, English), waiting for "Marvin", the follow-up window, and spoken break reminders. Saved to `voice.json`, the file `marvin-host talk` reads too; **Apply** restarts the voice with them. See [voice.md](voice.md). |
 
 A few definitions:
@@ -154,9 +160,10 @@ home devices. Do not expose the port to the internet.
   `~/.local/share/marvin/marvin.db` (or `$XDG_DATA_HOME/marvin/`, or the folder in
   `MARVIN_DATA_DIR` if you set it). The settings dialog shows where.
 - It holds Marvin's events (arrived, sat down, stood up...), one summary per minute (whether
-  someone was there, and the average breathing and heart rate when they were measured), and
-  your settings. No images, no sound, no raw radar data. The conversation and the log are kept
-  in memory only, for as long as `marvin-host` runs.
+  someone was there, and the average breathing and heart rate when they were measured), the
+  conversation with Marvin (what it heard, what it answered, with the context it was given and
+  the timings, what it did not answer and why), and your settings. No images, no sound, no raw
+  radar data. The log is kept in memory only, for as long as `marvin-host` runs.
 - Nothing is sent anywhere. The app loads nothing from the internet (no fonts, no scripts, no
   analytics) and works without an internet connection.
 - To erase the history, stop `marvin-host` and delete the folder:
@@ -173,9 +180,9 @@ imaging library.
 |---|---|
 | `server.py` | `UIServer(brain, host, port, store, token, sink, voice)`: HTTP API, live streams, face, settings, log, voice control |
 | `sink.py` | `UISink`: a receiver sink that keeps the latest sensor data and counters (O(1) per frame); devices, rates, link state, sensor mini-views |
-| `store.py` | `EventStore`: the SQLite file (events, per-minute samples, settings) |
+| `store.py` | `EventStore`: the SQLite file (events, per-minute samples, the conversation, settings); older files are upgraded in place |
 | `stats.py` | Pure functions: intervals and daily statistics from events, the sentences |
-| `demo.py` | The simulated robot, devices, past week and scripted voice for `--demo` |
+| `demo.py` | The simulated robot, devices, past week, past conversations and scripted voice for `--demo` |
 | `static/` | The page |
 
 ```python
@@ -190,17 +197,19 @@ server.stop()
 | Endpoint | |
 |---|---|
 | `GET /` | the app |
-| `GET /api/state` | `{state, today, settings}`: presence, status sentence, break progress, today's stats |
+| `GET /api/state` | `{state, today, settings}`: presence, status sentence, break progress (`state.simulated`: the robot's sensor data is simulated), today's stats |
 | `GET /api/day?date=YYYY-MM-DD` | one day's stats and timeline (default: today) |
 | `GET /api/history?days=7` | time seated per day, oldest first |
 | `GET /api/events?since=ID&limit=50&quiet=1` | recent events, newest first, with a sentence each (`quiet` hides vital-sign events) |
 | `GET /api/stream` | Server-Sent Events: `state` (2 per second), `event` (as they happen), `today`, `settings`, `voice` (state and status), `transcript` (one conversation entry), `log` (one log line), `devices` (once a second); while the voice runs, the live signals `level` (microphone loudness, ~16 per second), `utterance` (`start`, `end`, `done`), `partial` (the words understood so far) and `say` (a piece of the reply with its duration and loudness envelope) |
 | `GET /face.png` | the face right now (240 × 280 PNG); `503` if it cannot be drawn |
-| `GET`, `POST /api/settings` | settings; POST a JSON object with the fields to change |
+| `GET`, `POST /api/settings` | settings (`break_interval_min`, `quiet_hours`, `clock`, `voice`, `ui_sounds`); POST a JSON object with the fields to change |
 | `GET /api/robot` | `{devices, scene}`: the devices, and the sensor mini-views (`lidar.ranges_cm`: 360 ranges, one per degree clockwise from the front; `targets` and `trail` in cm, right and forward; `vitals` with `rates` and `waves`) |
 | `GET /api/robot/stream` | Server-Sent Events for the Robot panel, opened only while it is on screen: `scene` 4 times a second (vital sign history once a second), `devices` once a second |
 | `GET /api/log?source=brain,device&limit=200&since=ID` | the log, newest first; sources `brain`, `device`, `host`, `voice` |
-| `GET /api/voice` | `{voice, settings, transcript}`: state (`off`, `starting`, `on`, `stopping`, `error` with `error` and `fix`, or `unavailable`), status, muted; the voice settings; the conversation |
+| `GET /api/voice` | `{voice, settings, transcript}`: state (`off`, `starting`, `on`, `stopping`, `error` with `error` and `fix`, or `unavailable`), status, muted; the voice settings; the conversation (today's last 200 entries: `heard` with `raw`, `reply` with `latency`, `context`, `prompt` and `model`, `ignored` with `reason` and `dbfs`, `note`) |
+| `GET /api/conversation?day=YYYY-MM-DD` | `{day, entries}`: that day's conversation, oldest first (default: today) |
+| `GET /api/conversation?q=text` | `{q, results}`: what was heard or answered containing `text` (case-insensitive, plain text), newest first, at most 100 (`limit`) |
 | `GET /api/voice/options` | what the voice settings offer: Ollama's models (or why Ollama cannot be reached), speech recognition backends and models, speech backends (installed or not), Piper and macOS voices |
 | `POST /api/voice/on`, `/off` | start or stop the voice (in the background: follow `voice` on the stream) |
 | `POST /api/voice/ask` | `{"text": "..."}`: a typed question (at most 500 characters), answered aloud; `409` while the voice is off |
@@ -210,4 +219,4 @@ server.stop()
 
 Times are Unix seconds from the computer's clock; days are local calendar days. The break
 reminder setting also sets the brain's `still_long_s`, so the robot's own reminder follows it.
-Tests: `pytest tests/test_ui.py tests/test_ui_control.py`.
+Tests: `pytest tests/test_ui.py tests/test_ui_control.py tests/test_ui_conversation.py`.
