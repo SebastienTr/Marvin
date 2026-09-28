@@ -585,6 +585,17 @@ class UIServer:
         self._acc = [0, 0.0, 0.0, [], []]
 
 
+def _own_names() -> set[str]:
+    """This machine's names a browser may use: the full hostname, the short one, <short>.local.
+
+    Only whole names: comparing the first label alone would accept <short>.attacker.example,
+    which a rebinding DNS can point at 127.0.0.1.
+    """
+    full = socket.gethostname().lower().rstrip(".")
+    short = full.split(".")[0]
+    return {full, short, short + ".local"}
+
+
 def _is_ip(host: str) -> bool:
     try:
         ipaddress.ip_address(host.strip("[]"))
@@ -644,8 +655,7 @@ class _Handler(BaseHTTPRequestHandler):
         name = host.rsplit(":", 1)[0] if not host.startswith("[") else host.split("]")[0] + "]"
         if _is_ip(name) or name == "localhost" or name.endswith(".localhost"):
             return True
-        me = socket.gethostname().lower().split(".")[0]
-        return name.split(".")[0] == me
+        return name.rstrip(".") in _own_names()
 
     def _presented_token(self, query: dict) -> str | None:
         if "token" in query:

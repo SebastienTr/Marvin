@@ -15,9 +15,8 @@ import marvin.host.application.system.port.out.HostLogListener;
 import marvin.host.domain.shared.Clocks;
 import marvin.host.domain.system.LogEntry;
 
-/** The Log panel's lines, in memory: the last {@link #SIZE}. Thread-safe. */
+/** The Log panel's lines, in memory: the last {@link HostLog#CAPACITY}. Thread-safe. */
 public final class HostLogService implements HostLog {
-    public static final int SIZE = 500;
 
     private final Clocks clocks;
     private final Deque<LogEntry> entries = new ArrayDeque<>();
@@ -43,7 +42,7 @@ public final class HostLogService implements HostLog {
         synchronized (entries) {
             e = new LogEntry(++nextId, ts, source, level, text, extra);
             entries.addLast(e);
-            while (entries.size() > SIZE) {
+            while (entries.size() > CAPACITY) {
                 entries.removeFirst();
             }
         }

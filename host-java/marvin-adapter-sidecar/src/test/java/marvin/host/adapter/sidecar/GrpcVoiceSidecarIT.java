@@ -47,7 +47,7 @@ class GrpcVoiceSidecarIT {
 
     GrpcVoiceSidecar start(List<String> args) throws InterruptedException {
         voice = new GrpcVoiceSidecar(python(), args);
-        voice.setRobotAudio(new GrpcVoiceSidecar.RobotAudio() {
+        voice.setSpeaker(new marvin.host.application.conversation.port.out.VoiceRobotAudio.RobotSpeaker() {
             @Override
             public void speaker(String device, int stream, long sampleIndex, short[] pcm) {
                 robotOut.add("speaker " + device + " " + pcm.length);

@@ -59,11 +59,28 @@ public final class AccessFilter implements Filter {
     private enum Access { OK, NO_KEY, BAD_HOST }
 
     private final AccessKey key;
-    private final String hostName;
+    private final Set<String> ownNames;
 
     public AccessFilter(AccessKey key, String hostName) {
         this.key = key;
-        this.hostName = hostName.toLowerCase(Locale.ROOT).split("\\.")[0];
+        this.ownNames = ownNames(hostName);
+    }
+
+    /**
+     * The names a browser may use for this machine: the full hostname, the short one and
+     * {@code <short>.local} (mDNS). Whole names only: comparing the first label would accept
+     * {@code <short>.attacker.example}, which a rebinding DNS can point at 127.0.0.1.
+     */
+    static Set<String> ownNames(String hostName) {
+        String full = stripDot(hostName.strip().toLowerCase(Locale.ROOT));
+        String shortName = full.split("\\.", -1)[0];
+        return java.util.stream.Stream.of(full, shortName, shortName + ".local")
+                .filter(n -> !n.isEmpty())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private static String stripDot(String name) {
+        return name.endsWith(".") ? name.substring(0, name.length() - 1) : name;
     }
 
     @Override
@@ -184,7 +201,7 @@ public final class AccessFilter implements Filter {
         if (literal(name) != null || name.equals("localhost") || name.endsWith(".localhost")) {
             return true;
         }
-        return name.split("\\.", -1)[0].equals(hostName);
+        return ownNames.contains(stripDot(name));
     }
 
     /** An IP literal (brackets allowed), never a DNS lookup; {@code null} if it is not one. */

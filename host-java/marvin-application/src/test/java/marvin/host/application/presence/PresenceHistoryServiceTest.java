@@ -44,7 +44,7 @@ class PresenceHistoryServiceTest {
         }
     }
 
-    static final class MemoryStore implements PresenceHistoryStore {
+    static class MemoryStore implements PresenceHistoryStore {
         final List<StoredEvent> events = new ArrayList<>();
         final List<Sample> samples = new ArrayList<>();
 
@@ -101,7 +101,7 @@ class PresenceHistoryServiceTest {
         Presence presence = new Presence();
         List<String> heard = new ArrayList<>();
         PresenceHistoryService h = new PresenceHistoryService(presence, store, List.of(e -> heard.add(e.kind())), clocks,
-                new LocalDays(ZoneId.of("UTC")), 15);
+                new LocalDays(ZoneId.of("UTC")), 15, HistoryWriter.inline());
         h.start();
         assertThat(h.online()).isFalse();
         assertThat(h.everOnline()).isFalse();
@@ -130,5 +130,65 @@ class PresenceHistoryServiceTest {
         assertThat(first.breath()).isEqualTo(14.0);
         assertThat(h.recent(10, 0, false)).hasSize(5);
         assertThat(h.today().date().toString()).isEqualTo(new LocalDays(ZoneId.of("UTC")).dayOf(clocks.wall).toString());
+    }
+
+    /** A store that fails (the database is down) until {@code down} is cleared. */
+    static final class FlakyStore extends MemoryStore {
+        volatile boolean down = true;
+        volatile int attempts;
+
+        @Override
+        public synchronized StoredEvent add(StoredEvent e, Long deviceTUs) {
+            attempts++;
+            if (down) {
+                throw new IllegalStateException("Connection to 127.0.0.1:5433 refused");
+            }
+            return super.add(e, deviceTUs);
+        }
+
+        @Override
+        public synchronized void addSample(Sample s) {
+            attempts++;
+            if (down) {
+                throw new IllegalStateException("Connection to 127.0.0.1:5433 refused");
+            }
+            super.addSample(s);
+        }
+    }
+
+    @Test
+    void aStoreOutageNeitherHoldsUpTheBrainNorLosesEventsOrMixesMinutes() throws InterruptedException {
+        FakeClocks clocks = new FakeClocks();
+        FlakyStore store = new FlakyStore();
+        Presence presence = new Presence();
+        List<Long> ids = new java.util.concurrent.CopyOnWriteArrayList<>();
+        HistoryWriter writer = HistoryWriter.start();
+        PresenceHistoryService h = new PresenceHistoryService(presence, store, List.of(e -> ids.add(e.id())), clocks,
+                new LocalDays(ZoneId.of("UTC")), 15, writer);
+        h.start();
+        long t0 = System.nanoTime();
+        for (int i = 1; i <= 150; i++) {                    // two and a half minutes of frames, the store down
+            presence.state = seated(i * 1_000_000L, 14.0, 66.0);
+            clocks.advance(1);
+            h.sample();
+            if (i % 30 == 0) {
+                h.onEvent(new PresenceEvent(EventKind.STOOD_UP, i * 1_000_000L, "up", Map.of()));
+            }
+        }
+        assertThat((System.nanoTime() - t0) / 1e9).as("the caller never waits for the store").isLessThan(1.0);
+        Thread.sleep(700);
+        assertThat(store.attempts).as("retried").isGreaterThan(1);
+        assertThat(store.events).isEmpty();
+        assertThat(h.pendingWrites()).isGreaterThan(5);
+
+        store.down = false;                                 // the database is back
+        assertThat(writer.flush(10_000)).isTrue();
+        assertThat(store.events).extracting(StoredEvent::kind).containsExactly("host_started", "robot_online",
+                "stood_up", "stood_up", "stood_up", "stood_up", "stood_up");
+        assertThat(ids).hasSize(7).isSorted();
+        // one sample per minute, each with its own minute (not one averaged over the outage)
+        assertThat(store.samples).extracting(Sample::ts).doesNotHaveDuplicates().isSorted().hasSize(2);
+        assertThat(store.samples.get(1).ts() - store.samples.get(0).ts()).isEqualTo(60.0);
+        h.stop();
     }
 }

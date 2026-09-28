@@ -4,6 +4,7 @@ package marvin.host.app;
 import java.nio.file.Path;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 
 import org.slf4j.Logger;
@@ -28,6 +29,7 @@ import marvin.host.adapter.web.Views;
 import marvin.host.application.conversation.ConversationService;
 import marvin.host.application.conversation.port.out.ConversationStore;
 import marvin.host.application.face.FaceService;
+import marvin.host.application.presence.HistoryWriter;
 import marvin.host.application.presence.PresenceHistoryService;
 import marvin.host.application.presence.port.out.PresenceHistoryStore;
 import marvin.host.application.robot.port.in.RobotLinkQuery;
@@ -37,9 +39,11 @@ import marvin.host.application.system.HostLogService;
 import marvin.host.application.system.port.in.HostLog;
 import marvin.host.domain.settings.AppSettings;
 import marvin.host.domain.shared.Clocks;
+import marvin.host.domain.system.ComponentHealth;
 import marvin.host.domain.shared.LocalDays;
 import marvin.host.application.presence.PresenceService;
 import marvin.host.application.robot.FaceLinkService;
+import marvin.host.application.robot.RobotAudioService;
 import marvin.host.application.robot.RobotLinkService;
 import marvin.host.application.system.HealthService;
 import marvin.host.application.system.port.in.ReportHealth;
@@ -88,7 +92,7 @@ public class HostWiring {
                                                          Clocks clocks, LocalDays days, PresenceEventBus bus,
                                                          @Value("${marvin.history.offline-after-s:15}") double offlineAfterS) {
         PresenceHistoryService history = new PresenceHistoryService(presence, store,
-                List.of(hub, new HistoryLog(hostLog)), clocks, days, offlineAfterS);
+                List.of(hub, new HistoryLog(hostLog)), clocks, days, offlineAfterS, HistoryWriter.start());
         bus.subscribe(history::onEvent);
         return history;
     }
@@ -160,7 +164,7 @@ public class HostWiring {
     @Bean
     public RobotLinkService robotLinkService(Extrinsics extrinsics, SystemHostClock clock, PresenceService presence,
                                              HostLog hostLog, EventHub hub, ObjectProvider<RobotLinkQuery> query,
-                                             ObjectProvider<RobotAudioRelay> audio) {
+                                             ObjectProvider<RobotAudioService> audio) {
         DeviceNotices notices = new DeviceNotices(hostLog, hub, () -> Views.devicesOf(query.getObject()));
         return new RobotLinkService(extrinsics, clock, List.of(new PresenceFeed(presence)),
                 List.of(HostWiring::logNotice, notices, n -> audio.getObject().onNotice(n)));
@@ -198,5 +202,29 @@ public class HostWiring {
             case DeviceMonitor.Notice.Reconnected r -> log.info("{} is back online", r.device().name());
             case DeviceMonitor.Notice.Log l -> log.info("[{}] {}", l.device(), l.text());
         }
+    }
+
+    // ------------------------------------------------------------------ health
+
+    /**
+     * Each component probe as an Actuator health indicator, under {@code /actuator/health/marvin/<name>}, so
+     * health groups can include them. A disabled component is {@code UNKNOWN}: it does not make the host down.
+     */
+    @Bean
+    public org.springframework.boot.health.contributor.CompositeHealthContributor marvinHealthContributor(
+            List<ComponentProbe> probes) {
+        Map<String, org.springframework.boot.health.contributor.HealthIndicator> indicators = new java.util.LinkedHashMap<>();
+        for (ComponentProbe p : probes) {
+            indicators.put(p.name(), () -> {
+                ComponentHealth h = p.check();
+                var b = switch (h.state()) {
+                    case UP -> org.springframework.boot.health.contributor.Health.up();
+                    case DOWN -> org.springframework.boot.health.contributor.Health.down();
+                    case DISABLED -> org.springframework.boot.health.contributor.Health.unknown();
+                };
+                return b.withDetail("detail", h.detail()).build();
+            });
+        }
+        return org.springframework.boot.health.contributor.CompositeHealthContributor.fromMap(indicators);
     }
 }

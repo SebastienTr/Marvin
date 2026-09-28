@@ -7,6 +7,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import socket
 import stat
 import struct
 import time
@@ -329,6 +330,12 @@ def test_access_key(app, monkeypatch):
     # from this computer: no key needed, but the Host must be ours (DNS rebinding)
     assert get_json(app, "/api/state")[0] == 200
     r, _ = request(app, "GET", "/api/state", headers={"Host": "evil.example"})
+    assert r.status == 403
+    short = socket.gethostname().lower().split(".")[0]
+    for name in (short, short + ".local", socket.gethostname().lower()):
+        assert request(app, "GET", "/api/state", headers={"Host": f"{name}:8765"})[0].status == 200
+    # a rebinding domain that starts with this machine's name is not this machine
+    r, _ = request(app, "GET", "/api/state", headers={"Host": f"{short}.evil.example:8765"})
     assert r.status == 403
 
     # from another device

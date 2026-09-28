@@ -280,6 +280,8 @@ def main(argv=None) -> None:
     calibration.add_cli(sub)               # marvin-host calibrate
 
     args = ap.parse_args(argv)
+    from . import parent
+    parent.watch()                         # started by the Java host: exit with it
     _setup_logging(args)
     cal = calibration.load()               # ~/.config/marvin/calibration.json: lidar yaw, radar signs
 

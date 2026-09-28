@@ -233,7 +233,7 @@ class VoiceServiceTest {
         waitFor(() -> v.snapshot().state().equals("error"));
         assertThat(v.snapshot().error()).startsWith("Ollama is not running at http://localhost:11434");
         assertThat(v.snapshot().fix()).contains("ollama serve");
-        assertThat(sidecar.opened).isEmpty();
+        assertThat(sidecar.open).as("the session is closed again").isFalse();
         v.stop();                                           // stop clears the error
         assertThat(v.snapshot().state()).isEqualTo("off");
         assertThat(v.snapshot().error()).isEmpty();
@@ -268,6 +268,7 @@ class VoiceServiceTest {
         v.stop();
         waitFor(() -> v.snapshot().state().equals("off"));
         assertThat(sidecar.open).isFalse();
+        waitFor(() -> kinds("note").size() == 2);
         assertThat(kinds("note")).extracting(e -> e.get("text")).containsExactly("Voice on: say “Marvin, …”", "Voice off");
     }
 
@@ -279,6 +280,33 @@ class VoiceServiceTest {
         waitFor(() -> v.snapshot().state().equals("error"));
         assertThat(v.snapshot().error()).isEqualTo("No microphone (none)");
         assertThat(v.snapshot().fix()).isEqualTo("Plug in a microphone.");
+    }
+
+    @Test
+    void theAudioProblemComesBeforeTheModelServer() throws InterruptedException {
+        sidecar.onOpen = new VoiceSidecar.Status("error", false, "No microphone (PortAudio library not found)",
+                "sudo apt install libportaudio2", "", "", null);
+        FakeModel model = FakeModel.of();
+        model.down = true;
+        VoiceService v = service(model);
+        v.start();
+        waitFor(() -> v.snapshot().state().equals("error"));
+        assertThat(v.snapshot().error()).isEqualTo("No microphone (PortAudio library not found)");
+        assertThat(v.snapshot().fix()).isEqualTo("sudo apt install libportaudio2");
+        assertThat(sidecar.open).isFalse();
+    }
+
+    @Test
+    void listenSecondsCountDownFromTheLastStatus() throws InterruptedException {
+        VoiceService v = started(FakeModel.of("w", "w"));
+        assertThat(v.snapshot().listenS()).isNull();
+        sidecar.signals.signal(new VoiceSidecar.Status("listening", false, "", "", "fake", "fake", 8.0));
+        clock.mono += 3.0;
+        assertThat(v.snapshot().listenS()).isCloseTo(5.0, org.assertj.core.data.Offset.offset(0.01));
+        clock.mono += 10.0;
+        assertThat(v.snapshot().listenS()).isEqualTo(0.0);
+        sidecar.signals.signal(new VoiceSidecar.Status("idle", false, "", "", "fake", "fake", null));
+        assertThat(v.snapshot().listenS()).isNull();
     }
 
     // ------------------------------------------------------------------ turns
@@ -373,6 +401,50 @@ class VoiceServiceTest {
         Thread.sleep((long) (VoiceService.SPOKEN_GRACE_S * 1000) + 600);
         assertThat(kinds("reply")).hasSize(1);
         assertThat(kinds("heard")).hasSize(2);
+    }
+
+    @Test
+    void aQuestionThatInterruptsAnAnswerIsAskedWithThatAnswerInItsHistory() throws InterruptedException {
+        FakeModel model = FakeModel.of("w", "w", "Il fait beau à Paris. Vingt degrés.", "À Londres, il pleut.");
+        started(model);
+        waitFor(() -> model.calls.size() == 2);
+        sidecar.autoSpeak = false;
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Quel temps à Paris ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> !sidecar.sent(VoiceSidecar.ReplyEnd.class).isEmpty());
+        long rid = sidecar.sent(VoiceSidecar.ReplyStart.class).get(0).replyId();
+        // as the sidecar does: the new question is heard before the answer it cuts short has ended
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Et à Londres ?", "", "fr", "voice", Map.of(), 0));
+        Thread.sleep(200);
+        assertThat(model.calls).as("the second question waits for the first turn").hasSize(3);
+        sidecar.signals.signal(new VoiceSidecar.Interrupted(rid, "barge-in", 1));
+        sidecar.signals.signal(new VoiceSidecar.ReplySpoken(rid, 1, "Il fait beau à Paris.", true, Map.of("total", 0.9)));
+        waitFor(() -> model.calls.size() == 4);
+        List<marvin.host.domain.conversation.ChatMessage> second = model.calls.get(3);
+        assertThat(second).hasSize(4);
+        assertThat(second.get(1).content()).contains("Quel temps à Paris ?");
+        assertThat(second.get(2).content()).startsWith("Il fait beau à Paris.").endsWith(" …");
+        assertThat(second.get(3).content()).contains("Et à Londres ?");
+        assertThat(sidecar.sent(VoiceSidecar.ReplyStart.class)).hasSize(2);
+    }
+
+    @Test
+    void aQuestionDroppedWhileWaitingIsNotAnswered() throws InterruptedException {
+        FakeModel model = FakeModel.of("w", "w", "Première.", "Troisième.");
+        started(model);
+        waitFor(() -> model.calls.size() == 2);
+        sidecar.autoSpeak = false;
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Un ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> !sidecar.sent(VoiceSidecar.ReplyEnd.class).isEmpty());
+        long rid = sidecar.sent(VoiceSidecar.ReplyStart.class).get(0).replyId();
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Deux ?", "", "fr", "voice", Map.of(), 0));
+        sidecar.signals.signal(new VoiceSidecar.Heard(3, "Trois ?", "", "fr", "voice", Map.of(), 0));
+        sidecar.signals.signal(new VoiceSidecar.Interrupted(0, "barge-in", 2));      // the voice dropped question 2
+        sidecar.autoSpeak = true;
+        sidecar.signals.signal(new VoiceSidecar.ReplySpoken(rid, 1, "Première.", false, Map.of("total", 0.9)));
+        waitFor(() -> kinds("reply").size() == 2);
+        assertThat(sidecar.sent(VoiceSidecar.ReplyStart.class)).extracting(VoiceSidecar.ReplyStart::utteranceUid)
+                .containsExactly(1L, 3L);
+        assertThat(model.calls.get(3).get(model.calls.get(3).size() - 1).content()).contains("Trois ?");
     }
 
     @Test

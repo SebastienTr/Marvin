@@ -88,6 +88,8 @@ public final class PythonRuntime {
         cmd.addAll(args);
         ProcessBuilder pb = new ProcessBuilder(cmd).directory(hostDir.toFile());
         pb.environment().put("PYTHONUNBUFFERED", "1");
+        // the child exits when its stdin pipe closes, which the system does when this JVM dies in any way
+        pb.environment().put("MARVIN_EXIT_WITH_PARENT", "stdin");
         return pb;
     }
 }

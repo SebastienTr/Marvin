@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
-package marvin.host.app;
+package marvin.host.application.robot;
 
-import java.util.function.Consumer;
+import java.util.List;
+import java.util.logging.Logger;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import marvin.host.adapter.robot.UdpRobotLink;
-import marvin.host.adapter.sidecar.GrpcVoiceSidecar;
+import marvin.host.application.conversation.port.out.VoiceRobotAudio;
+import marvin.host.application.robot.port.in.RobotAudioIn;
+import marvin.host.application.robot.port.in.RobotLinkQuery;
 import marvin.host.application.robot.port.out.LinkNoticeListener;
+import marvin.host.application.robot.port.out.RobotOutbound;
 import marvin.host.domain.robot.AudioOut;
 import marvin.host.domain.robot.Device;
 import marvin.host.domain.robot.DeviceMonitor;
@@ -17,28 +17,29 @@ import marvin.host.domain.robot.MessageType;
 import marvin.host.domain.robot.SensorFrame;
 
 /**
- * The robot's audio between the robot link and the voice sidecar (docs/design.md 4.3): {@code AUDIO_IN}
- * relayed as it comes (from the socket thread), the sidecar's speaker frames, audio controls and sounds sent
- * as {@code AUDIO_OUT}, {@code AUDIO_CTRL} and {@code SOUND}, and the robots with audio (HELLO flag) told to
- * the voice as they connect and leave.
+ * The robot's audio between the robot link and the voice (docs/design.md 4.3): {@code AUDIO_IN} relayed as it
+ * comes, the voice's speaker frames, audio controls and sounds sent as {@code AUDIO_OUT}, {@code AUDIO_CTRL}
+ * and {@code SOUND}, and the robots with audio (their {@code HELLO} flag) told to the voice as they connect
+ * and leave. Only ports: the robot gateway and the voice can each move to their own process.
  */
-public final class RobotAudioRelay implements GrpcVoiceSidecar.RobotAudio, LinkNoticeListener, Consumer<SensorFrame.AudioChunk> {
-    private static final Logger log = LoggerFactory.getLogger("marvin.host.robot");
-    private final UdpRobotLink link;
-    private final GrpcVoiceSidecar voice;
+public final class RobotAudioService implements RobotAudioIn, LinkNoticeListener, VoiceRobotAudio.RobotSpeaker {
+    private static final Logger log = Logger.getLogger("marvin.host.robot");
+    private final RobotOutbound out;
+    private final RobotLinkQuery devices;
+    private final VoiceRobotAudio voice;
     private final Runnable changed;
 
-    /** {@code changed}: a robot with audio connected or left. */
-    public RobotAudioRelay(UdpRobotLink link, GrpcVoiceSidecar voice, Runnable changed) {
-        this.link = link;
+    /** {@code changed}: a robot with audio connected or the last one left. */
+    public RobotAudioService(RobotOutbound out, RobotLinkQuery devices, VoiceRobotAudio voice, Runnable changed) {
+        this.out = out;
+        this.devices = devices;
         this.voice = voice;
         this.changed = changed;
-        voice.setRobotAudio(this);
-        link.addAudioListener(this);
+        voice.setSpeaker(this);
     }
 
     @Override
-    public void accept(SensorFrame.AudioChunk a) {
+    public void heard(SensorFrame.AudioChunk a) {
         voice.robotMic(a.device().name(), a.index(), a.tUs(), a.pcm());
     }
 
@@ -61,15 +62,6 @@ public final class RobotAudioRelay implements GrpcVoiceSidecar.RobotAudio, LinkN
         }
     }
 
-    private Device device(String name) {
-        for (Device d : link.processor().devices()) {
-            if (d.name().equals(name)) {
-                return d;
-            }
-        }
-        return null;
-    }
-
     @Override
     public void speaker(String device, int stream, long sampleIndex, short[] pcm) {
         send(device, MessageType.AUDIO_OUT, new AudioOut(stream, sampleIndex, pcm).encode());
@@ -88,9 +80,20 @@ public final class RobotAudioRelay implements GrpcVoiceSidecar.RobotAudio, LinkN
     private void send(String name, MessageType type, byte[] payload) {
         Device d = device(name);
         if (d == null) {
-            log.debug("audio for {}, which is not connected", name);
+            log.fine(() -> "audio for " + name + ", which is not connected");
             return;
         }
-        link.send(d, type, payload);
+        out.send(d, type, payload);
+    }
+
+    /** The device of that name that spoke last (a robot that came back at another address replaces itself). */
+    private Device device(String name) {
+        List<Device> all = devices.connected();
+        for (int i = all.size() - 1; i >= 0; i--) {
+            if (all.get(i).name().equals(name)) {
+                return all.get(i);
+            }
+        }
+        return null;
     }
 }

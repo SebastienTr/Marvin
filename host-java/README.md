@@ -25,6 +25,7 @@ From the repository root, one command does everything (JDK, build, database, hos
 ./marvin demo       # the same with a simulated robot and a simulated past week
 ./marvin status     # what runs, and the host's health
 ./marvin logs       # follow the log (-n 100: the last lines)
+./marvin restart    # stop the host and start it again, rebuilt if the code changed (after a git pull)
 ./marvin down       # stop everything (the data is kept)
 ```
 
@@ -33,20 +34,34 @@ From the repository root, one command does everything (JDK, build, database, hos
   `~/.local/share/marvin/jdk` (Adoptium API). Nothing is installed system-wide.
 - **PostgreSQL 18 with pgvector**: in Docker (`pgvector/pgvector:pg18`, container
   `marvin-postgres`, volume `marvin-pgdata`, `127.0.0.1:5433`) when Docker runs; otherwise the host
-  starts its own PostgreSQL (data in `~/.local/share/marvin/pg`, no pgvector yet). `MARVIN_DB=docker`
-  or `MARVIN_DB=embedded` forces one.
+  starts its own PostgreSQL (data in `~/.local/share/marvin/pg`, no pgvector yet). The first choice
+  is kept (`~/.local/share/marvin/db_mode`): if the data is in Docker and Docker is not running,
+  `./marvin up` starts Docker Desktop (macOS) or says so, rather than opening an empty second
+  database. `MARVIN_DB=docker` or `MARVIN_DB=embedded` forces one; `MARVIN_PG_PORT` moves the Docker
+  database off 5433.
 - **Python**: the voice sidecar runs from `host/.venv`, which `./marvin up` creates with the
   `sidecar` and `voice` extras the first time (a few minutes; `--no-voice` skips it). The demo's
   simulated robot and past week also come from the Python host (`host/.venv` if it exists, else
   `python3` if it can import it, else `./marvin demo` creates `host/.venv` with the base
-  dependencies; `./marvin demo --voice` adds the voice).
+  dependencies; `./marvin demo --voice` adds the voice). The voice is optional: if its packages cannot
+  be installed (offline), Marvin starts without it. The sidecars exit with the host, even when it is
+  killed.
 - **The voice**: turned on and off in the app (Talk panel), settings in Settings > Voice, saved to
   `~/.config/marvin/voice.json` (shared with `marvin-host talk`). It needs Ollama and its model
-  (`ollama pull qwen3:4b-instruct`); the panel says what is missing and how to fix it.
+  (`ollama pull qwen3:4b-instruct`); the panel says what is missing and how to fix it. The demo works
+  on a copy of `voice.json` (in `~/.local/share/marvin/demo/`), remade at each start.
 - **The Python host's history**: on first start, `~/.local/share/marvin/marvin.db` (the Python
   host's SQLite file: events, minute samples, settings, conversation) is imported into PostgreSQL,
   once. Both hosts use the same data directory and the same access key (`ui_token`).
 - **Build**: `./marvin` builds the jar when it is missing or older than the sources.
+- **Memory**: the JVM runs with `-XX:+UseSerialGC -Xmx384m` (about 250 MB resident at idle);
+  `MARVIN_JAVA_OPTS` replaces these options. `host.log` is rotated to `host.log.1` past 10 MB.
+- **Health and traces**: `/api/health` (the app's), `/actuator/health` with its components
+  (`db`, `marvin/database`, `marvin/robot`, `marvin/voice`), `/actuator/health/readiness` (down
+  without the database) and `/actuator/health/liveness`. Each question is a trace
+  (`marvin.question`, with the latency stages as attributes; trace and span ids in the log lines);
+  set `MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT=http://localhost:4318/v1/traces` to
+  export them to an OpenTelemetry collector.
 
 Or by hand, with a PostgreSQL at `MARVIN_DB_URL` (default `jdbc:postgresql://127.0.0.1:5433/marvin`,
 user and password `marvin`):

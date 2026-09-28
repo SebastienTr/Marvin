@@ -206,14 +206,6 @@ public final class OllamaLanguageModel implements LanguageModel {
     }
 
     private static String reason(Throwable e) {
-        Throwable root = e;
-        while (root.getCause() != null && root.getCause() != root) {
-            root = root.getCause();
-        }
-        String m = root.getMessage();
-        if (root instanceof java.net.ConnectException && (m == null || m.isBlank())) {
-            return "Connection refused";
-        }
-        return m == null || m.isBlank() ? root.getClass().getSimpleName() : m;
+        return NetErrors.reason(e);
     }
 }

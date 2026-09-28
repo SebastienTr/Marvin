@@ -29,11 +29,17 @@ import marvin.host.domain.shared.LocalDays;
  *
  * <p>{@link #sample} is called about once a second: it notices the robot going quiet (no new brain
  * state for {@code offlineAfterS}) and coming back, and accumulates the minute's sample. Thread-safe.
+ *
+ * <p>Every write goes through a {@link HistoryWriter}: the brain's thread never waits for the database, and a
+ * write that fails is retried until the store is back. The app hears of a stored event once it has its id
+ * (the app orders and de-duplicates events by id).
  */
 public final class PresenceHistoryService implements PresenceHistory {
     /** Events read before a day, to know the state at midnight. */
     public static final double LOOKBACK_S = 36 * 3600;
     private static final double TODAY_CACHE_S = 2.0;
+    /** At stop, how long the last writes may take. */
+    static final long STOP_FLUSH_MS = 5000;
 
     private final PresenceQuery presence;
     private final PresenceHistoryStore store;
@@ -41,6 +47,7 @@ public final class PresenceHistoryService implements PresenceHistory {
     private final Clocks clocks;
     private final LocalDays days;
     private final double offlineAfterS;
+    private final HistoryWriter writer;
 
     private final Object lock = new Object();
     private volatile boolean online;
@@ -59,13 +66,14 @@ public final class PresenceHistoryService implements PresenceHistory {
 
     public PresenceHistoryService(PresenceQuery presence, PresenceHistoryStore store,
                                   List<PresenceHistoryListener> listeners, Clocks clocks, LocalDays days,
-                                  double offlineAfterS) {
+                                  double offlineAfterS, HistoryWriter writer) {
         this.presence = Objects.requireNonNull(presence, "presence");
         this.store = Objects.requireNonNull(store, "store");
         this.listeners = List.copyOf(listeners);
         this.clocks = Objects.requireNonNull(clocks, "clocks");
         this.days = Objects.requireNonNull(days, "days");
         this.offlineAfterS = offlineAfterS;
+        this.writer = Objects.requireNonNull(writer, "writer");
         this.lastTUs = presence.state().tUs();
         this.lastChange = clocks.monotonicSeconds();
     }
@@ -79,10 +87,18 @@ public final class PresenceHistoryService implements PresenceHistory {
 
     /** The host stops: the minute so far is kept, and the stop is marked. */
     public void stop() {
+        Sample last;
         synchronized (lock) {
-            flushSample();
+            last = takeSample();
         }
+        store(last);
         record(HistoryKinds.HOST_STOPPED, Map.of());
+        writer.close(STOP_FLUSH_MS);
+    }
+
+    /** Writes not yet in the store (a database outage): for the health report. */
+    public int pendingWrites() {
+        return writer.pending();
     }
 
     // ------------------------------------------------------------------ events
@@ -97,17 +113,25 @@ public final class PresenceHistoryService implements PresenceHistory {
             leftAt = ts;
         }
         Map<String, Object> data = new LinkedHashMap<>(ev.data());
-        publish(store.add(new StoredEvent(ts, ev.kind().wireName(), ev.detail(), data), ev.tUs()));
+        StoredEvent e = new StoredEvent(ts, ev.kind().wireName(), ev.detail(), data);
+        long device = ev.tUs();
+        writer.submit(() -> publish(store.add(e, device)));
     }
 
     private void record(String kind, Map<String, Object> data) {
-        publish(store.add(new StoredEvent(clocks.wallSeconds(), kind, "", data), null));
+        StoredEvent e = new StoredEvent(clocks.wallSeconds(), kind, "", data);
+        writer.submit(() -> publish(store.add(e, null)));
     }
 
     private void publish(StoredEvent e) {
         today = null;
         for (PresenceHistoryListener l : listeners) {
-            l.onStored(e);
+            try {
+                l.onStored(e);
+            } catch (RuntimeException ex) {
+                java.util.logging.Logger.getLogger("marvin.history").log(java.util.logging.Level.WARNING,
+                        "history listener failed", ex);          // stored already: never written twice
+            }
         }
     }
 
@@ -119,16 +143,18 @@ public final class PresenceHistoryService implements PresenceHistory {
         double mono = clocks.monotonicSeconds();
         boolean goOffline = false;
         boolean goOnline = false;
+        Sample done = null;
         synchronized (lock) {
             if (s.tUs() != lastTUs) {
                 lastTUs = s.tUs();
                 lastChange = mono;
                 goOnline = !online;
             } else if (online && mono - lastChange > offlineAfterS) {
-                flushSample();
+                done = takeSample();
                 goOffline = true;
             }
         }
+        store(done);
         if (goOnline) {
             setOnline(true, false);
         } else if (goOffline) {
@@ -136,9 +162,10 @@ public final class PresenceHistoryService implements PresenceHistory {
         }
         double now = clocks.wallSeconds();
         double b = Math.floor(now / 60) * 60;
+        Sample minute = null;
         synchronized (lock) {
             if (bucket != null && b != bucket) {
-                flushSample();
+                minute = takeSample();
             }
             bucket = b;
             if (online) {
@@ -151,6 +178,7 @@ public final class PresenceHistoryService implements PresenceHistory {
                 }
             }
         }
+        store(minute);
     }
 
     private void setOnline(boolean on, boolean fromEvent) {
@@ -175,18 +203,26 @@ public final class PresenceHistoryService implements PresenceHistory {
         }
     }
 
-    /** Stores the minute so far (under the lock). */
-    private void flushSample() {
+    /** The minute so far, and a fresh start for the next (under the lock); {@code null} when nothing was seen. */
+    private Sample takeSample() {
+        Sample out = null;
         if (n > 0 && bucket != null) {
             boolean reliable = breaths.size() * 2 >= n;             // vitals for at least half of the minute
-            store.addSample(new Sample(bucket, presentSum / n, seatedSum / n,
-                    reliable ? average(breaths) : null, reliable ? average(hearts) : null));
+            out = new Sample(bucket, presentSum / n, seatedSum / n,
+                    reliable ? average(breaths) : null, reliable ? average(hearts) : null);
         }
         n = 0;
         presentSum = 0;
         seatedSum = 0;
         breaths.clear();
         hearts.clear();
+        return out;
+    }
+
+    private void store(Sample sample) {
+        if (sample != null) {
+            writer.submit(() -> store.addSample(sample));
+        }
     }
 
     private static double average(List<Double> v) {

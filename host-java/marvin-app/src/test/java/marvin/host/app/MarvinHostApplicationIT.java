@@ -36,7 +36,8 @@ import marvin.host.domain.robot.Wire;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"server.address=127.0.0.1", "marvin.mode=demo", "marvin.robot.bind=127.0.0.1",
                 "marvin.robot.port=0", "marvin.robot.calibration-file=no-such-calibration.json",
-                "marvin.sidecar.simulator=false", "marvin.sidecar.seed=false", "marvin.import.sqlite="})
+                "marvin.sidecar.simulator=false", "marvin.sidecar.seed=false", "marvin.import.sqlite=",
+                "marvin.data-dir=${java.io.tmpdir}/marvin-app-it", "marvin.config-dir=${java.io.tmpdir}/marvin-app-it/config"})
 @Testcontainers(disabledWithoutDocker = true)
 class MarvinHostApplicationIT {
 

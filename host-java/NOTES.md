@@ -713,3 +713,137 @@ phase. Later phases read this before starting.
   builds the list; their schemas must stay byte-stable for a given setting.
 - The app may change from phase 3: the face drawn in the browser, a System panel from
   `SupervisedProcess` (state, restarts, last lines) and `FrameDispatcher.timings()`.
+
+## Review fixes
+
+A review of phases 0 to 2 (parity, architecture, operability) found 1 blocker, 11 majors and 9 minors.
+All were addressed; the few parts done differently from the suggestion say why.
+
+### Fixed
+
+- **DNS rebinding (blocker)**: the Host check compared only the first DNS label with the machine's
+  short name, so `<hostname>.attacker.example` pointed at 127.0.0.1 got the whole API. Both hosts now
+  accept only whole names: IP literals, `localhost`, `*.localhost`, the full hostname, the short name
+  and `<short>.local` (`AccessFilter.ownNames`, Python `server._own_names`). **Deliberate change in both
+  hosts**, so they stay at parity. Tests: `ApiContractIT.aRebindingDomainNamedLikeThisMachineIsRefused`
+  (GET and a same-origin POST with `Host: <short>.evil.example` get 403, `<short>` and `<short>.local`
+  get 200), `test_ui.py::test_access_key`. Checked on the running host: `vm.evil.example` 403, `vm` and
+  `vm.local` 200.
+- **Demo isolation**: in demo mode `voice.json` is a copy in `<data-dir>/demo/voice.json`, remade at
+  every start from the owner's (or `{}`), as the Python `demo_voice` does
+  (`VoiceSettingsFile.demoCopy`). `ApiContractIT.theDemoLeavesTheOwnersVoiceSettingsAlone`; checked with
+  `./marvin demo`: a POST of `follow_up_s` created no `~/.config/marvin`. `MarvinHostApplicationIT` now
+  uses a temporary data directory too.
+- **Voice turns in order**: each turn waits for the previous one to be over (said or dropped, and
+  remembered) before it builds its messages, as the Python host's single worker; a question the voice
+  dropped while it waited is not answered. While a newer question waits, the grace for an interrupted
+  turn's `ReplySpoken` is 1 s instead of 3 s (the sidecar sends it right after `Interrupted`; only a
+  dropped question gets none). Tests: `aQuestionThatInterruptsAnAnswerIsAskedWithThatAnswerInItsHistory`
+  (the second request carries the first question and the partial answer ending with " …", and the
+  second model call waits), `aQuestionDroppedWhileWaitingIsNotAnswered`.
+- **`listen_s`** counts down from the last `Status` (monotonic time of arrival), `null` unless
+  listening (`listenSecondsCountDownFromTheLastStatus`).
+- **Start checks in Python's order**: the session opens first; when Ollama or the model is missing,
+  the voice's first status (up to 2 s) wins if it is an error, then the session is closed. Here:
+  "No microphone (PortAudio library not found)" with its fix, as the Python host
+  (`theAudioProblemComesBeforeTheModelServer`).
+- **History off the frame thread**: `HistoryWriter` (application layer), a bounded queue (10 000)
+  drained in order by one thread that retries a failing write with backoff (0.5 s to 30 s); the brain's
+  thread only enqueues. Minute samples are taken and reset under the lock and written outside it, so an
+  outage no longer merges minutes. At stop the queue gets 5 s to drain. Test:
+  `aStoreOutageNeitherHoldsUpTheBrainNorLosesEventsOrMixesMinutes`. Checked with `docker stop
+  marvin-postgres` during the demo: no "subscriber failed", no scans dropped, one "retrying" warning;
+  after `docker start` the events were stored and readiness went back to 200.
+- **Robot audio behind ports**: `RobotAudioService` (application, robot context) implements
+  `RobotAudioIn` (port in) and `LinkNoticeListener`, sends through `RobotOutbound`, finds devices through
+  `RobotLinkQuery`, and talks to the voice through the new `conversation.port.out.VoiceRobotAudio`
+  (robot links, microphone frames, a `RobotSpeaker` callback). `RobotAudioRelay` and the adapter's
+  `GrpcVoiceSidecar.RobotAudio` are gone. New ArchUnit rules: adapters depend on the application only
+  through `port.in`/`port.out`; classes of `marvin.host.app` use adapters only in `@Configuration`
+  classes, except the four lifecycle classes that predate the rule (`DemoRobot`, `DeviceNotices`,
+  `RobotLinkProbe`, `StartupImport`: they start/stop adapters or probe the socket; listed by name, so
+  any new glue fails).
+- **`HostLog.CAPACITY`** replaces `HostLogService.SIZE` in the web adapter.
+- **Observability**: `spring-boot-starter-opentelemetry` (Boot 4.1.1 managed: OpenTelemetry 1.62,
+  Micrometer Tracing 1.7). A `Tracing` port (`system.port.out`) with a Micrometer adapter
+  (`MicrometerTracing`): one span `marvin.question` per turn, from the question to the end of the
+  reply, with the utterance id, source, audio route, language, interruption and every latency stage as
+  attributes; the utterance id etc. in the MDC, trace and span ids in every log line (Boot's
+  correlation pattern). Sampling 1.0; nothing is exported unless
+  `MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT` is set; OTLP metrics and logs export off.
+- **Readiness**: the readiness group is `readinessState,db` (503 without the database; liveness has no
+  external dependency). Every `ComponentProbe` is an Actuator indicator under `marvin/<name>`
+  (disabled → `UNKNOWN`, which does not bring the host down); `show-components: always` (the endpoint
+  is open to this computer only, as the whole API).
+- **Import per context**: `presence`, `settings` and `conversation` each import their own tables in
+  their own transaction and record it in their own `<schema>.import` (Flyway V2 in each); the
+  orchestrator keeps the summary in `platform.import` (an older `platform.import` row still means
+  "done"). `SchemaOwnershipTest` fails when a store or a context's import names another context's schema.
+- **Launcher (`./marvin`)**: the voice's packages are checked with `importlib.util.find_spec` (no more
+  reinstall on every start where PortAudio is missing); a failed voice install warns and starts without
+  the voice; the venv is set up before PostgreSQL, so a failed start leaves nothing running; a venv
+  without pip is rebuilt; `python3 -m venv` failures and a missing `python3-venv` are named (doctor
+  too); doctor notes a missing PortAudio on Linux. The database choice is recorded in
+  `<data-dir>/db_mode` on the first successful start: with `docker` recorded and Docker down, macOS
+  gets `open -ga Docker` (60 s), elsewhere a clear error; with `embedded` recorded and Docker up, it
+  says where the data is. `start_postgres` checks `docker port` even when the container runs and
+  recreates a container without its port (data in the volume); `docker start` failures get an
+  `error:` line; `MARVIN_PG_PORT`. `./marvin restart`; `up` says when the code is newer than the
+  running jar; `status` reads `DB=` and the recorded mode; `host.log` rotates past 10 MB; `port_busy`
+  binds the port (any listener, HTTP or not). A stale `host.pid` also kills leftover sidecars.
+- **Failed database connection at start**: `DatabaseUnreachableAnalyzer` (a Boot `FailureAnalyzer`)
+  prints "cannot reach PostgreSQL at <url> (Connection refused ...)" and "./marvin status, then
+  ./marvin doctor" instead of the Flyway/Hikari trace in the launcher's output.
+- **Sidecars exit with the host**: `PythonRuntime` sets `MARVIN_EXIT_WITH_PARENT=stdin` and keeps the
+  child's stdin pipe open; `marvin_host/parent.py` reads it to the end in a daemon thread and exits
+  (voice sidecar and `marvin-host`, hence the simulator). `tests/test_parent.py` kills a stand-in host
+  with SIGKILL and checks the child is gone within 2 s; checked with `kill -9` on the Java host: both
+  sidecars gone within 3 s.
+- **Error text**: `NetErrors.reason` walks the whole cause chain: "Connection refused" when any link is
+  a `ConnectException`, else the deepest message (`OllamaLanguageModel`, `HttpJsonFetcher`).
+- **Memory**: default JVM options `-XX:+UseSerialGC -Xmx384m` (`MARVIN_JAVA_OPTS` overrides).
+  Measured in live mode, idle, 90 s after start: 406 MB RSS with ZGC and `-Xmx512m`
+  (`SoftMaxHeapSize=192m`), 250 MB with SerialGC 384 MB, 209 MB adding `-XX:TieredStopAtLevel=1`
+  (not kept: C1 only). Idle CPU under 1 %.
+- **A racy test**: `SupervisedProcessTest` expected two restarts when the second exit had just been
+  seen (the second restart comes 2 s later); it now expects at least one.
+- **Build output**: `host-java/.mvn/jvm.config` has `--sun-misc-unsafe-memory-access=allow`: no more
+  `sun.misc.Unsafe` warnings from Maven's Guice on JDK 25.
+
+### Not done, and why
+
+- **Live `event` SSE with a provisional id** (suggested): the app de-duplicates and orders events by id
+  (`app.js` `addEvent`: `if (e.id <= app.lastEventId) return`), so a provisional id followed by the real
+  one would hide or duplicate events. The event is published by the writer right after its insert
+  (milliseconds normally); during an outage it is published when the store takes it, not lost.
+- **W3C `traceparent` to the voice sidecar**: the voice runs on one long-lived bidirectional
+  `Session` stream, so call metadata carries one context for the whole session, not one per question.
+  Per-question propagation needs a `trace_parent` field on `ReplyStart`/`Heard` (an additive
+  `marvin.voice.v1` change) and the Python side reading it: phase 3, with the sidecar's own spans.
+- **Device name in the MDC**: `Heard` does not say which device heard it; the span carries the audio
+  route (`computer` or `robot`) instead.
+- **One database role per context** (GRANTs limited to its schema): with a single deployable this adds
+  setup for no isolation gain yet; `SchemaOwnershipTest` enforces the boundary in code. Do it when a
+  context is extracted.
+- **`/api/state` and `today` during a database outage** answer 500 after Hikari's 5 s (the day
+  statistics are read from the store). Not in the review; a cached last day would fix it.
+- **The broken-venv and offline-install paths of the launcher** were checked by reading and by the
+  normal path only (rebuilding `host/.venv` takes minutes and the network); the stale-port container,
+  the stale jar notice, restart, `kill -9` and the database outage were run for real.
+
+### Verified
+
+- `cd host-java && ./mvnw verify`: 200 tests, 0 failures, 1 skipped (embedded database as root). New:
+  `NetErrorsTest`, `SchemaOwnershipTest`, `DatabaseUnreachableAnalyzerTest`, 5 `VoiceServiceTest`
+  cases, the outage case of `PresenceHistoryServiceTest`, 2 `ApiContractIT` cases, 2 ArchUnit rules.
+- `cd host && python3 -m pytest -q`: 305 passed, 3 skipped (new: `test_parent.py`, the rebinding case).
+- `./marvin demo`, `./marvin up`, `./marvin restart`, `./marvin status`, `./marvin doctor` and the
+  scenarios above, on Linux x64 as root with Docker.
+
+### Hints for phase 3
+
+- The outbox shape is there (`HistoryWriter`): the event log can replace the store behind it.
+- Add `trace_parent` to the voice contract and spans in the sidecar; the core's span is already open
+  when `ReplyStart` is sent.
+- Move the four listed lifecycle classes behind ports when the System panel comes, then empty
+  `ArchitectureTest.BOOT_GLUE_KNOWN`.

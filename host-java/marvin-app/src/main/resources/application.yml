@@ -88,6 +88,25 @@ management:
     health:
       probes:
         enabled: true
+      # the components (database, robot, voice) by name; open to this computer only, as the whole API
+      show-components: always
+      group:
+        # no traffic without the database; liveness stays free of external dependencies
+        readiness:
+          include: readinessState,db
+  # a trace per question (design 10.4), exported only when an OTLP endpoint is set, e.g.
+  # MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    metrics:
+      export:
+        enabled: ${MARVIN_OTLP_METRICS:false}
+  logging:
+    export:
+      otlp:
+        enabled: false
 
 logging:
   level:

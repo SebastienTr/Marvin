@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    from ... import parent
+    parent.watch()
     if importlib.util.find_spec("grpc") is None or importlib.util.find_spec("grpc_health") is None:
         print('the voice sidecar needs gRPC: in the host folder, pip install -e ".[sidecar,voice]"', flush=True)
         return 2

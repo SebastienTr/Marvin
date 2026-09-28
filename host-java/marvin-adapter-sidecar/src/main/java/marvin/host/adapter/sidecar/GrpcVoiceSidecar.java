@@ -33,6 +33,7 @@ import io.grpc.health.v1.HealthCheckResponse;
 import io.grpc.health.v1.HealthGrpc;
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import marvin.host.application.conversation.port.out.VoiceRobotAudio;
 import marvin.host.application.conversation.port.out.VoiceSidecar;
 import marvin.host.contracts.voice.v1.AudioFrame;
 import marvin.host.contracts.voice.v1.AudioRoute;
@@ -55,23 +56,14 @@ import marvin.host.contracts.voice.v1.VoiceToCore;
  *
  * <p>While the conversation service wants a session, one is kept open: re-opened (with the last settings and
  * the robots with audio) when the process restarts, with a {@code starting} status in between. The robot's
- * audio passes through here: {@link #robotMic} relays {@code AUDIO_IN}, and the {@link RobotAudio} sink gets
+ * audio passes through here: {@link #robotMic} relays {@code AUDIO_IN}, and the {@link RobotSpeaker} gets
  * the speaker frames, audio controls and sounds for the robot.
  */
-public final class GrpcVoiceSidecar implements VoiceSidecar, AutoCloseable {
+public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger("marvin.sidecar.voice");
     private static final Pattern READY = Pattern.compile("^READY port=(\\d+)$");
     private static final Pattern NEEDS = Pattern.compile("^the voice sidecar needs (.*?): (.*)$");
     static final long HEALTH_TIMEOUT_MS = 20_000;
-
-    /** Where the robot-bound audio goes (the robot link). */
-    public interface RobotAudio {
-        void speaker(String device, int stream, long sampleIndex, short[] pcm);
-
-        void control(String device, int command, int argument);
-
-        void sound(String device, int id);
-    }
 
     private final PythonRuntime python;
     private final List<String> extraArgs;
@@ -79,7 +71,7 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, AutoCloseable {
     private final SupervisedProcess process;
     private final Object lock = new Object();
     private final Map<String, Boolean> robots = new ConcurrentHashMap<>();
-    private volatile RobotAudio robotAudio;
+    private volatile RobotSpeaker robotAudio;
     private volatile ManagedChannel channel;
     private volatile int port;
     private volatile boolean serving;
@@ -115,7 +107,8 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, AutoCloseable {
         }
     }
 
-    public void setRobotAudio(RobotAudio sink) {
+    @Override
+    public void setSpeaker(RobotSpeaker sink) {
         this.robotAudio = sink;
     }
 
@@ -370,6 +363,7 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, AutoCloseable {
     // ------------------------------------------------------------------ robot audio
 
     /** A robot connected ({@code hasAudio}: it has a microphone and a speaker) or left. */
+    @Override
     public void robotLink(String device, boolean connected, boolean hasAudio) {
         if (connected) {
             robots.put(device, hasAudio);
@@ -381,11 +375,13 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, AutoCloseable {
     }
 
     /** Whether a robot with a microphone and a speaker is connected. */
+    @Override
     public boolean robotWithAudio() {
         return robots.containsValue(true);
     }
 
     /** A robot's {@code AUDIO_IN}, relayed as it came (same samples, sample index and robot clock). */
+    @Override
     public void robotMic(String device, long sampleIndex, long robotTimeUs, short[] pcm) {
         if (!robots.getOrDefault(device, false)) {
             return;
@@ -441,7 +437,7 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, AutoCloseable {
         public void onNext(VoiceToCore m) {
             switch (m.getMCase()) {
                 case ROBOT_SPEAKER -> {
-                    RobotAudio r = robotAudio;
+                    RobotSpeaker r = robotAudio;
                     if (r != null) {
                         var f = m.getRobotSpeaker();
                         byte[] b = f.getPcm().toByteArray();
@@ -454,14 +450,14 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, AutoCloseable {
                     return;
                 }
                 case CTRL -> {
-                    RobotAudio r = robotAudio;
+                    RobotSpeaker r = robotAudio;
                     if (r != null) {
                         r.control(m.getCtrl().getDevice(), m.getCtrl().getCommand(), m.getCtrl().getArgument());
                     }
                     return;
                 }
                 case SOUND -> {
-                    RobotAudio r = robotAudio;
+                    RobotSpeaker r = robotAudio;
                     if (r != null) {
                         r.sound(m.getSound().getDevice(), m.getSound().getId());
                     }

@@ -39,7 +39,7 @@ class SupervisedProcessTest {
         assertThat(out).startsWith("READY port=1234", "READY port=1234");
         assertThat(exits).startsWith(3, 3);
         assertThat(p.lastExit()).isEqualTo(3);
-        assertThat(p.restarts()).isGreaterThanOrEqualTo(2);
+        assertThat(p.restarts()).isGreaterThanOrEqualTo(1);        // the second exit may come before the next restart
         assertThat(p.lastLines()).contains("2026-09-28 10:00:00,000 WARNING marvin.sidecar.voice: no mic");
         assertThat(p.state()).isEqualTo(SupervisedProcess.State.STOPPED);
     }

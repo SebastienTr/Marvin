@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -60,6 +61,42 @@ class ArchitectureTest {
     static final ArchRule nothingDependsOnTheBootModule = noClasses()
             .that().resideOutsideOfPackage("marvin.host.app..")
             .should().dependOnClassesThat().resideInAPackage("marvin.host.app..");
+
+    /** Adapters reach the application through its ports only, never a use case's implementation. */
+    @ArchTest
+    static final ArchRule adaptersUseApplicationPortsOnly = noClasses()
+            .that().resideInAPackage("marvin.host.adapter..")
+            .should().dependOnClassesThat(DescribedPredicate.describe("application classes outside port.in / port.out",
+                    c -> c.getPackageName().startsWith("marvin.host.application")
+                            && !c.getPackageName().matches("marvin\\.host\\.application\\.[a-z0-9]+\\.port\\.(in|out)(\\..*)?")))
+            .because("an adapter swaps behind a port; it must not depend on how a use case is built");
+
+    /**
+     * Glue in the boot module may only build adapters in {@code @Configuration} classes (bean factories):
+     * behaviour between two adapters belongs in an application service behind ports. The lifecycle classes
+     * listed here predate the rule (start and stop of adapters, a health probe of the UDP link).
+     */
+    static final Set<String> BOOT_GLUE_KNOWN = Set.of("DemoRobot", "DeviceNotices", "RobotLinkProbe", "StartupImport");
+
+    @ArchTest
+    static final ArchRule bootGlueBuildsAdaptersOnlyInConfigurations = noClasses()
+            .that().resideInAPackage("marvin.host.app..")
+            .and(DescribedPredicate.describe("not a @Configuration (or inside one)", c -> !inConfiguration(c)))
+            .and(DescribedPredicate.describe("not known lifecycle glue", c -> !BOOT_GLUE_KNOWN.contains(topLevel(c).getSimpleName())))
+            .should().dependOnClassesThat().resideInAPackage("marvin.host.adapter..");
+
+    private static JavaClass topLevel(JavaClass c) {
+        JavaClass t = c;
+        while (t.getEnclosingClass().isPresent()) {
+            t = t.getEnclosingClass().get();
+        }
+        return t;
+    }
+
+    private static boolean inConfiguration(JavaClass c) {
+        return topLevel(c).isAnnotatedWith("org.springframework.context.annotation.Configuration")
+                || topLevel(c).isAnnotatedWith("org.springframework.boot.autoconfigure.SpringBootApplication");
+    }
 
     // ------------------------------------------------------------------ plain core
 

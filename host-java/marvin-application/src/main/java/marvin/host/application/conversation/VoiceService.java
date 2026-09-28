@@ -35,6 +35,7 @@ import marvin.host.application.conversation.port.out.VoiceSidecar;
 import marvin.host.application.conversation.tools.ToolRegistry;
 import marvin.host.application.conversation.tools.WeatherTool;
 import marvin.host.application.presence.port.in.PresenceQuery;
+import marvin.host.application.system.port.out.Tracing;
 import marvin.host.domain.conversation.ChatMessage;
 import marvin.host.domain.conversation.ConversationEntry;
 import marvin.host.domain.conversation.ConversationMemory;
@@ -81,7 +82,14 @@ public final class VoiceService implements VoiceControl {
     static final double READY_TIMEOUT_S = 300.0;
     /** After an interruption, how long to wait for the voice to say what it said. */
     static final double SPOKEN_GRACE_S = 3.0;
+    /**
+     * The same, when a newer question waits for this turn: the voice reports what it said right after the
+     * interruption, and only a question it dropped unanswered gets no report at all.
+     */
+    static final double SUPERSEDED_GRACE_S = 1.0;
     static final int HISTORY = 200;
+    /** When the model server is missing, how long to wait for the voice to report an audio problem first. */
+    static final double AUDIO_CHECK_S = 2.0;
 
     private final VoiceSidecar voice;
     private final LanguageModel model;
@@ -103,6 +111,8 @@ public final class VoiceService implements VoiceControl {
     private final AtomicLong ids;
     private final AtomicLong replyIds = new AtomicLong(1);
     private final Map<Long, Turn> turns = new ConcurrentHashMap<>();
+    /** The last turn heard: each turn builds its messages only once the one before is over (Python's single worker). */
+    private Turn lastTurn;
     private final Map<Long, String> proactiveReplies = new ConcurrentHashMap<>();
     private final Map<String, Boolean> toolSupport = new ConcurrentHashMap<>();
     private final ConversationMemory memory;
@@ -112,12 +122,15 @@ public final class VoiceService implements VoiceControl {
     private volatile String fix = "";
     private volatile boolean muted;
     private volatile VoiceSidecar.Status status;
+    /** When {@link #status} came (monotonic seconds): {@code listen_s} counts down from there. */
+    private volatile double statusAt;
     private volatile boolean opened;
     private volatile boolean closed;
     private volatile String language;
     private volatile VoiceConfig config;
     private volatile ToolRegistry tools;
     private volatile ProactiveSpeech proactive;
+    private volatile Tracing tracing = Tracing.NONE;
     private volatile CompletableFuture<VoiceSidecar.Status> ready;
     private volatile long statusSeq;
     /** Each start, stop or restart supersedes the ones before it (they run one at a time, in order). */
@@ -165,6 +178,11 @@ public final class VoiceService implements VoiceControl {
 
     public void addListener(VoiceListener l) {
         listeners.add(l);
+    }
+
+    /** Where each question's trace goes (a span from the end of speech to the last word said). */
+    public void setTracing(Tracing t) {
+        tracing = Objects.requireNonNull(t, "tracing");
     }
 
     // ------------------------------------------------------------------ settings
@@ -283,16 +301,38 @@ public final class VoiceService implements VoiceControl {
         }
         Map<String, Object> settings = settings();
         VoiceConfig c = VoiceSettings.config(settings);
+        // the audio first (the voice's packages, the microphone, the robot), then the model, as
+        // control.preflight: the owner fixes what the voice needs before what the conversation needs
+        CompletableFuture<VoiceSidecar.Status> r = new CompletableFuture<>();
+        ready = r;
         try {
-            List<String> models = model.models(c.ollamaHost());
-            if (!models.contains(c.llmModel()) && !models.contains(c.llmModel() + ":latest")) {
-                failed(gen, "Ollama has no model " + c.llmModel(), "ollama pull " + c.llmModel());
-                return;
+            voice.open(sidecarSettings(c), this::onSignal);
+            opened = true;
+            voice.send(new VoiceSidecar.Mute(muted));
+        } catch (RuntimeException e) {
+            ready = null;
+            log.log(Level.WARNING, "the voice failed to start", e);
+            failed(gen, "The voice failed to start: " + e.getMessage(), "See the Log panel for details.");
+            return;
+        }
+        String[] modelProblem = checkModel(c);
+        if (modelProblem != null) {
+            VoiceSidecar.Status first = null;
+            try {
+                first = r.get((long) (AUDIO_CHECK_S * 1000), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException | ExecutionException e) {
+                // still loading: nothing wrong with the audio so far
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
-        } catch (LanguageModel.Unavailable e) {
-            failed(gen, "Ollama is not running at " + c.ollamaHost() + " (" + e.getMessage() + ")",
-                    "Install Ollama (https://ollama.com/download or `brew install ollama`), then start it: "
-                            + "`ollama serve` or the Ollama app.");
+            voice.close();
+            opened = false;
+            ready = null;
+            if (first != null && "error".equals(first.state())) {
+                failed(gen, first.error(), first.fix());
+            } else {
+                failed(gen, modelProblem[0], modelProblem[1]);
+            }
             return;
         }
         config = c;
@@ -302,17 +342,6 @@ public final class VoiceService implements VoiceControl {
         tools = WeatherTool.registry(c.tools(), c.internet(), c.homePlace(), fetch, clocks::monotonicSeconds);
         proactive = new ProactiveSpeech(c.reminders(), c.welcomeBack());
         CompletableFuture<Void> warm = CompletableFuture.runAsync(() -> warmUp(c), answers);
-        CompletableFuture<VoiceSidecar.Status> r = new CompletableFuture<>();
-        ready = r;
-        try {
-            voice.open(sidecarSettings(c), this::onSignal);
-            opened = true;
-            voice.send(new VoiceSidecar.Mute(muted));
-        } catch (RuntimeException e) {
-            log.log(Level.WARNING, "the voice failed to start", e);
-            failed(gen, "The voice failed to start: " + e.getMessage(), "See the Log panel for details.");
-            return;
-        }
         VoiceSidecar.Status s;
         try {
             s = r.get((long) (READY_TIMEOUT_S * 1000), TimeUnit.MILLISECONDS);
@@ -340,6 +369,21 @@ public final class VoiceService implements VoiceControl {
         fix = "";
         setState(ON);
         note("Voice on: " + (c.wake() ? "say “Marvin, …”" : "just talk"));
+    }
+
+    /** What is wrong with the model server for these settings ({error, fix}), or {@code null}. */
+    private String[] checkModel(VoiceConfig c) {
+        try {
+            List<String> models = model.models(c.ollamaHost());
+            if (!models.contains(c.llmModel()) && !models.contains(c.llmModel() + ":latest")) {
+                return new String[] {"Ollama has no model " + c.llmModel(), "ollama pull " + c.llmModel()};
+            }
+            return null;
+        } catch (LanguageModel.Unavailable e) {
+            return new String[] {"Ollama is not running at " + c.ollamaHost() + " (" + e.getMessage() + ")",
+                    "Install Ollama (https://ollama.com/download or `brew install ollama`), then start it: "
+                            + "`ollama serve` or the Ollama app."};
+        }
     }
 
     private void failed(long gen, String message, String how) {
@@ -502,7 +546,16 @@ public final class VoiceService implements VoiceControl {
         String model = s.get("llm_model") instanceof String m && !m.isEmpty() ? m : VoiceSettings.DEFAULT_MODEL;
         return new VoiceSnapshot(state, on && st != null && RUNNING.contains(st.state()) ? st.state() : "off", muted,
                 error, fix, model, !Boolean.FALSE.equals(s.getOrDefault("wake", true)),
-                !Boolean.FALSE.equals(s.getOrDefault("chime", true)), on && st != null ? st.listenS() : null);
+                !Boolean.FALSE.equals(s.getOrDefault("chime", true)), on ? listenLeft(st) : null);
+    }
+
+    /** Seconds left in the listening window now (the voice reports it only when its state changes). */
+    private Double listenLeft(VoiceSidecar.Status st) {
+        if (st == null || st.listenS() == null || !"listening".equals(st.state())) {
+            return null;
+        }
+        double left = st.listenS() - (clocks.monotonicSeconds() - statusAt);
+        return PyNumbers.round(Math.max(0.0, left), 3);
     }
 
     private void setState(String s) {
@@ -590,6 +643,7 @@ public final class VoiceService implements VoiceControl {
         VoiceSidecar.Status before = status;
         synchronized (lock) {
             status = s;
+            statusAt = clocks.monotonicSeconds();
             statusSeq++;
             lock.notifyAll();
         }
@@ -624,6 +678,9 @@ public final class VoiceService implements VoiceControl {
         final VoiceSidecar.Heard heard;
         final long replyId;
         final CompletableFuture<VoiceSidecar.ReplySpoken> spoken = new CompletableFuture<>();
+        /** Complete once this turn is over: said (or dropped) and remembered. */
+        final CompletableFuture<Void> done = new CompletableFuture<>();
+        volatile boolean superseded;
         volatile boolean cancelled;
         volatile double cancelledAt;
 
@@ -650,14 +707,36 @@ public final class VoiceService implements VoiceControl {
         }
         entry("heard", h.wallTime() > 0 ? h.wallTime() : clocks.wallSeconds(), h.text(), d);
         Turn turn = new Turn(h, replyIds.getAndIncrement());
+        Turn previous;
+        synchronized (lock) {
+            previous = lastTurn;
+            lastTurn = turn;
+        }
+        if (previous != null) {
+            previous.superseded = true;
+        }
         turns.put(h.uid(), turn);
         answers.execute(() -> {
             try {
-                answer(turn);
+                if (previous != null) {
+                    previous.done.join();       // its answer (even cut short) is in the history first
+                }
+                if (turn.cancelled) {
+                    return;                     // dropped by the voice before its turn came: nothing to answer
+                }
+                Map<String, String> attributes = new LinkedHashMap<>();
+                attributes.put("utterance", Long.toString(h.uid()));
+                attributes.put("source", h.source().isEmpty() ? "voice" : h.source());
+                VoiceConfig c = config;
+                attributes.put("audio_route", c == null ? "" : sidecarSettings(c).robot() ? "robot" : "computer");
+                try (Tracing.Span span = tracing.start("marvin.question", attributes)) {
+                    answer(turn, span);
+                }
             } catch (RuntimeException e) {
                 log.log(Level.SEVERE, "the answer failed", e);
             } finally {
                 turns.remove(h.uid());
+                turn.done.complete(null);
             }
         });
     }
@@ -695,7 +774,7 @@ public final class VoiceService implements VoiceControl {
         }
     }
 
-    private void answer(Turn turn) {
+    private void answer(Turn turn, Tracing.Span span) {
         VoiceSidecar.Heard h = turn.heard;
         VoiceConfig c = config != null ? config : VoiceSettings.config(settings());
         ToolRegistry reg = tools;
@@ -739,7 +818,11 @@ public final class VoiceService implements VoiceControl {
         boolean interrupted = turn.cancelled || spoken.interrupted();
         String said = out.saidAnswer();
         Map<String, Double> lat = latency(h.latency(), out.latency(), spoken.latency());
+        lat.forEach((k, v) -> span.attribute("marvin.latency." + k, v));
+        span.attribute("marvin.language", lang);
+        span.attribute("marvin.interrupted", Boolean.toString(turn.cancelled || spoken.interrupted()));
         if (out.failure() != null) {
+            span.error(out.failure());
             reply(spoken.text(), lang, lat, false, out, context, user, c, out.failure(), out.hint());
             return;
         }
@@ -760,7 +843,8 @@ public final class VoiceService implements VoiceControl {
             try {
                 return turn.spoken.get(250, TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
-                if (turn.cancelled && clocks.monotonicSeconds() - turn.cancelledAt > SPOKEN_GRACE_S) {
+                double grace = turn.superseded ? SUPERSEDED_GRACE_S : SPOKEN_GRACE_S;
+                if (turn.cancelled && clocks.monotonicSeconds() - turn.cancelledAt > grace) {
                     return null;
                 }
                 if (closed || !opened) {

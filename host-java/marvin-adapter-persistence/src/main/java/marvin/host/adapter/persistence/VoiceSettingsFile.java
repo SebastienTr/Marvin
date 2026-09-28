@@ -41,6 +41,22 @@ public final class VoiceSettingsFile implements VoiceSettingsStore {
         return new VoiceSettingsFile(configDir(configured).resolve(NAME));
     }
 
+    /**
+     * The demo's own {@code voice.json} in {@code dir}, made again at every start from {@code source} (or empty
+     * when there is none): the demo can change its settings without touching the owner's (the Python demo does
+     * the same).
+     */
+    public static VoiceSettingsFile demoCopy(VoiceSettingsFile source, Path dir) {
+        VoiceSettingsFile copy = new VoiceSettingsFile(dir.resolve(NAME));
+        try {
+            Files.deleteIfExists(copy.path);
+        } catch (IOException e) {
+            throw new IllegalStateException("cannot reset " + copy.path + ": " + e.getMessage(), e);
+        }
+        copy.save(source.load());
+        return copy;
+    }
+
     static Path configDir(String configured) {
         if (configured != null && !configured.isBlank()) {
             return Path.of(configured.replaceFirst("^~", System.getProperty("user.home")));

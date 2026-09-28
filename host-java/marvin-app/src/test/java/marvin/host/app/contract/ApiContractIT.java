@@ -70,6 +70,8 @@ class ApiContractIT {
     /** The stand-in for Ollama: a tool call for the weather, else a short answer. */
     static final StubOllama OLLAMA;
     static final Path CONFIG;
+    static final String OWNER_VOICE_JSON;
+    static final Path DATA;
 
     static {
         try {
@@ -85,7 +87,9 @@ class ApiContractIT {
                 return StubOllama.text("It is ", "sunny in Paris, ", "twenty degrees.");
             };
             CONFIG = Files.createTempDirectory("marvin-contract-config");
-            Files.writeString(CONFIG.resolve("voice.json"), "{\"ollama_host\": \"" + OLLAMA.url() + "\"}\n");
+            OWNER_VOICE_JSON = "{\"ollama_host\": \"" + OLLAMA.url() + "\"}\n";
+            Files.writeString(CONFIG.resolve("voice.json"), OWNER_VOICE_JSON);
+            DATA = Files.createTempDirectory("marvin-contract-data");
         } catch (IOException e) {
             throw new java.io.UncheckedIOException(e);
         }
@@ -94,6 +98,7 @@ class ApiContractIT {
     @DynamicPropertySource
     static void voice(DynamicPropertyRegistry r) {
         r.add("marvin.config-dir", CONFIG::toString);
+        r.add("marvin.data-dir", DATA::toString);
     }
 
     /** Open-Meteo, canned. */
@@ -425,6 +430,41 @@ class ApiContractIT {
             problems.addAll(compare(name, snap, replay(snap, lan)));
         }
         assertThat(problems).isEmpty();
+    }
+
+    @Test
+    @Order(4)
+    void aRebindingDomainNamedLikeThisMachineIsRefused() throws Exception {
+        // deliberate deviation shared with the Python host: whole names only (see host-java/NOTES.md)
+        String shortName = marvin.host.adapter.web.AccessFilter.localHostName().toLowerCase(java.util.Locale.ROOT).split("\\.")[0];
+        for (String method : List.of("GET", "POST")) {
+            String host = shortName + ".evil.example:" + port;
+            Map<String, String> h = new java.util.LinkedHashMap<>(Map.of("Host", host));
+            byte[] body = null;
+            if (method.equals("POST")) {
+                h.put("Content-Type", "application/json");
+                h.put("Origin", "http://" + host);
+                body = "{}".getBytes(StandardCharsets.UTF_8);
+            }
+            assertThat(RawHttp.call("127.0.0.1", port, method, "/api/settings", h, body).status())
+                    .as(method + " with Host " + host).isEqualTo(403);
+        }
+        for (String name : List.of(shortName, shortName + ".local")) {
+            assertThat(RawHttp.call("127.0.0.1", port, "GET", "/api/settings", Map.of("Host", name + ":" + port), null).status())
+                    .as("Host " + name).isEqualTo(200);
+        }
+    }
+
+    /** The demo changes its own copy of voice.json (as the Python demo), never the owner's. */
+    @Test
+    @Order(6)
+    void theDemoLeavesTheOwnersVoiceSettingsAlone() throws Exception {
+        Map<String, String> h = Map.of("Content-Type", "application/json");
+        RawHttp.Response r = RawHttp.call("127.0.0.1", port, "POST", "/api/voice/settings", h,
+                "{\"follow_up_s\": 3}".getBytes(StandardCharsets.UTF_8));
+        assertThat(r.status()).isEqualTo(200);
+        assertThat(Files.readString(CONFIG.resolve("voice.json"))).isEqualTo(OWNER_VOICE_JSON);
+        assertThat(Files.readString(DATA.resolve("demo").resolve("voice.json"))).contains("\"follow_up_s\": 3");
     }
 
     @Test

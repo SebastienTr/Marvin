@@ -7,6 +7,7 @@
 #                      setting up the voice's Python environment, a few minutes the first time)
 #   ./marvin demo      the same with a simulated robot and a simulated past week (--voice: with the voice)
 #   ./marvin down      stop what `up` or `demo` started (the data is kept)
+#   ./marvin restart   stop the host and start it again (rebuilt if the code changed; --no-voice, as up)
 #   ./marvin status    what is running, and the host's health
 #   ./marvin logs      follow the host's log (-n N: the last N lines and exit)
 #   ./marvin doctor    check this machine and say how to fix what is missing
@@ -17,7 +18,9 @@
 # Docker, inside the host (data in ~/.local/share/marvin/pg).
 #
 # Environment: MARVIN_DATA_DIR (default ~/.local/share/marvin), MARVIN_PORT (8765), MARVIN_BIND
-# (0.0.0.0), MARVIN_DB (auto | docker | embedded), MARVIN_JAVA_HOME (a JDK 25 to use).
+# (0.0.0.0), MARVIN_DB (auto | docker | embedded; auto keeps the one used the first time),
+# MARVIN_PG_PORT (5433, the Docker database), MARVIN_JAVA_HOME (a JDK 25 to use), MARVIN_JAVA_OPTS
+# (the host JVM's options; default: the serial collector and a 384 MB heap).
 # Robot link: MARVIN_UDP_PORT (47100), MARVIN_TAP (forward the robot's datagrams to this UDP port for
 # the Python viewer: marvin-host run --port <it> --no-ui), MARVIN_RECORD (also record them to a
 # .mvrec[.gz] file), MARVIN_REPLAY (play a .mvrec recording instead of listening for robots).
@@ -40,7 +43,12 @@ BIND=${MARVIN_BIND:-0.0.0.0}
 PG_CONTAINER=marvin-postgres
 PG_VOLUME=marvin-pgdata
 PG_IMAGE=pgvector/pgvector:pg18
-PG_PORT=5433
+PG_PORT=${MARVIN_PG_PORT:-5433}
+DB_MODE_FILE="$DATA_DIR/db_mode"
+# a small, always-on host: the serial collector with a bounded heap (about 250 MB resident at idle; ZGC
+# with the same work: about 400 MB)
+JAVA_OPTS_DEFAULT="-XX:+UseSerialGC -Xmx384m"
+LOG_ROTATE_BYTES=10485760
 JDK_FEATURE=25
 JDK_HOME_DIR="$DATA_DIR/jdk"
 VENV="$ROOT/host/.venv"
@@ -174,25 +182,50 @@ pg_running() {
 
 start_postgres() {
     if pg_running; then
-        return 0
-    fi
-    if docker inspect "$PG_CONTAINER" >/dev/null 2>&1; then
+        :
+    elif docker inspect "$PG_CONTAINER" >/dev/null 2>&1; then
         step "Starting PostgreSQL (Docker container $PG_CONTAINER) ..."
-        docker start "$PG_CONTAINER" >/dev/null
+        docker start "$PG_CONTAINER" >/dev/null 2>&1 ||
+            die "could not start PostgreSQL: port $PG_PORT is taken? (./marvin doctor)"
     else
-        step "Starting PostgreSQL 18 with pgvector (Docker, first time: downloading the image) ..."
-        docker run -d --name "$PG_CONTAINER" --label org.marvin.role=database \
-            -e POSTGRES_USER=marvin -e POSTGRES_PASSWORD=marvin -e POSTGRES_DB=marvin \
-            -v "$PG_VOLUME:/var/lib/postgresql" -p "127.0.0.1:$PG_PORT:5432" \
-            --restart no "$PG_IMAGE" >/dev/null ||
-            die "could not start PostgreSQL in Docker (is port $PG_PORT free? ./marvin doctor)"
+        pg_create
     fi
+    pg_wait
+    if [ "$(pg_published_port)" != "$PG_PORT" ]; then
+        # a container started without its port (a failed start earlier), or on another port
+        # (MARVIN_PG_PORT changed): make it again, the data is in the volume
+        step "Recreating the PostgreSQL container (the data stays in the Docker volume $PG_VOLUME) ..."
+        docker rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
+        pg_create
+        pg_wait
+        [ "$(pg_published_port)" = "$PG_PORT" ] ||
+            die "PostgreSQL is not reachable on 127.0.0.1:$PG_PORT (port taken? ./marvin doctor)"
+    fi
+}
+
+pg_create() {
+    step "Starting PostgreSQL 18 with pgvector (Docker, first time: downloading the image) ..."
+    docker run -d --name "$PG_CONTAINER" --label org.marvin.role=database \
+        -e POSTGRES_USER=marvin -e POSTGRES_PASSWORD=marvin -e POSTGRES_DB=marvin \
+        -v "$PG_VOLUME:/var/lib/postgresql" -p "127.0.0.1:$PG_PORT:5432" \
+        --restart no "$PG_IMAGE" >/dev/null 2>&1 || {
+        docker rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
+        die "could not start PostgreSQL in Docker: port $PG_PORT is taken? (./marvin doctor, or MARVIN_PG_PORT)"
+    }
+}
+
+pg_wait() {
     i=0
     until docker exec "$PG_CONTAINER" pg_isready -q -U marvin -d marvin >/dev/null 2>&1; do
         i=$((i + 1))
         [ "$i" -le 60 ] || die "PostgreSQL did not become ready (docker logs $PG_CONTAINER)"
         sleep 1
     done
+}
+
+# the host port Docker publishes the database on (empty when none)
+pg_published_port() {
+    docker port "$PG_CONTAINER" 5432/tcp 2>/dev/null | sed -n 's/.*:\([0-9][0-9]*\)$/\1/p' | head -n 1
 }
 
 stop_postgres() {
@@ -202,14 +235,53 @@ stop_postgres() {
     fi
 }
 
-# decides where the database is: sets DB_MODE (docker | embedded)
+recorded_db_mode() {
+    sed -n '1{s/[^a-z]//g;p;}' "$DB_MODE_FILE" 2>/dev/null || true
+}
+
+# waits for Docker, starting Docker Desktop on macOS; returns 1 if it does not come up
+wait_for_docker() {
+    have docker || return 1
+    docker_ok && return 0
+    if [ "$(uname -s)" = Darwin ] && have open; then
+        step "Starting Docker Desktop (your data is in Docker) ..."
+        open -ga Docker 2>/dev/null || return 1
+        i=0
+        until docker_ok; do
+            i=$((i + 1))
+            [ "$i" -le 60 ] || return 1
+            sleep 1
+        done
+        return 0
+    fi
+    return 1
+}
+
+# decides where the database is: sets DB_MODE (docker | embedded). In auto mode the first choice is
+# kept ($DB_MODE_FILE): the data must not silently move to an empty second database.
 choose_db() {
     case "${MARVIN_DB:-auto}" in
-        docker) docker_ok || die "MARVIN_DB=docker but Docker is not running"; DB_MODE=docker ;;
+        docker) wait_for_docker || die "MARVIN_DB=docker but Docker is not running"; DB_MODE=docker ;;
         embedded) DB_MODE=embedded ;;
-        auto) if docker_ok; then DB_MODE=docker; else DB_MODE=embedded; fi ;;
+        auto)
+            case "$(recorded_db_mode)" in
+                docker)
+                    wait_for_docker ||
+                        die "your data is in Docker (volume $PG_VOLUME) but Docker is not running: start Docker, or MARVIN_DB=embedded to use a separate database"
+                    DB_MODE=docker ;;
+                embedded)
+                    DB_MODE=embedded
+                    docker_ok && say "Your data is in the PostgreSQL inside the host ($DATA_DIR/pg); MARVIN_DB=docker to use Docker's instead." ;;
+                *) if docker_ok; then DB_MODE=docker; else DB_MODE=embedded; fi ;;
+            esac ;;
         *) die "MARVIN_DB must be auto, docker or embedded" ;;
     esac
+}
+
+remember_db_mode() {
+    [ "${MARVIN_DB:-auto}" = auto ] || return 0
+    [ -n "$(recorded_db_mode)" ] && return 0
+    mkdir -p "$DATA_DIR" && printf '%s\n' "$DB_MODE" >"$DB_MODE_FILE"
 }
 
 # ------------------------------------------------------------------------------------ Python
@@ -218,26 +290,53 @@ python_ok() {
     have python3 && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null
 }
 
-# the host's Python environment, created on demand (the voice sidecar runs from it)
+# python3 can make a virtual environment (Debian and Ubuntu ship venv/ensurepip separately)
+venv_ok() {
+    python3 -c 'import venv, ensurepip' 2>/dev/null
+}
+
+VOICE_PACKAGES="sounddevice webrtcvad grpc grpc_health"
+
+# the voice's packages are installed (not imported: sounddevice needs PortAudio to import, which
+# the sidecar reports in the app with its fix)
+voice_installed() {
+    "$VENV/bin/python" -c "
+import importlib.util, sys
+sys.exit(0 if all(importlib.util.find_spec(m) for m in '$VOICE_PACKAGES'.split()) else 1)
+" 2>/dev/null
+}
+
+# the host's Python environment, created on demand (the voice sidecar runs from it). Returns 1 when
+# it could not be made; the voice is optional, so the caller decides whether that is fatal.
 ensure_venv() {
     # $1: "voice" (default: the voice's dependencies too) or "base" (the Python host only: the demo)
     extra=${1:-voice}
-    if [ -x "$VENV/bin/python" ]; then
-        if [ "$extra" = voice ] && ! "$VENV/bin/python" -c 'import sounddevice, webrtcvad, grpc, grpc_health' 2>/dev/null; then
-            step "Adding the voice to host/.venv (a few minutes) ..."
-            "$VENV/bin/python" -m pip install -q -e "$ROOT/host[sidecar,voice]" || die "pip install failed (see above)"
+    if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+        warn "host/.venv has no pip (a failed setup): making it again"
+        rm -rf "$VENV"
+    fi
+    if [ ! -x "$VENV/bin/python" ]; then
+        python_ok || { warn "Python 3.10 or newer is needed (./marvin doctor)"; return 1; }
+        venv_ok || { warn "python3 cannot make virtual environments: sudo apt install python3-venv"; return 1; }
+        step "Creating the Python environment in host/.venv (a few minutes) ..."
+        if ! python3 -m venv "$VENV" || ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+            rm -rf "$VENV"
+            warn "could not create host/.venv (Debian/Ubuntu: sudo apt install python3-venv)"
+            return 1
         fi
-        return 0
+        "$VENV/bin/python" -m pip install -q --upgrade pip || true
+        if [ "$extra" != voice ]; then
+            "$VENV/bin/python" -m pip install -q -e "$ROOT/host" || { warn "pip install failed (offline?)"; return 1; }
+        fi
     fi
-    python_ok || die "Python 3.10 or newer is needed (./marvin doctor)"
-    step "Creating the Python environment in host/.venv (a few minutes) ..."
-    python3 -m venv "$VENV"
-    "$VENV/bin/python" -m pip install -q --upgrade pip
-    if [ "$extra" = voice ]; then
-        "$VENV/bin/python" -m pip install -q -e "$ROOT/host[sidecar,voice]" || die "pip install failed (see above)"
-    else
-        "$VENV/bin/python" -m pip install -q -e "$ROOT/host" || die "pip install failed (see above)"
+    if [ "$extra" = voice ] && ! voice_installed; then
+        step "Adding the voice to host/.venv (a few minutes) ..."
+        "$VENV/bin/python" -m pip install -q -e "$ROOT/host[sidecar,voice]" || {
+            warn "could not install the voice's packages (offline?): Marvin starts without its voice; ./marvin restart later"
+            return 1
+        }
     fi
+    return 0
 }
 
 # the demo's simulated robot and past week come from the Python host: some Python must run it
@@ -278,51 +377,81 @@ except OSError:
 }
 
 port_busy() {
-    # TCP port $1 accepts connections on this machine
+    # TCP port $1 cannot be bound here (something listens on it, HTTP or not)
+    if have python3; then
+        python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(('0.0.0.0', $1)); s.listen(1)
+except OSError:
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null && return 0
+    fi
     curl -s --max-time 1 -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null
+}
+
+# sidecars left by a host that died without stopping them (they also exit when their host dies)
+kill_stale_sidecars() {
+    have pkill || return 0
+    pkill -f "$VENV/bin/python -m marvin_host.sidecar." 2>/dev/null || true
+}
+
+rotate_log() {
+    [ -f "$LOG_FILE" ] || return 0
+    size=$(wc -c <"$LOG_FILE" 2>/dev/null | tr -d ' ')
+    [ "${size:-0}" -gt "$LOG_ROTATE_BYTES" ] && mv -f "$LOG_FILE" "$LOG_FILE.1"
+    return 0
 }
 
 start_host() {
     mode=$1
     voice=$2
     if pid=$(host_pid); then
-        say "Marvin's host is already running (pid $pid). ./marvin down first to restart it."
+        say "Marvin's host is already running (pid $pid)."
+        if jar_is_stale; then say "A newer version of the code is here: ./marvin restart"; fi
         return 0
     fi
+    [ -f "$PID_FILE" ] && kill_stale_sidecars
     port_busy "$PORT" && die "port $PORT is already in use (the Python host? stop it, or set MARVIN_PORT)"
     [ -n "${MARVIN_REPLAY:-}" ] || [ "$(udp_state)" != busy ] ||
         die "UDP port $UDP_PORT (the robot link) is in use: only one host can talk to the robot (stop marvin-host run)"
     platform
     ensure_jdk
     ensure_built
+    # Python first: nothing is started yet if it fails
+    if [ "$voice" = yes ] && python_ok; then
+        ensure_venv voice || true
+    elif [ "$voice" = yes ]; then
+        warn "no Python 3.10+: Marvin starts without its voice (./marvin doctor)"
+    elif [ "$mode" = demo ] && ! demo_python_ok; then
+        ensure_venv base || die "the demo needs host/.venv (./marvin doctor)"
+    fi
     choose_db
     if [ "$DB_MODE" = docker ]; then
         start_postgres
         db_env="MARVIN_DB_MODE=external MARVIN_DB_URL=jdbc:postgresql://127.0.0.1:$PG_PORT/marvin"
     else
         [ "$(id -u)" -ne 0 ] || die "PostgreSQL refuses to run as root: start Docker, or run ./marvin as a normal user"
-        if [ "${MARVIN_DB:-auto}" = embedded ]; then
+        if [ "${MARVIN_DB:-auto}" = embedded ] || [ "$(recorded_db_mode)" = embedded ]; then
             say "PostgreSQL runs inside the host (data in $DATA_DIR/pg)."
         else
             say "Docker is not running: PostgreSQL runs inside the host (data in $DATA_DIR/pg)."
         fi
         db_env="MARVIN_DB_MODE=embedded"
     fi
-    if [ "$voice" = yes ] && python_ok; then
-        ensure_venv voice
-    elif [ "$voice" = yes ]; then
-        warn "no Python 3.10+: Marvin starts without its voice (./marvin doctor)"
-    elif [ "$mode" = demo ] && ! demo_python_ok; then
-        ensure_venv base
-    fi
     python_env=
     [ -x "$VENV/bin/python" ] && python_env="MARVIN_PYTHON=$VENV/bin/python"
     mkdir -p "$RUN_DIR" "$LOG_DIR"
+    rotate_log
     step "Starting Marvin's host ($mode) ..."
-    # shellcheck disable=SC2086 # db_env and python_env are lists of VAR=value words
+    # shellcheck disable=SC2086 # db_env, python_env and the JVM options are lists of words
     env MARVIN_MODE="$mode" MARVIN_PORT="$PORT" MARVIN_BIND="$BIND" MARVIN_DATA_DIR="$DATA_DIR" \
         MARVIN_REPO="$ROOT" $db_env $python_env \
-        nohup "$JAVA_HOME/bin/java" -XX:+UseZGC --enable-native-access=ALL-UNNAMED -jar "$JAR" >>"$LOG_FILE" 2>&1 </dev/null &
+        nohup "$JAVA_HOME/bin/java" ${MARVIN_JAVA_OPTS:-$JAVA_OPTS_DEFAULT} --enable-native-access=ALL-UNNAMED \
+        -jar "$JAR" >>"$LOG_FILE" 2>&1 </dev/null &
     pid=$!
     printf '%s\n' "$pid" >"$PID_FILE"
     printf 'MODE=%s\nDB=%s\n' "$mode" "$DB_MODE" >"$STATE_FILE"
@@ -337,6 +466,7 @@ start_host() {
         [ "$i" -le 120 ] || die "the host did not answer on port $PORT within 2 minutes (./marvin logs)"
         sleep 1
     done
+    remember_db_mode
     say "${G}Marvin's app: http://localhost:$PORT/${N}"
     phone_url
     say "  log: ./marvin logs    stop: ./marvin down"
@@ -390,7 +520,7 @@ stop_host() {
 # ------------------------------------------------------------------------------------ commands
 
 usage() {
-    sed -n '4,13p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '4,14p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 cmd_up() {
@@ -416,6 +546,15 @@ cmd_demo() {
     start_host demo "$voice"
 }
 
+cmd_restart() {
+    mode=$(sed -n 's/^MODE=//p' "$STATE_FILE" 2>/dev/null || true)
+    stop_host
+    case "${mode:-live}" in
+        demo) cmd_demo "$@" ;;
+        *) cmd_up "$@" ;;
+    esac
+}
+
 cmd_down() {
     stop_host
     stop_postgres
@@ -432,15 +571,20 @@ cmd_status() {
     else
         say "host:       not running"
     fi
-    if have docker && docker info >/dev/null 2>&1; then
+    db=$(sed -n 's/^DB=//p' "$STATE_FILE" 2>/dev/null || true)
+    [ -n "$db" ] || db=$(recorded_db_mode)
+    if [ "$db" = embedded ]; then
+        say "postgres:   embedded (inside the host, $DATA_DIR/pg)"
+    elif have docker && docker info >/dev/null 2>&1; then
         if pg_running; then
-            say "postgres:   running (Docker container $PG_CONTAINER, 127.0.0.1:$PG_PORT)"
+            say "postgres:   running (Docker container $PG_CONTAINER, 127.0.0.1:${PG_PORT})"
         else
             say "postgres:   not running in Docker"
         fi
     else
         say "postgres:   Docker not available (the host runs its own PostgreSQL)"
     fi
+    say "database:   ${db:-not chosen yet} (kept in $DB_MODE_FILE)"
     say "data:       $DATA_DIR"
 }
 
@@ -533,16 +677,24 @@ cmd_doctor() {
 
     if python_ok; then
         ok "Python: $(python3 --version 2>&1)"
-        if [ -x "$VENV/bin/python" ]; then
+        if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+            note "host/.venv is broken (no pip): ./marvin up makes it again"
+            venv_ok || fix "sudo apt install python3-venv"
+        elif [ -x "$VENV/bin/python" ]; then
             ok "Python environment: host/.venv"
-            if "$VENV/bin/python" -c 'import sounddevice, webrtcvad, grpc, grpc_health' >/dev/null 2>&1; then
+            if voice_installed; then
                 ok "the voice's Python packages are installed (voice sidecar)"
+                if [ "$OS" = linux ] && ! "$VENV/bin/python" -c 'import sounddevice' >/dev/null 2>&1; then
+                    note "PortAudio is missing: the voice cannot use this computer's microphone"
+                    fix "sudo apt install libportaudio2"
+                fi
             else
                 note "the voice's Python packages are not installed in host/.venv"
                 fix "./marvin up installs them (or: $VENV/bin/pip install -e \"host[sidecar,voice]\")"
             fi
         else
             note "no host/.venv: the voice needs it; ./marvin up creates it"
+            venv_ok || fix "first: sudo apt install python3-venv"
         fi
     else
         note "no Python 3.10+: the voice, the simulator and the viewer need it"
@@ -579,6 +731,7 @@ main() {
     [ $# -gt 0 ] && shift
     case "$cmd" in
         up) cmd_up "$@" ;;
+        restart) cmd_restart "$@" ;;
         demo) cmd_demo "$@" ;;
         down | stop) cmd_down ;;
         status) cmd_status ;;

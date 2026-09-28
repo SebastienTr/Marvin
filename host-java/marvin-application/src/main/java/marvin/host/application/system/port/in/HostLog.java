@@ -10,6 +10,9 @@ import marvin.host.domain.system.LogEntry;
 /** The app's Log panel: the last lines from the brain, the devices, the host and the voice. */
 public interface HostLog {
 
+    /** How many lines are kept. */
+    int CAPACITY = 500;
+
     /** Adds a line now. */
     LogEntry add(String source, String level, String text, Map<String, Object> extra);
 

@@ -59,7 +59,7 @@ public final class HttpJsonFetcher implements JsonFetcher {
         } catch (HttpTimeoutException e) {
             throw new Failed("timed out", true);
         } catch (IOException e) {
-            throw new Failed(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), false);
+            throw new Failed(NetErrors.reason(e), false);
         } catch (IllegalArgumentException e) {
             throw new Failed("not JSON: " + e.getMessage(), false);
         } catch (InterruptedException e) {

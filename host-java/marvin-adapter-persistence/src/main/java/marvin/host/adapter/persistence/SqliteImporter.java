@@ -20,8 +20,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Imports the Python host's SQLite history ({@code marvin.db}: events, samples, settings and, from
- * schema 2, the conversation) into PostgreSQL, once per file: the import is recorded in
- * {@code platform.import} and a file already imported is skipped. Everything goes in one transaction.
+ * schema 2, the conversation) into PostgreSQL, once per file.
+ *
+ * <p>Each bounded context imports its own tables, in its own transaction, and records it in its own
+ * schema ({@code presence.import}, {@code conversation.import}, {@code settings.import}): no transaction
+ * spans two schemas, and a context already imported is skipped (an interrupted import resumes with the
+ * others). {@code platform.import} keeps the summary; a file listed there (older hosts wrote only that)
+ * is not imported again.
  *
  * <p>Rows keep their ids when the target tables are empty (the normal first start), so the event ids
  * the app has seen stay the same; otherwise events get new ids after the existing ones. Settings and
@@ -40,10 +45,16 @@ public class SqliteImporter {
 
     private final JdbcClient jdbc;
     private final TransactionTemplate tx;
+    private final PresenceImport presence;
+    private final ConversationImport conversation;
+    private final SettingsImport settings;
 
     public SqliteImporter(JdbcClient jdbc, TransactionTemplate tx, ContextMigrations migrated) {
         this.jdbc = jdbc;
         this.tx = tx;
+        this.presence = new PresenceImport(jdbc, tx);
+        this.conversation = new ConversationImport(jdbc, tx);
+        this.settings = new SettingsImport(jdbc, tx);
     }
 
     /** Imports {@code file} unless it is missing or was imported before. */
@@ -63,20 +74,14 @@ public class SqliteImporter {
                 return Result.skipped(file + " is not a Marvin history");
             }
             long size = Files.size(file);
-            Result r = tx.execute(status -> {
-                try {
-                    int events = events(sqlite);
-                    int samples = tables.contains("samples") ? samples(sqlite) : 0;
-                    int settings = tables.contains("settings") ? settings(sqlite) : 0;
-                    int conversation = tables.contains("conversation") ? conversation(sqlite) : 0;
-                    jdbc.sql("INSERT INTO platform.import (source, size_bytes, events, samples, conversation, settings) "
-                                    + "VALUES (?, ?, ?, ?, ?, ?)")
-                            .params(source, size, events, samples, conversation, settings).update();
-                    return new Result(true, "imported", events, samples, conversation, settings);
-                } catch (SQLException e) {
-                    throw new IllegalStateException("could not read " + source + ": " + e.getMessage(), e);
-                }
-            });
+            int[] ps = presence.importOnce(source, sqlite, tables.contains("samples"));
+            int st = tables.contains("settings") ? settings.importOnce(source, sqlite) : 0;
+            int cv = tables.contains("conversation") ? conversation.importOnce(source, sqlite) : 0;
+            Result r = new Result(true, "imported", ps[0], ps[1], cv, st);
+            tx.executeWithoutResult(status -> jdbc.sql(
+                            "INSERT INTO platform.import (source, size_bytes, events, samples, conversation, settings) "
+                                    + "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (source) DO NOTHING")
+                    .params(source, size, r.events(), r.samples(), r.conversation(), r.settings()).update());
             log.info("imported {}: {} events, {} samples, {} conversation entries, {} settings", source, r.events(),
                     r.samples(), r.conversation(), r.settings());
             return r;
@@ -95,6 +100,74 @@ public class SqliteImporter {
         }
         return out;
     }
+
+    /** One context's import: its tables, its transaction, its marker; {@code -1} when it was done before. */
+    abstract static class ContextImport {
+        final JdbcClient jdbc;
+        final TransactionTemplate tx;
+        private final String schema;
+
+        ContextImport(JdbcClient jdbc, TransactionTemplate tx, String schema) {
+            this.jdbc = jdbc;
+            this.tx = tx;
+            this.schema = schema;
+        }
+
+        boolean done(String source) {
+            return jdbc.sql("SELECT EXISTS (SELECT 1 FROM " + schema + ".import WHERE source = ?)")
+                    .param(source).query(Boolean.class).single();
+        }
+
+        void mark(String source, int rows) {
+            jdbc.sql("INSERT INTO " + schema + ".import (source, rows) VALUES (?, ?)").params(source, rows).update();
+        }
+
+        interface Rows {
+            int copy() throws SQLException;
+        }
+
+        int once(String source, Rows rows) {
+            if (done(source)) {
+                return 0;
+            }
+            Integer n = tx.execute(status -> {
+                try {
+                    int copied = rows.copy();
+                    mark(source, copied);
+                    return copied;
+                } catch (SQLException e) {
+                    throw new IllegalStateException("could not read " + source + ": " + e.getMessage(), e);
+                }
+            });
+            return n == null ? 0 : n;
+        }
+
+    static String text(String s) {
+        return s == null ? "" : s;
+    }
+
+    /** The row's JSON object as it was written, or {@code {}} if it is not one. */
+    static String json(String s) {
+        return s != null && JsonValues.isObject(s) ? s : "{}";
+    }
+    }
+
+    /** presence: events and minute samples. */
+    static final class PresenceImport extends ContextImport {
+        PresenceImport(JdbcClient jdbc, TransactionTemplate tx) {
+            super(jdbc, tx, "presence");
+        }
+
+        /** {events, samples}. */
+        int[] importOnce(String source, Connection c, boolean withSamples) {
+            int[] out = new int[2];
+            once(source, () -> {
+                out[0] = events(c);
+                out[1] = withSamples ? samples(c) : 0;
+                return out[0] + out[1];
+            });
+            return out;
+        }
 
     private int events(Connection c) throws SQLException {
         boolean keepIds = jdbc.sql("SELECT NOT EXISTS (SELECT 1 FROM presence.event)").query(Boolean.class).single();
@@ -137,6 +210,17 @@ public class SqliteImporter {
         }
         return n;
     }
+    }
+
+    /** settings: the app's settings. */
+    static final class SettingsImport extends ContextImport {
+        SettingsImport(JdbcClient jdbc, TransactionTemplate tx) {
+            super(jdbc, tx, "settings");
+        }
+
+        int importOnce(String source, Connection c) {
+            return once(source, () -> settings(c));
+        }
 
     private int settings(Connection c) throws SQLException {
         int n = 0;
@@ -153,6 +237,17 @@ public class SqliteImporter {
         }
         return n;
     }
+    }
+
+    /** conversation: the transcript. */
+    static final class ConversationImport extends ContextImport {
+        ConversationImport(JdbcClient jdbc, TransactionTemplate tx) {
+            super(jdbc, tx, "conversation");
+        }
+
+        int importOnce(String source, Connection c) {
+            return once(source, () -> conversation(c));
+        }
 
     private int conversation(Connection c) throws SQLException {
         int n = 0;
@@ -168,13 +263,5 @@ public class SqliteImporter {
         }
         return n;
     }
-
-    private static String text(String s) {
-        return s == null ? "" : s;
-    }
-
-    /** The row's JSON object as it was written, or {@code {}} if it is not one. */
-    private static String json(String s) {
-        return s != null && JsonValues.isObject(s) ? s : "{}";
     }
 }

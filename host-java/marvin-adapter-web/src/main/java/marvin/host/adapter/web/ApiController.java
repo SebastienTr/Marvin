@@ -23,7 +23,6 @@ import marvin.host.application.presence.port.in.PresenceHistory;
 import marvin.host.application.robot.port.in.RobotLinkQuery;
 import marvin.host.application.settings.port.in.ManageSettings;
 import marvin.host.application.system.port.in.HostLog;
-import marvin.host.application.system.HostLogService;
 import marvin.host.domain.conversation.ConversationEntry;
 import marvin.host.domain.shared.Clocks;
 import tools.jackson.core.JacksonException;
@@ -116,7 +115,7 @@ public class ApiController {
 
     @GetMapping("/api/log")
     public ResponseEntity<byte[]> log(HttpServletRequest rq) {
-        int limit = (int) queryInt(rq, "limit", 200, 1, HostLogService.SIZE);
+        int limit = (int) queryInt(rq, "limit", 200, 1, HostLog.CAPACITY);
         long since = queryInt(rq, "since", 0, 0, 1L << 62);
         Set<String> sources = new LinkedHashSet<>();
         String s = first(rq, "source");
