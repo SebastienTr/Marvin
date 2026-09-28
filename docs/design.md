@@ -13,6 +13,7 @@ Versions and facts about third-party projects were checked in late September 202
 2. **The host core is rewritten in Java with Spring Boot, as a hexagonal architecture** (ports and adapters). Later everything runs in Docker, then Kubernetes.
 3. **Layered memory, agents and connectors**, with a hard **context budget** so that more knowledge never means a bigger, slower prompt.
 4. **A Soul**: Marvin's identity with its owner, a fixed core written by the owner plus a learned part that changes only with the owner's approval.
+5. **Microservices in the long term.** The host starts as one deployable, but its parts must be able to become separate services without a rewrite ([section 10.4](#104-toward-microservices)).
 
 **What this document recommends:**
 
@@ -205,6 +206,8 @@ sidecars/
 Naming: packages `marvin.host.<layer>.<module>`; ports end in the role they play (`LanguageModel`, `EventLog`), adapters say their technology (`OllamaLanguageModel`, `JdbcEventLog`); use cases are verbs (`AnswerQuestion`, `ConsolidateMemory`, `ApproveAction`). Domain events are records in the past tense (`PersonArrived`, `FactLearned`).
 
 Spring Modulith was considered for module boundaries and its event publication registry. ArchUnit covers the boundaries we need without tying the domain to Spring; the event log (below) already gives us durable, replayable events.
+
+Because the long-term target is microservices (section 10.4), the domain and application modules are cut along **bounded contexts** (robot, presence, conversation, memory, agent, connector, soul, settings), and ArchUnit also forbids one context from reaching into another's internals: contexts talk through their application ports and through events only, and each owns its own Postgres schema. That is what makes a later split a deployment change instead of a rewrite.
 
 ### 3.4 ArchUnit rules
 
@@ -736,6 +739,31 @@ The catch is the robot link: the robot finds the host by **broadcasting** `HELLO
 Candidly: **for one robot in one home, Kubernetes is not worth it on its own merits.** Compose does everything a single machine needs. It becomes worth it when there are several machines with different jobs, for example a small always-on box for the core, Postgres and the robot link, plus a GPU machine for Ollama and the sidecars that may sleep, or when learning Kubernetes is itself a goal.
 
 If so: **k3s** (a single binary, fine on a mini-PC). The core as a one-replica StatefulSet with `hostNetwork: true`, pinned to the node on the robot's LAN; Postgres as a StatefulSet with a local volume (or CloudNativePG if backups and upgrades are wanted); sidecars and Ollama on the GPU node through the NVIDIA device plugin. A Mac cannot be a GPU node. The hexagonal core does not change: the sidecar supervisor switches to external mode, the secret store reads mounted secrets.
+
+### 10.4 Toward microservices
+
+The long-term target is a set of services. The path there is a **modular monolith first**: splitting before the boundaries have proven themselves would multiply deployments, network hops and failure modes for a system that runs on one machine for one person. Every rule below exists so that splitting later is cheap.
+
+**Boundaries now, processes later.** Each bounded context is a candidate service. Already true on day one: the voice and vision sidecars are separate processes behind ports. Inside the core, the rules of section 3.3 hold: no shared tables, no calls into another context's internals, communication through ports and events.
+
+**Events are the backbone.** Contexts already publish domain events to the append-only event log (section 5.2). In the monolith, the log is a Postgres table read through an in-process port; with services, the same events go to a broker behind the same port, written with a transactional outbox so an event is never lost or published twice. Recommended broker: **NATS JetStream** (a single small binary, persistence, replay, request/reply) rather than Kafka, whose operating cost only pays off at volumes Marvin will not reach. Consumers are idempotent (event ids), and event schemas are versioned in `marvin-contracts`.
+
+**Synchronous calls** stay rare and explicit: gRPC for the latency-critical paths (voice ↔ conversation), REST for the rest; contracts in `marvin-contracts` (`.proto`, OpenAPI, AsyncAPI for events), checked by contract tests on both sides.
+
+**Likely order of extraction**, when a real reason appears (different scaling, hardware, release cadence or fault isolation):
+
+| Service | Why it would split | Constraint |
+|---|---|---|
+| Voice and vision sidecars | Already separate (Python, GPU) | Same machine as the GPU |
+| Robot gateway (UDP v1, audio relay, face link) | Must sit on the robot's LAN with host networking; small and stable | One per LAN; low latency to the robot |
+| Memory worker (consolidation, embeddings) | Heavy, batch, can run on the GPU machine at night | Reads the event log, owns the memory schema |
+| Agent runner | Long tasks, own budgets, may use other models | Approvals stay in the core |
+| Connectors (ingestion per source) | Separate secrets and failure domains, polling schedules | Scopes per connector |
+| Conversation (context assembler, tool loop) | Last to go: it sits on the latency path of every answer | Few hops: voice → conversation → model |
+
+**Cross-cutting from the start**, cheap now and hard to add later: OpenTelemetry traces and metrics across the core and sidecars (one trace per question, from the end of speech to the first word), structured logs with correlation ids, configuration from the environment, health and readiness endpoints on every process, and service identity (mTLS inside Kubernetes, a shared token on one machine).
+
+**The latency budget decides.** A spoken answer must keep its first word within about 1.5 s. Every service on the answer path costs a hop and a failure mode, so the conversation path stays as short as possible even when everything else is split.
 
 ## 11. Migration plan
 
