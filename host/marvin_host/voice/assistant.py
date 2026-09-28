@@ -85,7 +85,7 @@ class VoiceConfig:
     follow_up_s: float = 5.0                # after an answer, a question without the name
     barge_in: bool = True
     chime: bool = True                      # soft chime when listening after "Marvin."
-    memory_turns: int = 6                   # question/answer pairs kept
+    memory_turns: int = 8                   # question/answer pairs kept (then the older half is dropped)
     memory_reset_s: float = 180.0           # forget the conversation after this much silence
     # echo and latency
     duplex: bool = False                    # True: keep listening while speaking (headset, echo-cancelling robot)
@@ -853,8 +853,16 @@ class VoiceAssistant:
                 log.exception("on_reply failed")
 
     def _remember(self, question: str, answer: str) -> None:
+        """Keeps the conversation for the next question. The model server reuses its work on
+        everything up to the first message that changed, so the history only ever grows at the end:
+        dropping the oldest turn every time would change the start of it at each question and make
+        the model read the whole conversation again (10 s and more with a large model). When it is
+        full, the older half goes at once, so that happens once every few questions."""
         self.history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
-        del self.history[:-2 * self.config.memory_turns]
+        turns = len(self.history) // 2
+        if turns > self.config.memory_turns:
+            keep = max(1, self.config.memory_turns // 2)
+            del self.history[:-2 * keep]
         self._last_turn = time.monotonic()
 
 

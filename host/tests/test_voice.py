@@ -650,6 +650,17 @@ def test_echo_filter():
     assert f.current_has_wake_word()
 
 
+def test_history_only_grows_at_the_end_until_it_is_halved():
+    va, _ = make([("quiet", 0.1)], [], memory_turns=4)
+    starts = []
+    for i in range(1, 8):
+        va._remember(f"q{i}", f"a{i}")
+        starts.append(va.history[0]["content"])
+    # q1 stays first while the history fills (the model server keeps its work), then half goes at once
+    assert starts == ["q1", "q1", "q1", "q1", "q4", "q4", "q4"]
+    assert len(va.history) == 2 * 4
+
+
 def test_echo_filter_only_near_the_reply():
     from marvin_host.voice.echo import EchoFilter
     now = [100.0]
