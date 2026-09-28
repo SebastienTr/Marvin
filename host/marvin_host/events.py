@@ -50,4 +50,5 @@ class PresenceState:
     breath_rate: float | None = None                     # per minute, None when not reliable
     heart_rate: float | None = None                      # per minute, None when not reliable
     vitals_sensor: bool = False                          # a vital-signs radar (MR60BHA2) has reported
+    simulated: bool = False                              # the sensor data comes from a simulated person
     targets: int = 0                                     # people seen by the LD2450

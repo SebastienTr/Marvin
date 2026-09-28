@@ -101,6 +101,7 @@ class Brain(Sink):
     def on_targets(self, dev: Device, t_us: int, targets: list[ld2450.Target], points: list[tuple]) -> None:
         if not self._clock(t_us):
             return
+        self.state.simulated = _simulated(dev)
         t = t_us / 1e6
         dt = 0.0 if self._last_targets_t is None else max(0.0, t - self._last_targets_t)
         self._last_targets_t = t
@@ -124,6 +125,7 @@ class Brain(Sink):
             return
         c, s, t = self.config, self.state, t_us / 1e6
         s.vitals_sensor = True
+        s.simulated = s.simulated or _simulated(dev)
         good = (vitals.valid and s.present and self._still
                 and c.breath_range[0] <= vitals.breath_rate <= c.breath_range[1]
                 and c.heart_range[0] <= vitals.heart_rate <= c.heart_range[1])
@@ -152,8 +154,9 @@ class Brain(Sink):
     # ------------------------------------------------------------ internals
 
     def _reset(self, t_us: int) -> None:
-        had = getattr(self, "state", None) is not None and self.state.vitals_sensor
-        self.state = PresenceState(t_us=t_us, vitals_sensor=had)
+        old = getattr(self, "state", None)
+        self.state = PresenceState(t_us=t_us, vitals_sensor=bool(old and old.vitals_sensor),
+                                   simulated=bool(old and old.simulated))
         self._last_t_us: int | None = None
         self._last_targets_t: float | None = None
         self._seen_since: float | None = None       # first frame of the current run of sightings
@@ -311,3 +314,9 @@ def _duration(s: float) -> str:
     if s < 90 * 60:
         return f"{s / 60:.0f} min"
     return f"{s / 3600:.1f} h"
+
+
+def _simulated(dev) -> bool:
+    """True if the robot said its sensor data is simulated (HELLO flag), like a D1 mini or `marvin-host sim`."""
+    hello = getattr(dev, "hello", None)
+    return bool(getattr(hello, "simulated", False))

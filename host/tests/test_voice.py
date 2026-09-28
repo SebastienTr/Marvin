@@ -1181,3 +1181,10 @@ def test_context_says_why_there_are_no_vital_signs():
     reading = " ".join(persona.context_facts(PresenceState(**near, vitals_sensor=True, heart_rate=64.0)))
     assert "heart rate at 64 beats per minute" in reading and "no reliable" not in reading
     assert "Never promise a reading" in persona.persona_prompt("fr")
+
+
+def test_context_says_the_sensors_are_simulated():
+    text = " ".join(persona.context_facts(PresenceState(t_us=1, present=True, simulated=True, vitals_sensor=True,
+                                                        heart_rate=66.0)))
+    assert "simulated" in text and "heart rate at 66" in text
+    assert "simulated" not in " ".join(persona.context_facts(PresenceState(t_us=1, present=True)))
