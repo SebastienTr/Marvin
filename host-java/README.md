@@ -6,8 +6,11 @@ bounded contexts that could later become services. The design is in
 [docs/design.md](../docs/design.md); the engineering log (decisions, deviations, known gaps, per
 migration phase) is in [NOTES.md](NOTES.md).
 
-Status: **phase 0**, the foundation. The Python host (`host/`, `marvin-host run`) is still the
-one that talks to the robot; this one starts, migrates its database and answers a health check.
+Status: **phase 1a**, the robot link and the brain. The host owns the robot's UDP port (protocol
+v1, byte for byte as the Python host), runs the presence brain on it, feeds the robot's face, and
+records, replays and taps the datagrams. The app and its API come next (phase 1b); until parity
+(end of phase 2) the Python host (`marvin-host run`) stays the complete one. Only one of the two
+can own UDP 47100 at a time.
 
 ## Run it
 
@@ -50,6 +53,27 @@ curl http://localhost:8765/api/health
 | `MARVIN_DATA_DIR` | `~/.local/share/marvin` | Data (embedded database, run files, logs) |
 | `MARVIN_DB_MODE` | `external` | `external` (at `MARVIN_DB_URL`) or `embedded` |
 | `MARVIN_DB_URL`, `MARVIN_DB_USER`, `MARVIN_DB_PASSWORD` | Docker's | The external database |
+| `MARVIN_UDP_PORT`, `MARVIN_UDP_BIND` | `47100`, `0.0.0.0` | The robot link |
+| `MARVIN_TAP` | none | Forward every datagram to this UDP port (or `host:port`) for the Python viewer |
+| `MARVIN_RECORD` | none | Also record the datagrams to this `.mvrec` file (`.gz`: compressed) |
+| `MARVIN_REPLAY`, `MARVIN_REPLAY_SPEED`, `MARVIN_REPLAY_LOOP` | none, `1.0`, `true` | Play a recording instead of listening (speed 0: as fast as possible) |
+| `MARVIN_CALIBRATION` | `~/.config/marvin/calibration.json` | The sensor calibration the Python host writes (`MARVIN_CONFIG_DIR` also works) |
+
+### A robot, a simulator, the viewer
+
+The robot finds the host by itself (it broadcasts `HELLO` to UDP 47100): a Wemos D1 mini with
+simulated sensors, an ESP32-S3 DevKitC with the face, the MR60BHA2 bridge (a device of its own) all
+link with `./marvin up` as they do with `marvin-host run`. Without hardware, the Python simulator
+works unchanged against the Java host:
+
+```bash
+./marvin up
+cd host && python3 -m marvin_host.cli sim --host 127.0.0.1     # or no --host: broadcast
+./marvin status                                               # health: robot marvin-53494d (simulator)
+```
+
+The Rerun viewer is not ported (design 4.4): start the host with `MARVIN_TAP=47110 ./marvin up`,
+then `marvin-host run --port 47110 --no-ui` shows what the Java host receives.
 
 ## Build and test
 

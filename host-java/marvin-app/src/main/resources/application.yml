@@ -30,6 +30,22 @@ marvin:
     embedded:
       data-directory: ${marvin.data-dir}/pg
       port: ${MARVIN_EMBEDDED_DB_PORT:5434}
+  robot:
+    # the robot link, UDP protocol v1 (docs/protocol.md): only one host may own the port
+    enabled: ${MARVIN_ROBOT:true}
+    bind: ${MARVIN_UDP_BIND:0.0.0.0}
+    port: ${MARVIN_UDP_PORT:47100}
+    # forward every datagram to the Python viewer (marvin-host run --port 47110 --no-ui), e.g. 47110
+    tap: ${MARVIN_TAP:}
+    # record the datagrams to a .mvrec(.gz) file, as marvin-host run --record does
+    record: ${MARVIN_RECORD:}
+    # play a recording instead of listening for robots
+    replay: ${MARVIN_REPLAY:}
+    replay-speed: ${MARVIN_REPLAY_SPEED:1.0}
+    replay-loop: ${MARVIN_REPLAY_LOOP:true}
+    face-state-hz: 10
+    # empty: $MARVIN_CONFIG_DIR, $XDG_CONFIG_HOME/marvin or ~/.config/marvin, calibration.json
+    calibration-file: ${MARVIN_CALIBRATION:}
 
 management:
   endpoints:

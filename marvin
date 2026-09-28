@@ -17,6 +17,9 @@
 #
 # Environment: MARVIN_DATA_DIR (default ~/.local/share/marvin), MARVIN_PORT (8765), MARVIN_BIND
 # (0.0.0.0), MARVIN_DB (auto | docker | embedded), MARVIN_JAVA_HOME (a JDK 25 to use).
+# Robot link: MARVIN_UDP_PORT (47100), MARVIN_TAP (forward the robot's datagrams to this UDP port for
+# the Python viewer: marvin-host run --port <it> --no-ui), MARVIN_RECORD (also record them to a
+# .mvrec[.gz] file), MARVIN_REPLAY (play a .mvrec recording instead of listening for robots).
 
 set -eu
 
@@ -237,6 +240,24 @@ health() {
     curl -fsS --max-time 2 "http://127.0.0.1:$PORT/api/health" 2>/dev/null
 }
 
+UDP_PORT=${MARVIN_UDP_PORT:-47100}
+
+udp_state() {
+    # free | busy | unknown: can this machine bind UDP $UDP_PORT (as the host will)?
+    if have python3; then
+        python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+try:
+    s.bind(('0.0.0.0', $UDP_PORT)); print('free')
+except OSError:
+    print('busy')
+" 2>/dev/null || echo unknown
+    else
+        echo unknown
+    fi
+}
+
 port_busy() {
     # TCP port $1 accepts connections on this machine
     curl -s --max-time 1 -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null
@@ -250,6 +271,8 @@ start_host() {
         return 0
     fi
     port_busy "$PORT" && die "port $PORT is already in use (the Python host? stop it, or set MARVIN_PORT)"
+    [ -n "${MARVIN_REPLAY:-}" ] || [ "$(udp_state)" != busy ] ||
+        die "UDP port $UDP_PORT (the robot link) is in use: only one host can talk to the robot (stop marvin-host run)"
     platform
     ensure_jdk
     ensure_built
@@ -448,19 +471,11 @@ cmd_doctor() {
         ok "port $PORT free for the app"
     fi
     if python_ok; then
-        busy=$(python3 -c "
-import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-try:
-    s.bind(('0.0.0.0', 47100)); print('free')
-except OSError:
-    print('busy')
-" 2>/dev/null || echo unknown)
-        if [ "$busy" = busy ] && ! host_pid >/dev/null; then
-            bad "UDP port 47100 (the robot link) is in use: only one host can talk to the robot"
+        if [ "$(udp_state)" = busy ] && ! host_pid >/dev/null; then
+            bad "UDP port $UDP_PORT (the robot link) is in use: only one host can talk to the robot"
             fix "stop the other host (marvin-host run)"
         else
-            ok "UDP port 47100 for the robot"
+            ok "UDP port $UDP_PORT for the robot"
         fi
     fi
 

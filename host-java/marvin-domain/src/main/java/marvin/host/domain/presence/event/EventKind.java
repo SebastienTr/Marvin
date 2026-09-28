@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-package marvin.host.domain.presence;
+package marvin.host.domain.presence.event;
 
 import java.util.Optional;
 

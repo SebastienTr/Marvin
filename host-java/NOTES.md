@@ -164,3 +164,127 @@ phase. Later phases read this before starting.
 - `./marvin demo` should make the Java host play `ui/demo.py`'s simulated robot and seed a past
   week, the way `marvin-host ui --demo` does, into a throwaway schema or database.
 - Only one host may own UDP 47100: `./marvin doctor` already flags it.
+
+## Phase 1a: robot link and presence
+
+### What exists
+
+- **Protocol v1 in the domain** (`domain.robot`, plain Java): `Wire` (header, pack/unpack),
+  `Hello`, `Vitals`, `FaceState`, `AudioIn`, `AudioOut`, `HostMessages` (`HOST_ACK`, `FACE_EVENT`,
+  `AUDIO_CTRL`, `SOUND`), `Ldrobot` (CRC-8, packets), `Ld2450`, `Board` (ids, names, screens,
+  roles), `Extrinsics` (frames.py mounts and conversions), `SensorCalibration`.
+- **`RobotLinkProcessor`** (domain): `Receiver.handle` without the socket. Checks each datagram,
+  keeps the devices (keyed by sender address, so the MR60BHA2 bridge is a device of its own) and
+  their counters (`LinkStats`: datagrams, lidar packets, CRC errors, radar frames, lost, bad, shed),
+  assembles lidar revolutions, parses frames into `SensorFrame`s, says when to `HOST_ACK`.
+- **`DeviceMonitor`** (domain): the device half of `ui/sink.py` (`UISink`): rates over 5 s, loss %,
+  online/offline after 6 s, connected/disconnected/reconnected/log notices, `DeviceStatus` per device.
+- **The brain** (`domain.presence.Brain`, `BrainConfig`): brain.py line by line, device clock only.
+  Its published language is `domain.presence.event`: `EventKind` (moved there), `PresenceEvent`,
+  `PresenceState` (immutable snapshot).
+- **Use cases**: `PresenceService` (`ObservePresence`, `PresenceQuery`; events out through
+  `PresenceEventPublisher`); `RobotLinkService` (`RobotInbound`, `RobotLinkQuery`, `MonitorRobotLink`;
+  frames out to `SensorFrameListener`s, notices to `LinkNoticeListener`s, time from `HostClock`);
+  `FaceLinkService` (`FaceLink`: `FACE_EVENT` at once, `FACE_STATE` on each tick, to screens only,
+  through `RobotOutbound`).
+- **Robot adapter**: `UdpRobotLink` (socket thread: record, check, `HOST_ACK` right away, tap,
+  audio listeners, queue; `send` with a sequence per destination and the host clock in the header),
+  `FrameDispatcher` (the Python dispatch thread: oldest scans shed first, others only when 2000 are
+  queued, per-kind timings), `DatagramTap`, `mvrec.RecordingReader/Writer/Replay`, `CalibrationFile`,
+  `RobotLinkRunner` (lifecycle; 1 Hz monitor tick, 10 Hz face state), `marvin.robot.*` properties.
+- **Wiring** (`marvin-app`): `PresenceFeed` (robot frames → brain inputs), `PresenceEventBus`
+  (events → face link, logged at info), `RobotLinkProbe` (`robot` in `/api/health`).
+- **`./marvin`**: refuses to start when UDP 47100 is taken; documents `MARVIN_UDP_PORT`,
+  `MARVIN_TAP`, `MARVIN_RECORD`, `MARVIN_REPLAY` (all passed through to the host).
+
+### Decisions and deviations
+
+1. **The receiving logic is a domain object** (`RobotLinkProcessor`), the socket and threads an
+   adapter. A replay and the golden tests call the processor directly, synchronously, so they are
+   deterministic, as `Receiver.handle` outside `serve()` is in Python.
+2. **Robot and presence meet only in `marvin-app`** (`PresenceFeed`, through `SensorFrameListener`
+   and `ObservePresence`); the brain's inputs are its own types (`TargetSighting`, `VitalsReading`).
+   `FaceLinkService` (robot) reads presence through `PresenceQuery` and `domain.presence.event`, which
+   the context rule allows. The event bus subscribes the face link after construction (it would
+   otherwise be a bean cycle: link → inbound → presence → bus → face → link).
+3. **No `SO_REUSEADDR` on the Java socket** (the Python receiver sets it). On Linux two sockets that
+   both set it share a UDP port silently; without it, a Java host started beside `marvin-host run`
+   fails with a clear message instead of stealing half the robot's datagrams.
+4. **The tap uses one socket per robot** (loopback, ephemeral port), so the Python side still tells
+   the robot from the MR60BHA2 bridge. The design names a `marvin-host viewer --tap` command; the
+   existing `marvin-host run --port 47110 --no-ui` already does the job (it answers `HOST_ACK`s to the
+   tap sockets, which ignore them), so the Python host is unchanged. Only valid protocol v1 datagrams
+   are forwarded.
+5. **Recordings**: records are byte-identical to the Python writer (tested by rewriting three golden
+   files). The meta header is Jackson's JSON (not Python's `json.dumps` spacing) with
+   `"marvin_host": <Java version>` and an extra `"host": "java"`; `host_start` has the same
+   `+HH:MM` offset form.
+6. **Lidar points** are computed with double trigonometry rounded to float32; numpy computes in
+   float32 throughout, so coordinates agree within float32 rounding, not bit for bit. The range
+   filter (what decides the point counts, the only thing the brain and the goldens depend on) is the
+   same float32 comparison.
+7. **Python number formatting** in event details (`f"{x:.2f}"`) is reproduced with `BigDecimal` on
+   the exact double, half to even (`Brain.fmt`): `Locale`/`String.format` would round half up.
+8. **Event data** values are all numbers, so `PresenceEvent.data` is `Map<String, Double>` in the
+   Python key order.
+9. **Replay inside the host** (`MARVIN_REPLAY`) goes through the dispatcher like live data: at full
+   speed (`MARVIN_REPLAY_SPEED=0`) scans are shed and, past 2000 queued frames, radar frames too. Use
+   speed ≥ 1 for a faithful brain; the tests use the synchronous path.
+10. **Startup fails** if the UDP port cannot be bound (another host); the launcher checks it first.
+11. **Calibration is read only** (`calibration.json` as the Python host writes it): lidar yaw and
+    LD2450 x sign go into `Extrinsics`, the speed sign into `BrainConfig`. `calibrate` stays Python.
+
+### Verified
+
+- `cd host-java && ./mvnw verify`: all green (106 tests counted by Surefire/Failsafe with the
+  dynamic ones; 1 skipped: the embedded-database IT as root). New: `ProtocolVectorsTest` (constants
+  + every vector of `vectors.json`, both directions, byte for byte, 49), `GoldenRecordingsTest`
+  (the 4 recordings: same events with same device time, detail and data; same states at every tick
+  within 1e-6, 1264 states; same 1276 revolutions with point counts and intensity sums; same
+  counters incl. `damaged_link`'s lost 8, crc 8, bad 2), `MvrecCompatibilityTest`,
+  `PythonReadsJavaRecordingTest` (Python `record.py` replays a Java recording to the same events),
+  `UdpRobotLinkTest` (handshake with `HOST_ACK` seq 0 / clock 0, frames before `HELLO` ignored, face
+  link to screens only with per-destination sequence numbers, tap, shedding), `SimulatorLinkIT`
+  (the Python `marvin-host sim` against the Java link over UDP: linked, >1000 lidar packets, >50
+  revolutions, radar, vitals, `arrived`), domain tests, `MarvinHostApplicationIT` (a robot says
+  `HELLO` to the whole host, gets its ack, the brain sees it arrive, `/api/health` lists it), ArchUnit.
+  A mutation check (one character of a detail string) makes `GoldenRecordingsTest` fail.
+- `MARVIN_TAP=47110 ./marvin up`, then `marvin-host sim --host 127.0.0.1` and
+  `marvin-host run --port 47110 --no-ui --no-viewer --stats`: the Java host linked
+  (`marvin-53494d (simulator, sim-0.1.0, simulated)`), logged `6.97 s arrived 2.73 m away`, health
+  `"robot":{"state":"up","detail":"UDP 47100: marvin-53494d (simulator, simulated)"}`; the Python
+  receiver behind the tap saw 10 scans/s, 10 radar/s, lost 0, and the same arrival.
+- `MARVIN_REPLAY=.../robot_reboot.mvrec.gz MARVIN_REPLAY_SPEED=0 MARVIN_RECORD=/tmp/x.mvrec.gz
+  ./marvin up`: the golden event sequence (reboot: `vitals_lost`/`left` "sensor restarted", then
+  `arrived`); the Python `record.summarize` reads the Java recording (1384 datagrams, device record).
+- `cd host && python3 -m pytest -q`: 285 passed, 3 skipped (the Python host is unchanged).
+
+### Known gaps
+
+- **No real hardware here**: the D1 mini (simulated sensors, board 1) and the ESP32-S3 DevKitC
+  (board 2, face) were not connected; they are covered by the protocol vectors, the fake robots of
+  `UdpRobotLinkTest` (board 2 gets `FACE_STATE`/`FACE_EVENT`, board 1 does not) and the simulator.
+  First thing on the real LAN: `./marvin up`, power the robot, `./marvin status`.
+- The app, its API and SSE streams are phase 1b: nothing shows devices, events or state yet beyond
+  the log and `/api/health`.
+- Audio: codecs and a socket-thread audio listener hook exist; `AUDIO_IN` relaying, `AUDIO_OUT`
+  pacing and `AUDIO_CTRL`/`SOUND` use come with the voice sidecar (phase 2). The camera URL is not used.
+- `UISink.scene()` (lidar reduced to 360 bins, radar trails, vitals waves and rate history) is not
+  ported: phase 1b, as another `SensorFrameListener`.
+- Not tested on macOS; the socket code is plain `java.net`.
+
+### Hints for phase 1b
+
+- `/api/robot` and the `devices` SSE: map `RobotLinkQuery.devices()` (`DeviceStatus`) to the
+  Python keys (`id`, `name`, `role`, `label` = `role().label()`, `board`, `firmware`, `ip`, `rssi`,
+  `rssi_bars`, `uptime_s`, `simulated`, `camera`, `audio`, `online`, `age_s`, `connected_at`,
+  `rates`, `loss_pct`, `datagrams`, `lost`, `crc_errors`, `bad`, `shed` (= `stats().shedTotal()`),
+  `points`). Device notices: add a `LinkNoticeListener` in `HostWiring.robotLinkService`.
+- The `state` SSE: `PresenceQuery.state()`, events.py names (`t_us`, `distance_m`, `speed_cms`, ...).
+  The `event` SSE and the store: `PresenceEventBus.subscribe(...)` (called on the dispatch thread:
+  keep it short, hand off to the store).
+- The sensor views: a new `SensorFrameListener` in the same list as `PresenceFeed`; lidar points via
+  `LidarRevolution.points(extrinsics)` off the socket thread (it is already on the dispatch thread).
+- `FrameDispatcher.timings()` and `maxQueueDepth()` are the System page's receiver numbers.
+- Demo mode: feed `UdpRobotLink.receive(...)` (or `RobotInbound`) from `ui/demo.py`'s scene
+  equivalent, or replay a golden recording in a loop (`marvin.robot.replay`) as a first step.
