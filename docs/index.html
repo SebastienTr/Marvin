@@ -193,6 +193,24 @@ section{padding-block:56px;border-top:1px solid var(--line)}
 .road b{font-family:var(--display);font-size:18px;font-weight:700}
 .road li > span{display:block;color:var(--muted);font-size:14.5px}
 
+/* what's coming */
+.coming{column-count:3;column-gap:14px}
+.group{break-inside:avoid;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:20px 20px 8px;margin:0 0 14px;display:flex;flex-direction:column;gap:6px}
+.group .k{font:12px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--red-ink)}
+.group h3{font-size:24px;font-weight:700}
+.items{list-style:none;margin:8px 0 0;padding:0}
+.items li{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start;padding:11px 0;border-top:1px dashed var(--line)}
+.items b{display:block;font-size:15px;font-weight:600;line-height:1.35}
+.items li > div > span{display:block;color:var(--muted);font-size:14px;line-height:1.45;margin-top:2px}
+.group .hw{font:12px var(--mono);color:var(--ink);border-top:1px solid var(--line);padding:10px 0 6px;margin-top:0}
+.st{display:inline-block;font:500 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:999px;border:1px solid var(--muted);color:var(--ink);white-space:nowrap;min-width:72px;text-align:center;margin-top:1px}
+.st.next{border-color:var(--red);color:var(--red-ink);background:color-mix(in srgb,var(--red) 12%,transparent)}
+.st.next::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:6px;vertical-align:1px}
+.st.idea{border-style:dashed;color:var(--muted)}
+.legend{list-style:none;margin:20px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:10px 24px;font-size:13.5px;color:var(--muted)}
+.legend li{display:flex;align-items:center;gap:9px}
+.legend .st{margin:0}
+
 footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:wrap;gap:10px 28px;font-size:13.5px;color:var(--muted)}
 
 @media (max-width:980px){
@@ -202,6 +220,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   .anatomy,.mapgrid,.voicegrid,.appgrid{grid-template-columns:1fr}
   .mapside{justify-self:center}
   .try{grid-template-columns:1fr 1fr}
+  .coming{column-count:2}
 }
 @media (max-width:760px){
   .hero{grid-template-columns:1fr;padding-block:36px}
@@ -211,6 +230,8 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   .moments{grid-template-columns:1fr}
   .moments div+div{border-left:0;border-top:1px solid var(--line)}
   .senses,.steps,.try{grid-template-columns:1fr}
+  .coming{column-count:1}
+  .group{padding:18px 16px 6px}
   .shots{grid-template-columns:1fr 1fr}
   .shots figure:first-child{grid-column:1/-1}
   .top nav a{display:none}
@@ -230,6 +251,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <a href="#senses"><span class="en">Senses</span><span class="fr">Sens</span></a>
     <a href="#app"><span class="en">App</span><span class="fr">Appli</span></a>
     <a href="#build"><span class="en">Build</span><span class="fr">Fabriquer</span></a>
+    <a href="#next"><span class="en">Coming</span><span class="fr">À venir</span></a>
     <a href="../README.md">README</a>
     <div class="lang" role="group" aria-label="Language">
       <button type="button" data-l="en" aria-pressed="true">EN</button>
@@ -534,8 +556,111 @@ pio run -e d1_mini -t upload</code><p><span class="en">A Wemos D1 mini (ESP8266)
     <li class="now"><b><span class="en">Rev F CAD</span><span class="fr">CAO rév. F</span></b><span><span class="en">Parametric OpenSCAD source. Body, plinth, sensor sled and TPU neck are ready to print; the head comes once the screen is measured.</span><span class="fr">Source OpenSCAD paramétrique. Corps, socle, support des radars et cou en TPU prêts à imprimer ; la tête suit une fois l'écran mesuré.</span></span></li>
     <li class="now"><b><span class="en">Parts ordered</span><span class="fr">Pièces commandées</span></b><span><span class="en">Everything for the first build, arriving in early October.</span><span class="fr">Tout pour le premier exemplaire, livraison début octobre.</span></span></li>
     <li><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Print, assemble, check every dimension against the real modules, and run the firmware on the real sensors, screen, audio and camera.</span><span class="fr">Imprimer, assembler, vérifier chaque cote sur les vrais modules, et faire tourner le firmware sur les vrais capteurs, l'écran, l'audio et la caméra.</span></span></li>
-    <li><b><span class="en">Beyond</span><span class="fr">Au-delà</span></b><span><span class="en">The voice through the robot's own mic and speaker, a map on its screen, the camera and sounds in the brain, learning your normal, a thermal layer.</span><span class="fr">La voix par le micro et le haut-parleur du robot, une carte sur son écran, la caméra et les sons dans le cerveau, apprendre ce qui est normal pour toi, une couche thermique.</span></span></li>
+    <li><b><span class="en">Beyond</span><span class="fr">Au-delà</span></b><span><span class="en">Its own voice, memory, vision and tools: see <a href="#next">What's coming</a>.</span><span class="fr">Sa propre voix, la mémoire, la vision et des outils : voir <a href="#next">Ce qui arrive</a>.</span></span></li>
   </ol>
+</section>
+
+<section id="next">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">Where it's going</span><span class="fr">Où il va</span></div>
+    <div>
+      <h2><span class="en">What's coming</span><span class="fr">Ce qui arrive</span></h2>
+      <p><span class="en">The robot comes first; most of what follows needs it built. Each line says where it stands.</span><span class="fr">Le robot d'abord ; presque tout ce qui suit a besoin qu'il soit monté. Chaque ligne dit où elle en est.</span></p>
+      <ul class="legend">
+        <li><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span><span><span class="en">the coming weeks</span><span class="fr">les prochaines semaines</span></span></li>
+        <li><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span><span><span class="en">decided, not started</span><span class="fr">décidé, pas commencé</span></span></li>
+        <li><span class="st idea"><span class="en">Idea</span><span class="fr">Idée</span></span><span><span class="en">not decided yet</span><span class="fr">pas encore décidé</span></span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="coming">
+    <article class="group">
+      <span class="k"><span class="en">01 · Hardware</span><span class="fr">01 · Matériel</span></span>
+      <h3><span class="en">The robot itself</span><span class="fr">Le robot lui-même</span></h3>
+      <ul class="items">
+        <li><div><b><span class="en">Head CAD</span><span class="fr">CAO de la tête</span></b><span><span class="en">Face frame, window, lidar ring and knob, once the screen is measured.</span><span class="fr">Cadre du visage, vitre, bague lidar et molette, une fois l'écran mesuré.</span></span></div><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span></li>
+        <li><div><b><span class="en">First build</span><span class="fr">Premier montage</span></b><span><span class="en">Print, assemble, flash the XIAO ESP32-S3 and the MR60BHA2 bridge.</span><span class="fr">Imprimer, assembler, flasher la XIAO ESP32-S3 et la passerelle du MR60BHA2.</span></span></div><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span></li>
+        <li><div><b><span class="en">Checked on real hardware</span><span class="fr">Vérifié sur le vrai matériel</span></b><span><span class="en">Every sensor, the screen, the camera and the audio; lidar noise, heart rate while you type.</span><span class="fr">Chaque capteur, l'écran, la caméra et l'audio ; le bruit du lidar, le cœur pendant que tu tapes.</span></span></div><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span></li>
+        <li><div><b>Calibration</b><span><span class="en">Lidar, camera and radars placed in one frame.</span><span class="fr">Lidar, caméra et radars placés dans un même repère.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">The orange knob</span><span class="fr">La molette orange</span></b><span><span class="en">Turn it for the volume, tap it to wake Marvin.</span><span class="fr">Tourne-la pour le volume, appuie dessus pour réveiller Marvin.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">A quieter lidar</span><span class="fr">Un lidar plus discret</span></b><span><span class="en">On a later revision, its motor sleeps when nobody is there.</span><span class="fr">Sur une prochaine révision, son moteur dort quand personne n'est là.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Variants</span><span class="fr">Variantes</span></b><span><span class="en">Vital signs over a wire instead of Wi-Fi; a 3D lidar.</span><span class="fr">Les signes vitaux par un fil plutôt qu'en Wi-Fi ; un lidar 3D.</span></span></div><span class="st idea"><span class="en">Idea</span><span class="fr">Idée</span></span></li>
+      </ul>
+    </article>
+
+    <article class="group">
+      <span class="k"><span class="en">02 · Voice</span><span class="fr">02 · Voix</span></span>
+      <h3><span class="en">Voice and personality</span><span class="fr">Voix et personnalité</span></h3>
+      <ul class="items">
+        <li><div><b><span class="en">Its own ears and mouth</span><span class="fr">Ses propres oreilles et sa bouche</span></b><span><span class="en">Talking through the robot's microphone and speaker, not the computer's.</span><span class="fr">La conversation passe par le micro et le haut-parleur du robot, plus par ceux de l'ordinateur.</span></span></div><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span></li>
+        <li><div><b><span class="en">A warmer Marvin</span><span class="fr">Un Marvin plus chaleureux</span></b><span><span class="en">More natural phrasing, small sounds, eyes that match what it says.</span><span class="fr">Des phrases plus naturelles, de petits sons, des yeux qui vont avec ce qu'il dit.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Its own wake word</span><span class="fr">Son propre mot de réveil</span></b><span><span class="en">A small model trained to hear “Marvin”, instead of transcribing everything.</span><span class="fr">Un petit modèle entraîné à entendre «&nbsp;Marvin&nbsp;», au lieu de tout transcrire.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Small moments</span><span class="fr">Petits moments</span></b><span><span class="en">It greets you, and speaks up for more than breaks.</span><span class="fr">Il te salue, et prend la parole pour autre chose que les pauses.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Knowing when to be quiet</span><span class="fr">Savoir se taire</span></b><span><span class="en">Your reactions teach it when to speak up and when to stay silent.</span><span class="fr">Tes réactions lui apprennent quand parler et quand se taire.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Interrupting it</span><span class="fr">L'interrompre</span></b><span><span class="en">Echo cancellation on the robot, so “Marvin” stops it mid-sentence.</span><span class="fr">L'annulation d'écho sur le robot, pour le couper en pleine phrase avec «&nbsp;Marvin&nbsp;».</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+      </ul>
+    </article>
+
+    <article class="group">
+      <span class="k"><span class="en">03 · Memory</span><span class="fr">03 · Mémoire</span></span>
+      <h3><span class="en">It remembers</span><span class="fr">Il se souvient</span></h3>
+      <ul class="items">
+        <li><div><b><span class="en">What you tell it</span><span class="fr">Ce que tu lui dis</span></b><span><span class="en">Facts about you it keeps, updates, or forgets when you ask.</span><span class="fr">Des faits sur toi qu'il garde, met à jour, ou oublie quand tu le demandes.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">A journal of each day</span><span class="fr">Un journal de chaque jour</span></b><span><span class="en">Conversations and presence, so it can answer “what did we talk about yesterday?”</span><span class="fr">Conversations et présence, pour répondre à «&nbsp;de quoi on a parlé hier&nbsp;?&nbsp;»</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Your habits</span><span class="fr">Tes habitudes</span></b><span><span class="en">When you usually arrive, the rhythm of your breaks, learned from the sensors.</span><span class="fr">Ton heure d'arrivée habituelle, le rythme de tes pauses, appris par les capteurs.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Your normal</span><span class="fr">Ce qui est normal pour toi</span></b><span><span class="en">Your usual heart rate and breathing; it asks when they change, and never diagnoses.</span><span class="fr">Ton cœur et ta respiration habituels ; il demande quand ils changent, sans jamais diagnostiquer.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">A weekly look back</span><span class="fr">Un regard sur la semaine</span></b><span><span class="en">Once a week, what it noticed in your history.</span><span class="fr">Une fois par semaine, ce qu'il a remarqué dans ton historique.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">A Memory tab</span><span class="fr">Un onglet Mémoire</span></b><span><span class="en">See, edit and delete everything it remembers.</span><span class="fr">Voir, modifier et effacer tout ce dont il se souvient.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+      </ul>
+      <div class="hw"><span class="en">All of it stays on your computer</span><span class="fr">Tout reste sur ton ordinateur</span></div>
+    </article>
+
+    <article class="group">
+      <span class="k"><span class="en">04 · App</span><span class="fr">04 · Appli</span></span>
+      <h3><span class="en">The app</span><span class="fr">L'appli</span></h3>
+      <ul class="items">
+        <li><div><b><span class="en">The robot's mic and speaker</span><span class="fr">Le micro et le haut-parleur du robot</span></b><span><span class="en">Selectable in the app, next to the computer's.</span><span class="fr">À choisir dans l'appli, à côté de ceux de l'ordinateur.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b>Notifications</b><span><span class="en">Break reminders on your phone.</span><span class="fr">Les rappels de pause sur ton téléphone.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">A weekly summary</span><span class="fr">Un résumé de la semaine</span></b><span><span class="en">Your desk time and breaks at a glance.</span><span class="fr">Ton temps au bureau et tes pauses, d'un coup d'œil.</span></span></div><span class="st idea"><span class="en">Idea</span><span class="fr">Idée</span></span></li>
+      </ul>
+    </article>
+
+    <article class="group">
+      <span class="k"><span class="en">05 · Screen</span><span class="fr">05 · Écran</span></span>
+      <h3><span class="en">On its screen</span><span class="fr">Sur son écran</span></h3>
+      <ul class="items">
+        <li><div><b><span class="en">The room's mini-map</span><span class="fr">La mini-carte de la pièce</span></b><span><span class="en">On demand, instead of the eyes: the <a href="#map">simulation above</a>, for real.</span><span class="fr">À la demande, à la place des yeux : la <a href="#map">simulation plus haut</a>, en vrai.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+      </ul>
+    </article>
+
+    <article class="group">
+      <span class="k"><span class="en">06 · Perception</span><span class="fr">06 · Perception</span></span>
+      <h3><span class="en">Seeing and understanding</span><span class="fr">Voir et comprendre</span></h3>
+      <ul class="items">
+        <li><div><b><span class="en">“What do you see?”</span><span class="fr">«&nbsp;Qu'est-ce que tu vois&nbsp;?&nbsp;»</span></b><span><span class="en">A local vision model answers from a camera snapshot.</span><span class="fr">Un modèle de vision local répond à partir d'une photo de la caméra.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Eyes on your face</span><span class="fr">Les yeux sur ton visage</span></b><span><span class="en">Its eyes follow your face, not only the radar target.</span><span class="fr">Ses yeux suivent ton visage, pas seulement la cible radar.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Who, and how you sit</span><span class="fr">Qui, et comment tu es assis</span></b><span><span class="en">Who is there and your posture, from the camera.</span><span class="fr">Qui est là et ta posture, grâce à la caméra.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">The sounds of the room</span><span class="fr">Les sons de la pièce</span></b><span><span class="en">A door, music, a call in progress: it stays quiet during calls.</span><span class="fr">Une porte, de la musique, un appel en cours : il se tait pendant les appels.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">The empty room</span><span class="fr">La pièce vide</span></b><span><span class="en">A lidar model of the room, to tell a person from a chair.</span><span class="fr">Un modèle lidar de la pièce, pour distinguer une personne d'une chaise.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Behind you</span><span class="fr">Derrière toi</span></b><span><span class="en">Someone coming in behind you; noticing when it has been moved.</span><span class="fr">Quelqu'un qui entre derrière toi ; remarquer qu'on l'a déplacé.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Camera off</span><span class="fr">Caméra coupée</span></b><span><span class="en">Radars taught by the camera, to follow you in the dark and without images.</span><span class="fr">Des radars formés par la caméra, pour te suivre dans le noir et sans image.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Pulse from the camera</span><span class="fr">Le pouls par la caméra</span></b><span><span class="en">A second heart rate read on your face, checked against the radar.</span><span class="fr">Un second rythme cardiaque lu sur ton visage, comparé au radar.</span></span></div><span class="st idea"><span class="en">Idea</span><span class="fr">Idée</span></span></li>
+        <li><div><b><span class="en">A thermal layer</span><span class="fr">Une couche thermique</span></b><span><span class="en">A thermal sensor that sees body heat.</span><span class="fr">Un capteur thermique qui voit la chaleur du corps.</span></span></div><span class="st idea"><span class="en">Idea</span><span class="fr">Idée</span></span></li>
+      </ul>
+    </article>
+
+    <article class="group">
+      <span class="k"><span class="en">07 · Tools</span><span class="fr">07 · Outils</span></span>
+      <h3><span class="en">Things it can do</span><span class="fr">Ce qu'il sait faire</span></h3>
+      <ul class="items">
+        <li><div><b><span class="en">Timers and reminders</span><span class="fr">Minuteurs et rappels</span></b><span><span class="en">“Remind me in 20 minutes.”</span><span class="fr">«&nbsp;Rappelle-moi dans 20 minutes.&nbsp;»</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Your calendar</span><span class="fr">Ton agenda</span></b><span><span class="en">Read-only, from a private iCal link.</span><span class="fr">En lecture seule, depuis un lien iCal privé.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Notes and to-dos</span><span class="fr">Notes et tâches</span></b><span><span class="en">Taken by voice.</span><span class="fr">Prises à la voix.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Home automation</span><span class="fr">Domotique</span></b><span><span class="en">A lamp, a smart plug.</span><span class="fr">Une lampe, une prise connectée.</span></span></div><span class="st idea"><span class="en">Idea</span><span class="fr">Idée</span></span></li>
+      </ul>
+    </article>
+
+  </div>
 </section>
 
 <footer>
