@@ -19,6 +19,200 @@ Before relying on it with real boards and a real model, run the manual
 [test plan](../docs/test-plan.md); to review the change, start with the
 [review guide](../docs/review-guide.md).
 
+## The architecture in four pictures
+
+### 1. The hexagon
+
+The domain and the use cases sit in the middle, in plain Java, and know nothing about HTTP, UDP,
+SQL or Ollama. They define **ports** (Java interfaces). **Adapters** on the outside implement or
+call those ports. On the left, the adapters that *drive* Marvin call an inbound port. On the right,
+the use cases call an outbound port that an adapter implements.
+
+```mermaid
+flowchart LR
+    subgraph drivers["Who drives Marvin"]
+        phone["📱 The app<br/>(phone, browser)"]
+        robot_in["🤖 The robot<br/>UDP 47100"]
+        voice_in["🎙️ Voice sidecar<br/>(Python, gRPC)"]
+    end
+
+    subgraph in_adapters["Inbound adapters"]
+        web["adapter-web<br/>REST · SSE · access key"]
+        udp_in["adapter-robot<br/>UdpRobotLink · replay"]
+        grpc_in["adapter-sidecar<br/>GrpcVoiceSidecar"]
+    end
+
+    subgraph core["The core (plain Java, no framework)"]
+        direction TB
+        subgraph app["application: use cases"]
+            pin(["port.in<br/>ManageSettings · VoiceControl<br/>RobotInbound · PresenceQuery …"])
+            svc["RobotLinkService · PresenceService<br/>VoiceService · ConversationService<br/>SettingsService · HealthService"]
+            pout(["port.out<br/>LanguageModel · ConversationStore<br/>RobotOutbound · VoiceSidecar …"])
+            pin --> svc --> pout
+        end
+        dom["domain<br/>protocol v1 · presence brain<br/>persona · tools · face"]
+        svc --> dom
+    end
+
+    subgraph out_adapters["Outbound adapters"]
+        pg["adapter-persistence<br/>JDBC · Flyway"]
+        llm["adapter-llm<br/>Spring AI · HTTPS"]
+        udp_out["adapter-robot<br/>UdpRobotLink"]
+        side["adapter-sidecar<br/>gRPC client · supervisor"]
+    end
+
+    subgraph driven["What Marvin drives"]
+        db[("PostgreSQL 18<br/>+ pgvector")]
+        ollama["Ollama<br/>(local LLM)"]
+        meteo["Open-Meteo"]
+        robot_out["🤖 The robot<br/>face · speaker"]
+        voice_out["🎙️ Voice sidecar"]
+    end
+
+    phone --> web --> pin
+    robot_in --> udp_in --> pin
+    voice_in --> grpc_in --> pin
+    pout --> pg --> db
+    pout --> llm --> ollama
+    llm --> meteo
+    pout --> udp_out --> robot_out
+    pout --> side --> voice_out
+```
+
+The dependency always points **inward**: an adapter knows the port, the port never knows the
+adapter. Replacing PostgreSQL, Ollama or the UDP link means writing another adapter; the core does
+not change. `marvin-app` (Spring Boot) is the only place where the two sides are plugged together.
+
+### 2. The Maven modules
+
+Each layer is its own Maven module, so a wrong dependency does not even compile. The Maven
+enforcer and ArchUnit check the rest on every build.
+
+```mermaid
+flowchart BT
+    domain["marvin-domain<br/><i>plain Java, depends on nothing</i>"]
+    application["marvin-application<br/><i>use cases + ports</i>"]
+    web["marvin-adapter-web"]
+    robot["marvin-adapter-robot"]
+    persistence["marvin-adapter-persistence"]
+    llm["marvin-adapter-llm"]
+    sidecar["marvin-adapter-sidecar"]
+    contracts["marvin-contracts<br/><i>voice.proto · golden files</i>"]
+    appm["marvin-app<br/><i>Spring Boot main, wiring, ArchitectureTest</i>"]
+
+    application --> domain
+    web --> application
+    robot --> application
+    persistence --> application
+    llm --> application
+    sidecar --> application
+    sidecar --> contracts
+    appm --> web
+    appm --> robot
+    appm --> persistence
+    appm --> llm
+    appm --> sidecar
+```
+
+No arrow between two adapters: `adapter-web` cannot call `adapter-persistence`, it goes through a
+use case.
+
+### 3. The bounded contexts
+
+Six contexts share the core. Each one owns its model and its ports, and the ones that store data own
+a PostgreSQL schema. A context uses another only through that context's ports (`port.in`,
+`port.out`) or domain events (`domain.<context>.event`), never through its classes or its tables.
+That is what lets a context become a service of its own later ([design 10.4](../docs/design.md)).
+An arrow reads "uses".
+
+```mermaid
+flowchart LR
+    robot["<b>robot</b><br/>protocol v1, devices,<br/>link health, face link"]
+    presence["<b>presence</b><br/>the brain: seated,<br/>away, breaks, vitals"]
+    conversation["<b>conversation</b><br/>persona, context,<br/>tools, voice turns"]
+    face["<b>face</b><br/>the eyes, drawn<br/>for the app"]
+    settings["<b>settings</b><br/>app settings"]
+    system["<b>system</b><br/>health, log, traces"]
+
+    robot -. "frames: SensorFrameListener<br/>(plugged in marvin-app)" .-> presence
+    robot -- "PresenceQuery, PresenceEvent<br/>(the eyes follow the brain)" --> presence
+    robot -- "VoiceRobotAudio<br/>(robot mic and speaker)" --> conversation
+    conversation -- "PresenceQuery, PresenceEvent<br/>(what Marvin knows)" --> presence
+    face -- "PresenceQuery, PresenceEvent" --> presence
+    conversation -- "Tracing" --> system
+
+    classDef ctx fill:#24201d,stroke:#ee7626,color:#ece6da
+    class robot,presence,conversation,face,settings,system ctx
+```
+
+`presence` uses nobody: it is the heart, and everyone reads it. `settings` and `system` are used by
+the adapters (the app, the health checks), not by the other contexts.
+
+| Context | PostgreSQL schema | Main use cases |
+|---|---|---|
+| `robot` | none (the link lives in memory) | `RobotLinkService`, `FaceLinkService`, `RobotAudioService` |
+| `presence` | `presence` (events, minute samples) | `PresenceService`, `PresenceHistoryService` |
+| `conversation` | `conversation` (turns) | `VoiceService`, `ConversationService`, `WeatherTool` |
+| `settings` | `settings` | `SettingsService` |
+| `face` | none | `FaceService`, `FaceLinkService` drives the robot's screen |
+| `system` | none | `HealthService`, `HostLogService` |
+
+A `platform` schema holds what belongs to no context: the database extensions (pgvector) and the
+record of the one-time import from the Python host.
+
+### 4. Two requests, end to end
+
+**A robot frame becomes a presence event.**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant R as 🤖 Robot
+    participant U as UdpRobotLink<br/>(adapter-robot)
+    participant L as RobotLinkService<br/>(robot)
+    participant F as PresenceFeed<br/>(marvin-app)
+    participant P as PresenceService<br/>(presence)
+    participant B as Brain<br/>(domain)
+    participant S as Subscribers<br/>face link · history · app
+
+    R->>U: UDP datagram (protocol v1)
+    U-->>R: HOST_ACK
+    U->>L: RobotInbound.accept(frame)
+    L->>F: SensorFrameListener.onFrame(frame)
+    F->>P: ObservePresence.onTargets / onVitals
+    P->>B: update (robot clock only)
+    B-->>P: event, for example "seated for 50 min"
+    P->>S: PresenceEventPublisher.publish(event)
+    Note over S: the robot's eyes change,<br/>the history is written,<br/>the phone gets it over SSE
+```
+
+**A spoken question becomes a spoken answer.**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as 🎙️ Voice sidecar<br/>(Python)
+    participant G as GrpcVoiceSidecar<br/>(adapter-sidecar)
+    participant V as VoiceService<br/>(conversation)
+    participant M as OllamaLanguageModel<br/>(adapter-llm)
+    participant W as WeatherTool<br/>(conversation)
+    participant D as JdbcConversationStore<br/>(adapter-persistence)
+    participant A as 📱 App
+
+    S->>G: "Marvin, il fait quel temps ?" (transcript)
+    G->>V: VoiceSidecar.Signals
+    V->>M: LanguageModel.streamChat(context, tools)
+    M-->>V: tool call get_weather
+    V->>W: run (JsonFetcher → Open-Meteo)
+    W-->>V: forecast
+    V->>M: streamChat(… + tool result)
+    M-->>V: answer, piece by piece
+    V->>G: VoiceSidecar.send(say …)
+    G->>S: speak (Piper)
+    V->>D: ConversationStore.save(turn)
+    V-->>A: VoiceListener → SSE (partial, say)
+```
+
 ## Run it
 
 From the repository root, one command does everything (JDK, build, database, host):
