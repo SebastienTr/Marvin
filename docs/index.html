@@ -121,6 +121,8 @@ section{padding-block:56px;border-top:1px solid var(--line)}
 .mapgrid{display:grid;grid-template-columns:auto 1fr;gap:36px;align-items:center}
 .mapgrid > *,.hero > *,.anatomy > *{min-width:0}
 .bezel{background:#1B2328;border-radius:22px;padding:12px;width:min(100%,300px)}
+.mapside{width:300px;max-width:100%}
+.mapside .note{font:12px var(--mono);text-align:center;margin-top:10px}
 .bezel canvas{display:block;width:100%;aspect-ratio:240/280;border-radius:12px;background:var(--lcd)}
 .spectrum{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:18px 16px 6px;overflow-x:auto}
 .spectrum svg{display:block;min-width:680px;width:100%;height:auto}
@@ -155,6 +157,39 @@ section{padding-block:56px;border-top:1px solid var(--line)}
 .road li::before{content:"";position:absolute;left:-8px;top:6px;width:14px;height:14px;border-radius:50%;background:var(--bg);border:2px solid var(--line)}
 .road li.done::before{background:var(--navy);border-color:var(--navy)}
 .road li.now::before{background:var(--red);border-color:var(--red)}
+.road li.ready::before{background:linear-gradient(90deg,var(--navy) 50%,var(--bg) 50%);border-color:var(--navy)}
+
+/* voice */
+.voicegrid{display:grid;grid-template-columns:1fr 1fr;gap:28px 40px;align-items:start}
+.voicegrid > *{min-width:0}
+.chat{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.chat p{max-width:85%;font-size:15px;padding:9px 14px;border-radius:14px;line-height:1.45}
+.chat .you{align-self:flex-end;background:var(--ink);color:var(--bg);border-bottom-right-radius:4px}
+.chat .mv{align-self:flex-start;background:var(--bg);border:1px solid var(--line);border-bottom-left-radius:4px}
+.chat .tool{align-self:flex-start;font:12px var(--mono);color:var(--muted);padding:0 4px}
+.chat .tool b{color:var(--red-ink);font-weight:500}
+
+/* app */
+.shots{display:grid;grid-template-columns:3.4fr 1fr 1fr;gap:16px;align-items:start}
+.shots figure,.appgrid figure{margin:0;display:flex;flex-direction:column;gap:10px;min-width:0}
+.shot{display:block;width:100%;height:auto;border-radius:10px;border:1px solid var(--line);background:#141210}
+.shots figcaption,.appgrid figcaption{font:12px var(--mono);color:var(--muted)}
+.appgrid{display:grid;grid-template-columns:1.3fr 1fr;gap:28px 40px;margin-top:34px;align-items:start}
+.tabs{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.tabs li{border-top:1px dashed var(--line);padding-top:12px}
+.tabs li:first-child{border-top:0;padding-top:0}
+.tabs b{font-family:var(--display);font-size:19px;font-weight:700}
+.tabs p{font-size:14.5px;color:var(--muted);margin-top:2px}
+
+/* try */
+.install{font:13.5px var(--mono);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:0 0 14px;overflow-x:auto}
+.try{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.cmd{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:20px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.cmd b{font-family:var(--display);font-size:20px;font-weight:700}
+.cmd code{font:13px var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:block;overflow-x:auto;white-space:pre}
+.cmd p{font-size:14.5px;color:var(--muted)}
+.cmd p code{display:inline;padding:1px 5px;font-size:12.5px;white-space:nowrap}
+.cmd a{font-size:14px;margin-top:auto}
 .road b{font-family:var(--display);font-size:18px;font-weight:700}
 .road li > span{display:block;color:var(--muted);font-size:14.5px}
 
@@ -164,8 +199,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   .senses,.steps{grid-template-columns:repeat(2,1fr)}
   .gallery{grid-template-columns:1fr 1fr}
   .gallery figure:last-child{display:none}
-  .anatomy,.mapgrid{grid-template-columns:1fr}
-  .bezel{justify-self:center}
+  .anatomy,.mapgrid,.voicegrid,.appgrid{grid-template-columns:1fr}
+  .mapside{justify-self:center}
+  .try{grid-template-columns:1fr 1fr}
 }
 @media (max-width:760px){
   .hero{grid-template-columns:1fr;padding-block:36px}
@@ -174,7 +210,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   .sh{grid-template-columns:1fr;gap:6px}
   .moments{grid-template-columns:1fr}
   .moments div+div{border-left:0;border-top:1px solid var(--line)}
-  .senses,.steps{grid-template-columns:1fr}
+  .senses,.steps,.try{grid-template-columns:1fr}
+  .shots{grid-template-columns:1fr 1fr}
+  .shots figure:first-child{grid-column:1/-1}
   .top nav a{display:none}
 }
 </style>
@@ -190,6 +228,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   <nav>
     <a href="#meet"><span class="en">The robot</span><span class="fr">Le robot</span></a>
     <a href="#senses"><span class="en">Senses</span><span class="fr">Sens</span></a>
+    <a href="#app"><span class="en">App</span><span class="fr">Appli</span></a>
     <a href="#build"><span class="en">Build</span><span class="fr">Fabriquer</span></a>
     <a href="../README.md">README</a>
     <div class="lang" role="group" aria-label="Language">
@@ -211,7 +250,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
       <span><b><span class="en">speaks</span><span class="fr">parle</span></b> · <span class="en">voice + eyes</span><span class="fr">voix + yeux</span></span>
     </div>
     <div class="chips">
-      <span class="chip state"><span class="en">Rev F · design frozen, CAD in progress</span><span class="fr">Rév. F · design figé, CAO en cours</span></span>
+      <span class="chip state"><span class="en">Rev F · parts ordered, first build next</span><span class="fr">Rév. F · pièces en route, montage ensuite</span></span>
       <span class="chip">≈ 230 €</span>
       <span class="chip">CERN-OHL-P · MIT · CC BY</span>
     </div>
@@ -274,15 +313,15 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     </div>
   </div>
   <div class="senses">
-    <article class="sense"><span class="k"><span class="en">Sees</span><span class="fr">Voit</span></span><h3><span class="en">Laser and lens</span><span class="fr">Laser et objectif</span></h3><p><span class="en">The lidar draws the room 360° around, 21 600 points a second. The camera adds colour, and on the computer, meaning.</span><span class="fr">Le lidar dessine la pièce sur 360°, 21 600 points par seconde. La caméra ajoute la couleur et, sur l'ordinateur, le sens.</span></p><div class="hw">D800 lidar · OV3660</div></article>
-    <article class="sense"><span class="k"><span class="en">Feels</span><span class="fr">Ressent</span></span><h3><span class="en">Behind the band</span><span class="fr">Derrière la bande</span></h3><p><span class="en">The 24 GHz radar follows up to three people and their speed. The 60 GHz radar, aimed at your chest, feels breathing and heartbeat while you sit at the desk.</span><span class="fr">Le radar 24 GHz suit jusqu'à trois personnes et leur vitesse. Le radar 60 GHz, pointé vers ta poitrine, sent ta respiration et ton cœur quand tu es assis au bureau.</span></p><div class="hw">HLK-LD2450 · MR60BHA2</div></article>
-    <article class="sense"><span class="k"><span class="en">Hears</span><span class="fr">Écoute</span></span><h3><span class="en">A small ear</span><span class="fr">Une petite oreille</span></h3><p><span class="en">The camera board's microphone hears your voice and the sounds of the room: a door, a kettle, a laugh.</span><span class="fr">Le micro de la carte caméra entend ta voix et les sons de la pièce : une porte, une bouilloire, un rire.</span></p><div class="hw"><span class="en">built-in PDM mic</span><span class="fr">micro PDM intégré</span></div></article>
-    <article class="sense"><span class="k"><span class="en">Speaks</span><span class="fr">Parle</span></span><h3><span class="en">Eyes and voice</span><span class="fr">Des yeux et une voix</span></h3><p><span class="en">Its eyes blink, follow you and fall asleep. Its voice comes from its side: chirps on the device, words from the computer.</span><span class="fr">Ses yeux clignent, te suivent et s'endorment. Sa voix sort de son flanc : des pépiements en local, des mots venus de l'ordinateur.</span></p><div class="hw">1.69" ST7789 · MAX98357A</div></article>
+    <article class="sense"><span class="k"><span class="en">Sees</span><span class="fr">Voit</span></span><h3><span class="en">Laser and lens</span><span class="fr">Laser et objectif</span></h3><p><span class="en">The lidar draws the room 360° around, 21 600 points a second. The camera streams to the computer; teaching it to understand what it sees comes next.</span><span class="fr">Le lidar dessine la pièce sur 360°, 21 600 points par seconde. La caméra envoie son image à l'ordinateur ; lui apprendre à comprendre ce qu'elle voit, c'est la suite.</span></p><div class="hw">D800 lidar · OV3660</div></article>
+    <article class="sense"><span class="k"><span class="en">Feels</span><span class="fr">Ressent</span></span><h3><span class="en">Behind the band</span><span class="fr">Derrière la bande</span></h3><p><span class="en">The 24 GHz radar follows up to three people and their speed. The 60 GHz radar, aimed at your chest, measures your breathing and heart rate while you sit at the desk. Numbers, not a diagnosis.</span><span class="fr">Le radar 24 GHz suit jusqu'à trois personnes et leur vitesse. Le radar 60 GHz, pointé vers ta poitrine, mesure ta respiration et ton rythme cardiaque quand tu es assis au bureau. Des mesures, pas un diagnostic.</span></p><div class="hw">HLK-LD2450 · MR60BHA2</div></article>
+    <article class="sense"><span class="k"><span class="en">Hears</span><span class="fr">Écoute</span></span><h3><span class="en">A small ear</span><span class="fr">Une petite oreille</span></h3><p><span class="en">The camera board's microphone carries your voice to the computer. Until the robot is built, Marvin listens through the computer's own microphone.</span><span class="fr">Le micro de la carte caméra porte ta voix jusqu'à l'ordinateur. En attendant que le robot soit monté, Marvin écoute avec le micro de l'ordinateur.</span></p><div class="hw"><span class="en">built-in PDM mic</span><span class="fr">micro PDM intégré</span></div></article>
+    <article class="sense"><span class="k"><span class="en">Speaks</span><span class="fr">Parle</span></span><h3><span class="en">Eyes and voice</span><span class="fr">Des yeux et une voix</span></h3><p><span class="en">Its eyes blink, follow you and fall asleep. Short sounds are built into the robot; words come from the computer, through its speakers today and the robot's side speaker once built.</span><span class="fr">Ses yeux clignent, te suivent et s'endorment. Les petits sons sont dans le robot ; les mots viennent de l'ordinateur, par ses haut-parleurs aujourd'hui, par le flanc du robot une fois monté.</span></p><div class="hw">1.69" ST7789 · MAX98357A</div></article>
   </div>
   <div class="moments">
     <div><b><span class="en">You sit down</span><span class="fr">Tu t'assois</span></b><p><span class="en">The 24 GHz radar sees you arrive; it wakes up and turns its eyes to you.</span><span class="fr">Le radar 24 GHz te voit arriver ; il se réveille et tourne les yeux vers toi.</span></p></div>
-    <div><b><span class="en">You work for an hour</span><span class="fr">Tu travailles une heure</span></b><p><span class="en">It notices you haven't moved and your breathing got shallow. A soft chirp: time to stretch.</span><span class="fr">Il remarque que tu n'as pas bougé et que ta respiration s'est faite courte. Un petit bruit : il est temps de s'étirer.</span></p></div>
-    <div><b><span class="en">You leave</span><span class="fr">Tu pars</span></b><p><span class="en">The room empties, the eyes close, the lamp keeps turning. It watches the room while you're away.</span><span class="fr">La pièce se vide, les yeux se ferment, la lampe continue de tourner. Il veille pendant ton absence.</span></p></div>
+    <div><b><span class="en">You sit for 50 minutes</span><span class="fr">Tu restes assis 50 minutes</span></b><p><span class="en">It reminds you to take a break: aloud if its voice is on, and in the app. Standing up resets the count.</span><span class="fr">Il te rappelle de faire une pause : à voix haute si sa voix est allumée, et dans l'appli. Te lever remet le compteur à zéro.</span></p></div>
+    <div><b><span class="en">You leave</span><span class="fr">Tu pars</span></b><p><span class="en">The room empties: its eyes look where you went, grow sleepy, then close. Your day stays in the app.</span><span class="fr">La pièce se vide : ses yeux regardent par où tu es parti, s'alourdissent, puis se ferment. Ta journée reste dans l'appli.</span></p></div>
   </div>
 </section>
 
@@ -291,11 +330,14 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <div class="eyebrow"><span class="en">What it sees</span><span class="fr">Ce qu'il voit</span></div>
     <div>
       <h2><span class="en">Five slices of the spectrum, one picture</span><span class="fr">Cinq tranches du spectre, une seule image</span></h2>
-      <p><span class="en">Tap its face and it shows you its world: the lidar outline of the room from above, the people tracked by radar, and a breathing trace when someone is close.</span><span class="fr">Touche son visage et il te montre son monde : le contour lidar de la pièce vu de dessus, les personnes suivies au radar, et une courbe de respiration quand quelqu'un est proche.</span></p>
+      <p><span class="en">The app's Robot tab shows its world: the lidar outline of the room from above, the people tracked by radar, and breathing and heart rate when someone sits close. The same map on the robot's own screen comes later; here is a simulation of it.</span><span class="fr">L'onglet Robot de l'appli montre son monde : le contour lidar de la pièce vu de dessus, les personnes suivies au radar, et la respiration et le cœur quand quelqu'un est assis tout près. La même carte sur l'écran du robot viendra plus tard ; en voici une simulation.</span></p>
     </div>
   </div>
   <div class="mapgrid">
-    <div class="bezel"><canvas id="lcd" width="480" height="560" aria-label="Simulated map mode: top-down lidar map with two people tracked by radar"></canvas></div>
+    <div class="mapside">
+      <div class="bezel"><canvas id="lcd" width="480" height="560" aria-label="Simulation of the planned map mode: top-down lidar map with two people tracked by radar"></canvas></div>
+      <p class="note"><span class="en">Simulated · on the robot's screen later</span><span class="fr">Simulation · sur l'écran du robot plus tard</span></p>
+    </div>
     <div>
       <div class="spectrum" aria-label="Electromagnetic spectrum, logarithmic scale, with each sensor placed on it">
         <svg viewBox="0 0 900 150" role="img">
@@ -335,7 +377,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <div class="eyebrow"><span class="en">How it thinks</span><span class="fr">Comment il pense</span></div>
     <div>
       <h2><span class="en">A small body, a big brain next door</span><span class="fr">Un petit corps, un gros cerveau à côté</span></h2>
-      <p><span class="en">The ESP32 inside the robot stamps every packet with the same clock, draws the eyes and plays the sounds. Your computer fuses the streams into one 3D picture and decides what the robot should say. Nothing needs the cloud.</span><span class="fr">L'ESP32 dans le robot horodate chaque paquet avec la même horloge, dessine les yeux et joue les sons. Ton ordinateur fusionne les flux en une image 3D et décide de ce que le robot doit dire. Rien n'a besoin du cloud.</span></p>
+      <p><span class="en">The ESP32 inside the robot stamps every packet with the same clock, draws the eyes and plays the sounds. Your computer fuses the streams into one 3D picture and decides what the robot should say. Nothing needs the cloud. The one exception is optional: the weather tool asks Open-Meteo on the internet, sending only the place name, and one switch keeps Marvin fully offline.</span><span class="fr">L'ESP32 dans le robot horodate chaque paquet avec la même horloge, dessine les yeux et joue les sons. Ton ordinateur fusionne les flux en une image 3D et décide de ce que le robot doit dire. Rien n'a besoin du cloud. Seule exception, facultative : l'outil météo interroge Open-Meteo sur internet, en n'envoyant que le nom du lieu, et un interrupteur garde Marvin entièrement hors ligne.</span></p>
     </div>
   </div>
   <div class="pipe">
@@ -371,6 +413,82 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
         <text x="658" y="160" class="s"><tspan class="en">5 · a local LLM gives the robot its words</tspan><tspan class="fr">5 · un LLM local donne ses mots au robot</tspan></text>
       </g>
     </svg>
+  </div>
+</section>
+
+<section id="voice">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">Its voice</span><span class="fr">Sa voix</span></div>
+    <div>
+      <h2><span class="en">Say “Marvin, …” and ask</span><span class="fr">Dis «&nbsp;Marvin,&nbsp;…&nbsp;» et demande</span></h2>
+      <p><span class="en">Say its name and your question in one breath, or press Talk now in the app. It speaks French and English, and answers in the language you use. Everything runs on your computer: Whisper to understand you, a local model through Ollama to think, Piper to speak. The first word comes a second or two after you stop talking.</span><span class="fr">Dis son nom et ta question d'une traite, ou appuie sur «&nbsp;Talk now&nbsp;» dans l'appli. Il parle français et anglais, et répond dans ta langue. Tout tourne sur ton ordinateur : Whisper pour te comprendre, un modèle local via Ollama pour réfléchir, Piper pour parler. Le premier mot arrive une seconde ou deux après la fin de ta phrase.</span></p>
+    </div>
+  </div>
+  <div class="voicegrid">
+    <div class="chat" aria-label="Example conversation">
+      <p class="you"><span class="en">Marvin, how long have I been sitting?</span><span class="fr">Marvin, depuis combien de temps je suis assis ?</span></p>
+      <p class="mv"><span class="en">Forty-two minutes. A short walk soon would do you good.</span><span class="fr">Quarante-deux minutes. Une petite marche bientôt te ferait du bien.</span></p>
+      <p class="you"><span class="en">And my heart rate?</span><span class="fr">Et mon cœur ?</span></p>
+      <p class="mv"><span class="en">About sixty-six beats a minute. Calm, as far as I can tell.</span><span class="fr">Environ soixante-six battements par minute. Calme, pour autant que je sache.</span></p>
+      <p class="you"><span class="en">Marvin, will it rain tomorrow in Lyon?</span><span class="fr">Marvin, il va pleuvoir demain à Lyon ?</span></p>
+      <span class="tool"><b>get_weather</b> · Lyon · <span class="en">tomorrow</span><span class="fr">demain</span></span>
+      <p class="mv"><span class="en">Let me check… No, dry and sunny tomorrow, around twenty-four degrees.</span><span class="fr">Je regarde… Non, demain sec et ensoleillé, autour de vingt-quatre degrés.</span></p>
+    </div>
+    <div>
+      <dl class="specs">
+        <dt><span class="en">Wake</span><span class="fr">Réveil</span></dt><dd class="mono"><span class="en">“Marvin, …” · or Talk now</span><span class="fr">«&nbsp;Marvin,&nbsp;…&nbsp;» · ou Talk now</span></dd>
+        <dt><span class="en">Languages</span><span class="fr">Langues</span></dt><dd class="mono"><span class="en">French · English</span><span class="fr">français · anglais</span></dd>
+        <dt><span class="en">Hearing</span><span class="fr">Écoute</span></dt><dd class="mono">Whisper</dd>
+        <dt><span class="en">Thinking</span><span class="fr">Réflexion</span></dt><dd class="mono"><span class="en">a local model through Ollama</span><span class="fr">un modèle local via Ollama</span></dd>
+        <dt><span class="en">Speaking</span><span class="fr">Parole</span></dt><dd class="mono"><span class="en">Piper, or the system voice</span><span class="fr">Piper, ou la voix du système</span></dd>
+        <dt><span class="en">First word</span><span class="fr">Premier mot</span></dt><dd class="mono"><span class="en">≈ 1–2 s</span><span class="fr">≈ 1–2 s</span></dd>
+        <dt><span class="en">Tools</span><span class="fr">Outils</span></dt><dd class="mono"><span class="en">the weather first, more to come</span><span class="fr">la météo d'abord, d'autres à venir</span></dd>
+        <dt><span class="en">Microphone</span><span class="fr">Micro</span></dt><dd class="mono"><span class="en">the computer's today, the robot's once built</span><span class="fr">celui de l'ordinateur aujourd'hui, celui du robot une fois monté</span></dd>
+      </dl>
+      <p class="note"><span class="en">It only says what its sensors tell it. Every question carries a short list of facts: who is there, how long you have been seated, breathing and heart rate when the radar reads them. When a reading is missing, it says why instead of guessing. The model can also call tools for live information; the app shows every call.</span><span class="fr">Il ne dit que ce que ses capteurs lui disent. Chaque question part avec une courte liste de faits : qui est là, depuis combien de temps tu es assis, ta respiration et ton cœur quand le radar les lit. Quand une mesure manque, il dit pourquoi au lieu de deviner. Le modèle peut aussi appeler des outils pour une info en direct ; l'appli montre chaque appel.</span></p>
+    </div>
+  </div>
+</section>
+
+<section id="app">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">The app</span><span class="fr">L'appli</span></div>
+    <div>
+      <h2><span class="en">Its world, on your phone</span><span class="fr">Son monde, sur ton téléphone</span></h2>
+      <p><span class="en">A small web app served by your computer, for the phone and the desktop. Nothing to install on the phone, nothing loaded from the internet; your history stays in one file on your computer.</span><span class="fr">Une petite appli web servie par ton ordinateur, pour le téléphone comme pour l'ordinateur. Rien à installer sur le téléphone, rien chargé depuis internet ; ton historique reste dans un seul fichier sur ton ordinateur.</span></p>
+    </div>
+  </div>
+  <div class="shots">
+    <figure><img class="shot" src="images/ui_desktop.png" loading="lazy" width="1440" height="900" alt="Marvin's app on a computer: the face and break timer, today's timeline and recent events, and the conversation with Marvin" data-alt-en="Marvin's app on a computer: the face and break timer, today's timeline and recent events, and the conversation with Marvin" data-alt-fr="L'appli de Marvin sur ordinateur : le visage et le minuteur de pause, la journée et les derniers événements, et la conversation avec Marvin"><figcaption><span class="en">Home on a computer: its face, your day, the conversation</span><span class="fr">Accueil sur ordinateur : son visage, ta journée, la conversation</span></figcaption></figure>
+    <figure><img class="shot" src="images/ui_phone.png" loading="lazy" width="780" height="1688" alt="The app on a phone: the live face, time at the desk, breathing and heart rate, the break timer and today's timeline" data-alt-en="The app on a phone: the live face, time at the desk, breathing and heart rate, the break timer and today's timeline" data-alt-fr="L'appli sur téléphone : le visage en direct, le temps passé au bureau, respiration et cœur, le minuteur de pause et la journée"><figcaption><span class="en">Home on a phone</span><span class="fr">Accueil sur téléphone</span></figcaption></figure>
+    <figure><img class="shot" src="images/ui_conversation.png" loading="lazy" width="780" height="1688" alt="The Talk tab on a phone: Marvin's small eyes, the conversation, a sentence it did not answer and why, and the Talk now, Mute and Stop buttons" data-alt-en="The Talk tab on a phone: Marvin's small eyes, the conversation, a sentence it did not answer and why, and the Talk now, Mute and Stop buttons" data-alt-fr="L'onglet Talk sur téléphone : les petits yeux de Marvin, la conversation, une phrase à laquelle il n'a pas répondu et pourquoi, et les boutons Talk now, Mute et Stop"><figcaption><span class="en">Talk: it writes as it speaks</span><span class="fr">Talk : il écrit en parlant</span></figcaption></figure>
+  </div>
+  <div class="appgrid">
+    <figure><img class="shot" src="images/ui_robot.png" loading="lazy" width="1440" height="1240" alt="The Robot tab: the robot and the vital signs radar with their link and Wi-Fi signal, a lidar top view of the room, the radar's field of view with one person, breathing and heart rate charts" data-alt-en="The Robot tab: the robot and the vital signs radar with their link and Wi-Fi signal, a lidar top view of the room, the radar's field of view with one person, breathing and heart rate charts" data-alt-fr="L'onglet Robot : le robot et le radar de signes vitaux avec leur liaison et leur signal Wi-Fi, la vue lidar de la pièce de dessus, le champ du radar avec une personne, les courbes de respiration et de cœur"><figcaption><span class="en">The Robot tab, here with simulated sensors</span><span class="fr">L'onglet Robot, ici avec des capteurs simulés</span></figcaption></figure>
+    <ul class="tabs">
+      <li><b>Home</b><p><span class="en">Its face, live. How long you have been sitting, the break timer, your day on a timeline.</span><span class="fr">Son visage, en direct. Depuis combien de temps tu es assis, le minuteur de pause, ta journée sur une frise.</span></p></li>
+      <li><b>Talk</b><p><span class="en">The live conversation, next to its eyes. Your bubble forms while you speak; its answer writes itself as it talks. Tap an answer to see what Marvin knew and where the time went.</span><span class="fr">La conversation en direct, à côté de ses yeux. Ta bulle se forme pendant que tu parles ; sa réponse s'écrit pendant qu'il la dit. Touche une réponse pour voir ce que Marvin savait et où le temps est passé.</span></p></li>
+      <li><b>Robot</b><p><span class="en">Each device with its link and Wi-Fi signal, the lidar's top view, the radar's field of view with the people in it, breathing and heart rate.</span><span class="fr">Chaque appareil avec sa liaison et son signal Wi-Fi, la vue lidar de dessus, le champ du radar avec les personnes présentes, respiration et cœur.</span></p></li>
+      <li><b>History</b><p><span class="en">Any day, the last seven days, and every saved conversation, with search.</span><span class="fr">N'importe quel jour, les sept derniers, et chaque conversation gardée, avec une recherche.</span></p></li>
+      <li><b>Settings</b><p><span class="en">Breaks and quiet hours, the voice's model, language and voice, tools and the internet switch.</span><span class="fr">Pauses et heures calmes, le modèle, la langue et la voix, les outils et l'interrupteur internet.</span></p></li>
+    </ul>
+  </div>
+</section>
+
+<section id="try">
+  <div class="sh">
+    <div class="eyebrow"><span class="en">Try it</span><span class="fr">Essayer</span></div>
+    <div>
+      <h2><span class="en">No robot needed</span><span class="fr">Pas besoin de robot</span></h2>
+      <p><span class="en">The host software runs today with a simulated robot: a small room, a person walking in and sitting down, the same bytes the real sensors send. You need Python 3.10 or newer, ideally in a virtual environment.</span><span class="fr">Le logiciel côté ordinateur tourne déjà avec un robot simulé : une petite pièce, quelqu'un qui entre et s'assoit, les mêmes octets que les vrais capteurs. Il te faut Python 3.10 ou plus récent, idéalement dans un environnement virtuel.</span></p>
+    </div>
+  </div>
+  <pre class="install">pip install -e ./host</pre>
+  <div class="try">
+    <div class="cmd"><b><span class="en">The app</span><span class="fr">L'appli</span></b><code>marvin-host ui --demo --open</code><p><span class="en">A simulated robot and a simulated past week, ten times faster. With Ollama and the voice installed, talk to it; without, a scripted conversation.</span><span class="fr">Un robot simulé et une semaine passée simulée, dix fois plus vite. Avec Ollama et la voix installés, parle-lui ; sinon, une conversation scriptée.</span></p><a href="ui.md"><span class="en">The app →</span><span class="fr">L'appli →</span></a></div>
+    <div class="cmd"><b><span class="en">The 3D view</span><span class="fr">La vue 3D</span></b><code>marvin-host demo</code><p><span class="en">The simulated robot in the live Rerun viewer: lidar, radars, camera image, face, vital signs.</span><span class="fr">Le robot simulé dans la vue Rerun en direct : lidar, radars, image caméra, visage, signes vitaux.</span></p><a href="../host/README.md"><span class="en">Host software →</span><span class="fr">Logiciel côté ordinateur →</span></a></div>
+    <div class="cmd"><b><span class="en">A cheap board</span><span class="fr">Une carte à petit prix</span></b><code>cd firmware
+pio run -e d1_mini -t upload</code><p><span class="en">A Wemos D1 mini (ESP8266) runs the firmware with simulated sensors over your Wi-Fi (its name and password go in <code>secrets.h</code> first); <code>marvin-host run</code> finds it.</span><span class="fr">Une Wemos D1 mini (ESP8266) fait tourner le firmware avec des capteurs simulés sur ton Wi-Fi (son nom et son mot de passe vont d'abord dans <code>secrets.h</code>) ; <code>marvin-host run</code> la trouve.</span></p><a href="../firmware/README.md"><span class="en">Firmware →</span><span class="fr">Firmware →</span></a></div>
   </div>
 </section>
 
@@ -411,11 +529,12 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <li class="done"><b><span class="en">Rev A–D · the sensor head</span><span class="fr">Rév. A–D · la tête de capteurs</span></b><span><span class="en">Enclosure, solderless wiring, screen, microphone and speaker, D800 lidar.</span><span class="fr">Boîtier, câblage sans soudure, écran, micro et haut-parleur, lidar D800.</span></span></li>
     <li class="done"><b><span class="en">Rev E · Fanou</span><span class="fr">Rév. E · Fanou</span></b><span><span class="en">The desk lighthouse: radars behind the paint, a face, a voice in the island.</span><span class="fr">Le phare de bureau : radars derrière la peinture, un visage, une voix dans l'île.</span></span></li>
     <li class="done"><b><span class="en">Rev F · the upright robot (design)</span><span class="fr">Rév. F · le robot debout (design)</span></b><span><span class="en">Sensors tilted inside, heart rate at the desk, TPU neck damper, black glass face.</span><span class="fr">Capteurs inclinés à l'intérieur, cœur mesuré au bureau, cou amortisseur en TPU, visage en vitre noire.</span></span></li>
+    <li class="done"><b><span class="en">Host software</span><span class="fr">Logiciel côté ordinateur</span></b><span><span class="en">Runs today, with a simulated robot: fusion and the Rerun view, presence events, the app, the voice with a local LLM, tools the model can call.</span><span class="fr">Tourne déjà, avec un robot simulé : fusion et vue Rerun, événements de présence, l'appli, la voix avec un LLM local, des outils que le modèle peut appeler.</span></span></li>
+    <li class="ready"><b>Firmware</b><span><span class="en">Written and tested on the computer and in simulation; a D1 mini runs it today with simulated sensors. Sensor readers, UDP protocol, MJPEG camera, eyes, sounds, the robot's mic and speaker, OTA, the MR60BHA2 Wi-Fi bridge. Waiting for the real hardware.</span><span class="fr">Écrit et testé sur l'ordinateur et en simulation ; une D1 mini le fait déjà tourner avec des capteurs simulés. Lecture des capteurs, protocole UDP, caméra MJPEG, yeux, sons, micro et haut-parleur du robot, OTA, passerelle Wi-Fi du MR60BHA2. Il attend le vrai matériel.</span></span></li>
     <li class="now"><b><span class="en">Rev F CAD</span><span class="fr">CAO rév. F</span></b><span><span class="en">Parametric OpenSCAD source. Body, plinth, sensor sled and TPU neck are ready to print; the head comes once the screen is measured.</span><span class="fr">Source OpenSCAD paramétrique. Corps, socle, support des radars et cou en TPU prêts à imprimer ; la tête suit une fois l'écran mesuré.</span></span></li>
-    <li><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Print, assemble, check every dimension against the real modules.</span><span class="fr">Imprimer, assembler, vérifier chaque cote sur les vrais modules.</span></span></li>
-    <li><b>Firmware</b><span><span class="en">Sensor readers, UDP framing, MJPEG, eyes and moods, sounds, OTA.</span><span class="fr">Lecture des capteurs, trames UDP, MJPEG, yeux et humeurs, sons, OTA.</span></span></li>
-    <li><b><span class="en">Host</span><span class="fr">Côté PC</span></b><span><span class="en">Fusion and Rerun overlay, presence events, voice, a local LLM.</span><span class="fr">Fusion et vue Rerun, événements de présence, voix, un LLM local.</span></span></li>
-    <li><b><span class="en">Beyond</span><span class="fr">Au-delà</span></b><span><span class="en">A thermal layer, a memory of the room's habits, several robots talking to each other.</span><span class="fr">Une couche thermique, une mémoire des habitudes de la pièce, plusieurs robots qui se parlent.</span></span></li>
+    <li class="now"><b><span class="en">Parts ordered</span><span class="fr">Pièces commandées</span></b><span><span class="en">Everything for the first build, arriving in early October.</span><span class="fr">Tout pour le premier exemplaire, livraison début octobre.</span></span></li>
+    <li><b><span class="en">First build</span><span class="fr">Premier exemplaire</span></b><span><span class="en">Print, assemble, check every dimension against the real modules, and run the firmware on the real sensors, screen, audio and camera.</span><span class="fr">Imprimer, assembler, vérifier chaque cote sur les vrais modules, et faire tourner le firmware sur les vrais capteurs, l'écran, l'audio et la caméra.</span></span></li>
+    <li><b><span class="en">Beyond</span><span class="fr">Au-delà</span></b><span><span class="en">The voice through the robot's own mic and speaker, a map on its screen, the camera and sounds in the brain, learning your normal, a thermal layer.</span><span class="fr">La voix par le micro et le haut-parleur du robot, une carte sur son écran, la caméra et les sons dans le cerveau, apprendre ce qui est normal pour toi, une couche thermique.</span></span></li>
   </ol>
 </section>
 
@@ -437,6 +556,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   function set(l){
     root.dataset.lang = l; root.lang = l;
     document.querySelectorAll('.lang button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.l === l)));
+    document.querySelectorAll('img[data-alt-' + l + ']').forEach(i => { i.alt = i.getAttribute('data-alt-' + l); });
     try { localStorage.setItem('marvin-lang', l); } catch(e) {}
   }
   document.querySelectorAll('.lang button').forEach(b => b.addEventListener('click', () => set(b.dataset.l)));

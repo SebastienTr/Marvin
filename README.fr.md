@@ -13,7 +13,7 @@ Il peut **voir** (caméra, lidar), **ressentir** (qui est dans la pièce, commen
 
 Page de présentation : ouvre [`docs/index.html`](docs/index.html) dans un navigateur (FR/EN).
 
-> **État : rév. F, CAO en cours ; les pièces du premier exemplaire sont commandées.** La moitié basse est dessinée et imprimable ([`hardware/cad/marvin.scad`](hardware/cad/marvin.scad)) : corps, socle, support des radars et cou en TPU. La tête suivra une fois l'écran mesuré. Le phare de la rév. E est archivé dans [`hardware/archive/rev-e/`](hardware/archive/rev-e/). Le câblage n'a pas changé depuis la rév. D.
+> **État : rév. F, pièces du premier exemplaire commandées (livraison début octobre), rien n'est encore monté.** La moitié basse de la CAO est dessinée et imprimable ([`hardware/cad/marvin.scad`](hardware/cad/marvin.scad)) : corps, socle, support des radars et cou en TPU. La tête suivra une fois l'écran mesuré. Le firmware est écrit et testé sur l'ordinateur et en simulation, et une Wemos D1 mini le fait déjà tourner avec des capteurs simulés ; son code pour les vrais capteurs, l'écran, l'audio et la caméra n'a pas encore tourné sur le vrai matériel. Le logiciel côté ordinateur (fusion, événements de présence, l'appli, la voix locale) tourne déjà. Le phare de la rév. E est archivé dans [`hardware/archive/rev-e/`](hardware/archive/rev-e/). Le câblage n'a pas changé depuis la rév. D.
 
 ## Pensé autour des capteurs
 

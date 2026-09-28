@@ -13,7 +13,7 @@ It can **see** (camera, lidar), **feel** (who is in the room, how they move, and
 
 > Français : [lire en français](README.fr.md) · Presentation page: open [`docs/index.html`](docs/index.html) in a browser.
 
-> **Project status: rev F, CAD in progress; the parts for the first build are ordered.** The body half is designed and printable ([`hardware/cad/marvin.scad`](hardware/cad/marvin.scad)): body, plinth, sensor sled and TPU neck. The head follows once the screen is measured. The rev E lighthouse is archived in [`hardware/archive/rev-e/`](hardware/archive/rev-e/). The wiring is unchanged since rev D.
+> **Project status: rev F, parts for the first build ordered (arriving early October), nothing built yet.** The body half of the CAD is designed and printable ([`hardware/cad/marvin.scad`](hardware/cad/marvin.scad)): body, plinth, sensor sled and TPU neck. The head follows once the screen is measured. The firmware is written and tested on the computer and in simulation, and a Wemos D1 mini runs it today with simulated sensors; its real sensor, screen, audio and camera code has not run on the real hardware yet. The host software (fusion, presence events, the app, the local voice) runs today. The rev E lighthouse is archived in [`hardware/archive/rev-e/`](hardware/archive/rev-e/). The wiring is unchanged since rev D.
 
 ## What we want to do
 
@@ -21,7 +21,7 @@ Every sensor on its own is half-blind. A lidar draws perfect walls but cannot te
 
 1. **Capture: the robot is dumb on purpose.** The ESP32-S3 reads every sensor, stamps each packet with the same clock and streams it over Wi-Fi. It draws its own eyes and plays its own sounds.
 2. **Fuse: the computer does the thinking.** It places every measurement in the same 3D frame (lidar geometry, radar people and speeds, vital signs, camera colour) and shows one live overlay in [Rerun](https://rerun.io).
-3. **Live: a companion that notices.** It looks at you when you sit down, tells you when you have not moved for an hour, notices your breathing, and answers questions about the room. No cloud is required, and no image needs to leave the room.
+3. **Live: a companion that notices.** It looks at you when you sit down, reminds you to take a break after about 50 minutes seated, shows your breathing and heart rate (measured, not diagnosed), and answers your questions with what its sensors tell it. No cloud is required, and no image needs to leave the room; the one optional exception is the weather tool, which sends a place name to Open-Meteo and can be switched off.
 
 ## Designed around the sensors
 
@@ -46,8 +46,8 @@ The robot stands upright on the desk; **the sensors are tilted inside it**, not 
 | Hi-Link **HLK-LD2450** | 24 GHz radar | Position and speed of up to 3 people, up to 6 m |
 | Seeed **MR60BHA2** kit | 60 GHz radar | Presence, breathing rate and heart rate, best within 1 m |
 | **XIAO ESP32S3 Sense** | Visible light | Camera, microphone, Wi-Fi, and the brain that runs everything |
-| Waveshare **1.69" LCD** (ST7789) | — | The face: expressive eyes, and a mini-map or status on demand |
-| **MAX98357A** amp + 1 W speaker | Sound | The voice: chirps and short spoken answers |
+| Waveshare **1.69" LCD** (ST7789) | — | The face: expressive eyes (a mini-map later) |
+| **MAX98357A** amp + 1 W speaker | Sound | The voice: built-in sounds, and spoken answers from the computer |
 
 Heart rate from a radar is consumer-grade: a few beats per minute of error, and only while you stay fairly still. It is not a medical device.
 
@@ -81,7 +81,7 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 2. **Print** following [docs/printing.md](docs/printing.md). Print the 5-minute lidar template first.
 3. **Solder** two header strips, then **wire** the 29 connections in [docs/wiring.md](docs/wiring.md). The guide is written for first-timers.
 4. **Assemble** following [docs/assembly.md](docs/assembly.md).
-5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) are at the prototype stage: they already talk to each other with simulated sensors; the host turns what it sees into events, a face, a voice and an app for your phone (`marvin-host demo`, `marvin-host ui --demo`).
+5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) already talk to each other with simulated sensors (a Wemos D1 mini is enough to try the firmware); the real-sensor firmware waits for the first build. The host turns what it sees into events, a face, a local voice and an app for your phone (`marvin-host demo`, `marvin-host ui --demo`).
 
 The body parts are ready to print; the head parts arrive with the head CAD.
 
