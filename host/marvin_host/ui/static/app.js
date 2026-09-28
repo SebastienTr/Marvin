@@ -555,36 +555,57 @@
     setTimeout(() => li.remove(), 380);
   }
 
+  // Your bubble only appears when Marvin is listening to you (a listening window, or no wake word),
+  // or once the words so far start with "Marvin": noises and talk around him move the strip only.
+  // It waits 300 ms, so a click or a cough (dropped as too short) never flashes a bubble.
+  function listeningToYou() {
+    const v = app.voice;
+    return !!v && (v.status === "listening" || !v.wake);
+  }
+
+  function youBubble(uid) {
+    if (live.you && live.you.uid === uid) return live.you;
+    if (live.you) dissolve(live.you.li);
+    const li = liveItem("you");
+    const b = el("p", "bubble");
+    b.append(waveEl(), el("span", "words"));
+    li.appendChild(b);
+    live.you = { li, uid };
+    scrollTranscript(true);
+    return live.you;
+  }
+
   function onUtterance(u) {
     if (u.state === "start") {
-      if (live.you) dissolve(live.you.li);
-      const listening = app.voice && app.voice.status === "listening";
-      const wake = !app.voice || app.voice.wake;
-      // outside a listening window it only counts if it starts with "Marvin": a ghost until then
-      const li = liveItem("you", listening || !wake ? "" : "ghost");
-      const b = el("p", "bubble");
-      b.append(waveEl(), el("span", "words"));
-      li.appendChild(b);
-      live.you = { li, uid: u.uid };
-      scrollTranscript(!li.classList.contains("ghost"));
-    } else if (live.you && live.you.uid === u.uid) {
-      if (u.state === "end") live.you.li.classList.add("understanding");
-      else if (u.state === "done") {
-        const l = live.you;
-        setTimeout(() => { if (live.you === l) { dissolve(l.li); live.you = null; } }, 250);
-      }
+      clearTimeout(live.youTimer);
+      live.heardUid = u.uid;
+      live.youTimer = setTimeout(() => {
+        if (live.heardUid === u.uid && listeningToYou()) youBubble(u.uid);
+      }, 300);
+    } else if (u.state === "end") {
+      if (live.heardUid === u.uid && listeningToYou()) youBubble(u.uid);
+      if (live.you && live.you.uid === u.uid) live.you.li.classList.add("understanding");
+      labelLive();
+    } else if (u.state === "done") {
+      clearTimeout(live.youTimer);
+      live.heardUid = null;
+      const l = live.you;
+      if (l && l.uid === u.uid) setTimeout(() => { if (live.you === l) { dissolve(l.li); live.you = null; } }, 250);
+      labelLive();
     }
   }
 
   function onPartial(p) {
-    if (!live.you || live.you.uid !== p.uid) return;
+    if (!(live.you && live.you.uid === p.uid)) {
+      if (live.heardUid !== p.uid || !(listeningToYou() || /^\W*marvin\b/i.test(p.text))) return;
+      youBubble(p.uid);
+    }
     const w = live.you.li.querySelector(".words");
     if (w.textContent === p.text) return;
     w.textContent = p.text;
     w.classList.remove("fresh-words");
     void w.offsetWidth;
     w.classList.add("fresh-words");
-    live.you.li.classList.remove("ghost");
     scrollTranscript(false);
   }
 
@@ -651,7 +672,7 @@
   }
 
   const LISTEN_LABELS = {
-    starting: "Waking up…", muted: "Microphone muted", listening: "Listening…",
+    starting: "Waking up…", muted: "Microphone muted", listening: "Ask your question…",
     thinking: "Thinking…", speaking: "Marvin is speaking",
   };
 
@@ -665,6 +686,13 @@
 
   function updateLive(v) {
     const mode = liveMode(v);
+    if (mode === "listening" && v.listen_s != null) {
+      const now = performance.now() / 1000;
+      if (live.mode !== "listening" || !live.windowEnd) live.windowTotal = Math.max(1, v.listen_s);
+      live.windowEnd = now + v.listen_s;
+    } else if (mode !== "listening") {
+      live.windowEnd = 0;
+    }
     const was = live.mode;
     live.mode = mode;
     const strip = $("listen");
@@ -689,7 +717,7 @@
       else text = app.voice && app.voice.wake ? "Say “Marvin, …”" : "Waiting for you to speak";
     }
     if (live.speech && (live.mode === "idle" || live.mode === "listening")) text = live.mode === "listening" ? "I'm listening…" : "Hearing something…";
-    if (live.you && live.you.li.classList.contains("understanding")) text = "Understanding…";
+    if (live.heardUid != null && !live.speech && live.mode !== "thinking" && live.mode !== "speaking") text = "Understanding…";
     strip.classList.toggle("closing", live.closingUntil > performance.now());
     strip.classList.toggle("hearing", !!live.speech);
     setFading($("listen-label"), text);
@@ -727,6 +755,11 @@
       live.lastPush = ts;
     }
     const lv = live.lvl.toFixed(3);
+    if (live.windowEnd) {
+      if (live.speech || live.heardUid != null) live.windowEnd = Math.max(live.windowEnd, now + 0.6);  // it waits while you talk
+      const remain = Math.max(0, Math.min(1, (live.windowEnd - now) / live.windowTotal));
+      $("listen").style.setProperty("--remain", remain.toFixed(3));
+    }
     $("orb").style.setProperty("--lvl", lv);
     if (live.you) live.you.li.style.setProperty("--lvl", live.you.li.classList.contains("understanding") ? 0 : lv);
     if (live.marvin && live.marvin.said) live.marvin.li.style.setProperty("--lvl", lv);
@@ -793,7 +826,7 @@
     else if (v.muted && v.status === "idle") text = "Microphone muted";
     else text = {
       idle: v.wake ? "Say “Marvin, …”" : "Waiting for you to speak",
-      listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…",
+      listening: "Listening: ask your question", thinking: "Thinking…", speaking: "Speaking…",
     }[v.status] || v.status;
     setFading($("voice-status"), text);
 
@@ -810,6 +843,11 @@
     }
     for (const id of ["listen-now", "mute", "stop-speaking", "ask-input", "ask-send"]) $(id).disabled = !on;
     $("stop-speaking").disabled = !on || !(v.status === "thinking" || v.status === "speaking");
+    const listening = on && v.status === "listening";
+    $("listen-now").setAttribute("aria-pressed", String(listening));
+    $("listen-now-label").textContent = listening ? "Listening" : "Talk now";
+    $("listen-now").title = listening ? "Marvin is listening: ask your question. Press to stop listening"
+      : "Ask a question without saying “Marvin”";
     $("mute").setAttribute("aria-pressed", String(!!v.muted));
     $("mute").title = v.muted ? "The microphone is muted: press to unmute" : "Mute the microphone";
     $("ask-input").placeholder = on ? "Ask Marvin something" : "Turn the voice on to ask Marvin";
@@ -837,7 +875,14 @@
     watchScroll();
     $("voice-switch").addEventListener("change", (ev) => voiceCommand(ev.target.checked ? "/api/voice/on" : "/api/voice/off"));
     $("voice-retry").addEventListener("click", () => voiceCommand("/api/voice/on"));
-    $("listen-now").addEventListener("click", () => voiceCommand("/api/voice/listen"));
+    $("listen-now").addEventListener("click", () => {
+      const v = app.voice;
+      if (!v || v.state !== "on") return;
+      const stop = v.status === "listening";
+      // answer at once; the server's reply confirms (or corrects) it a moment later
+      renderVoice({ ...v, status: stop ? "idle" : "listening", muted: false, listen_s: stop ? null : 6 });
+      voiceCommand("/api/voice/listen", { on: !stop });
+    });
     $("stop-speaking").addEventListener("click", () => voiceCommand("/api/voice/stop-speaking"));
     $("mute").addEventListener("click", () => voiceCommand("/api/voice/mute", { muted: !(app.voice && app.voice.muted) }));
     $("ask-form").addEventListener("submit", async (ev) => {

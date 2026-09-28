@@ -397,6 +397,14 @@ body[data-view="talk"] .foot { display: none; }
   transition: height 0.35s ease, margin 0.35s ease, opacity 0.35s ease, background-color 0.5s, border-color 0.5s;
 }
 .listen[data-mode="off"] { height: 0; margin-top: 0; opacity: 0; border-width: 0; }
+.listen { position: relative; }
+/* the time left to speak in a listening window; it waits while you talk */
+.listen::after {
+  content: ""; position: absolute; left: 18px; right: 18px; bottom: 5px; height: 2px; border-radius: 1px;
+  background: var(--accent); opacity: 0; transform-origin: left center; transform: scaleX(var(--remain, 0));
+  transition: opacity 0.3s;
+}
+.listen[data-mode="listening"]::after { opacity: 0.75; }
 .listen-wave { flex: 1; min-width: 0; height: 28px; }
 .listen-label { flex: none; font-size: 0.8125rem; color: var(--muted); white-space: nowrap; transition: color 0.4s; }
 .listen[data-mode="listening"], .listen.hearing {
@@ -418,6 +426,9 @@ body[data-view="talk"] .foot { display: none; }
 .pill:hover { background: var(--surface-2); }
 .pill.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
 .pill.primary:hover { background: #fff; }
+.pill.primary[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #1a1310; }
+.pill.primary[aria-pressed="true"] .icon { animation: mic-pulse 1.4s ease-in-out infinite; }
+@keyframes mic-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 .pill[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
 .pill:disabled { opacity: 0.35; cursor: default; background: transparent; color: var(--text); border-color: var(--line-strong); }
 .pill.primary:disabled { background: var(--surface-3); border-color: var(--surface-3); }

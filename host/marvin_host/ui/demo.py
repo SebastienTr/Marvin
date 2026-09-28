@@ -243,12 +243,25 @@ class DemoVoice:
 
     SPOKEN = "What time is it?"               # what the demo "hears" after Talk now
 
+    def stop_listening(self) -> bool:
+        if self.status != "listening":
+            return False
+        self._cancel()
+        self._set("idle")
+        return True
+
+    def listen_remaining(self):
+        if self.status != "listening":
+            return None
+        return max(0.0, getattr(self, "_listen_end", 0.0) - time.monotonic())
+
     def listen_now(self) -> None:
         """A listening window in which the demo hears someone ask the time, with the live signals
         (microphone level, utterance, partial transcript) the real assistant sends."""
         self._cancel()
         if self.muted:
             self.mute(False)
+        self._listen_end = time.monotonic() + 6.0
         self._set("listening")
         seq = self._seq
         uid = seq

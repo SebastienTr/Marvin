@@ -170,6 +170,7 @@ class VoiceAssistant:
         self._lock = threading.RLock()
         self._stt_lock = threading.Lock()
         self._listen_until: float | None = None              # audio time
+        self._asked_to_listen = False    # the window was asked for (Talk now, "Marvin." alone): take what comes
         self._listen_from = 0.0                              # audio time: earlier utterances are not follow-ups
         self._audio_now = 0.0
         self._last_turn = 0.0                                # monotonic
@@ -275,8 +276,26 @@ class VoiceAssistant:
             self._interrupt()
         if self._muted:
             self.mute(False)
-        self._listen(self._capture_time(), with_chime=self.config.chime)
+        # from what the listening has reached (it may lag behind the capture while Whisper works),
+        # so the window is never already over when it opens
+        self._listen(max(self._audio_now, self._capture_time() - 0.3), with_chime=self.config.chime)
         return True
+
+    def stop_listening(self) -> bool:
+        """Closes the listening window (Talk now pressed again). False if there was none."""
+        with self._lock:
+            if self._status != Status.LISTENING:
+                return False
+            self._listen_until = None
+            self._set_status(Status.IDLE)
+        return True
+
+    def listen_remaining(self) -> float | None:
+        """Seconds left in the listening window (None outside one); it waits while someone talks."""
+        with self._lock:
+            if self._status != Status.LISTENING or self._listen_until is None:
+                return None
+            return max(0.0, self._listen_until - self._audio_now)
 
     @property
     def muted(self) -> bool:
@@ -571,7 +590,9 @@ class VoiceAssistant:
             if rest is not None and not text:   # "Marvin." again: keep listening
                 self._listen(seg.t_end)
                 return
-            if rest is None:                    # no name: be strict (filters.follow_up_decision)
+            if rest is None and not (window and self._asked_to_listen):
+                # no name, and nobody asked Marvin to listen: be strict (filters.follow_up_decision).
+                # After Talk now or "Marvin." alone, what comes is the question.
                 # the language rule applies in a follow-up window; with --no-wake, the person
                 # may start in any language
                 conversation = self.language if window else (tr.language or self.language)
@@ -615,6 +636,7 @@ class VoiceAssistant:
 
     def _listen(self, t_audio: float, with_chime: bool = False) -> None:
         with self._lock:
+            self._asked_to_listen = True
             self._listen_until = t_audio + self.config.listen_window_s
             self._set_status(Status.LISTENING)
         if with_chime:
@@ -683,6 +705,7 @@ class VoiceAssistant:
                         self._listen_from = self._capture_time() + (0.0 if c.duplex else c.echo_tail_s)
                         if job.kind == "ask" and not job.cancel.is_set() and c.wake and c.follow_up_s > 0:
                             self._listen_until = self._listen_from + c.follow_up_s
+                            self._asked_to_listen = False
                             self._set_status(Status.LISTENING)
                         elif self._listen_until is None:
                             self._set_status(Status.IDLE)

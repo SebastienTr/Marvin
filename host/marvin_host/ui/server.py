@@ -834,7 +834,10 @@ class _Handler(BaseHTTPRequestHandler):
                     raise ValueError("text must be a string")
                 v.ask(text)
             elif path == "/api/voice/listen":
-                v.listen_now()
+                on = body.get("on", True) if isinstance(body, dict) else True
+                if not isinstance(on, bool):
+                    raise ValueError("on must be true or false")
+                v.listen_now(on)
             elif path == "/api/voice/mute":
                 if not isinstance(body.get("muted"), bool):
                     raise ValueError("muted must be true or false")

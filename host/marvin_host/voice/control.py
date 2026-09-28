@@ -416,8 +416,13 @@ class VoiceController:
             raise ValueError("a question is at most 500 characters")
         self._running().ask(text)
 
-    def listen_now(self) -> None:
-        self._running().listen_now()
+    def listen_now(self, on: bool = True) -> None:
+        """Talk now: opens a listening window (`on`), or closes the one that is open."""
+        va = self._running()
+        if on:
+            va.listen_now()
+        elif hasattr(va, "stop_listening"):
+            va.stop_listening()
 
     def stop_speaking(self) -> bool:
         return self._running().stop_speaking()
@@ -460,6 +465,9 @@ class VoiceController:
             "fix": self.fix,
             "model": s.get("llm_model") or voice_cli_default("llm_model"),
             "wake": bool(s.get("wake", True)),
+            # seconds left to speak without the name (None outside a listening window)
+            "listen_s": (va.listen_remaining() if (va is not None and self.state == ON
+                                                    and hasattr(va, "listen_remaining")) else None),
         }
 
     def _set_state(self, state: str) -> None:

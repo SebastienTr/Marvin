@@ -1142,3 +1142,31 @@ def test_a_chosen_voice_only_reads_its_own_language():
     assert voices_for("auto", None, "fr", say) == {"piper": None, "say": None, "espeak": None}
     assert voice_language("/voices/fr_FR-siwis-medium.onnx") == "fr"
     assert voice_language("en-gb") == "en" and voice_language("fr") == "fr"
+
+
+def test_talk_now_takes_what_comes():
+    box = {}
+    va, t = make([("quiet", 0.5), ("call", lambda: box["va"].listen_now()), ("quiet", 0.5), ("say", 0.8),
+                  ("quiet", 1), ("idle",), ("quiet", 0.3)], ["Bonjour."], ["Bonjour !"])
+    box["va"] = va
+    va.run()
+    # one word and no name: a follow-up would ignore it, but Talk now asked Marvin to listen
+    assert t.log["transcript"] == ["Bonjour."]
+
+
+def test_talk_now_can_be_stopped_and_says_how_long_is_left():
+    box = {}
+    left = []
+
+    def open_and_close():
+        box["va"].listen_now()
+        left.append(box["va"].listen_remaining())
+        assert box["va"].stop_listening()
+        left.append(box["va"].listen_remaining())
+
+    va, t = make([("quiet", 0.5), ("call", open_and_close), ("quiet", 0.5), ("say", 0.8), ("quiet", 1)],
+                 ["Bonjour."], ["Bonjour !"])
+    box["va"] = va
+    va.run()
+    assert 5.5 <= left[0] <= 6.5 and left[1] is None
+    assert t.log["transcript"] == [] and t.log["status"] == ["listening", "idle"]
