@@ -100,6 +100,7 @@ marvin/
 ├── host/                         # desktop receiver, viewer, simulator
 ├── docs/                         # BOM, wiring, printing, assembly, architecture
 │   ├── protocol.md               # robot ↔ host UDP protocol
+│   ├── design.md                 # Marvin's brain: next-generation host design (memory, agents, Java core)
 │   ├── concepts/                 # design studies, from the lighthouse to the robot
 │   └── index.html                # presentation page (open in a browser)
 └── LICENSES/                     # full licence texts
