@@ -96,4 +96,5 @@ The 24 GHz radar sits below the 60 GHz one, not above it: the 60 GHz beam leaves
 - [x] Host: presence events (brain) and the face, on simulated data
 - [ ] Host: camera/lidar extrinsic calibration
 - [ ] Companion: tested daily on the real robot, voice through the robot
+- [ ] Companion: perception and learning, see [intelligence.md](intelligence.md)
 - [ ] Optional: MR60BHA2 data over UART, 3D lidar variant
