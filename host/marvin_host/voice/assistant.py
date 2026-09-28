@@ -56,7 +56,7 @@ from . import filters, persona
 from .echo import EchoFilter, EchoGate
 from .llm import LLM, LLMUnavailable, ToolCall
 from .stt import STT, Transcript
-from .text import SentenceSplitter, clean_for_speech, guess_language, looks_like_payload, payload_tool_calls
+from .text import SentenceSplitter, clean_for_speech, guess_language, looks_like_payload, payload_tool_calls, strip_thinking
 from .tools import ToolRegistry
 from .tts import TTS
 from .vad import Segment, Segmenter, SegmenterConfig, Vad, make_vad
@@ -884,7 +884,9 @@ class VoiceAssistant:
                     t_req = time.monotonic()
                     first = True
                     text: list[str] = []
-                    held: bool | None = None            # the reply looks like a tool call written as text
+                    # held back until the response is complete: it looks like a tool call written as
+                    # text, or it answers a tool result (models may think aloud there, see strip_thinking)
+                    held: bool | None = True if rounds else None
                     tool_calls: list[ToolCall] = []
                     for piece in self._stream(messages + exchange, schemas):
                         if job.cancel.is_set():
@@ -941,7 +943,7 @@ class VoiceAssistant:
                     if tool_calls:
                         log.warning("ignoring %d more tool call(s) after %d round(s)", len(tool_calls), rounds)
                     if held and not tool_calls:         # it was not a tool call after all: say what can be said
-                        for s in splitter.feed(content):
+                        for s in splitter.feed(strip_thinking(content)):
                             say(s)
                     for s in splitter.flush():
                         say(s)

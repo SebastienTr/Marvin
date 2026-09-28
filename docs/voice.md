@@ -159,6 +159,11 @@ How it works ([`voice/tools/`](../host/marvin_host/voice/tools), [`assistant.py`
   models write the call as text (a JSON object, `<tool_call>` tags, a code block) instead of a real
   call: a reply that starts like that is held back, read as a tool call when it is one, and JSON is
   never spoken in any case (`clean_for_speech` drops it).
+- **Reasoning written into the answer**: after a tool result, Qwen 3.5 models (seen with
+  `qwen3.8:27b` on Ollama 0.34) sometimes think in the answer itself even with thinking off, then
+  write `</think>` and answer again. So the answer to a tool result is held until it is complete,
+  and everything before a lone `</think>` is dropped (`text.strip_thinking`); the filler covers the
+  wait. `<think>` tags are never spoken.
 - **History**: the whole exchange (question, calls, results, answer) is kept, so the next question's
   prefix is unchanged; when the history is halved, whole turns go, a tool exchange is never split.
 - **Models without tools** (Ollama answers "does not support tools", e.g. `gemma3`): Marvin asks

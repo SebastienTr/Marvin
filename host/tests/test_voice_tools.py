@@ -164,7 +164,8 @@ def test_one_tool_call_then_the_answer():
     assert result["role"] == "tool" and result["tool_name"] == "get_weather"
     assert json.loads(result["content"])["temperature_c"] == 21
     # an online tool: a filler first, then the answer
-    assert [s for s, _ in t.tts.said] == ["Je regarde…", "Il fait vingt et un degrés,", "partiellement nuageux."]
+    # the answer to a tool result is held until complete (see strip_thinking): one piece
+    assert [s for s, _ in t.tts.said] == ["Je regarde…", "Il fait vingt et un degrés, partiellement nuageux."]
     reply = replies(t)[0]
     assert reply["text"] == "Je regarde… Il fait vingt et un degrés, partiellement nuageux."
     assert reply["tools"][0]["name"] == "get_weather" and reply["tools"][0]["ok"]
@@ -464,3 +465,23 @@ def test_demo_weather_reply_has_a_fake_tool_call():
     call = demo.WEATHER_CALL
     assert call["name"] == "get_weather" and "demo" in call["result"] and "demo" in demo.WEATHER_ANSWER
     assert {"tools", "llm_first_token_2"} <= set(demo.WEATHER_LATENCY)
+
+
+def test_thinking_written_into_the_answer_is_not_spoken():
+    from marvin_host.voice.text import clean_for_speech, strip_thinking
+    leaked = ("À Nice, c'est dégagé, vingt à vingt-cinq degrés.\n</think>\n\n"
+              "À Nice, c'est dégagé aujourd'hui, entre vingt et vingt-cinq degrés.")
+    assert strip_thinking(leaked) == "À Nice, c'est dégagé aujourd'hui, entre vingt et vingt-cinq degrés."
+    assert strip_thinking("<think>hmm</think>Bonjour.") == "Bonjour."
+    assert strip_thinking("Rien à signaler.") == "Rien à signaler."
+    assert "think" not in clean_for_speech("Oui. </think Non.")
+
+
+def test_reasoning_leaked_after_a_tool_result_is_dropped():
+    # what qwen3.5 (27B) really streamed after a weather result, with thinking off
+    leaked = ("À Nice, c'est essentiellement dégagé, entre vingt et vingt-cinq degrés.\n</think>\n\n"
+              "À Nice, il fait beau aujourd'hui, entre vingt et vingt-cinq degrés.")
+    va, t = ask("Quel temps fait-il ?", [ToolCall("get_weather", {"day": "today"}), leaked])
+    assert [s for s, _ in t.tts.said] == ["Je regarde…",
+                                          "À Nice, il fait beau aujourd'hui, entre vingt et vingt-cinq degrés."]
+    assert va.history[-1]["content"] == "À Nice, il fait beau aujourd'hui, entre vingt et vingt-cinq degrés."

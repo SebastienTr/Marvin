@@ -81,10 +81,24 @@ def payload_tool_calls(text: str) -> list[dict]:
     return found
 
 
+_THINK_BLOCK = re.compile(r"<think>.*?</think\s*>?", re.S)
+_THINK_END = re.compile(r"</think\b\s*>?")
+
+
+def strip_thinking(text: str) -> str:
+    """Drops reasoning a model wrote into its answer: `<think>…</think>` blocks, and everything
+    before a lone `</think>` (after a tool result, Qwen 3.5 models sometimes think in the answer
+    itself even with thinking off, then close the tag and answer again)."""
+    text = _THINK_BLOCK.sub("", text)
+    parts = _THINK_END.split(text)
+    return parts[-1].lstrip() if len(parts) > 1 else text
+
+
 def clean_for_speech(text: str) -> str:
     """Removes markdown, URLs, emoji and anything that looks like JSON or a tool call; the model is
     asked not to produce them, but may."""
-    t = re.sub(r"```.*?```", " ", text, flags=re.S)
+    t = _THINK_END.sub(" ", _THINK_BLOCK.sub(" ", text))
+    t = re.sub(r"```.*?```", " ", t, flags=re.S)
     t = strip_payload(t)
     t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)          # [label](link) -> label
     t = re.sub(r"https?://\S+", "", t)

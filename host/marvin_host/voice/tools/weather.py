@@ -51,7 +51,8 @@ PARAMETERS = {
 }
 
 DESCRIPTION = ("Get the real weather for a place: the current conditions, or today's or tomorrow's forecast. "
-               "Use it whenever the person asks about the weather, temperature, rain or wind.")
+               "Use it whenever the person asks about the weather, temperature, rain or wind. When they name "
+               "no place, call it without one: it then uses the owner's home, or says which city to ask for.")
 
 
 def conditions(code) -> str:
