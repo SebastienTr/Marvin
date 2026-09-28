@@ -19,9 +19,10 @@ The ESP32 builds (`xiao_esp32s3`, `xiao_esp32s3_sim`, `esp32s3`) and the D1 mini
 3. **Every upload after that goes over Wi-Fi:**
 
    ```sh
-   export MARVIN_OTA_PASSWORD='something-long'     # the same password; espota sends it
    pio run -e xiao_esp32s3_ota -t upload --upload-port marvin-a1b2c3.local
    ```
+
+   The password comes from `OTA_PASSWORD` in `include/secrets.h` (read by `scripts/ota_auth.py`), so there is nothing to type or export. `MARVIN_OTA_PASSWORD` in the environment overrides it, for a robot flashed with another password. A Wemos D1 mini works the same way with `d1_mini_ota`.
 
    The `xiao_esp32s3_ota` env is `xiao_esp32s3` with `upload_protocol = espota`. You can also give an IP address, or set `upload_port` in `platformio.ini` once for your robot.
 
@@ -35,7 +36,7 @@ Troubleshooting:
 
 - **`.local` names**: macOS resolves them out of the box. Linux needs Avahi (`nss-mdns`), Windows needs Bonjour; otherwise use the IP shown in the serial log (`OTA: ready as ...`).
 - **espota hangs at "Waiting for device..."**: the robot connects *back* to your computer over TCP. Allow incoming connections for Python in the macOS firewall (System Settings → Network → Firewall), or pin the port with `upload_flags = --host_port=47110` and open that one.
-- **"Authentication failed"**: `MARVIN_OTA_PASSWORD` does not match `OTA_PASSWORD` in the firmware that is *running*.
+- **"Authentication failed"**: `OTA_PASSWORD` in `include/secrets.h` (or `MARVIN_OTA_PASSWORD`, if set) does not match the one in the firmware that is *running*: flash once over USB after changing it.
 
 ## Recording and replaying sessions
 
