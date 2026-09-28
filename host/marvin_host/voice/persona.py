@@ -181,9 +181,12 @@ def persona_prompt(language: str = "fr", tools: bool = False) -> str:
 
 
 def context_block(state: PresenceState | None = None, events: Iterable[Event] = (),
-                  now: dt.datetime | None = None) -> str:
+                  now: dt.datetime | None = None, home: str = "") -> str:
+    """`home`: the owner's home place, given so the model calls the weather tool without asking."""
     now = now or dt.datetime.now()
     lines = ["Context:", f"- It is {now:%A %d %B %Y, %H:%M} (local time)."]
+    if home:
+        lines.append(f"- Your owner lives in {home}: that is where the weather tool looks when no place is named.")
     if state is None:
         lines.append("- Your sensors are not connected right now (voice-only mode): you know nothing "
                      "about the room or the person beyond what they tell you.")

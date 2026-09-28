@@ -161,9 +161,13 @@ How it works ([`voice/tools/`](../host/marvin_host/voice/tools), [`assistant.py`
   never spoken in any case (`clean_for_speech` drops it).
 - **Reasoning written into the answer**: after a tool result, Qwen 3.5 models (seen with
   `qwen3.8:27b` on Ollama 0.34) sometimes think in the answer itself even with thinking off, then
-  write `</think>` and answer again. So the answer to a tool result is held until it is complete,
-  and everything before a lone `</think>` is dropped (`text.strip_thinking`); the filler covers the
-  wait. `<think>` tags are never spoken.
+  write `</think>` and answer again (it happens without tools too). The answer to a tool result
+  is held until it is complete and everything before a lone `</think>` is dropped
+  (`text.strip_thinking`); the filler covers the wait. Other answers stream as usual: at the tag,
+  if something was already said, its sentence is finished and the repeat after the tag is dropped,
+  otherwise only what follows the tag is said. `<think>` tags are never spoken.
+- **Home**: with tools on and a home location set, the context tells the model where the owner
+  lives, so "what's the weather?" calls the tool instead of asking for a city.
 - **History**: the whole exchange (question, calls, results, answer) is kept, so the next question's
   prefix is unchanged; when the history is halved, whole turns go, a tool exchange is never split.
 - **Models without tools** (Ollama answers "does not support tools", e.g. `gemma3`): Marvin asks

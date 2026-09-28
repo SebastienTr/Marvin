@@ -485,3 +485,24 @@ def test_reasoning_leaked_after_a_tool_result_is_dropped():
     assert [s for s, _ in t.tts.said] == ["Je regarde…",
                                           "À Nice, il fait beau aujourd'hui, entre vingt et vingt-cinq degrés."]
     assert va.history[-1]["content"] == "À Nice, il fait beau aujourd'hui, entre vingt et vingt-cinq degrés."
+
+
+def test_reasoning_leaked_while_streaming_is_said_once():
+    # qwen3.5 without tools: the answer, "</think>", the answer again, streamed in small pieces
+    text = ("C'est comme si l'air retenait la note la plus claire. </think>\n\n"
+            "C'est comme si l'air retenait la note la plus claire.")
+    pieces = [text[i:i + 5] for i in range(0, len(text), 5)]
+    va, t = ask("Et de manière plus poétique ?", [pieces], tools=None)
+    said = " ".join(s for s, _ in t.tts.said)
+    assert said.count("note la plus claire") == 1 and "think" not in said
+    assert replies(t)[0]["text"].count("note la plus claire") == 1
+    # nothing said yet when the tag comes (the draft before it is short): only the answer after it
+    va, t = ask("Bonjour ?", [["Bonj", "our</th", "ink>\n\nBonjour !"]], tools=None)
+    assert [s for s, _ in t.tts.said] == ["Bonjour !"]
+
+
+def test_the_home_place_is_in_the_context_when_tools_are_on():
+    va, t = ask("Quel temps fait-il ?", [ToolCall("get_weather", {}), "Beau."], home_place="Nice, France")
+    assert "Your owner lives in Nice, France" in t.llm.calls[0][-1]["content"]
+    va, t = ask("Bonjour", ["Bonjour."], home_place="Nice, France", tools=ToolRegistry([], enabled=False))
+    assert "lives in" not in t.llm.calls[0][-1]["content"]

@@ -43,6 +43,7 @@ import copy
 import importlib.util
 import logging
 import queue
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -63,6 +64,9 @@ from .vad import Segment, Segmenter, SegmenterConfig, Vad, make_vad
 from .wake import TranscriptWakeWord, WakeMatch, WakeWordDetector, match_wake_word
 
 log = logging.getLogger("marvin.voice")
+
+THINK_TAG = "</think>"
+THINK_END = re.compile(r"</think\b\s*>?")
 
 
 class Status(str, Enum):
@@ -780,7 +784,8 @@ class VoiceAssistant:
         if self.history and now - self._last_turn > self.config.memory_reset_s:
             log.debug("conversation forgotten after %.0f s of silence", now - self._last_turn)
             self.history.clear()
-        job.context = persona.context_block(state, events)
+        home = self.config.home_place.strip() if schemas else ""
+        job.context = persona.context_block(state, events, home=home)
         user = persona.user_message(job.text, language=job.language, context=job.context)
         return [{"role": "system", "content": persona.persona_prompt(job.language, tools=bool(schemas))},
                 *self.history,
@@ -888,6 +893,7 @@ class VoiceAssistant:
                     # text, or it answers a tool result (models may think aloud there, see strip_thinking)
                     held: bool | None = True if rounds else None
                     tool_calls: list[ToolCall] = []
+                    fed, scan, cut, said_before = 0, 0, False, len(answer)
                     for piece in self._stream(messages + exchange, schemas):
                         if job.cancel.is_set():
                             return
@@ -909,8 +915,32 @@ class VoiceAssistant:
                             piece = so_far
                         if held:
                             continue
-                        for s in splitter.feed(piece):
+                        # Reasoning written into the answer (strip_thinking) while it streams: text,
+                        # then "</think>", then the answer again. Hold back a possible start of the tag;
+                        # at the tag, if something was said, finish its sentence and drop the repeat,
+                        # else drop what came before it.
+                        if cut:
+                            continue
+                        joined = "".join(text)
+                        end = THINK_END.search(joined, max(scan, fed - len(THINK_TAG)))
+                        if end is not None:
+                            if len(answer) > said_before:
+                                for s in splitter.feed(joined[fed:end.start()]):
+                                    say(s)
+                                for s in splitter.flush():
+                                    say(s)
+                                cut = True
+                                continue
+                            splitter = SentenceSplitter()
+                            fed = scan = end.end()
+                        stop = len(joined)
+                        for k in range(1, len(THINK_TAG) + 1):
+                            if joined.endswith(THINK_TAG[:k]):
+                                stop = len(joined) - k
+                        stop = max(stop, fed)
+                        for s in splitter.feed(joined[fed:stop]):
                             say(s)
+                        fed = stop
                     content = "".join(text)
                     if held is None and content.strip():    # too short to decide: treat it as text
                         held = True
@@ -944,6 +974,9 @@ class VoiceAssistant:
                         log.warning("ignoring %d more tool call(s) after %d round(s)", len(tool_calls), rounds)
                     if held and not tool_calls:         # it was not a tool call after all: say what can be said
                         for s in splitter.feed(strip_thinking(content)):
+                            say(s)
+                    if not held and not cut and fed < len(content):   # a held-back "<" at the very end
+                        for s in splitter.feed(content[fed:]):
                             say(s)
                     for s in splitter.flush():
                         say(s)
