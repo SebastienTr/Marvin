@@ -302,3 +302,19 @@ def test_ollama_models_and_options(monkeypatch):
         srv.server_close()
     o = control.options({"ollama_host": "http://127.0.0.1:9"})
     assert not o["ollama"]["ok"] and "ollama serve" in o["ollama"]["fix"] and o["llm_models"] == []
+
+
+def test_live_signals_pass_through_and_ids_survive_a_restart(tmp_path):
+    from marvin_host.voice.control import LIVE_KINDS
+    a = VoiceController(check=None, path=tmp_path / "voice.json")
+    got = []
+    a.add_listener(lambda kind, payload: got.append(kind))
+    for kind in LIVE_KINDS:
+        a._on_voice(kind, {"t": 0.0})
+    a._on_voice("heard", {"t": 0.0, "text": "bonjour"})
+    assert got == [*LIVE_KINDS, "transcript"]
+    assert [e["kind"] for e in a.recent()] == ["heard"]  # live signals are not kept
+    time.sleep(0.01)
+    b = VoiceController(check=None, path=tmp_path / "voice.json")   # marvin-host again: an open page
+    b._on_voice("heard", {"t": 0.0, "text": "encore"})    # must not take this for an entry it has
+    assert b.recent()[0]["id"] > a.recent()[0]["id"]

@@ -8,7 +8,8 @@ and stops it. It keeps the recent conversation and passes the assistant's events
 listeners (the app's live stream).
 
     ctl = VoiceController(brain)                  # nothing starts yet
-    ctl.add_listener(lambda kind, payload: ...)   # "voice" (state) and "transcript" (one entry)
+    ctl.add_listener(lambda kind, payload: ...)   # "voice" (state), "transcript" (one entry) and
+                                                  # the live signals in LIVE_KINDS
     ctl.start()                                   # background; ctl.snapshot()["state"] says how it goes
     ctl.ask("Quelle heure est-il ?")
     ctl.stop()
@@ -61,6 +62,10 @@ class VoiceUnavailable(RuntimeError):
     def __init__(self, message: str, fix: str = ""):
         super().__init__(message)
         self.fix = fix
+
+
+# Live signals from the assistant, passed straight to the app (see VoiceAssistant.add_listener)
+LIVE_KINDS = ("level", "utterance", "partial", "say")
 
 
 def validate(update: dict) -> dict:
@@ -224,7 +229,9 @@ class VoiceController:
         self.fix = ""
         self.muted = False
         self.transcript: deque[dict] = deque(maxlen=history)
-        self._ids = itertools.count(1)
+        # ids keep growing across restarts of marvin-host, so an open page never mistakes a new
+        # entry for one it already shows
+        self._ids = itertools.count(int(time.time() * 1000))
         self._listeners: list[Callable[[str, dict], None]] = []
         self._proactive = None
         self._lock = threading.RLock()          # state
@@ -491,6 +498,8 @@ class VoiceController:
                         hint=data.get("hint", ""))
         elif kind == "ignored":
             self._entry("ignored", data["t"], text=data.get("text", ""), reason=data.get("reason", ""))
+        elif kind in LIVE_KINDS:
+            self._publish(kind, data)           # live only: not kept in the transcript
 
     def recent(self, since: int = 0) -> list[dict]:
         """Conversation entries after id `since`, oldest first."""

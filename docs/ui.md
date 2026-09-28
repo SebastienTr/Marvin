@@ -18,7 +18,7 @@ the voice turning on and off, and warnings.
 </p>
 
 <p align="center">
-  <img src="images/ui_conversation.png" alt="The Talk panel on a phone: Marvin speaking, the conversation with what was heard, Marvin's answers with their latency, utterances Marvin did not answer and why, and the Talk now, Mute and Stop buttons above a text box" width="300">
+  <img src="images/ui_conversation.png" alt="The Talk panel on a phone: the conversation, Marvin writing his answer word by word as he says it, the listening strip showing his voice, and the Talk now, Mute and Stop buttons above a text box" width="300">
 </p>
 
 <p align="center">
@@ -61,8 +61,9 @@ beside the face and the day, so the Talk tab disappears.
 | Today | A timeline of the day: when you were around (dark), when you were seated (light), and break reminders (orange dots). Below it: time seated, sitting sessions, breaks, longest streak, when you arrived and last left, and your average breathing and heart rate. |
 | Recent | What happened, in plain words: you came in, sat down, stood up after 47 minutes, break reminders. |
 | **Talk** | |
-| State | A small shape tells what Marvin is doing: still (voice off), breathing slowly (asleep, waiting for "Marvin"), an orange ring (listening), a turning arc (thinking), bars (speaking). With reduced motion, the shapes stay still. |
-| Conversation | What Marvin heard (typed questions say so), what it answered, what it said on its own (a break reminder, dashed), and, discreetly, what it heard but did not answer and why ("known hallucination", "own voice", "conversation closed"). Tap the time under an answer, like `1.3 s`, to see where the time went: end of speech, recognition, model, synthesis. |
+| State | A small shape tells what Marvin is doing: still (voice off), breathing slowly (asleep, waiting for "Marvin"), an orange ring that swells with your voice (listening), a turning arc (thinking), bars that move with Marvin's voice (speaking). With reduced motion, the shapes stay still. |
+| Listening strip | Above the buttons, a wave of what the microphone hears (orange while Marvin listens, grey while it waits for its name) or of Marvin's own voice while he speaks, with a word on what is going on: "Say “Marvin, …”", "Listening…", "Understanding…", "Thinking…", "Stopped listening" when the listening window closes. |
+| Conversation | Live: while you speak, your bubble forms with a small wave and the words understood so far (dashed until it knows you talk to Marvin), then shimmers while the words are understood; Marvin's bubble shows three dots while he thinks, then writes itself word by word as he says it. What Marvin heard (typed questions say so), what it answered, what it said on its own (a break reminder, dashed), and, discreetly, what it heard but did not answer and why ("known hallucination", "own voice", "conversation closed"). Tap the time under an answer, like `1.3 s`, to see where the time went: end of speech, recognition, model, synthesis. |
 | Controls | **Voice** on and off without restarting `marvin-host` (it is remembered: the voice starts with `marvin-host` next time). **Talk now**: a listening window without saying "Marvin", as if you had just said the name. **Mute**: the microphone is ignored (reminders and typed questions still work). **Stop**: Marvin stops talking. The text box asks a question in writing; Marvin answers aloud and in the conversation. |
 | Problems | If the voice cannot start, the panel says why and how to fix it: the `voice` extra is not installed (`pip install -e ".[voice]"`), no microphone, Ollama not running (`ollama serve`), the model not pulled (`ollama pull qwen3:4b-instruct`). **Try again** after fixing it. |
 | **Robot** | |
@@ -193,7 +194,7 @@ server.stop()
 | `GET /api/day?date=YYYY-MM-DD` | one day's stats and timeline (default: today) |
 | `GET /api/history?days=7` | time seated per day, oldest first |
 | `GET /api/events?since=ID&limit=50&quiet=1` | recent events, newest first, with a sentence each (`quiet` hides vital-sign events) |
-| `GET /api/stream` | Server-Sent Events: `state` (2 per second), `event` (as they happen), `today`, `settings`, `voice` (state and status), `transcript` (one conversation entry), `log` (one log line), `devices` (once a second) |
+| `GET /api/stream` | Server-Sent Events: `state` (2 per second), `event` (as they happen), `today`, `settings`, `voice` (state and status), `transcript` (one conversation entry), `log` (one log line), `devices` (once a second); while the voice runs, the live signals `level` (microphone loudness, ~16 per second), `utterance` (`start`, `end`, `done`), `partial` (the words understood so far) and `say` (a piece of the reply with its duration and loudness envelope) |
 | `GET /face.png` | the face right now (240 × 280 PNG); `503` if it cannot be drawn |
 | `GET`, `POST /api/settings` | settings; POST a JSON object with the fields to change |
 | `GET /api/robot` | `{devices, scene}`: the devices, and the sensor mini-views (`lidar.ranges_cm`: 360 ranges, one per degree clockwise from the front; `targets` and `trail` in cm, right and forward; `vitals` with `rates` and `waves`) |

@@ -241,13 +241,46 @@ class DemoVoice:
             "endpoint": 0.0, "stt": 0.0, "llm_first_token": 0.24, "first_chunk": 0.38, "tts": 0.13,
             "audio_start": 0.52}, seq=seq))
 
+    SPOKEN = "What time is it?"               # what the demo "hears" after Talk now
+
     def listen_now(self) -> None:
+        """A listening window in which the demo hears someone ask the time, with the live signals
+        (microphone level, utterance, partial transcript) the real assistant sends."""
         self._cancel()
         if self.muted:
             self.mute(False)
         self._set("listening")
         seq = self._seq
-        self._later(6.0, lambda: self._idle(seq))
+        uid = seq
+        talking = {"on": False}
+
+        def levels():
+            rnd = random.Random(seq)
+            while seq == self._seq and self.status == "listening":
+                t = time.monotonic()
+                mic = (0.45 + 0.4 * abs(math.sin(t * 9.0)) * rnd.random()) if talking["on"] else 0.04 + 0.05 * rnd.random()
+                self._emit("level", mic=round(mic, 3), speech=talking["on"], gated=False)
+                time.sleep(0.06)
+
+        def start():
+            talking["on"] = True
+            self._emit("utterance", state="start", uid=uid)
+
+        def end():
+            talking["on"] = False
+            self._emit("utterance", state="end", uid=uid)
+
+        def heard():
+            self._emit("heard", text=self.SPOKEN, language="en", source="voice")
+            self._emit("utterance", state="done", uid=uid)
+            self._set("thinking")
+
+        threading.Thread(target=levels, name="demo-voice-level", daemon=True).start()
+        self._steps(seq, [(0.9, start), (1.5, lambda: self._emit("partial", uid=uid, text="What time")),
+                          (1.2, end), (0.5, heard),
+                          (0.7, lambda: self._speak(self.answer(self.SPOKEN), {
+                              "endpoint": 0.5, "stt": 0.08, "llm_first_token": 0.22, "first_chunk": 0.35,
+                              "tts": 0.12, "audio_start": 0.61, "speculative": 1.0}, seq=seq))])
 
     def mute(self, muted: bool = True) -> None:
         if muted != self.muted:
@@ -300,7 +333,26 @@ class DemoVoice:
                        error=None, hint="")
             self._set("listening")
             self._later(3.0, lambda: self._idle(seq))
-        self._later(min(6.0, 0.8 + 0.045 * len(text)), done)
+
+        steps, total = [], 0.0
+        for piece in _sentences(text):                  # "say" per sentence, like the real speaker
+            seconds = 0.35 + 0.06 * len(piece)
+            steps.append((0.0 if not steps else prev, lambda p=piece, d=seconds: self._emit(
+                "say", text=p, seconds=round(d, 3), envelope=_envelope(p, d))))
+            prev = seconds * 0.4                        # synthesis runs ahead of playback
+            total += seconds
+        steps.append((max(0.2, total - sum(d for d, _ in steps)), done))
+        self._steps(seq, steps)
+
+    def _steps(self, seq: int, steps) -> None:
+        """Runs `(delay, fn)` steps one after the other on a thread, until the demo is interrupted."""
+        def run():
+            for delay, fn in steps:
+                time.sleep(delay)
+                if seq != self._seq:
+                    return
+                fn()
+        threading.Thread(target=run, name="demo-voice", daemon=True).start()
 
     def _idle(self, seq: int) -> None:
         if seq == self._seq:
@@ -330,6 +382,24 @@ class DemoVoice:
         data["t"] = self.clock() if t is None else t
         for fn in list(self._listeners):
             fn(kind, data)
+
+
+def _sentences(text: str) -> list[str]:
+    out, cur = [], ""
+    for word in text.split():
+        cur = f"{cur} {word}".strip()
+        if word[-1] in ".?!":
+            out.append(cur)
+            cur = ""
+    return out + ([cur] if cur else [])
+
+
+def _envelope(text: str, seconds: float, hz: int = 20) -> list[float]:
+    """A made-up loudness curve for `text`: one bump per syllable-ish, silence between words."""
+    n = max(1, int(seconds * hz))
+    rnd = random.Random(text)
+    return [round(max(0.0, 0.25 + 0.6 * abs(math.sin(i * 1.7)) * rnd.random() - (0.2 if i % 7 == 6 else 0)), 2)
+            for i in range(n)]
 
 
 # ------------------------------------------------------------------------------ past week

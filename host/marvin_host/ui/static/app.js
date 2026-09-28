@@ -458,21 +458,323 @@
     return t.scrollHeight - t.scrollTop - t.clientHeight < 80;
   }
 
-  function scrollTranscript(force) {
+  // Follows the conversation unless you scrolled up to read (then it stays put until you come back)
+  let follow = true;
+  function watchScroll() {
     const t = $("transcript");
-    if (force || nearBottom()) requestAnimationFrame(() => { t.scrollTop = t.scrollHeight; });
+    let timer;
+    const check = () => { clearTimeout(timer); timer = setTimeout(() => { follow = nearBottom(); }, 120); };
+    for (const ev of ["wheel", "touchmove", "keydown", "pointerdown"]) t.addEventListener(ev, check, { passive: true });
+    // the listening strip opening, a notice, the window: the view shrinks, the last words stay in sight
+    if (window.ResizeObserver) new ResizeObserver(() => { if (follow) t.scrollTop = t.scrollHeight; }).observe(t);
+  }
+
+  function scrollTranscript(force, smooth = true) {
+    const t = $("transcript");
+    if (force) follow = true;
+    if (follow) {
+      requestAnimationFrame(() => t.scrollTo({ top: t.scrollHeight, behavior: smooth && !reduceMotion.matches ? "smooth" : "auto" }));
+    }
   }
 
   function addTranscript(e, { fresh = false } = {}) {
     if (app.transcriptIds.has(e.id)) return;
     app.transcriptIds.add(e.id);
-    const stick = nearBottom();
     const li = transcriptItem(e);
     const ol = $("transcript");
-    ol.appendChild(li);
+    // a live bubble (you speaking, Marvin thinking or talking) becomes the entry, in place
+    const pending = e.kind === "heard" && e.source !== "typed" ? live.you
+      : e.kind === "reply" ? live.marvin : null;
+    if (pending) {
+      settle(pending, li);
+    } else {
+      if (e.kind === "ignored" && live.you) dissolve(live.you.li), (live.you = null);
+      if (!fresh) li.classList.add("settled");
+      ol.appendChild(li);
+    }
     while (ol.children.length > 200) ol.firstElementChild.remove();
     $("transcript-empty").hidden = true;
-    if (stick || fresh) scrollTranscript(true);
+    scrollTranscript(false, !!fresh);
+  }
+
+  // ------------------------------------------------------------------ talk: live animations
+  // The assistant's live signals (voice/assistant.py, add_listener) drive the chat while you talk:
+  // "level" (the microphone, ~16 Hz), "utterance" (someone talks, stops, is judged), "partial"
+  // (the words understood so far) and "say" (a piece of the reply as it goes to the speaker).
+  // Your bubble forms while you speak and Marvin's writes itself as he says it; the listening
+  // strip and the orb follow the microphone, or Marvin's voice while he speaks.
+
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const WAVE_BARS = 56;
+  const live = {
+    levels: new Array(WAVE_BARS).fill(0),   // recent loudness, oldest first
+    lastPush: 0,
+    mic: 0, micAt: 0,                       // last microphone level and when it came
+    speech: false,
+    lvl: 0,                                 // smoothed level drawn this frame
+    you: null,                              // {li, uid}: your bubble being formed
+    marvin: null,                           // {li, said, timers, end}: Marvin's bubble being said
+    mouth: [],                              // [{t0, seconds, env}] reply pieces scheduled on the speaker
+    mode: "off",
+    closingUntil: 0,                        // "Stopped listening" shown until then
+    raf: 0,
+    colors: null,
+  };
+
+  function liveItem(side, extra) {
+    const li = el("li", `msg ${side} live${extra ? " " + extra : ""}`);
+    li.setAttribute("aria-hidden", "true");
+    $("transcript").appendChild(li);
+    $("transcript-empty").hidden = true;
+    return li;
+  }
+
+  function waveEl() {
+    const w = el("span", "vu");
+    for (let i = 0; i < 5; i++) w.appendChild(el("i"));
+    return w;
+  }
+
+  // the live bubble `l` becomes the entry `li` (same place, same text: no jump)
+  function settle(l, li) {
+    if (l.timers) l.timers.forEach(clearTimeout);
+    li.classList.add("settled", "just-settled");
+    l.li.replaceWith(li);
+    if (l === live.you) live.you = null;
+    if (l === live.marvin) { live.marvin = null; live.mouth = []; }
+    setTimeout(() => li.classList.remove("just-settled"), 600);
+  }
+
+  function dissolve(li) {
+    if (!li || !li.isConnected) return;
+    if (reduceMotion.matches) { li.remove(); return; }
+    li.style.height = `${li.offsetHeight}px`;
+    li.classList.add("dissolving");
+    void li.offsetHeight;
+    li.style.height = "0px";
+    setTimeout(() => li.remove(), 380);
+  }
+
+  function onUtterance(u) {
+    if (u.state === "start") {
+      if (live.you) dissolve(live.you.li);
+      const listening = app.voice && app.voice.status === "listening";
+      const wake = !app.voice || app.voice.wake;
+      // outside a listening window it only counts if it starts with "Marvin": a ghost until then
+      const li = liveItem("you", listening || !wake ? "" : "ghost");
+      const b = el("p", "bubble");
+      b.append(waveEl(), el("span", "words"));
+      li.appendChild(b);
+      live.you = { li, uid: u.uid };
+      scrollTranscript(!li.classList.contains("ghost"));
+    } else if (live.you && live.you.uid === u.uid) {
+      if (u.state === "end") live.you.li.classList.add("understanding");
+      else if (u.state === "done") {
+        const l = live.you;
+        setTimeout(() => { if (live.you === l) { dissolve(l.li); live.you = null; } }, 250);
+      }
+    }
+  }
+
+  function onPartial(p) {
+    if (!live.you || live.you.uid !== p.uid) return;
+    const w = live.you.li.querySelector(".words");
+    if (w.textContent === p.text) return;
+    w.textContent = p.text;
+    w.classList.remove("fresh-words");
+    void w.offsetWidth;
+    w.classList.add("fresh-words");
+    live.you.li.classList.remove("ghost");
+    scrollTranscript(false);
+  }
+
+  function marvinBubble() {
+    if (live.marvin && live.marvin.said) return live.marvin;
+    let li = live.marvin ? live.marvin.li : liveItem("marvin");
+    li.classList.remove("thinking");
+    li.textContent = "";
+    const b = el("p", "bubble");
+    const said = el("span", "said");
+    b.appendChild(said);
+    li.appendChild(b);
+    live.marvin = { li, said, timers: [], end: 0 };
+    return live.marvin;
+  }
+
+  function onSay(s) {
+    const m = marvinBubble();
+    m.li.classList.add("speaking");
+    const now = performance.now() / 1000;
+    const t0 = Math.max(now + 0.08, m.end);          // after the pieces already queued
+    const seconds = Math.max(0.2, s.seconds || 0.2);
+    m.end = t0 + seconds;
+    live.mouth.push({ t0, seconds, env: s.envelope || [] });
+    const words = (s.text || "").split(/\s+/).filter(Boolean);
+    words.forEach((w, i) => {
+      const at = (t0 + (seconds * 0.92 * i) / Math.max(1, words.length) - now) * 1000;
+      m.timers.push(setTimeout(() => {
+        if (m.said.childNodes.length) m.said.append(" ");
+        m.said.appendChild(el("span", "w", w));
+        scrollTranscript(false, false);
+      }, Math.max(0, at)));
+    });
+    ensureLoop();
+  }
+
+  function thinkingBubble(on) {
+    if (on && !live.marvin) {
+      const li = liveItem("marvin", "thinking");
+      const b = el("p", "bubble");
+      const dots = el("span", "dots");
+      for (let i = 0; i < 3; i++) dots.appendChild(el("i"));
+      b.appendChild(dots);
+      li.appendChild(b);
+      live.marvin = { li, said: null, timers: [], end: 0 };
+      scrollTranscript(false);
+    } else if (!on && live.marvin && !live.marvin.said) {
+      dissolve(live.marvin.li);
+      live.marvin = null;
+    }
+  }
+
+  function mouthLevel(now) {
+    for (const m of live.mouth) {
+      if (now >= m.t0 && now < m.t0 + m.seconds) return m.env[Math.floor((now - m.t0) * 20)] || 0;
+    }
+    return 0;
+  }
+
+  function liveMode(v) {
+    if (!v || v.state !== "on") return v && v.state === "starting" ? "starting" : "off";
+    if (v.muted && v.status !== "speaking" && v.status !== "thinking") return "muted";
+    return v.status;                                  // idle, listening, thinking, speaking
+  }
+
+  const LISTEN_LABELS = {
+    starting: "Waking up…", muted: "Microphone muted", listening: "Listening…",
+    thinking: "Thinking…", speaking: "Marvin is speaking",
+  };
+
+  function setFading(node, text) {
+    if (node.textContent === text) return;
+    node.textContent = text;
+    node.classList.remove("fade-in");
+    void node.offsetWidth;
+    node.classList.add("fade-in");
+  }
+
+  function updateLive(v) {
+    const mode = liveMode(v);
+    const was = live.mode;
+    live.mode = mode;
+    const strip = $("listen");
+    if (was === "listening" && mode === "idle") live.closingUntil = performance.now() + 1600;
+    if (mode !== "idle") live.closingUntil = 0;
+    strip.dataset.mode = mode;
+    labelLive();
+    if (mode === "thinking") thinkingBubble(true);
+    else if (mode !== "speaking") thinkingBubble(false);   // "speaking" comes just before the first words
+    if (mode !== "speaking" && live.marvin && live.marvin.said) live.marvin.li.classList.remove("speaking");
+    if (mode === "off" || mode === "muted") {
+      if (live.you) { dissolve(live.you.li); live.you = null; }
+    }
+    ensureLoop();
+  }
+
+  function labelLive() {
+    const strip = $("listen");
+    let text = LISTEN_LABELS[live.mode] || "";
+    if (live.mode === "idle") {
+      if (live.closingUntil > performance.now()) text = "Stopped listening";
+      else text = app.voice && app.voice.wake ? "Say “Marvin, …”" : "Waiting for you to speak";
+    }
+    if (live.speech && (live.mode === "idle" || live.mode === "listening")) text = live.mode === "listening" ? "I'm listening…" : "Hearing something…";
+    if (live.you && live.you.li.classList.contains("understanding")) text = "Understanding…";
+    strip.classList.toggle("closing", live.closingUntil > performance.now());
+    strip.classList.toggle("hearing", !!live.speech);
+    setFading($("listen-label"), text);
+  }
+
+  function onLevel(l) {
+    live.mic = l.mic || 0;
+    live.micAt = performance.now();
+    if (live.speech !== !!l.speech) { live.speech = !!l.speech; labelLive(); }
+    ensureLoop();
+  }
+
+  function waveColors() {
+    const cs = getComputedStyle(document.documentElement);
+    return { accent: cs.getPropertyValue("--accent").trim(), text: cs.getPropertyValue("--text").trim(),
+             muted: cs.getPropertyValue("--muted").trim() };
+  }
+
+  function ensureLoop() {
+    if (live.raf || document.hidden) return;
+    live.raf = requestAnimationFrame(frame);
+  }
+
+  function frame(ts) {
+    live.raf = 0;
+    const now = ts / 1000;
+    const speaking = live.mode === "speaking";
+    let target = speaking ? mouthLevel(now) : live.mic;
+    if (!speaking && performance.now() - live.micAt > 250) target = 0;   // no news: quiet
+    if (live.mode === "off" || live.mode === "muted" || live.mode === "starting") target = 0;
+    live.lvl += (target - live.lvl) * (target > live.lvl ? 0.55 : 0.18);
+    if (ts - live.lastPush > 55) {                   // the wave scrolls ~18 bars a second
+      live.levels.push(live.lvl);
+      live.levels.shift();
+      live.lastPush = ts;
+    }
+    const lv = live.lvl.toFixed(3);
+    $("orb").style.setProperty("--lvl", lv);
+    if (live.you) live.you.li.style.setProperty("--lvl", live.you.li.classList.contains("understanding") ? 0 : lv);
+    if (live.marvin && live.marvin.said) live.marvin.li.style.setProperty("--lvl", lv);
+    drawListenWave(ts);
+    if (live.closingUntil && live.closingUntil <= performance.now()) { live.closingUntil = 0; labelLive(); }
+    const moving = live.lvl > 0.004 || live.levels.some((x) => x > 0.004) || live.closingUntil;
+    if (moving || ["idle", "listening", "thinking", "speaking", "starting"].includes(live.mode)) ensureLoop();
+  }
+
+  function drawListenWave(ts) {
+    const c = $("listen-wave");
+    const w = c.clientWidth, h = c.clientHeight;
+    if (!w || !h) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
+    }
+    if (!live.colors) live.colors = waveColors();
+    const g = c.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const mode = live.mode;
+    const color = mode === "speaking" ? live.colors.text : mode === "listening" || live.speech ? live.colors.accent : live.colors.muted;
+    const step = w / WAVE_BARS;
+    const bw = Math.max(2, Math.min(3, step * 0.45));
+    const shift = reduceMotion.matches ? 0 : Math.min(1, (ts - live.lastPush) / 55) * step;
+    g.fillStyle = color;
+    for (let i = 0; i < WAVE_BARS; i++) {
+      let v = live.levels[i];
+      if (mode === "thinking") v = 0.08 + 0.08 * Math.sin(ts / 260 - i * 0.35);   // a slow travelling ripple
+      const age = i / (WAVE_BARS - 1);                // older bars fade out on the left
+      const bh = Math.max(bw, v * (h - 4));
+      const x = i * step - shift + (step - bw) / 2;
+      g.globalAlpha = (mode === "idle" && !live.speech ? 0.45 : 1) * (0.15 + 0.85 * age);
+      roundRect(g, x, (h - bh) / 2, bw, bh, bw / 2);
+    }
+    g.globalAlpha = 1;
+  }
+
+  function roundRect(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.fill();
   }
 
   function renderVoice(v) {
@@ -493,7 +795,7 @@
       idle: v.wake ? "Say “Marvin, …”" : "Waiting for you to speak",
       listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…",
     }[v.status] || v.status;
-    $("voice-status").textContent = text;
+    setFading($("voice-status"), text);
 
     const sw = $("voice-switch");
     sw.checked = v.state === "on" || v.state === "starting";
@@ -519,6 +821,7 @@
         : v.state === "unavailable" ? "The conversation appears here when Marvin's voice runs." : "Turn the voice on to talk to Marvin.";
     }
     $("tab-talk-dot").hidden = !(on && (v.status === "listening" || v.status === "speaking"));
+    updateLive(v);
   }
 
   async function voiceCommand(path, body) {
@@ -531,6 +834,7 @@
   }
 
   function setupTalk() {
+    watchScroll();
     $("voice-switch").addEventListener("change", (ev) => voiceCommand(ev.target.checked ? "/api/voice/on" : "/api/voice/off"));
     $("voice-retry").addEventListener("click", () => voiceCommand("/api/voice/on"));
     $("listen-now").addEventListener("click", () => voiceCommand("/api/voice/listen"));
@@ -542,6 +846,7 @@
       const text = input.value.trim();
       if (!text) return;
       input.value = "";
+      scrollTranscript(true);
       await voiceCommand("/api/voice/ask", { text });
       input.focus();
     });
@@ -552,7 +857,7 @@
     app.voiceSettings = r.settings;
     for (const e of r.transcript) addTranscript(e);
     renderVoice(r.voice);
-    scrollTranscript(true);
+    scrollTranscript(true, false);
   }
 
   // ------------------------------------------------------------------ robot: devices
@@ -902,7 +1207,13 @@
     const conn = $("conn"), text = $("conn-text");
     const es = new EventSource("/api/stream");
     const status = (cls, label) => { conn.className = `conn ${cls}`; text.textContent = label; };
-    es.addEventListener("open", () => status("live", "Live"));
+    let opened = false;
+    es.addEventListener("open", () => {
+      status("live", "Live");
+      // after a reconnection (marvin-host restarted, the computer slept), catch up on what was missed
+      if (opened) loadVoice().catch(() => {});
+      opened = true;
+    });
     es.addEventListener("error", () => status("lost", "Reconnecting"));
     es.addEventListener("hello", (m) => applySettings(JSON.parse(m.data).settings));
     es.addEventListener("state", (m) => {
@@ -915,6 +1226,10 @@
     es.addEventListener("settings", (m) => applySettings(JSON.parse(m.data)));
     es.addEventListener("voice", (m) => renderVoice(JSON.parse(m.data)));
     es.addEventListener("transcript", (m) => addTranscript(JSON.parse(m.data), { fresh: true }));
+    es.addEventListener("level", (m) => onLevel(JSON.parse(m.data)));
+    es.addEventListener("utterance", (m) => onUtterance(JSON.parse(m.data)));
+    es.addEventListener("partial", (m) => onPartial(JSON.parse(m.data)));
+    es.addEventListener("say", (m) => onSay(JSON.parse(m.data)));
     es.addEventListener("log", (m) => addLog(JSON.parse(m.data)));
     es.addEventListener("devices", (m) => { if (!robotStream.es) renderDevices(JSON.parse(m.data)); });
   }
@@ -1091,7 +1406,7 @@
     for (const r of document.querySelectorAll('input[name="log-filter"]')) r.addEventListener("change", renderLog);
     $("day-prev").addEventListener("click", () => shiftDay(-1));
     $("day-next").addEventListener("click", () => shiftDay(1));
-    document.addEventListener("visibilitychange", () => robotStream.update());
+    document.addEventListener("visibilitychange", () => { robotStream.update(); ensureLoop(); });
     startFace();
     try {
       const r = await api("/api/state");

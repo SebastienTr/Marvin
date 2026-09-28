@@ -1100,3 +1100,32 @@ def test_reply_language_reminder_and_voice_follow_the_text():
     assert guess_language("No, I do not get hungry. I am a program running on your computer.") == "en"
     assert guess_language("Non, je n'ai pas faim, je suis un programme.") == "fr"
     assert guess_language("OK.") is None
+
+
+def test_live_signals_for_the_app():
+    va, t = make([("quiet", 1), ("say", 1.5), ("quiet", 1), ("idle",)],
+                 ["Marvin, quelle heure est-il ?"], ["Il est midi. Bon appétit."])
+    events = []
+    va.add_listener(lambda kind, data: events.append((kind, data)))
+    va.run()
+    kinds = [k for k, _ in events]
+    levels = [d for k, d in events if k == "level"]
+    assert 50 <= len(levels) <= 70                        # ~16 per second over 3.5 s of audio
+    assert max(d["mic"] for d in levels) > 0.5 > min(d["mic"] for d in levels)
+    assert any(d["speech"] for d in levels)
+    utt = [d["state"] for k, d in events if k == "utterance"]
+    assert utt == ["start", "end", "done"]
+    assert kinds.index("heard") < len(kinds) - 1 - kinds[::-1].index("utterance")   # heard before done
+    assert any(k == "partial" and d["text"] == "Marvin, quelle heure est-il ?" for k, d in events)
+    says = [d for k, d in events if k == "say"]
+    assert [d["text"] for d in says] == ["Il est midi.", "Bon appétit."]
+    assert all(d["seconds"] > 0 and len(d["envelope"]) == int(d["seconds"] * 20) for d in says)
+    assert kinds.index("say") < kinds.index("reply")
+
+
+def test_envelope():
+    from marvin_host.voice.assistant import envelope
+    t = np.arange(16000) / 16000
+    pcm = np.concatenate([np.zeros(8000), 8000 * np.sin(2 * np.pi * 220 * t[:8000])]).astype(np.int16)
+    env = envelope(pcm, 16000)
+    assert len(env) == 20 and env[0] == 0.0 and env[-1] > 0.7

@@ -253,11 +253,13 @@ body[data-view="talk"] .foot { display: none; }
 .talk-head { display: flex; align-items: center; gap: 14px; }
 .talk-title { flex: 1; min-width: 0; }
 .voice-status { font-size: 1.0625rem; margin-top: 1px; }
+.fade-in { animation: fade-in 0.28s ease-out; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(3px); } }
 .switch.compact { gap: 10px; font-weight: 400; color: var(--muted); font-size: 0.875rem; }
 
 /* Marvin's state, one small calm shape: still when off, breathing when idle, a ring when
    listening, a turning arc when thinking, bars when speaking */
-.orb { position: relative; width: 46px; height: 46px; flex: none; }
+.orb { position: relative; width: 46px; height: 46px; flex: none; --lvl: 0; }
 .orb-core {
   position: absolute; inset: 11px; border-radius: 50%; background: var(--surface-3);
   transition: background-color 0.4s, inset 0.4s;
@@ -266,23 +268,29 @@ body[data-view="talk"] .foot { display: none; }
 .orb-bars { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 3px; opacity: 0; }
 .orb-bars i { display: block; width: 3px; height: 8px; border-radius: 2px; background: var(--bg); }
 .orb[data-status="idle"] .orb-core { background: var(--seated); opacity: 0.55; animation: breathe 5s ease-in-out infinite; }
-.orb[data-status="listening"] .orb-core { background: var(--accent); inset: 10px; }
+.orb[data-status="listening"] .orb-core { background: var(--accent); inset: 10px; transform: scale(calc(1 + var(--lvl) * 0.45)); transition: background-color 0.4s, inset 0.4s, transform 90ms linear; }
+.orb[data-status="listening"]::after {
+  content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--accent);
+  opacity: calc(var(--lvl) * 0.35); transform: scale(calc(1 + var(--lvl) * 0.9)); transition: transform 90ms linear, opacity 90ms linear;
+}
 .orb[data-status="listening"] .orb-ring { border-color: var(--accent); animation: ripple 1.8s ease-out infinite; }
 .orb[data-status="thinking"] .orb-core { background: var(--seated); opacity: 0.8; inset: 12px; }
 .orb[data-status="thinking"] .orb-ring { border-color: transparent; border-top-color: var(--text); border-right-color: var(--line-strong); animation: spin 1.1s linear infinite; }
-.orb[data-status="speaking"] .orb-core { background: var(--text); inset: 6px; }
+.orb[data-status="speaking"] .orb-core { background: var(--text); inset: 6px; transform: scale(calc(0.94 + var(--lvl) * 0.12)); transition: background-color 0.4s, inset 0.4s, transform 80ms linear; }
 .orb[data-status="speaking"] .orb-bars { opacity: 1; }
-.orb[data-status="speaking"] .orb-bars i { animation: talkbar 0.9s ease-in-out infinite; }
-.orb[data-status="speaking"] .orb-bars i:nth-child(2) { animation-delay: -0.3s; }
-.orb[data-status="speaking"] .orb-bars i:nth-child(3) { animation-delay: -0.55s; }
-.orb[data-status="speaking"] .orb-bars i:nth-child(4) { animation-delay: -0.15s; }
+.orb-bars { transition: opacity 0.3s; }
+.orb-bars i { --k: 1; transition: height 80ms linear; }
+.orb[data-status="speaking"] .orb-bars i { height: calc(4px + var(--lvl) * 14px * var(--k)); }
+.orb-bars i:nth-child(1) { --k: 0.55; }
+.orb-bars i:nth-child(2) { --k: 1; }
+.orb-bars i:nth-child(3) { --k: 0.8; }
+.orb-bars i:nth-child(4) { --k: 0.45; }
 .orb[data-status="starting"] .orb-ring { border-top-color: var(--muted); animation: spin 1.6s linear infinite; }
 .orb[data-status="error"] .orb-core { background: transparent; border: 1.5px solid var(--accent); }
 .orb[data-muted="true"] .orb-core { opacity: 0.35; }
 @keyframes breathe { 0%, 100% { transform: scale(0.86); } 50% { transform: scale(1); } }
 @keyframes ripple { from { transform: scale(0.8); opacity: 1; } to { transform: scale(1.25); opacity: 0; } }
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes talkbar { 0%, 100% { height: 5px; } 50% { height: 16px; } }
 
 .notice {
   margin-top: 14px; padding: 12px 14px; border-radius: 12px;
@@ -301,6 +309,59 @@ body[data-view="talk"] .foot { display: none; }
 }
 .transcript-empty { text-align: center; font-size: 0.9375rem; padding: 12px 0 18px; }
 .msg { display: flex; flex-direction: column; max-width: 86%; }
+.transcript > li { animation: enter 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: bottom center; }
+.transcript > .msg.you { transform-origin: bottom right; }
+.transcript > .msg.marvin { transform-origin: bottom left; }
+.transcript > li.settled { animation: none; }
+@keyframes enter { from { opacity: 0; transform: translateY(10px) scale(0.96); } }
+.transcript > li.dissolving {
+  overflow: hidden; opacity: 0; transform: scale(0.96); margin-bottom: -10px;
+  transition: height 0.35s ease, opacity 0.25s ease, transform 0.3s ease, margin 0.35s ease;
+}
+.transcript > li.just-settled .bubble { animation: settle 0.6s ease-out; }
+@keyframes settle { from { box-shadow: 0 0 0 3px var(--accent-soft); } to { box-shadow: 0 0 0 0 transparent; } }
+
+/* live bubbles: yours while you speak, Marvin's while he thinks and talks (app.js, --lvl) */
+.msg.live { --lvl: 0; }
+.vu { display: inline-flex; align-items: center; gap: 3px; height: 18px; vertical-align: -3px; }
+.vu i { --k: 1; display: block; width: 3px; border-radius: 2px; background: currentColor; height: calc(4px + var(--lvl) * 14px * var(--k)); transition: height 90ms linear; }
+.vu i:nth-child(1) { --k: 0.45; }
+.vu i:nth-child(2) { --k: 0.8; }
+.vu i:nth-child(3) { --k: 1; }
+.vu i:nth-child(4) { --k: 0.7; }
+.vu i:nth-child(5) { --k: 0.4; }
+.msg.you.live .bubble { min-height: 40px; transition: background-color 0.3s, color 0.3s, border-color 0.3s; }
+.msg.you.live .vu { color: var(--accent); margin-right: 10px; }
+.msg.you.live .words:not(:empty) ~ * { display: none; }
+.msg.you.live .words:empty { display: none; }
+.msg.you.ghost .bubble { background: transparent; border: 1px dashed var(--line-strong); color: var(--muted); }
+.msg.you.ghost .vu { color: var(--muted); }
+.fresh-words { animation: words-in 0.35s ease-out; }
+@keyframes words-in { from { opacity: 0.2; filter: blur(2px); } }
+.understanding .vu i { height: 4px; animation: understand 1s ease-in-out infinite; }
+.understanding .vu i:nth-child(2) { animation-delay: 0.12s; }
+.understanding .vu i:nth-child(3) { animation-delay: 0.24s; }
+.understanding .vu i:nth-child(4) { animation-delay: 0.36s; }
+.understanding .vu i:nth-child(5) { animation-delay: 0.48s; }
+@keyframes understand { 0%, 100% { height: 4px; opacity: 0.5; } 35% { height: 13px; opacity: 1; } }
+.understanding .words {
+  background: linear-gradient(90deg, var(--text) 0%, var(--text) 40%, var(--muted) 50%, var(--text) 60%, var(--text) 100%);
+  background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+.dots { display: inline-flex; gap: 5px; padding: 5px 2px; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: dot 1.2s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: 0.16s; }
+.dots i:nth-child(3) { animation-delay: 0.32s; }
+@keyframes dot { 0%, 70%, 100% { transform: translateY(0); opacity: 0.35; } 35% { transform: translateY(-5px); opacity: 1; } }
+.msg.marvin.live .bubble { transition: border-color 0.3s, box-shadow 90ms linear; }
+.msg.marvin.speaking .bubble {
+  border-color: rgba(236, 230, 218, 0.3);
+  box-shadow: 0 0 0 calc(var(--lvl) * 5px) rgba(236, 230, 218, 0.07);
+}
+.said .w { display: inline; animation: word 0.32s ease-out both; }
+@keyframes word { from { opacity: 0; filter: blur(3px); } }
 .msg.you { align-self: flex-end; align-items: flex-end; }
 .msg.marvin { align-self: flex-start; align-items: flex-start; }
 .bubble {
@@ -328,6 +389,25 @@ body[data-view="talk"] .foot { display: none; }
 .aside q { font-style: italic; quotes: "“" "”"; }
 .aside.note { letter-spacing: 0.02em; }
 .aside.note::before, .aside.note::after { content: "—"; margin: 0 8px; opacity: 0.5; }
+
+/* the listening strip: the microphone (or Marvin's voice) as a scrolling wave */
+.listen {
+  display: flex; align-items: center; gap: 12px; height: 44px; margin-top: 10px; padding: 0 16px;
+  border-radius: 22px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden;
+  transition: height 0.35s ease, margin 0.35s ease, opacity 0.35s ease, background-color 0.5s, border-color 0.5s;
+}
+.listen[data-mode="off"] { height: 0; margin-top: 0; opacity: 0; border-width: 0; }
+.listen-wave { flex: 1; min-width: 0; height: 28px; }
+.listen-label { flex: none; font-size: 0.8125rem; color: var(--muted); white-space: nowrap; transition: color 0.4s; }
+.listen[data-mode="listening"], .listen.hearing {
+  border-color: rgba(238, 118, 38, 0.4);
+  background: linear-gradient(90deg, transparent 30%, var(--accent-soft)), var(--surface-2);
+}
+.listen[data-mode="listening"] .listen-label, .listen.hearing .listen-label { color: var(--accent-text); }
+.listen[data-mode="speaking"] { border-color: var(--line-strong); }
+.listen[data-mode="speaking"] .listen-label { color: var(--text); }
+.listen.closing { animation: closing 1.6s ease-out; }
+@keyframes closing { 0% { border-color: rgba(238, 118, 38, 0.4); } 100% { border-color: var(--line); } }
 
 .talk-controls { display: flex; gap: 8px; margin-top: 12px; }
 .pill {
@@ -536,6 +616,7 @@ input:disabled, select:disabled { opacity: 0.4; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  .understanding .words { color: var(--text); background: none; }
   .orb[data-status="listening"] .orb-ring { transform: scale(1.1); opacity: 0.8; }
   .orb[data-status="speaking"] .orb-bars i:nth-child(2), .orb[data-status="speaking"] .orb-bars i:nth-child(3) { height: 14px; }
 }

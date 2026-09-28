@@ -159,6 +159,9 @@ class VoiceAssistant:
 
         self.echo = EchoFilter()
         self._cap_n = 0                                      # frames captured
+        self._level_peak = 0.0                               # live signals for the app (_live)
+        self._level_n = 0
+        self._utt: int | None = None                         # utterance being heard (its uid)
         self.gate = EchoGate(sink, c.echo_tail_s, enabled=not c.duplex, clock=self._capture_time)
         self.history: list[dict] = []
         self._last_reply = ""                                # for "oui" / "non" follow-ups
@@ -312,6 +315,11 @@ class VoiceAssistant:
           "proactive": bool, "error": None | "llm_down" | "error", "hint": str}
         - "ignored": {"text", "reason"}: an utterance Marvin chose not to answer
         - "muted": {"muted": bool}
+        - "level": {"mic": 0..1, "speech": bool, "gated": bool}: the microphone's loudness, ~16 Hz
+        - "utterance": {"state": "start" | "end" | "done", "uid"}: someone talks, stops, is judged
+        - "partial": {"uid", "text"}: what is understood so far of the utterance being heard
+        - "say": {"text", "seconds", "envelope": [0..1 at 20 Hz]}: a piece of the reply, as it is
+          queued on the speaker (it plays after the pieces before it)
 
         Every `data` also has "t", the wall-clock time (Unix seconds)."""
         self._listeners.append(fn)
@@ -354,14 +362,52 @@ class VoiceAssistant:
         if gated:
             self.segmenter.advance()          # deaf: time goes on, a started utterance is dropped
             self._spec = None
+            self._utterance_done()
         else:
             seg = self.segmenter.feed(frame)
             if seg is not None:
-                self._on_segment(seg, t_cap)
+                self._utterance("end", seg.uid)
+                try:
+                    self._on_segment(seg, t_cap)
+                finally:
+                    self._utterance_done()
             else:
+                if self.segmenter.in_speech and self._utt != self.segmenter.utterance_key[0]:
+                    self._utterance_done()
+                    self._utterance("start", self.segmenter.utterance_key[0])
+                elif not self.segmenter.in_speech:
+                    self._utterance_done()      # too short: dropped by the segmenter
                 self._speculate()
+        self._live_level(frame, gated)
         self._audio_now = self.segmenter.time
         self._tick()
+
+    # ------------------------------------------------------------ live signals for the app
+
+    LEVEL_EVERY = 3                         # frames per "level" event: 60 ms, about 16 per second
+
+    def _live_level(self, frame: np.ndarray, gated: bool) -> None:
+        """Microphone loudness (0..1, -60..-10 dBFS) at about 16 Hz, for the app's animations."""
+        if not self._listeners:
+            return
+        rms = float(np.sqrt(np.mean(frame.astype(np.float32) ** 2))) if len(frame) else 0.0
+        db = 20 * np.log10(max(rms, 1.0) / 32768)
+        self._level_peak = max(self._level_peak, min(1.0, max(0.0, (db + 60) / 50)))
+        self._level_n += 1
+        if self._level_n >= self.LEVEL_EVERY:
+            self._emit("level", mic=round(0.0 if (gated or self._muted) else self._level_peak, 3),
+                       speech=self.segmenter.in_speech and not gated, gated=bool(gated))
+            self._level_peak, self._level_n = 0.0, 0
+
+    def _utterance(self, state: str, uid: int) -> None:
+        """"start": someone started talking; "end": they stopped, the words are being understood;
+        "done": decided (a "heard" or "ignored" event may have come just before)."""
+        self._utt = uid if state != "done" else None
+        self._emit("utterance", state=state, uid=uid)
+
+    def _utterance_done(self) -> None:
+        if self._utt is not None:
+            self._utterance("done", self._utt)
 
     def _speculate(self) -> None:
         """During a pause that may end the utterance, start transcribing it: if the speaker does
@@ -378,7 +424,18 @@ class VoiceAssistant:
             return
         if isinstance(self.wake, TranscriptWakeWord) and not self.wake.candidate(pend.pcm) and c.wake:
             return
-        self._spec = (pend.uid, pend.voiced, self._spec_pool.submit(self._transcribe, pend.pcm))
+        fut = self._spec_pool.submit(self._transcribe, pend.pcm)
+        self._spec = (pend.uid, pend.voiced, fut)
+        fut.add_done_callback(lambda f, uid=pend.uid: self._partial(uid, f))
+
+    def _partial(self, uid: int, fut: concurrent.futures.Future) -> None:
+        """What was understood so far of the utterance being heard, shown live in the app."""
+        if not self._listeners or fut.cancelled() or fut.exception() is not None:
+            return
+        tr = fut.result()
+        text = (tr.text or "").strip()
+        if text and not tr.rejected and not filters.hallucination_reason(text):
+            self._emit("partial", uid=uid, text=text)
 
     def _set_status(self, s: Status) -> None:
         with self._lock:
@@ -677,6 +734,8 @@ class VoiceAssistant:
                 self._set_status(Status.SPEAKING)
                 first = False
             self.sink.play(pcm, rate)
+            if self._listeners:
+                self._emit("say", text=text, seconds=round(len(pcm) / rate, 3), envelope=envelope(pcm, rate))
 
     def _speak_all(self, job: _Job, produce: Callable[[Callable[[str], None]], None], lat: dict) -> str:
         """Runs `produce(emit)` (which calls emit(chunk) as text becomes available) with a speaker
@@ -772,6 +831,18 @@ class VoiceAssistant:
         self.history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
         del self.history[:-2 * self.config.memory_turns]
         self._last_turn = time.monotonic()
+
+
+def envelope(pcm: np.ndarray, rate: int, hz: int = 20) -> list[float]:
+    """Loudness of `pcm` (0..1) `hz` times per second: the app moves Marvin's mouth with it."""
+    step = max(1, rate // hz)
+    n = len(pcm) // step
+    if n == 0:
+        return []
+    x = pcm[: n * step].astype(np.float32).reshape(n, step)
+    rms = np.sqrt(np.mean(x * x, axis=1))
+    db = 20 * np.log10(np.maximum(rms, 1.0) / 32768)
+    return [round(float(v), 2) for v in np.clip((db + 50) / 40, 0.0, 1.0)]
 
 
 def format_latency(lat: dict) -> str:
