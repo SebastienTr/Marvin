@@ -163,6 +163,20 @@ def piper_voices() -> list[dict]:
     return [{"name": n, "installed": n in installed} for n in names]
 
 
+def tts_available() -> dict[str, bool]:
+    """Which speech synthesis backends can run here."""
+    return {"auto": True, "say": sys.platform == "darwin" and bool(shutil.which("say")),
+            "piper": importlib.util.find_spec("piper") is not None,
+            "espeak": bool(shutil.which("espeak-ng") or shutil.which("espeak"))}
+
+
+def stt_available() -> dict[str, bool]:
+    """Which speech recognition backends can run here ("auto" when one of them can)."""
+    from .stt import mlx_available
+    out = {"mlx": mlx_available(), "faster-whisper": importlib.util.find_spec("faster_whisper") is not None}
+    return {"auto": any(out.values()), **out}
+
+
 def options(settings: dict) -> dict:
     """What the settings panel offers: models from Ollama, speech recognition, voices."""
     host = settings.get("ollama_host") or voice_cli_default("ollama_host")
@@ -171,9 +185,7 @@ def options(settings: dict) -> dict:
         models = ollama_models(host)
     except VoiceUnavailable as e:
         models, ollama = [], {"ok": False, "error": str(e), "fix": e.fix, "host": host}
-    tts = {"auto": True, "say": sys.platform == "darwin" and bool(shutil.which("say")),
-           "piper": importlib.util.find_spec("piper") is not None,
-           "espeak": bool(shutil.which("espeak-ng") or shutil.which("espeak"))}
+    tts = tts_available()
     return {
         "llm_models": models, "ollama": ollama,
         "stt_backends": list(voice_cli.STT_CHOICES), "stt_models": ["auto", *STT_MODELS],
@@ -197,15 +209,19 @@ def voice_cli_default(key: str):
     return getattr(VoiceConfig(), key)
 
 
-def preflight(settings: dict) -> None:
-    """Raises VoiceUnavailable (with a fix) if the voice cannot start: the `voice` extra, a
-    microphone, Ollama and the model."""
-    missing = [m for m in ("numpy", "sounddevice", "webrtcvad") if importlib.util.find_spec(m) is None]
+def audio_preflight(settings: dict, microphone: bool = True) -> None:
+    """Raises VoiceUnavailable (with a fix) if the voice's audio half cannot start: the `voice`
+    extra (speech recognition, VAD) and, with `microphone`, the computer's microphone. The voice
+    sidecar checks this much; the robot's microphone needs no sound card."""
+    wanted = ("numpy", "sounddevice", "webrtcvad") if microphone else ("numpy", "webrtcvad")
+    missing = [m for m in wanted if importlib.util.find_spec(m) is None]
     if importlib.util.find_spec("faster_whisper") is None and importlib.util.find_spec("mlx_whisper") is None:
         missing.append("faster-whisper")
     if missing:
         raise VoiceUnavailable(f"The voice extra is not installed (missing: {', '.join(missing)})",
                                'In the host folder: pip install -e ".[voice]"')
+    if not microphone:
+        return
     try:
         import sounddevice as sd
         sd.query_devices(voice_cli._device(settings.get("input_device")), "input")
@@ -213,6 +229,12 @@ def preflight(settings: dict) -> None:
         raise VoiceUnavailable(f"No microphone ({e})",
                                "Plug in a microphone, or pick one with input_device in voice.json "
                                "(marvin-host talk --list-devices).") from None
+
+
+def preflight(settings: dict) -> None:
+    """Raises VoiceUnavailable (with a fix) if the voice cannot start: the `voice` extra, a
+    microphone, Ollama and the model."""
+    audio_preflight(settings)
     host = settings.get("ollama_host") or voice_cli_default("ollama_host")
     model = settings.get("llm_model") or voice_cli_default("llm_model")
     if not _has_model(ollama_models(host), model):

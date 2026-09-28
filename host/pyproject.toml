@@ -12,7 +12,10 @@ requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "rerun-sdk>=0.23"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "marvin-host[sidecar]", "grpcio-tools>=1.84"]
+# the voice sidecar's gRPC server (python -m marvin_host.sidecar.voice, docs/voice.md); add "voice"
+# for real audio and models
+sidecar = ["grpcio>=1.84", "grpcio-health-checking>=1.84", "protobuf>=7.35.1,<8"]
 # talk to Marvin, all local (docs/voice.md); Piper voices are optional: pip install piper-tts
 voice = ["sounddevice>=0.5", "faster-whisper>=1.1", "webrtcvad-wheels>=2.0.14",
          "mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'"]

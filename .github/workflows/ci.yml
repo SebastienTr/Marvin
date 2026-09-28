@@ -47,8 +47,8 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: host/pyproject.toml
-      - name: Python host for the tests
-        run: pip install -e host
+      - name: Python host for the tests (with the voice sidecar's gRPC)
+        run: pip install -e "host[sidecar]"
       - name: Build and test (unit, ArchUnit, Testcontainers, API contract)
         working-directory: host-java
         run: ./mvnw -B -ntp verify

@@ -48,6 +48,7 @@ message CoreToVoice {
     StopSpeaking stop = 9;
     Filler filler = 10;             // a short sentence while a tool runs ("Let me check.")
     RobotLink robot_link = 11;      // a robot with audio connected or left
+    Ask ask = 12;                   // a typed question: answered like a heard one (Heard, source "typed")
   }
 }
 
@@ -100,12 +101,15 @@ message ReplyStart {
 
 message TextPiece {
   uint64 reply_id = 1;
-  string text = 2;                  // raw model text: the sidecar cleans and chunks it for speech
+  string text = 2;                  // the answer's text as the model streams it, reasoning and tool
+                                    // payloads already removed by the core: the sidecar splits it
+                                    // into sentences (first clause early) and cleans it for speech
 }
 
 message ReplyEnd {
   uint64 reply_id = 1;
-  string error = 2;                 // not empty: the answer failed (the sidecar may say so)
+  string error = 2;                 // not empty: the answer failed ("llm_down" or "error"); if nothing
+                                    // was said, the sidecar says a short sentence for it
 }
 
 message Say {
@@ -133,6 +137,13 @@ message Filler {
   string language = 3;
 }
 
+// A question typed in the app: the sidecar stops what it says, then treats it as heard, in
+// `language` (empty: the forced language, else guessed from the text, else the conversation's).
+message Ask {
+  string text = 1;
+  string language = 2;
+}
+
 message RobotLink {
   string device = 1;
   bool connected = 2;
@@ -150,7 +161,7 @@ message VoiceToCore {
     Partial partial = 5;            // the words understood so far
     SpeakerFrame robot_speaker = 6; // PCM for the robot, already paced (150 ms lead)
     RobotAudioCtrl ctrl = 7;        // AUDIO_CTRL for the robot (mic start every second, stop, volume)
-    SayProgress say = 8;            // a piece of speech starts playing
+    SayProgress say = 8;            // a piece of speech is queued on the speaker, after the previous ones
     Interrupted interrupted = 9;    // speech stopped early (barge-in, Stop)
     RobotSound sound = 10;          // SOUND for the robot (earcons)
     Utterance utterance = 11;       // someone started / stopped talking
@@ -175,10 +186,11 @@ message Status {
   string fix = 4;                   // with ERROR: how to fix it, one line
   string stt = 5;                   // the backends actually in use, e.g. "mlx large-v3-turbo"
   string tts = 6;
+  optional double listen_s = 7;     // with LISTENING: seconds left in the listening window, when sent
 }
 
 message Heard {
-  uint64 uid = 1;                   // utterance id
+  uint64 uid = 1;                   // the question's id, unique in the session (not Utterance.uid)
   string text = 2;                  // the question, without "Marvin,"
   string raw = 3;                   // the full transcript, when it differs
   string language = 4;              // the language to answer in
@@ -200,7 +212,7 @@ message Level {
 }
 
 message Partial {
-  uint64 uid = 1;
+  uint64 uid = 1;                   // Utterance.uid
   string text = 2;
 }
 
@@ -241,14 +253,18 @@ message SayProgress {
 }
 
 message Interrupted {
-  uint64 reply_id = 1;
-  string reason = 2;                // barge-in | stop
+  uint64 reply_id = 1;              // 0 if the answer had not started yet
+  string reason = 2;                // barge-in | stop | busy (proactive speech during a conversation)
+  uint64 utterance_uid = 3;         // the question it answered (Heard.uid), 0 if none
 }
 
 message ReplySpoken {
   uint64 reply_id = 1;
-  map<string, double> latency = 2;  // first_chunk, synthesis, first_audio ... (seconds)
+  map<string, double> latency = 2;  // first_chunk, tts, audio_start, filler_start, total (seconds,
+                                    // measured from the end of the question for audio_start and total)
   bool interrupted = 3;
+  string text = 4;                  // what was actually said, cleaned for speech
+  uint64 utterance_uid = 5;         // the question it answered (Heard.uid), 0 if none
 }
 
 // ============================================================================ batch and options

@@ -355,7 +355,8 @@ The code is in [`host/marvin_host/voice/`](../host/marvin_host/voice):
 | `tts.py` | `MacSayTTS`, `PiperTTS`, `EspeakTTS` |
 | `echo.py` | `EchoGate` (half duplex), `EchoFilter` (its own words) |
 | `filters.py` | What Whisper invents: speech evidence, decoder scores, known hallucinations, follow-up rules |
-| `assistant.py` | `VoiceAssistant`: the states (idle, listening, thinking, speaking), barge-in, memory, latency log |
+| `engine.py` | `VoiceEngine`: the audio machine shared by both voices: the states (idle, listening, thinking, speaking), wake word and listening windows, speculative recognition, echo gate, speaking, barge-in, live signals |
+| `assistant.py` | `VoiceAssistant`: `VoiceEngine` answering in process with the model, its tools, the persona, the memory, the latency log |
 | `proactive.py` | `ProactiveSpeaker`: reminders from brain events |
 | `control.py` | `VoiceController`: the voice on and off at run time for the app, what is missing and how to fix it, settings, the conversation |
 | `cli.py` | `talk`, `run --voice`, the settings file |
@@ -369,6 +370,54 @@ each stage, `interrupted`, `proactive`, and `error` / `hint` when the model is d
 (with the reason) and "muted". Control from code: `say(text)` (proactive speech), `ask(text)` (a
 typed question, answered aloud), `listen_now()` (a listening window without the wake word),
 `mute(True)`, `stop_speaking()`.
+
+## The voice sidecar
+
+Marvin's Java core (host-java) keeps the voice's audio loop in Python, in a separate process: the
+**voice sidecar**, [`host/marvin_host/sidecar/voice/`](../host/marvin_host/sidecar/voice). It is
+the same `VoiceEngine` as above, but it does not call a model: when a question is decided it sends
+it to the core, which decides what to answer and streams the text back (docs/design.md, section
+4.3). The contract is [`voice.proto`](../host-java/marvin-contracts/src/main/proto/marvin/voice/v1/voice.proto)
+(`marvin.voice.v1`), served over gRPC on localhost with the standard health service.
+
+```sh
+pip install -e ".[sidecar,voice]"                   # in the host folder
+python -m marvin_host.sidecar.voice --port 0        # prints READY port=<port>; logs on stderr
+python -m marvin_host.sidecar.voice --fake --say "1:Marvin, quelle heure est-il ?"   # test mode
+```
+
+One turn, as the core sees it:
+
+| Core → sidecar | Sidecar → core |
+|---|---|
+| `Configure` (the `voice.json` keys the audio uses, and the route: computer or robot) | `Status` STARTING, then IDLE (or ERROR with a fix) |
+| `RobotLink`, then the robot's `AUDIO_IN` as `AudioFrame`s (robot route) | `RobotAudioCtrl` MIC_START every second |
+| | `Level` (~16/s), `Utterance`, `Partial`, `Ignored` |
+| | `Heard` (uid, text, language, source, latency so far) and `Status` THINKING |
+| `ReplyStart` (for that uid), `TextPiece`s as the model writes, `Filler` while a tool runs, `ReplyEnd` | `SayProgress` per piece (text, seconds, mouth envelope), `SpeakerFrame`s paced for the robot (robot route), `Status` SPEAKING |
+| | `ReplySpoken` (text said, first_chunk, tts, audio_start, total) or `Interrupted` (barge-in, stop) |
+
+Commands: `Ask` (a typed question, answered like a heard one), `ListenNow` (Talk now, or stop
+listening), `Mute`, `StopSpeaking`, `Say` (proactive speech; skipped with `Interrupted` "busy"
+during a conversation unless forced). Text pieces come without reasoning or tool payloads (the core
+removes them); the sidecar splits them into sentences, first clause early, and cleans them for
+speech. When `ReplyEnd` carries an error and nothing was said, the sidecar says the usual short
+sentence ("I can't reach my language model. Is Ollama running?" for `llm_down`). No answer at all for 30 s (`--reply-timeout`)
+is treated as an error.
+
+The robot route reuses `robot_audio.py` unchanged: the core relays the datagrams, and the sidecar's
+`RobotRelay` stands in for the UDP receiver, so gap filling, microphone restarts, the 150 ms speaker
+lead and stream ids behave as in the Python host.
+
+**Test mode** (`--fake`): the computer's microphone is a script (`--say SECONDS:TEXT`, repeated,
+at most 15 phrases, `--fake-speed` to play it faster), Whisper is replaced by a recogniser that
+knows the script, and the voice is a 220 Hz tone (20 ms per character). Phrase *k* is spoken as a
+buzzy tone at 110 + 20 *k* Hz and recognised by its pitch, so a core that relays a robot in a test
+can send the same audio as `AUDIO_IN` (`fake.speech(k, seconds)`). The VAD, wake word, listening
+windows, echo gate, pacing and every message are the real ones.
+
+`marvin-host run` and `marvin-host talk` do not use the sidecar: they run `VoiceAssistant` in
+process, as before.
 
 ## Limits
 

@@ -424,3 +424,141 @@ phase. Later phases read this before starting.
   contract's `settings_break_50` then matches without `ApiContractIT.withoutVoice`.
 - **Demo voice**: `demo_seed.py` already writes today's scripted conversation; a scripted
   `VoiceControl` (the Python `DemoVoice`) is what the demo needs when there is no language model.
+
+## Phase 2a: the Python voice sidecar
+
+### What exists
+
+- **`host/marvin_host/voice/engine.py`**: `VoiceEngine`, the audio machine extracted from
+  `assistant.py` without changing its behaviour: capture thread and echo gate, VAD segmenter, wake
+  word and listening windows, speculative STT and the filters, the mouth and speaker threads
+  (chunks, synthesis, playback), barge-in, the live signals. `_answer(job)` is the only abstract
+  step. `VoiceAssistant(VoiceEngine)` (assistant.py) keeps the in-process conversation: Ollama,
+  tools, persona and context, history, `</think>` handling. `marvin-host run` and `talk` are
+  unchanged; every existing test passes untouched.
+- Small, behaviour-neutral hooks in the engine for the sidecar: `_prepare(job)` (a question exists
+  before "heard" is emitted, so an answer can come back at once), `_dropped(job)` (a queued job was
+  dropped by an interruption), `_interrupt(reason)` (`barge-in` or `stop`, kept on the job),
+  `say(..., reply_id=)`, `busy()`, `closed`, and `uid` in the "heard" event (a question id; the
+  controller ignores it). "say" events carry `reply_id` only when the job has one (never in the
+  Python host, so the app's SSE payloads are unchanged).
+- `control.audio_preflight(settings, microphone=)` (the `voice` extra and the microphone, without
+  Ollama), `tts_available()`, `stt_available()`: shared by `preflight`/`options` and the sidecar.
+- **`host/marvin_host/sidecar/voice/`**, run as `python -m marvin_host.sidecar.voice`:
+  - `server.py`: `marvin.voice.v1.Voice` (Session, Transcribe, Options) and `grpc.health.v1`
+    (SERVING for "" and the service), optional shared token (`--token`, `MARVIN_SIDECAR_TOKEN`,
+    metadata `authorization: Bearer <token>`). One core at a time: a new Session replaces the old
+    one (which gets `Status` STOPPED and ends).
+  - `session.py`: `VoiceSession` (Configure → engine built in a background thread, rebuilt when
+    the settings, the route or the robot change; STT and TTS reused when their own settings did
+    not change; ERROR with a one-line fix when something is missing) and `EngineFactory`.
+  - `engine.py`: `SidecarVoice(VoiceEngine)`: `Heard` → waits for `ReplyStart` for that uid →
+    `TextPiece`s through the same `SentenceSplitter` → `SayProgress`, `ReplySpoken` (text,
+    latencies) or `Interrupted`. Proactive `Say` and streamed `ReplyStart` without a question.
+  - `relay.py`: `RobotRelay`, the receiver that `robot_audio.py` expects: relayed `AudioFrame`s in,
+    AUDIO_OUT / AUDIO_CTRL / SOUND out as `SpeakerFrame` / `RobotAudioCtrl` / `RobotSound`.
+    `RobotMicSource` and `RobotSpeakerSink` are used unchanged (gap filling, restarts, MIC_START
+    every second, 150 ms lead, stream ids, PLAY_STOP).
+  - `fake.py`: the test mode (`--fake --say SECONDS:TEXT --fake-speed X`): scripted microphone,
+    a Whisper that recognises the script by pitch (phrase k at 110 + 20k Hz), `FakeTTS`,
+    `EnergyVad`.
+  - `cli.py`: prints `READY port=<port>` on stdout when listening (`--port 0` lets the system
+    choose), logs on stderr, SIGTERM/SIGINT stop gracefully (STOPPED status, grace 2 s).
+  - `contract/`: generated from `voice.proto` by `host/scripts/gen_voice_contract.py` (committed;
+    `--check` in a test keeps them in step). Needs grpcio ≥ 1.84 and protobuf 7.x (the generated
+    code checks both at import).
+- `pyproject.toml`: extra `sidecar` (grpcio, grpcio-health-checking, protobuf); `dev` includes it
+  and grpcio-tools, so the Python CI job runs the sidecar tests. The Java CI job installs
+  `host[sidecar]` for phase 2b's tests.
+- Docs: docs/voice.md "The voice sidecar" (messages of one turn, commands, robot route, test mode),
+  host/README.md layout.
+
+### Decisions and deviations
+
+1. **`marvin_host/sidecar/voice` instead of `sidecars/voice`** (design 4.1, 11). The sidecar must
+   share the audio machine with `marvin-host run/talk` (the Python host stays for the simulator,
+   the viewer and replay, and keeps its in-process voice). A separate distribution would duplicate
+   `voice/`, `audio.py`, `robot_audio.py` and `protocol.py` or depend on the whole host anyway. One
+   package, one test suite, one `pip install -e ".[sidecar,voice]"`; the extra keeps gRPC optional
+   for the Python host. The process boundary (and Piper's GPL isolation, design 4.1) is the same.
+   A `uv`-managed environment can still point at this package.
+2. **Contract additions** (additive, still `marvin.voice.v1`): `CoreToVoice.ask` (`Ask`: typed
+   questions go through the sidecar, which guesses the language and emits `Heard` source "typed",
+   exactly as `VoiceAssistant.ask`), `Status.listen_s` (seconds left in a listening window, the
+   app's `listen_s`), `Interrupted.utterance_uid` and reason "busy"/"off",
+   `ReplySpoken.text` and `ReplySpoken.utterance_uid`. `Heard.uid` is a question id unique in the
+   session (not the segmenter's utterance uid, which `Utterance`/`Partial` carry): typed questions
+   need ids too.
+3. **Where `</think>` and tool payloads are handled**: in the core (design 4.3). `TextPiece.text`
+   is the answer text only; the sidecar splits and cleans it (`SentenceSplitter`,
+   `clean_for_speech`). The Java conversation service must port the held-back/`</think>` logic of
+   `VoiceAssistant._answer` (and `looks_like_payload`, `payload_tool_calls`, `strip_thinking`).
+4. **Errors**: `ReplyEnd.error` ("llm_down" or "error") with nothing said makes the sidecar say the
+   persona sentence (`persona.phrase`), as `VoiceAssistant` does. No `ReplyStart`/piece for 30 s
+   (`--reply-timeout`) is treated as "error".
+5. **Latencies**: `Heard.latency` has the listening stages (endpoint, queue, stt, speculative,
+   wake); `ReplySpoken.latency` the speaking ones measured in the sidecar: `reply_start` and
+   `first_chunk` (from the start of the answer job, so they include the core's model time),
+   `filler_start`, `tts`, `audio_start` and `total` (from the end of the question, as in Python).
+   The core adds its own (`llm_first_token`, `tools`, `llm_first_token_2`) and computes
+   `first_word_s = endpoint + audio_start` as `VoiceController` does.
+6. **Proto3 defaults**: `VoiceSettings` cannot tell 0 from unset. Empty strings, and 0 for
+   `echo_tail_s`, `listen_window_s`, `end_silence_ms`, mean the default; `follow_up_s` 0 is kept (no
+   follow-up window). The core must send every bool (`wake`, `speculative_stt`, `chime`...)
+   explicitly.
+7. **Robot route without a robot**: `Status` ERROR "No robot with a microphone and a speaker is
+   connected" with a fix; the engine is built as soon as a `RobotLink` with `has_audio` arrives,
+   and rebuilt (ERROR again) when it leaves.
+8. **Proactive speech**: `Say` or a `ReplyStart` without `utterance_uid` follow
+   `VoiceAssistant.say`: skipped during a conversation (`Interrupted` "busy") unless `force`; a
+   forced one is queued after the answer in progress.
+9. **Test mode by pitch**: the fake Whisper recognises phrases by their fundamental frequency, so
+   speculation, the wake-word pre-filter and the echo gate all run on real audio; a Java test can
+   feed the robot route with the same synthetic speech.
+
+### Verified
+
+- `cd host && python3 -m pytest -q`: 302 passed, 3 skipped (285 before + 17 sidecar tests);
+  `test_voice.py`, `test_voice_tools.py`, `test_voice_control.py`, `test_ui_*` untouched and green.
+- `tests/test_voice_sidecar.py` (real gRPC on localhost, a fake core): contract up to date;
+  settings mapping; fake script; relay translation; health, options, Transcribe (and a bad clip);
+  a heard question → `Heard` (text without the name, raw, language, latency) → reply streamed in
+  two pieces → two `SayProgress` with envelopes → `ReplySpoken` (text, latencies) → THINKING,
+  SPEAKING, IDLE; typed question with filler and `llm_down`; a new question and Stop interrupt
+  (reasons, uids, the late answer dropped); proactive say, streamed proactive reply, "busy",
+  forced say after the answer; mute before Configure, Talk now (`listen_s`), stop listening;
+  **robot route**: ERROR without robot, MIC_START after `RobotLink`, relayed AUDIO_IN heard, speaker
+  frames contiguous in one stream, ≤ 480 samples, paced over the audio's duration, MIC_STOP and
+  ERROR when the robot leaves; session replacement; commands while off; reply timeout; token;
+  the process (`READY port=`, health SERVING, SIGTERM exit 0); a voice barge-in while thinking.
+  Five repeated runs and runs under CPU load: stable (~8 s for the file).
+- `./mvnw -q -o -pl marvin-contracts -am verify`: green with the proto additions.
+
+### Known gaps
+
+- **No real audio or models here**: MicSource/SpeakerSink, faster-whisper, MLX, Piper and `say`
+  were not exercised through the sidecar in this container (the code paths are those of
+  `marvin-host run`); macOS not tested.
+- The core side does not exist yet: no supervisor, no Java client, no conversation service.
+- `Transcribe` uses the current session's settings (or the defaults) and the live loop's STT
+  under one lock: a long batch clip delays live recognition while it runs.
+- `Options` reports backends and voices only; Ollama models stay a core concern (phase 2b).
+- The chime is PCM on both routes (the robot's `SOUND` "wake" earcon is not used, as in Python).
+
+### Hints for phase 2b
+
+- **Supervisor**: spawn `$MARVIN_PYTHON -m marvin_host.sidecar.voice --port 0` (plus `--token`),
+  read `READY port=N` from stdout, then gRPC health; stderr lines are the logs. Missing gRPC prints
+  a one-line fix and exits 2. `./marvin up --voice` should install `host[sidecar,voice]`.
+- **Session**: open `Voice.Session`, send `Configure` (all bools explicit, `contract_version` 1,
+  route LOCAL or ROBOT), then `RobotLink` for each robot with the audio flag and relay AUDIO_IN as
+  `AudioFrame` (device name, sample index, header clock); send `SpeakerFrame`/`RobotAudioCtrl`/
+  `RobotSound` back as AUDIO_OUT/AUDIO_CTRL/SOUND to that device.
+- **Answering**: on `Heard`, build the messages (persona, context, history), stream the model, and
+  send `ReplyStart(reply_id, language, utterance_uid=Heard.uid)`, `TextPiece`s, `Filler` for online
+  tools (`persona.phrase("checking")`), `ReplyEnd(error)`. Stop generating on `Interrupted` for that
+  uid/reply. Record the transcript from `Heard`, `Ignored` and `ReplySpoken` (+ core latencies);
+  forward `Level`, `Utterance`, `Partial`, `SayProgress` to SSE as `level`, `utterance`, `partial`,
+  `say` (drop `reply_id` from `say` for payload parity) and map `Status` to `/api/voice`.
+- **End-to-end tests**: run the sidecar with `--fake --say ...` (or feed `fake.speech(k, s)` on the
+  robot route) and a stub model; typed questions only need `Ask`.
