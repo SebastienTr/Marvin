@@ -123,6 +123,7 @@ class Brain(Sink):
         if not self._clock(t_us):
             return
         c, s, t = self.config, self.state, t_us / 1e6
+        s.vitals_sensor = True
         good = (vitals.valid and s.present and self._still
                 and c.breath_range[0] <= vitals.breath_rate <= c.breath_range[1]
                 and c.heart_range[0] <= vitals.heart_rate <= c.heart_range[1])
@@ -151,7 +152,8 @@ class Brain(Sink):
     # ------------------------------------------------------------ internals
 
     def _reset(self, t_us: int) -> None:
-        self.state = PresenceState(t_us=t_us)
+        had = getattr(self, "state", None) is not None and self.state.vitals_sensor
+        self.state = PresenceState(t_us=t_us, vitals_sensor=had)
         self._last_t_us: int | None = None
         self._last_targets_t: float | None = None
         self._seen_since: float | None = None       # first frame of the current run of sightings

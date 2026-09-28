@@ -49,4 +49,5 @@ class PresenceState:
     seated_s: float = 0.0                                # seconds since SAT_DOWN
     breath_rate: float | None = None                     # per minute, None when not reliable
     heart_rate: float | None = None                      # per minute, None when not reliable
+    vitals_sensor: bool = False                          # a vital-signs radar (MR60BHA2) has reported
     targets: int = 0                                     # people seen by the LD2450

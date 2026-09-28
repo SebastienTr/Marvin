@@ -204,7 +204,7 @@ def test_context_from_presence_state():
     facts = persona.context_facts(s, events)
     text = " ".join(facts)
     assert "seated for 42 minutes" in text
-    assert "breathing rate is 14 per minute" in text
+    assert "breathing at 14 per minute, right now" in text
     assert "heart" not in text                           # not reliable: not mentioned
     assert "sat down 42 minutes ago" in text and "arrived 50 minutes ago" in text
     prompt = persona.system_prompt("fr", s, events)
@@ -434,7 +434,7 @@ def test_brain_context_reaches_the_model():
                  ["Une heure."], brain=brain)
     va.run()
     system = t.llm.calls[0][-1]["content"]
-    assert "seated for 60 minutes" in system and "heart rate is 62" in system
+    assert "seated for 60 minutes" in system and "heart rate at 62" in system
 
 
 class BlockingSink(NullSink):
@@ -1170,3 +1170,14 @@ def test_talk_now_can_be_stopped_and_says_how_long_is_left():
     va.run()
     assert 5.5 <= left[0] <= 6.5 and left[1] is None
     assert t.log["transcript"] == [] and t.log["status"] == ["listening", "idle"]
+
+
+def test_context_says_why_there_are_no_vital_signs():
+    near = dict(t_us=1, present=True, seated=True, distance_m=0.8)
+    none = " ".join(persona.context_facts(PresenceState(**near)))
+    assert "not connected yet" in none and "cannot measure" in none      # the MR60BHA2 is not there
+    waiting = " ".join(persona.context_facts(PresenceState(**near, vitals_sensor=True)))
+    assert "no reliable reading right now" in waiting and "still" in waiting
+    reading = " ".join(persona.context_facts(PresenceState(**near, vitals_sensor=True, heart_rate=64.0)))
+    assert "heart rate at 64 beats per minute" in reading and "no reliable" not in reading
+    assert "Never promise a reading" in persona.persona_prompt("fr")

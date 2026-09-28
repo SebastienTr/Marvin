@@ -45,7 +45,7 @@ gloomy android; you may allude to it very rarely, never twice in a conversation.
 arms), say so plainly in one sentence.
 - Each message from the person starts with a context block from your clock and sensors. Use it \
 only when it helps; never recite it. Mention breathing or heart rate only if asked or if it clearly \
-matters, and never as a medical opinion.
+matters, and never as a medical opinion. When asked for them and the context gives them, say the numbers; when it does not, say why in one sentence, using what the context says. Never promise a reading the context does not show.
 """
 
 # Sentences said without the language model. Keys: phrase name, then language.
@@ -115,12 +115,21 @@ def context_facts(state: PresenceState | None, events: Iterable[Event] = (),
         facts.append(f"Someone is in front of you{where}.")
         if state.seated and state.seated_s >= 60:
             facts.append(f"They have been seated for {_duration(state.seated_s)}.")
-        if state.breath_rate is not None:
-            facts.append(f"Their breathing rate is {state.breath_rate:.0f} per minute.")
-        if state.heart_rate is not None:
-            facts.append(f"Their heart rate is {state.heart_rate:.0f} beats per minute.")
+        if state.breath_rate is not None or state.heart_rate is not None:
+            if state.breath_rate is not None:
+                facts.append(f"Your 60 GHz radar measures their breathing at {state.breath_rate:.0f} per minute, "
+                             "right now.")
+            if state.heart_rate is not None:
+                facts.append(f"Your 60 GHz radar measures their heart rate at {state.heart_rate:.0f} beats per "
+                             "minute, right now.")
+        elif state.vitals_sensor:
+            facts.append("Your 60 GHz vital-signs radar has no reliable reading right now: it needs the person "
+                         "seated and still, within about one and a half metres of you, for a few seconds.")
     else:
         facts.append("Your radar sees nobody right now (you may still be hearing someone out of view).")
+    if not state.vitals_sensor and state.breath_rate is None and state.heart_rate is None:
+        facts.append("Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or "
+                     "heart rate at all for now, wherever the person sits.")
     recent = []
     for ev in events:
         age = (state.t_us - ev.t_us) / 1e6
