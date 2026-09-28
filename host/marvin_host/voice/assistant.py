@@ -162,6 +162,7 @@ class VoiceAssistant:
         self._level_peak = 0.0                               # live signals for the app (_live)
         self._level_n = 0
         self._utt: int | None = None                         # utterance being heard (its uid)
+        self._seg_started: float | None = None               # start of the utterance being judged
         self.gate = EchoGate(sink, c.echo_tail_s, enabled=not c.duplex, clock=self._capture_time)
         self.history: list[dict] = []
         self._last_reply = ""                                # for "oui" / "non" follow-ups
@@ -522,8 +523,8 @@ class VoiceAssistant:
             self.language = tr.language
         return self.language
 
-    def _own_voice(self, text: str) -> bool:
-        if self.echo.is_own_voice(text):
+    def _own_voice(self, text: str, started: float | None = None) -> bool:
+        if self.echo.is_own_voice(text, started):
             log.info("heard: %s (ignored: own voice)", text)
             self._emit("ignored", text=text, reason="own voice")
             return True
@@ -548,6 +549,7 @@ class VoiceAssistant:
         lat = {"endpoint": max(0.0, now_audio - seg.t_speech_end) if seg.t_speech_end else c.segmenter.end_silence_s,
                "queue": max(0.0, time.monotonic() - t_cap)}
         t0 = t_cap                              # when the end of the question was captured
+        self._seg_started = t_cap - max(0.0, now_audio - seg.t_start)   # when it began (monotonic)
         with self._lock:
             busy = self._status in (Status.THINKING, Status.SPEAKING) or self._pending > 0
             late = seg.t_start < self._listen_from - 0.05   # captured while it was speaking
@@ -569,7 +571,7 @@ class VoiceAssistant:
                 self._spec = None
                 return
             m = self._wake_check(seg, lat)
-            if m is None or (m.transcript is not None and self._own_voice(m.transcript.text)):
+            if m is None or (m.transcript is not None and self._own_voice(m.transcript.text, self._seg_started)):
                 return
             if busy:
                 log.info("barge-in")
@@ -579,7 +581,7 @@ class VoiceAssistant:
 
         if no_name:
             tr = self._full_transcript(seg, lat)
-            if self._own_voice(tr.text):
+            if self._own_voice(tr.text, self._seg_started):
                 return
             bad = tr.rejected or filters.decoder_reason(tr.no_speech_prob, tr.avg_logprob, tr.compression_ratio)
             if bad or not tr.text.strip():
@@ -612,7 +614,7 @@ class VoiceAssistant:
             return
 
         m = self._wake_check(seg, lat)
-        if m is not None and not (m.transcript is not None and self._own_voice(m.transcript.text)):
+        if m is not None and not (m.transcript is not None and self._own_voice(m.transcript.text, self._seg_started)):
             self._handle_match(m, seg, t0, lat)
 
     def _handle_match(self, m: WakeMatch, seg: Segment, t0: float, lat: dict) -> None:

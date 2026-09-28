@@ -8,7 +8,10 @@ that sound out of the conversation:
    utterance in progress is dropped. On by default with the computer's speakers; `--duplex` turns
    it off for a headset (or, later, a robot with echo cancellation).
 2. Transcript filter (`EchoFilter`), in every state and in both modes: a transcript that repeats
-   what Marvin said recently (its last replies, including the one being spoken) is ignored.
+   what Marvin said (the reply being spoken, or one that ended just before the utterance started)
+   is ignored. An utterance that starts well after Marvin stopped cannot be an echo, so it is
+   answered even if it takes up Marvin's words ("Je suis assis et immobile." after "reste assis
+   et immobile").
 
 SPDX-License-Identifier: MIT
 """
@@ -30,9 +33,12 @@ def _tokens(text: str) -> list[str]:
 class EchoFilter:
     """Remembers what Marvin said; recognises it when the microphone brings it back."""
 
-    def __init__(self, keep: int = 2, ratio: float = 0.6):
+    def __init__(self, keep: int = 2, ratio: float = 0.6, window_s: float = 2.5,
+                 clock: Callable[[], float] = time.monotonic):
         self.ratio = ratio
-        self._said: deque[list[str]] = deque(maxlen=keep)     # finished replies
+        self.window_s = window_s                             # how long after a reply its echo can start
+        self.clock = clock
+        self._said: deque[tuple[list[str], float]] = deque(maxlen=keep)   # finished replies, end time
         self._current: list[str] = []                        # the reply being spoken
         self._lock = threading.Lock()
 
@@ -46,19 +52,21 @@ class EchoFilter:
         with self._lock:
             toks = _tokens(text) or self._current
             if toks:
-                self._said.append(toks)
+                self._said.append((toks, self.clock()))
             self._current = []
 
     def current_has_wake_word(self) -> bool:
         with self._lock:
             return any(is_wake_word(w) for w in self._current)
 
-    def is_own_voice(self, heard: str) -> bool:
+    def is_own_voice(self, heard: str, started: float | None = None) -> bool:
+        """`started`: when the utterance began (`clock` time); None counts every remembered reply."""
         h = _tokens(heard)
         if not h:
             return False
         with self._lock:
-            replies = [r for r in (self._current, *self._said) if r]
+            said = [r for r, end in self._said if started is None or started <= end + self.window_s]
+            replies = [r for r in (self._current, *said) if r]
         return any(_echoes(h, r, self.ratio) for r in replies)
 
 

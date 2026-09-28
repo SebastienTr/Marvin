@@ -650,6 +650,19 @@ def test_echo_filter():
     assert f.current_has_wake_word()
 
 
+def test_echo_filter_only_near_the_reply():
+    from marvin_host.voice.echo import EchoFilter
+    now = [100.0]
+    f = EchoFilter(clock=lambda: now[0])
+    f.said("Si tu veux mesurer tes signes vitaux, reste assis et immobile devant moi pendant quelques secondes.")
+    assert f.is_own_voice("Je suis assis et immobile.", started=101.0)     # right after: could be the echo
+    now[0] = 106.0
+    assert not f.is_own_voice("Je suis assis et immobile.", started=105.5)  # later: the person answering
+    assert f.is_own_voice("Je suis assis et immobile.")                    # no time given: as before
+    f.speaking("reste assis et immobile")
+    assert f.is_own_voice("assis et immobile", started=106.0)              # while it speaks: always
+
+
 def test_echo_gate():
     from marvin_host.voice.echo import EchoGate
     now = [0.0]
