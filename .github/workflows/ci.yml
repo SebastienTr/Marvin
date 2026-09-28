@@ -40,7 +40,16 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
-      - name: Build and test (unit, ArchUnit, Testcontainers)
+      - uses: actions/setup-python@v5
+        # the Python host runs beside the Java one in the tests: the simulator, the demo's past week,
+        # the recording reader
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: host/pyproject.toml
+      - name: Python host for the tests
+        run: pip install -e host
+      - name: Build and test (unit, ArchUnit, Testcontainers, API contract)
         working-directory: host-java
         run: ./mvnw -B -ntp verify
       - name: Launcher

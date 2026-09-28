@@ -52,6 +52,8 @@
     <grpc.version>1.84.0</grpc.version>
     <protobuf.version>4.36.2</protobuf.version>
     <protobuf-maven-plugin.version>5.1.10</protobuf-maven-plugin.version>
+    <!-- overrides Boot's managed version -->
+    <sqlite-jdbc.version>3.53.4.0</sqlite-jdbc.version>
   </properties>
 
   <dependencyManagement>

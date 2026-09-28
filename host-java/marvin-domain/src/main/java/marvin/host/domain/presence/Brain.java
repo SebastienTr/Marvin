@@ -29,7 +29,7 @@ import marvin.host.domain.presence.event.PresenceState;
  * Not thread-safe: the application service serializes the calls.
  */
 public final class Brain {
-    private final BrainConfig c;
+    private BrainConfig c;
     private final Deque<PresenceEvent> events = new ArrayDeque<>();
     private List<PresenceEvent> emitted = new ArrayList<>();
 
@@ -76,6 +76,14 @@ public final class Brain {
 
     public Brain() {
         this(BrainConfig.DEFAULT);
+    }
+
+    /**
+     * Changes the thresholds from the next frame on (the app's break interval changes
+     * {@code stillLongS}); the state is kept.
+     */
+    public void reconfigure(BrainConfig config) {
+        this.c = Objects.requireNonNull(config, "config");
     }
 
     public BrainConfig config() {

@@ -35,8 +35,8 @@ class ContextMigrationsIT {
     @Test
     void everyContextGetsItsOwnSchemaAndHistoryAndPgvectorIsThere() throws Exception {
         var ds = dataSource();
-        new ContextMigrations(ds).afterPropertiesSet();
-        new ContextMigrations(ds).afterPropertiesSet();          // idempotent
+        new ContextMigrations(ds, "live").afterPropertiesSet();
+        new ContextMigrations(ds, "live").afterPropertiesSet();          // idempotent
         try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
             List<String> schemas = new ArrayList<>();
             try (ResultSet rs = st.executeQuery("SELECT table_schema FROM information_schema.tables "

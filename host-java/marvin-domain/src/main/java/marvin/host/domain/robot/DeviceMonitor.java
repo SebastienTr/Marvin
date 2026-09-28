@@ -143,7 +143,7 @@ public final class DeviceMonitor {
                 for (int i = 0; i < names.length; i++) {
                     rates.put(names[i], round1((last[i + 1] - first[i + 1]) / dt));
                 }
-                e.rates = Map.copyOf(rates);
+                e.rates = java.util.Collections.unmodifiableMap(rates);
                 double got = last[1] - first[1];
                 double lost = last[6] - first[6];
                 e.lossPct = got + lost > 0 ? round1(100.0 * lost / (got + lost)) : null;

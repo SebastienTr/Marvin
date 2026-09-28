@@ -5,14 +5,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 
 import javax.sql.DataSource;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -43,21 +42,18 @@ public class EmbeddedDatabaseConfiguration {
                 .setCleanDataDirectory(false)
                 .setPort(properties.embedded().port())
                 .setServerConfig("listen_addresses", "127.0.0.1")
+                // stopped by Spring after the host has written its last rows, not by a JVM hook racing it
+                .setRegisterShutdownHook(false)
                 .start();
     }
 
     @Bean
-    public DataSource dataSource(EmbeddedPostgres postgres) throws SQLException {
-        try (Connection c = postgres.getPostgresDatabase().getConnection();
-             Statement st = c.createStatement()) {
-            boolean exists;
-            try (ResultSet rs = st.executeQuery("SELECT 1 FROM pg_database WHERE datname = '" + DATABASE + "'")) {
-                exists = rs.next();
-            }
-            if (!exists) {
-                st.execute("CREATE DATABASE " + DATABASE);
-            }
+    public DataSource dataSource(EmbeddedPostgres postgres, @Value("${marvin.mode:live}") String mode)
+            throws SQLException {
+        String name = "demo".equals(mode) ? DATABASE + DemoDatabase.SUFFIX : DATABASE;
+        try (Connection c = postgres.getPostgresDatabase().getConnection()) {
+            DemoDatabase.ensure(c, name);
         }
-        return postgres.getDatabase("postgres", DATABASE);
+        return postgres.getDatabase("postgres", name);
     }
 }

@@ -288,3 +288,139 @@ phase. Later phases read this before starting.
 - `FrameDispatcher.timings()` and `maxQueueDepth()` are the System page's receiver numbers.
 - Demo mode: feed `UdpRobotLink.receive(...)` (or `RobotInbound`) from `ui/demo.py`'s scene
   equivalent, or replay a golden recording in a loop (`marvin.robot.replay`) as a first step.
+
+## Phase 1b: persistence, the app and the demo
+
+### What exists
+
+- **History in the domain** (`domain.presence.history`, plain Java, from `ui/stats.py`):
+  `StoredEvent`, `HistoryKinds` (`host_started`, `host_stopped`, `robot_offline`, `robot_online`),
+  `Folded.fold` (present and seated intervals, closed at the last sign of life after a crash),
+  `Interval` (merge, clip, total), `DayStats.compute` (the day and its week-chart summary), `Sample`,
+  `Words` (`duration`, `describe`, `status`). `domain.shared` now holds `PyNumbers` (Python's
+  half-to-even `round` and `f"{x:.nf}"`), `LocalDays` (local days in the owner's zone) and `Clocks`
+  (the clock port every context uses).
+- **Settings** (`domain.settings.AppSettings`): `validate_settings` with the same messages (Python's
+  `repr` of the offending value included), quiet hours; `SettingsService` (stored values that no
+  longer validate are ignored and logged; each change goes to the brain's `still_long` and the app).
+- **Conversation** (`domain.conversation.ConversationEntry`, schema 2 of `store.py`) and
+  `ConversationService` (by local day, search); `VoiceControl` port with `UnavailableVoice` for now.
+- **Face** (`domain.face`: `Canvas`, `FaceParams`, `Face`, `XorShift32`): `face.py` and `raster.py`
+  ported in float32 as numpy computes them; `FaceService` draws on demand, at most 15 times a second,
+  from the brain's events and state.
+- **Sensor views** (`domain.robot.SensorScene`, `UISink.scene()`): lidar reduced to 360 ranges (cached
+  per scan), LD2450 targets and trails, MR60BHA2 waves and rate history; `RobotLinkQuery.scene()`.
+- **Use cases**: `PresenceHistoryService` (the Python `UIServer`'s store half: events stored with the
+  wall clock, online after an event or a new brain state, offline after 15 s without one, a sample per
+  minute, today cached 2 s), `HostLogService` (the Log panel, 500 lines), `SettingsService`,
+  `ConversationService`, `FaceService`.
+- **Persistence**: schemas `presence` (`event`, `sample`), `conversation` (`entry`), `settings`
+  (`setting`), `platform.import`. `JdbcPresenceHistoryStore`, `JdbcConversationStore`,
+  `JdbcSettingsStore` (Spring `JdbcClient`), `SqliteImporter` (sqlite-jdbc 3.53.4.0, overriding Boot's
+  managed version). Demo mode: database `<name>_demo` on the same server (created on first use,
+  every context schema dropped at start, only in a database named `*_demo`), embedded or Docker.
+- **Web adapter**: the Python app's files byte for byte (`resources/app`), `AccessFilter` (the access
+  key rules, same-origin JSON POSTs of at most 16 KiB, security headers), `AccessKey` (`ui_token` in
+  the data directory, shared with the Python host), `ApiController` (every endpoint of `server.py`),
+  `StreamController` (both SSE streams), `AppController` (pages, `/face.png`, `/icon.png`), `EventHub`
+  (bounded client queues), `WebTicker` (today every 5 s, devices every second, while someone looks),
+  `LiveState` (the `state` snapshot), `PyJson` (compact JSON with Python's float `repr`), `Png`.
+- **Sidecar adapter**: `PythonRuntime` (`MARVIN_PYTHON`, `host/.venv`, `python3`: the first that
+  imports the Python host), `DemoSeed` (runs `demo_seed.py`, a resource: `seed_history`,
+  `seed_conversations` and today's scripted conversation into a SQLite file), `SimulatorSidecar`
+  (`marvin-host sim` to the bound UDP port, restarted 5 s after it stops).
+- **Wiring** (`marvin-app`): `StartupImport` (the one-time import, or the demo's seed, before the
+  settings and the history are read), `HistoryLifecycle` (`host_started`, sampler, `host_stopped`),
+  `DemoRobot`, `DeviceNotices` (device lines and connections in the Log panel), `HistoryLog`,
+  `LogPanelAppender` (warnings and errors of any logger in the Log panel, as the Python host's
+  logging handler), `SystemClocks`.
+- **`./marvin`**: prints the phone address with the access key; the demo gets a Python that can run
+  the Python host (a base `host/.venv` if needed); `--enable-native-access` for sqlite-jdbc.
+
+### Decisions and deviations
+
+1. **The face is still drawn on the host** (`/face.png`), not in the browser as design 9 plans: the
+   app does not change before phase 3 (design 11). The port is pixel-exact: all 9 expressions, the
+   icon, and the 973 frames of the scripted scenario have the Python CRCs (`FaceVectorsTest`).
+2. **Times stay Unix seconds** (`double precision`), not `timestamptz` (design 5.4): the app and the
+   history functions work in wall-clock seconds, and imported rows keep their exact values. Event data
+   and conversation entries are `json`, not `jsonb`: `jsonb` reorders keys, and the app shows some
+   (the latency breakdown) in their order. `settings.setting` stays `jsonb`.
+3. **Setting defaults are the defaults.** The Python host reports the *current* break interval as
+   the default (it reads the brain's live config); the app does not use `defaults`, the Java host
+   reports 50.
+4. **Import**: once per file (by absolute path, `platform.import`), in one transaction; event ids are
+   kept when the event table is empty (the normal first start) so ids seen by the app stay valid;
+   settings and conversation entries already in PostgreSQL win. The import runs before anything reads
+   the database.
+5. **Header formatting**: Tomcat writes `text/html;charset=utf-8` (Python: `text/html; charset=utf-8`);
+   the icon gets one `Cache-Control: max-age=86400` (Python sends it after a `no-store` header, so it is
+   never cached). A bad JSON body gets 400 with `invalid JSON: ...` instead of Python's parser message.
+   Conversation search uses `ILIKE` (case-insensitive beyond ASCII; SQLite's `LIKE` is ASCII-only).
+6. **No voice yet**: `GET /api/voice` answers as the Python host does without a voice (state
+   `unavailable`, with its own error text), `/api/voice/options` and every voice POST answer 404
+   `voice control is not available`, and `/api/stream` sends no `voice` message at start. The app
+   shows "Voice needs marvin-host run", which is true until phase 2.
+7. **The demo** runs at real time (the Python demo: 10 times faster), with one device, the Python
+   simulator (board 255, "Simulated robot"), where the Python demo shows a robot and an MR60BHA2 radar
+   fed in-process. The past week, past conversations and today's scripted conversation come from the
+   Python demo code through the importer, so both demos show the same days (same seeds). The demo's
+   own voice (`DemoVoice`) is not ported.
+8. **The Log panel** gets warnings and errors from every logger (a Logback appender), as the Python
+   host's root logging handler does; Flyway's "extension already exists" notice is silenced.
+9. **Shutdown**: streams end first (phase just below the web server's), the last minute and
+   `host_stopped` are written before the database goes; the embedded PostgreSQL no longer has its own
+   JVM shutdown hook (it raced the host's last write); Hikari waits 5 s for a connection, not 30.
+10. **`/api/health` and `/actuator/*` follow the access rules** (open from this computer).
+
+### Verified
+
+- `cd host-java && ./mvnw verify`: 134 tests, 0 failures, 1 skipped (the embedded-database IT as root).
+  New: `DayStatsTest` (test_ui.py's statistics and words), `AppSettingsTest`,
+  `PresenceHistoryServiceTest` (markers, online/offline, minute samples), `FaceVectorsTest`,
+  `AppFilesTest` (the app's files are the Python host's), `PyJsonTest`, `StoresAndImportIT` (stores,
+  key order, search escaping, a Python-schema SQLite imported once with ids and settings rules, the
+  demo database emptied only when named `*_demo`), and `ApiContractIT`: the Java host in demo mode
+  (simulator and seed from the Python host, access key `contract-key`) answers every recorded GET, POST
+  and access-rule request of `golden/api` with the same status, headers (but for the two formatting differences of item 5) and shape, the
+  same error messages, settings and pages; the access rules are checked from the machine's LAN
+  address; both SSE streams start with the same events (`retry: 3000`) and every message matches a
+  recorded shape. The voice endpoints answer as the Python host without a voice.
+- `./marvin demo` (Docker PostgreSQL): the past week imported (269 events, 2682 samples, 38
+  conversation entries) in under a second, the simulated robot linked, `arrived`/`sat_down`/vitals in
+  the app. Screenshots of Home, Talk (desktop and phone), Robot, History and Settings from the Java and
+  the Python demo side by side: same layout, same week, same timeline, same sensor views; the
+  differences are the ones above (voice, one device).
+- Embedded PostgreSQL, as a normal user: `MARVIN_MODE=demo MARVIN_DB_MODE=embedded` works (database
+  `marvin_demo`, "no pgvector"); in live mode a Python-written `marvin.db` (events, sample, settings,
+  a conversation entry) was imported once, the settings applied (30 min, 12 h clock), the Python
+  host's `ui_token` accepted from the LAN address, and a restart added `host_stopped`/`host_started`
+  without importing again.
+- `cd host && python3 -m pytest -q`: 285 passed, 3 skipped (nothing in `host/` changed).
+
+### Known gaps
+
+- **The voice** (phase 2): Talk panel, voice settings and options, the transcript and live messages
+  (`voice`, `transcript`, `level`, `utterance`, `partial`, `say`), the `voice` app setting.
+- **Not tested on macOS** here; `AccessFilter` uses `InetAddress.getLocalHost()` once at start for
+  the Host check (it can be slow on a Mac with a broken hostname resolution).
+- The Settings panel's "Your data" says the history is in the data directory; with Docker it is in
+  the `marvin-pgdata` volume (the app's text is the Python host's; phase 3 can say it).
+- If the host is killed hard (`kill -9`), the embedded PostgreSQL keeps running until the next start
+  finds its port taken; `./marvin down` stops the host cleanly.
+- The Python demo's two in-process devices and its 10x clock are not reproduced (see 7).
+- `FrameDispatcher.timings()` (the receiver numbers for a future System panel) is not exposed yet.
+
+### Hints for phase 2
+
+- **Voice**: implement `VoiceControl` (conversation context) with the gRPC sidecar, and replace
+  `UnavailableVoice` in `HostWiring`. `ApiController.voicePayload` and `voicePost` are the places
+  to extend (payloads in `golden/api/get/voice*.json`, `post/voice_*.json`); `/api/stream` must then
+  send `voice` right after `today` (golden `first`: hello, today, voice, devices, state), and
+  `ApiContractIT.NO_VOICE_GETS` and the voice test become a normal contract check.
+- **Transcript**: keep entries through `ConversationHistory.add` (ids: milliseconds, above
+  `ConversationStore.maxId()`); publish `transcript` and the live kinds through `EventHub.publish`.
+  `/api/voice/on` and `/off` also set the app setting `voice` (the Python host does), which the
+  contract's `settings_break_50` then matches without `ApiContractIT.withoutVoice`.
+- **Demo voice**: `demo_seed.py` already writes today's scripted conversation; a scripted
+  `VoiceControl` (the Python `DemoVoice`) is what the demo needs when there is no language model.

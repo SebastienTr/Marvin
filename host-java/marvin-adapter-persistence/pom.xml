@@ -38,6 +38,16 @@
       <artifactId>postgresql</artifactId>
     </dependency>
     <dependency>
+      <!-- JSON columns (event data, conversation entries, settings) -->
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jackson</artifactId>
+    </dependency>
+    <dependency>
+      <!-- the one-time import of the Python host's marvin.db -->
+      <groupId>org.xerial</groupId>
+      <artifactId>sqlite-jdbc</artifactId>
+    </dependency>
+    <dependency>
       <groupId>io.zonky.test</groupId>
       <artifactId>embedded-postgres</artifactId>
       <exclusions>

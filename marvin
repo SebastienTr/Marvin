@@ -217,14 +217,30 @@ python_ok() {
 
 # the host's Python environment, created on demand (the voice sidecar runs from it)
 ensure_venv() {
+    # $1: "voice" (default: the voice's dependencies too) or "base" (the Python host only: the demo)
+    extra=${1:-voice}
     if [ -x "$VENV/bin/python" ]; then
+        if [ "$extra" = voice ] && ! "$VENV/bin/python" -c 'import sounddevice, webrtcvad' 2>/dev/null; then
+            step "Adding the voice to host/.venv (a few minutes) ..."
+            "$VENV/bin/python" -m pip install -q -e "$ROOT/host[voice]" || die "pip install failed (see above)"
+        fi
         return 0
     fi
-    python_ok || die "Python 3.10 or newer is needed for the voice (./marvin doctor)"
-    step "Creating the Python environment for the voice in host/.venv (a few minutes) ..."
+    python_ok || die "Python 3.10 or newer is needed (./marvin doctor)"
+    step "Creating the Python environment in host/.venv (a few minutes) ..."
     python3 -m venv "$VENV"
     "$VENV/bin/python" -m pip install -q --upgrade pip
-    "$VENV/bin/python" -m pip install -q -e "$ROOT/host[voice]" || die "pip install failed (see above)"
+    if [ "$extra" = voice ]; then
+        "$VENV/bin/python" -m pip install -q -e "$ROOT/host[voice]" || die "pip install failed (see above)"
+    else
+        "$VENV/bin/python" -m pip install -q -e "$ROOT/host" || die "pip install failed (see above)"
+    fi
+}
+
+# the demo's simulated robot and past week come from the Python host: some Python must run it
+demo_python_ok() {
+    [ -x "$VENV/bin/python" ] && return 0
+    python_ok && (cd "$ROOT/host" && python3 -c 'import numpy, marvin_host.ui.demo' 2>/dev/null)
 }
 
 # ------------------------------------------------------------------------------------ the host
@@ -290,7 +306,9 @@ start_host() {
         db_env="MARVIN_DB_MODE=embedded"
     fi
     if [ "$voice" = yes ]; then
-        ensure_venv
+        ensure_venv voice
+    elif [ "$mode" = demo ] && ! demo_python_ok; then
+        ensure_venv base
     fi
     python_env=
     [ -x "$VENV/bin/python" ] && python_env="MARVIN_PYTHON=$VENV/bin/python"
@@ -299,7 +317,7 @@ start_host() {
     # shellcheck disable=SC2086 # db_env and python_env are lists of VAR=value words
     env MARVIN_MODE="$mode" MARVIN_PORT="$PORT" MARVIN_BIND="$BIND" MARVIN_DATA_DIR="$DATA_DIR" \
         MARVIN_REPO="$ROOT" $db_env $python_env \
-        nohup "$JAVA_HOME/bin/java" -XX:+UseZGC -jar "$JAR" >>"$LOG_FILE" 2>&1 </dev/null &
+        nohup "$JAVA_HOME/bin/java" -XX:+UseZGC --enable-native-access=ALL-UNNAMED -jar "$JAR" >>"$LOG_FILE" 2>&1 </dev/null &
     pid=$!
     printf '%s\n' "$pid" >"$PID_FILE"
     printf 'MODE=%s\nDB=%s\n' "$mode" "$DB_MODE" >"$STATE_FILE"
@@ -315,7 +333,35 @@ start_host() {
         sleep 1
     done
     say "${G}Marvin's app: http://localhost:$PORT/${N}"
+    phone_url
     say "  log: ./marvin logs    stop: ./marvin down"
+}
+
+# the app's address for a phone on the same Wi-Fi, with the access key (as marvin-host prints it)
+phone_url() {
+    case "$BIND" in 127.*|localhost|::1) return 0 ;; esac
+    have python3 || return 0
+    ip=$(python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+try:
+    s.connect(('192.0.2.1', 9)); ip = s.getsockname()[0]
+    print('' if ip.startswith('127.') else ip)
+except OSError:
+    print('')
+" 2>/dev/null || true)
+    [ -n "$ip" ] || return 0
+    key=
+    if [ "${MARVIN_UI_TOKEN:-auto}" = auto ] && [ -f "$DATA_DIR/ui_token" ]; then
+        key=$(head -n 1 "$DATA_DIR/ui_token")
+    elif [ "${MARVIN_UI_TOKEN:-auto}" != off ] && [ "${MARVIN_UI_TOKEN:-auto}" != auto ]; then
+        key=$MARVIN_UI_TOKEN
+    fi
+    if [ -n "$key" ]; then
+        say "  on a phone on the same Wi-Fi: http://$ip:$PORT/?token=$key"
+    else
+        say "  on a phone on the same Wi-Fi: http://$ip:$PORT/ (no access key: anyone on this network can open it)"
+    fi
 }
 
 stop_host() {

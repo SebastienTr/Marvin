@@ -17,7 +17,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
@@ -36,11 +35,15 @@ import marvin.host.domain.robot.Wire;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"server.address=127.0.0.1", "marvin.mode=demo", "marvin.robot.bind=127.0.0.1",
-                "marvin.robot.port=0", "marvin.robot.calibration-file=no-such-calibration.json"})
+                "marvin.robot.port=0", "marvin.robot.calibration-file=no-such-calibration.json",
+                "marvin.sidecar.simulator=false", "marvin.sidecar.seed=false", "marvin.import.sqlite="})
 @Testcontainers(disabledWithoutDocker = true)
 class MarvinHostApplicationIT {
 
-    @Container
+    /**
+     * Not a JUnit-managed {@code @Container}: it must outlive the Spring context, which writes the host's
+     * stop to the history when it closes (at the end of the JVM). Testcontainers removes it afterwards.
+     */
     @ServiceConnection
     static final PostgreSQLContainer postgres = new PostgreSQLContainer(
             DockerImageName.parse("pgvector/pgvector:pg18").asCompatibleSubstituteFor("postgres"));

@@ -13,17 +13,42 @@ spring:
   threads:
     virtual:
       enabled: true
+  web:
+    resources:
+      # the app's files are served by the web adapter, with the Python host's headers
+      add-mappings: false
   datasource:
     url: ${MARVIN_DB_URL:jdbc:postgresql://127.0.0.1:5433/marvin}
     username: ${MARVIN_DB_USER:marvin}
     password: ${MARVIN_DB_PASSWORD:marvin}
     hikari:
       maximum-pool-size: 8
+      # a local database: fail fast rather than hang when it is gone
+      connection-timeout: 5000
 
 marvin:
   # live: wait for the real robot; demo: a simulated robot and a simulated past week
   mode: ${MARVIN_MODE:live}
   data-dir: ${MARVIN_DATA_DIR:${user.home}/.local/share/marvin}
+  # the owner's time zone for days and quiet hours; empty: this computer's
+  time-zone: ${MARVIN_TZ:}
+  web:
+    # access key for other devices: auto (kept in <data-dir>/ui_token, shared with the Python host), off, or a key
+    token: ${MARVIN_UI_TOKEN:auto}
+    data-dir: ${marvin.data-dir}
+  history:
+    # no new brain state for this long: the robot is offline
+    offline-after-s: 15
+  import:
+    # the Python host's history, imported once on first start (empty: none)
+    sqlite: ${MARVIN_IMPORT:${marvin.data-dir}/marvin.db}
+  sidecar:
+    # the Python for the sidecars (./marvin passes host/.venv); empty: host/.venv, then python3
+    python: ${MARVIN_PYTHON:}
+    repo: ${MARVIN_REPO:}
+    # demo mode: the Python simulator as the robot, and a simulated past week
+    simulator: ${MARVIN_DEMO_SIMULATOR:true}
+    seed: ${MARVIN_DEMO_SEED:true}
   db:
     # external: the PostgreSQL at spring.datasource.url (Docker); embedded: started by the host
     mode: ${MARVIN_DB_MODE:external}
@@ -61,4 +86,6 @@ logging:
   level:
     root: warn
     marvin.host: info
+    # "extension vector already exists": a notice, not a warning for the owner
+    org.flywaydb.core.internal.sqlscript: error
     org.springframework.boot.web.embedded: info

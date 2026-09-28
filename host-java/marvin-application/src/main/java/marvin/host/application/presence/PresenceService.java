@@ -4,6 +4,7 @@ package marvin.host.application.presence;
 import java.util.List;
 import java.util.Objects;
 
+import marvin.host.application.presence.port.in.ConfigurePresence;
 import marvin.host.application.presence.port.in.ObservePresence;
 import marvin.host.application.presence.port.in.PresenceQuery;
 import marvin.host.application.presence.port.out.PresenceEventPublisher;
@@ -18,7 +19,7 @@ import marvin.host.domain.presence.event.PresenceState;
  * The presence use cases around one {@link Brain}: frames in, state and events out. The brain is
  * called under a lock; events are published after it is released, in the order they happened.
  */
-public final class PresenceService implements ObservePresence, PresenceQuery {
+public final class PresenceService implements ObservePresence, PresenceQuery, ConfigurePresence {
     private final Brain brain;
     private final PresenceEventPublisher publisher;
     private final Object lock = new Object();
@@ -63,6 +64,20 @@ public final class PresenceService implements ObservePresence, PresenceQuery {
     }
 
     public BrainConfig config() {
-        return brain.config();
+        synchronized (lock) {
+            return brain.config();
+        }
+    }
+
+    @Override
+    public double stillLongS() {
+        return config().stillLongS();
+    }
+
+    @Override
+    public void setStillLongS(double seconds) {
+        synchronized (lock) {
+            brain.reconfigure(brain.config().withStillLongS(seconds));
+        }
     }
 }
