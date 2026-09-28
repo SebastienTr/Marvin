@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/settings",
+    "body": {
+      "break_interval_min": 0
+    }
+  },
+  "status": 400,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "error": "break_interval_min must be a number of minutes between 1 and 240"
+  },
+  "shape": {
+    "error": "string"
+  }
+}

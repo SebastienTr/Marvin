@@ -1,0 +1,1584 @@
+{
+  "about": "Protocol v1 test vectors, generated from the Python host (host/marvin_host) by host-java/marvin-contracts/tools/protocol_vectors.py. Hex strings are lowercase; floats are the Python host's values (compare with a tolerance of 1e-9 unless stated).",
+  "constants": {
+    "magic": "4d56",
+    "version": 1,
+    "header_size": 16,
+    "host_port": 47100,
+    "device_port": 47101,
+    "boards": {
+      "1": "Wemos D1 mini (ESP8266)",
+      "2": "ESP32-S3 DevKitC",
+      "3": "XIAO ESP32S3 Sense",
+      "4": "MR60BHA2 kit (XIAO ESP32C6)",
+      "255": "simulator"
+    },
+    "lidar_models": {
+      "1": "D500 (STL-19P)",
+      "2": "D800 (STL-27L)"
+    },
+    "screen_boards": [
+      2,
+      3
+    ],
+    "flags": {
+      "simulated": 1,
+      "camera": 2,
+      "audio": 4
+    },
+    "face_event_codes": {
+      "arrived": 1,
+      "left": 2,
+      "approached": 3,
+      "sat_down": 4,
+      "stood_up": 5,
+      "still_long": 6,
+      "vitals_acquired": 7,
+      "vitals_lost": 8
+    },
+    "sounds": {
+      "chirp": {
+        "id": 1,
+        "duration_ms": 140
+      },
+      "beep": {
+        "id": 2,
+        "duration_ms": 120
+      },
+      "wake": {
+        "id": 3,
+        "duration_ms": 200
+      },
+      "done": {
+        "id": 4,
+        "duration_ms": 200
+      },
+      "error": {
+        "id": 5,
+        "duration_ms": 360
+      },
+      "hello": {
+        "id": 6,
+        "duration_ms": 430
+      }
+    },
+    "audio": {
+      "rate": 16000,
+      "in_samples": 320,
+      "out_max_samples": 480
+    },
+    "ldrobot": {
+      "size": 47,
+      "points": 12,
+      "crc_poly": "0x4d",
+      "crc_table": [
+        0,
+        77,
+        154,
+        215,
+        121,
+        52,
+        227,
+        174,
+        242,
+        191,
+        104,
+        37,
+        139,
+        198,
+        17,
+        92,
+        169,
+        228,
+        51,
+        126,
+        208,
+        157,
+        74,
+        7,
+        91,
+        22,
+        193,
+        140,
+        34,
+        111,
+        184,
+        245,
+        31,
+        82,
+        133,
+        200,
+        102,
+        43,
+        252,
+        177,
+        237,
+        160,
+        119,
+        58,
+        148,
+        217,
+        14,
+        67,
+        182,
+        251,
+        44,
+        97,
+        207,
+        130,
+        85,
+        24,
+        68,
+        9,
+        222,
+        147,
+        61,
+        112,
+        167,
+        234,
+        62,
+        115,
+        164,
+        233,
+        71,
+        10,
+        221,
+        144,
+        204,
+        129,
+        86,
+        27,
+        181,
+        248,
+        47,
+        98,
+        151,
+        218,
+        13,
+        64,
+        238,
+        163,
+        116,
+        57,
+        101,
+        40,
+        255,
+        178,
+        28,
+        81,
+        134,
+        203,
+        33,
+        108,
+        187,
+        246,
+        88,
+        21,
+        194,
+        143,
+        211,
+        158,
+        73,
+        4,
+        170,
+        231,
+        48,
+        125,
+        136,
+        197,
+        18,
+        95,
+        241,
+        188,
+        107,
+        38,
+        122,
+        55,
+        224,
+        173,
+        3,
+        78,
+        153,
+        212,
+        124,
+        49,
+        230,
+        171,
+        5,
+        72,
+        159,
+        210,
+        142,
+        195,
+        20,
+        89,
+        247,
+        186,
+        109,
+        32,
+        213,
+        152,
+        79,
+        2,
+        172,
+        225,
+        54,
+        123,
+        39,
+        106,
+        189,
+        240,
+        94,
+        19,
+        196,
+        137,
+        99,
+        46,
+        249,
+        180,
+        26,
+        87,
+        128,
+        205,
+        145,
+        220,
+        11,
+        70,
+        232,
+        165,
+        114,
+        63,
+        202,
+        135,
+        80,
+        29,
+        179,
+        254,
+        41,
+        100,
+        56,
+        117,
+        162,
+        239,
+        65,
+        12,
+        219,
+        150,
+        66,
+        15,
+        216,
+        149,
+        59,
+        118,
+        161,
+        236,
+        176,
+        253,
+        42,
+        103,
+        201,
+        132,
+        83,
+        30,
+        235,
+        166,
+        113,
+        60,
+        146,
+        223,
+        8,
+        69,
+        25,
+        84,
+        131,
+        206,
+        96,
+        45,
+        250,
+        183,
+        93,
+        16,
+        199,
+        138,
+        36,
+        105,
+        190,
+        243,
+        175,
+        226,
+        53,
+        120,
+        214,
+        155,
+        76,
+        1,
+        244,
+        185,
+        110,
+        35,
+        141,
+        192,
+        23,
+        90,
+        6,
+        75,
+        156,
+        209,
+        127,
+        50,
+        229,
+        168
+      ]
+    },
+    "ld2450": {
+      "size": 30
+    },
+    "extrinsics": {
+      "lidar": {
+        "z_mm": 133.0,
+        "yaw_deg": 0.0,
+        "min_mm": 30.0,
+        "max_mm": 12000.0
+      },
+      "ld2450": {
+        "y_mm": -33.1,
+        "z_mm": 16.4,
+        "tilt_deg": 10.0,
+        "x_sign": 1
+      }
+    }
+  },
+  "robot_to_host": [
+    {
+      "name": "hello_simulator",
+      "type": 1,
+      "datagram": "4d56010107000000b882010000000000024d5653494dff01d8d00700000973696d2d302e312e30",
+      "header": {
+        "type": 1,
+        "seq": 7,
+        "t_us": 99000
+      },
+      "payload": "024d5653494dff01d8d00700000973696d2d302e312e30",
+      "decoded": {
+        "device_id": "024d5653494d",
+        "board": 255,
+        "board_name": "simulator",
+        "flags": 1,
+        "simulated": true,
+        "has_camera": false,
+        "has_audio": false,
+        "rssi": -40,
+        "uptime_ms": 2000,
+        "firmware": "sim-0.1.0",
+        "device_name": "marvin-53494d"
+      }
+    },
+    {
+      "name": "hello_xiao_camera_audio",
+      "type": 1,
+      "datagram": "4d56010107000000b882010000000000a4cf123456780306c340e2010005302e362e30",
+      "header": {
+        "type": 1,
+        "seq": 7,
+        "t_us": 99000
+      },
+      "payload": "a4cf123456780306c340e2010005302e362e30",
+      "decoded": {
+        "device_id": "a4cf12345678",
+        "board": 3,
+        "board_name": "XIAO ESP32S3 Sense",
+        "flags": 6,
+        "simulated": false,
+        "has_camera": true,
+        "has_audio": true,
+        "rssi": -61,
+        "uptime_ms": 123456,
+        "firmware": "0.6.0",
+        "device_name": "marvin-345678"
+      }
+    },
+    {
+      "name": "hello_mr60_bridge",
+      "type": 1,
+      "datagram": "4d56010107000000b88201000000000058cf79aabbcc0400b8ffffffff0a6d7236302d302e322e31",
+      "header": {
+        "type": 1,
+        "seq": 7,
+        "t_us": 99000
+      },
+      "payload": "58cf79aabbcc0400b8ffffffff0a6d7236302d302e322e31",
+      "decoded": {
+        "device_id": "58cf79aabbcc",
+        "board": 4,
+        "board_name": "MR60BHA2 kit (XIAO ESP32C6)",
+        "flags": 0,
+        "simulated": false,
+        "has_camera": false,
+        "has_audio": false,
+        "rssi": -72,
+        "uptime_ms": 4294967295,
+        "firmware": "mr60-0.2.1",
+        "device_name": "marvin-aabbcc"
+      }
+    },
+    {
+      "name": "hello_d1_mini_no_firmware",
+      "type": 1,
+      "datagram": "4d56010107000000b8820100000000005ccf7f0102030101800000000000",
+      "header": {
+        "type": 1,
+        "seq": 7,
+        "t_us": 99000
+      },
+      "payload": "5ccf7f0102030101800000000000",
+      "decoded": {
+        "device_id": "5ccf7f010203",
+        "board": 1,
+        "board_name": "Wemos D1 mini (ESP8266)",
+        "flags": 1,
+        "simulated": true,
+        "has_camera": false,
+        "has_audio": false,
+        "rssi": -128,
+        "uptime_ms": 0,
+        "firmware": "",
+        "device_name": "marvin-010203"
+      }
+    },
+    {
+      "name": "lidar_ld19_manual_packet",
+      "type": 2,
+      "datagram": "4d560102e8030000404b4c000000000001542c6808ab7ee000e4dc00e2d900e5d500e3d300e4d000e9cd00e4ca00e2c700e9c500e5c200e5c000e5be823a1a50",
+      "header": {
+        "type": 2,
+        "seq": 1000,
+        "t_us": 5000000
+      },
+      "payload": "01542c6808ab7ee000e4dc00e2d900e5d500e3d300e4d000e9cd00e4ca00e2c700e9c500e5c200e5c000e5be823a1a50",
+      "decoded": {
+        "model": 1,
+        "model_name": "D500 (STL-19P)",
+        "packets": [
+          {
+            "speed_dps": 2152,
+            "angles_deg": [
+              324.27,
+              325.2181818181818,
+              326.1663636363636,
+              327.11454545454546,
+              328.0627272727273,
+              329.0109090909091,
+              329.9590909090909,
+              330.9072727272727,
+              331.8554545454545,
+              332.8036363636364,
+              333.7518181818182,
+              334.7
+            ],
+            "distances_mm": [
+              224,
+              220,
+              217,
+              213,
+              211,
+              208,
+              205,
+              202,
+              199,
+              197,
+              194,
+              192
+            ],
+            "intensities": [
+              228,
+              226,
+              229,
+              227,
+              228,
+              233,
+              228,
+              226,
+              233,
+              229,
+              229,
+              229
+            ],
+            "timestamp_ms": 6714,
+            "crc": 80
+          }
+        ]
+      },
+      "note": "the LDROBOT manual's sample packet"
+    },
+    {
+      "name": "lidar_wraps_past_zero",
+      "type": 2,
+      "datagram": "4d560102e8030000404b4c000000000002542c100e3c8c6400c8c800c82c01c89001c8f401c85802c8bc02c82003c88403c8e803c84c04c8b004c87800393039542c100e2823000000000000000000000000000000000000dc0578dc0578dc0578dc0578dc0578dc05782a262f751e",
+      "header": {
+        "type": 2,
+        "seq": 1000,
+        "t_us": 5000000
+      },
+      "payload": "02542c100e3c8c6400c8c800c82c01c89001c8f401c85802c8bc02c82003c88403c8e803c84c04c8b004c87800393039542c100e2823000000000000000000000000000000000000dc0578dc0578dc0578dc0578dc0578dc05782a262f751e",
+      "decoded": {
+        "model": 2,
+        "model_name": "D800 (STL-27L)",
+        "packets": [
+          {
+            "speed_dps": 3600,
+            "angles_deg": [
+              359.0,
+              359.2,
+              359.4,
+              359.6,
+              359.8,
+              0.0,
+              0.19999999999998863,
+              0.39999999999997726,
+              0.5999999999999659,
+              0.8000000000000114,
+              1.0,
+              1.1999999999999886
+            ],
+            "distances_mm": [
+              100,
+              200,
+              300,
+              400,
+              500,
+              600,
+              700,
+              800,
+              900,
+              1000,
+              1100,
+              1200
+            ],
+            "intensities": [
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200,
+              200
+            ],
+            "timestamp_ms": 12345,
+            "crc": 57
+          },
+          {
+            "speed_dps": 3600,
+            "angles_deg": [
+              90.0,
+              90.7,
+              91.4,
+              92.1,
+              92.8,
+              93.5,
+              94.2,
+              94.9,
+              95.60000000000001,
+              96.3,
+              97.0,
+              97.7
+            ],
+            "distances_mm": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1500,
+              1500,
+              1500,
+              1500,
+              1500,
+              1500
+            ],
+            "intensities": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              120,
+              120,
+              120,
+              120,
+              120,
+              120
+            ],
+            "timestamp_ms": 29999,
+            "crc": 30
+          }
+        ]
+      },
+      "note": "angles interpolate across 360 -> 0; distance 0 = no return"
+    },
+    {
+      "name": "lidar_bad_crc_in_the_middle",
+      "type": 2,
+      "datagram": "4d560102e8030000404b4c000000000001542c6808ab7ee000e4dc00e2d900e5d500e3d300e4d000e9cd00e4ca00e2c700e9c500e5c200e5c000e5be823a1a50542c100e3c8c6400c8c801c82c01c89001c8f401c85802c8bc02c82003c88403c8e803c84c04c8b004c87800393039542c100e2823000000000000000000000000000000000000dc0578dc0578dc0578dc0578dc0578dc05782a262f751e",
+      "header": {
+        "type": 2,
+        "seq": 1000,
+        "t_us": 5000000
+      },
+      "payload": "01542c6808ab7ee000e4dc00e2d900e5d500e3d300e4d000e9cd00e4ca00e2c700e9c500e5c200e5c000e5be823a1a50542c100e3c8c6400c8c801c82c01c89001c8f401c85802c8bc02c82003c88403c8e803c84c04c8b004c87800393039542c100e2823000000000000000000000000000000000000dc0578dc0578dc0578dc0578dc0578dc05782a262f751e",
+      "decoded": {
+        "model": 1,
+        "model_name": "D500 (STL-19P)",
+        "packets": [
+          {
+            "speed_dps": 2152,
+            "angles_deg": [
+              324.27,
+              325.2181818181818,
+              326.1663636363636,
+              327.11454545454546,
+              328.0627272727273,
+              329.0109090909091,
+              329.9590909090909,
+              330.9072727272727,
+              331.8554545454545,
+              332.8036363636364,
+              333.7518181818182,
+              334.7
+            ],
+            "distances_mm": [
+              224,
+              220,
+              217,
+              213,
+              211,
+              208,
+              205,
+              202,
+              199,
+              197,
+              194,
+              192
+            ],
+            "intensities": [
+              228,
+              226,
+              229,
+              227,
+              228,
+              233,
+              228,
+              226,
+              233,
+              229,
+              229,
+              229
+            ],
+            "timestamp_ms": 6714,
+            "crc": 80
+          },
+          {
+            "error": "ValueError: CRC mismatch",
+            "crc_expected": 178
+          },
+          {
+            "speed_dps": 3600,
+            "angles_deg": [
+              90.0,
+              90.7,
+              91.4,
+              92.1,
+              92.8,
+              93.5,
+              94.2,
+              94.9,
+              95.60000000000001,
+              96.3,
+              97.0,
+              97.7
+            ],
+            "distances_mm": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1500,
+              1500,
+              1500,
+              1500,
+              1500,
+              1500
+            ],
+            "intensities": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              120,
+              120,
+              120,
+              120,
+              120,
+              120
+            ],
+            "timestamp_ms": 29999,
+            "crc": 30
+          }
+        ]
+      },
+      "note": "the second packet fails its CRC: it is counted in crc_errors and skipped, the others are kept"
+    },
+    {
+      "name": "ld2450_datasheet_example",
+      "type": 3,
+      "datagram": "4d560103e9030000e0d14d0000000000aaff03000e03b186100040010000000000000000000000000000000055cc",
+      "header": {
+        "type": 3,
+        "seq": 1001,
+        "t_us": 5100000
+      },
+      "payload": "aaff03000e03b186100040010000000000000000000000000000000055cc",
+      "decoded": {
+        "targets": [
+          {
+            "x_mm": -782,
+            "y_mm": 1713,
+            "speed_cms": -16,
+            "resolution_mm": 320,
+            "device_mm": [
+              -782,
+              -1720.0756809099123,
+              313.85932834345164
+            ]
+          }
+        ]
+      },
+      "note": "x -782 mm, y 1713 mm, speed -16 cm/s"
+    },
+    {
+      "name": "ld2450_two_targets",
+      "type": 3,
+      "datagram": "4d560103e9030000e0d14d0000000000aaff0300fa00b0840f0040019081208305804001000000000000000055cc",
+      "header": {
+        "type": 3,
+        "seq": 1001,
+        "t_us": 5100000
+      },
+      "payload": "aaff0300fa00b0840f0040019081208305804001000000000000000055cc",
+      "decoded": {
+        "targets": [
+          {
+            "x_mm": -250,
+            "y_mm": 1200,
+            "speed_cms": -15,
+            "resolution_mm": 320,
+            "device_mm": [
+              -250,
+              -1214.8693036146494,
+              224.77781320031642
+            ]
+          },
+          {
+            "x_mm": 400,
+            "y_mm": 800,
+            "speed_cms": 5,
+            "resolution_mm": 320,
+            "device_mm": [
+              400,
+              -820.9462024097664,
+              155.31854213354427
+            ]
+          }
+        ]
+      },
+      "note": "sign bit: bit 15 set = positive"
+    },
+    {
+      "name": "ld2450_empty",
+      "type": 3,
+      "datagram": "4d560103e9030000e0d14d0000000000aaff030000000000000000000000000000000000000000000000000055cc",
+      "header": {
+        "type": 3,
+        "seq": 1001,
+        "t_us": 5100000
+      },
+      "payload": "aaff030000000000000000000000000000000000000000000000000055cc",
+      "decoded": {
+        "targets": []
+      },
+      "note": "no target: all slots zero"
+    },
+    {
+      "name": "ld2450_bad_tail",
+      "type": 3,
+      "datagram": "4d560103ea03000080584f0000000000aaff0300fa00b0840f004001908120830580400100000000000000005500",
+      "header": {
+        "type": 3,
+        "seq": 1002,
+        "t_us": 5200000
+      },
+      "payload": "aaff0300fa00b0840f004001908120830580400100000000000000005500",
+      "decoded": {
+        "error": "ValueError: not an LD2450 frame"
+      },
+      "note": "counted as a bad frame, dropped"
+    },
+    {
+      "name": "vitals_valid",
+      "type": 5,
+      "datagram": "4d560105eb03000020df50000000000001aa05451a004000e03403",
+      "header": {
+        "type": 5,
+        "seq": 1003,
+        "t_us": 5300000
+      },
+      "payload": "01aa05451a004000e03403",
+      "decoded": {
+        "valid": true,
+        "breath_rate": 14.5,
+        "heart_rate": 67.25,
+        "breath_wave": 0.500015259254738,
+        "heart_wave": -0.250007629627369,
+        "distance_mm": 820
+      }
+    },
+    {
+      "name": "vitals_invalid",
+      "type": 5,
+      "datagram": "4d560105eb03000020df5000000000000000000000000000000000",
+      "header": {
+        "type": 5,
+        "seq": 1003,
+        "t_us": 5300000
+      },
+      "payload": "0000000000000000000000",
+      "decoded": {
+        "valid": false,
+        "breath_rate": 0.0,
+        "heart_rate": 0.0,
+        "breath_wave": 0.0,
+        "heart_wave": 0.0,
+        "distance_mm": 0
+      }
+    },
+    {
+      "name": "vitals_clamped_waves",
+      "type": 5,
+      "datagram": "4d560105eb03000020df50000000000001b0047017ff7f0180ffff",
+      "header": {
+        "type": 5,
+        "seq": 1003,
+        "t_us": 5300000
+      },
+      "payload": "01b0047017ff7f0180ffff",
+      "decoded": {
+        "valid": true,
+        "breath_rate": 12.0,
+        "heart_rate": 60.0,
+        "breath_wave": 1.0,
+        "heart_wave": -1.0,
+        "distance_mm": 65535
+      },
+      "note": "encode clamps waves to -1..1 and the distance to u16"
+    },
+    {
+      "name": "vitals_rounds_half_to_even",
+      "type": 5,
+      "datagram": "4d560105eb03000020df50000000000001d2047c17000002000500",
+      "header": {
+        "type": 5,
+        "seq": 1003,
+        "t_us": 5300000
+      },
+      "payload": "01d2047c17000002000500",
+      "decoded": {
+        "valid": true,
+        "breath_rate": 12.34,
+        "heart_rate": 60.12,
+        "breath_wave": 0.0,
+        "heart_wave": 6.103701895199438e-05,
+        "distance_mm": 5
+      },
+      "note": "encode rounds halves to even (Python round)"
+    },
+    {
+      "name": "log_utf8",
+      "type": 4,
+      "datagram": "4d560104ec030000c0655200000000006669726d776172652075702c206c69646172204438303020c2b7206f6b",
+      "header": {
+        "type": 4,
+        "seq": 1004,
+        "t_us": 5400000
+      },
+      "payload": "6669726d776172652075702c206c69646172204438303020c2b7206f6b",
+      "decoded": {
+        "text": "firmware up, lidar D800 · ok"
+      }
+    },
+    {
+      "name": "audio_in_320_samples",
+      "type": 6,
+      "datagram": "4d560106ed03000060ec530000000000d8feffff00000100ffffff7f008068c5c9c52ac68bc6ecc64dc7aec70fc870c8d1c832c993c9f4c955cab6ca17cb78cbd9cb3acc9bccfccc5dcdbecd1fce80cee1ce42cfa3cf04d065d0c6d027d188d1e9d14ad2abd20cd36dd3ced32fd490d4f1d452d5b3d514d675d6d6d637d798d7f9d75ad8bbd81cd97dd9ded93fdaa0da01db62dbc3db24dc85dce6dc47dda8dd09de6adecbde2cdf8ddfeedf4fe0b0e011e172e1d3e134e295e2f6e257e3b8e319e47ae4dbe43ce59de5fee55fe6c0e621e782e7e3e744e8a5e806e967e9c8e929ea8aeaebea4cebadeb0eec6fecd0ec31ed92edf3ed54eeb5ee16ef77efd8ef39f09af0fbf05cf1bdf11ef27ff2e0f241f3a2f303f464f4c5f426f587f5e8f549f6aaf60bf76cf7cdf72ef88ff8f0f851f9b2f913fa74fad5fa36fb97fbf8fb59fcbafc1bfd7cfdddfd3efe9ffe00ff61ffc2ff23008400e5004601a70108026902ca022b038c03ed034e04af0410057105d20533069406f5065607b70718087908da083b099c09fd095e0abf0a200b810be20b430ca40c050d660dc70d280e890eea0e4b0fac0f0d106e10cf1030119111f2115312b41215137613d71338149914fa145b15bc151d167e16df164017a11702186318c41825198619e719481aa91a0a1b6b1bcc1b2d1c8e1cef1c501db11d121e731ed41e351f961ff71f5820b9201a217b21dc213d229e22ff226023c12322248324e4244525a62507266826c9262a278b27ec274d28ae280f297029d129322a932af42a552bb62b172c782cd92c3a2d9b2dfc2d5d2ebe2e1f2f802fe12f4230a33004316531c63127328832e9324a33ab330c346d34ce342f359035f1355236b33614377537d63737389838f9385a39bb391c3a7d3ade3a3f3ba03b013c623c",
+      "header": {
+        "type": 6,
+        "seq": 1005,
+        "t_us": 5500000
+      },
+      "payload": "d8feffff00000100ffffff7f008068c5c9c52ac68bc6ecc64dc7aec70fc870c8d1c832c993c9f4c955cab6ca17cb78cbd9cb3acc9bccfccc5dcdbecd1fce80cee1ce42cfa3cf04d065d0c6d027d188d1e9d14ad2abd20cd36dd3ced32fd490d4f1d452d5b3d514d675d6d6d637d798d7f9d75ad8bbd81cd97dd9ded93fdaa0da01db62dbc3db24dc85dce6dc47dda8dd09de6adecbde2cdf8ddfeedf4fe0b0e011e172e1d3e134e295e2f6e257e3b8e319e47ae4dbe43ce59de5fee55fe6c0e621e782e7e3e744e8a5e806e967e9c8e929ea8aeaebea4cebadeb0eec6fecd0ec31ed92edf3ed54eeb5ee16ef77efd8ef39f09af0fbf05cf1bdf11ef27ff2e0f241f3a2f303f464f4c5f426f587f5e8f549f6aaf60bf76cf7cdf72ef88ff8f0f851f9b2f913fa74fad5fa36fb97fbf8fb59fcbafc1bfd7cfdddfd3efe9ffe00ff61ffc2ff23008400e5004601a70108026902ca022b038c03ed034e04af0410057105d20533069406f5065607b70718087908da083b099c09fd095e0abf0a200b810be20b430ca40c050d660dc70d280e890eea0e4b0fac0f0d106e10cf1030119111f2115312b41215137613d71338149914fa145b15bc151d167e16df164017a11702186318c41825198619e719481aa91a0a1b6b1bcc1b2d1c8e1cef1c501db11d121e731ed41e351f961ff71f5820b9201a217b21dc213d229e22ff226023c12322248324e4244525a62507266826c9262a278b27ec274d28ae280f297029d129322a932af42a552bb62b172c782cd92c3a2d9b2dfc2d5d2ebe2e1f2f802fe12f4230a33004316531c63127328832e9324a33ab330c346d34ce342f359035f1355236b33614377537d63737389838f9385a39bb391c3a7d3ade3a3f3ba03b013c623c",
+      "decoded": {
+        "index": 4294967000,
+        "samples": 320,
+        "first": [
+          0,
+          1,
+          -1,
+          32767,
+          -32768,
+          -15000,
+          -14903,
+          -14806
+        ],
+        "last": [
+          15167,
+          15264,
+          15361,
+          15458
+        ]
+      }
+    },
+    {
+      "name": "audio_in_odd_length",
+      "type": 6,
+      "datagram": "4d560106ee0300000073550000000000d8feffff00000100ffffff7f008068c5c9c52ac68bc6ecc64dc7aec70fc870c8d1c832c993c9f4c955cab6ca17cb78cbd9cb3acc9bccfccc5dcdbecd1fce80cee1ce42cfa3cf04d065d0c6d027d188d1e9d14ad2abd20cd36dd3ced32fd490d4f1d452d5b3d514d675d6d6d637d798d7f9d75ad8bbd81cd97dd9ded93fdaa0da01db62dbc3db24dc85dce6dc47dda8dd09de6adecbde2cdf8ddfeedf4fe0b0e011e172e1d3e134e295e2f6e257e3b8e319e47ae4dbe43ce59de5fee55fe6c0e621e782e7e3e744e8a5e806e967e9c8e929ea8aeaebea4cebadeb0eec6fecd0ec31ed92edf3ed54eeb5ee16ef77efd8ef39f09af0fbf05cf1bdf11ef27ff2e0f241f3a2f303f464f4c5f426f587f5e8f549f6aaf60bf76cf7cdf72ef88ff8f0f851f9b2f913fa74fad5fa36fb97fbf8fb59fcbafc1bfd7cfdddfd3efe9ffe00ff61ffc2ff23008400e5004601a70108026902ca022b038c03ed034e04af0410057105d20533069406f5065607b70718087908da083b099c09fd095e0abf0a200b810be20b430ca40c050d660dc70d280e890eea0e4b0fac0f0d106e10cf1030119111f2115312b41215137613d71338149914fa145b15bc151d167e16df164017a11702186318c41825198619e719481aa91a0a1b6b1bcc1b2d1c8e1cef1c501db11d121e731ed41e351f961ff71f5820b9201a217b21dc213d229e22ff226023c12322248324e4244525a62507266826c9262a278b27ec274d28ae280f297029d129322a932af42a552bb62b172c782cd92c3a2d9b2dfc2d5d2ebe2e1f2f802fe12f4230a33004316531c63127328832e9324a33ab330c346d34ce342f359035f1355236b33614377537d63737389838f9385a39bb391c3a7d3ade3a3f3ba03b013c62",
+      "header": {
+        "type": 6,
+        "seq": 1006,
+        "t_us": 5600000
+      },
+      "payload": "d8feffff00000100ffffff7f008068c5c9c52ac68bc6ecc64dc7aec70fc870c8d1c832c993c9f4c955cab6ca17cb78cbd9cb3acc9bccfccc5dcdbecd1fce80cee1ce42cfa3cf04d065d0c6d027d188d1e9d14ad2abd20cd36dd3ced32fd490d4f1d452d5b3d514d675d6d6d637d798d7f9d75ad8bbd81cd97dd9ded93fdaa0da01db62dbc3db24dc85dce6dc47dda8dd09de6adecbde2cdf8ddfeedf4fe0b0e011e172e1d3e134e295e2f6e257e3b8e319e47ae4dbe43ce59de5fee55fe6c0e621e782e7e3e744e8a5e806e967e9c8e929ea8aeaebea4cebadeb0eec6fecd0ec31ed92edf3ed54eeb5ee16ef77efd8ef39f09af0fbf05cf1bdf11ef27ff2e0f241f3a2f303f464f4c5f426f587f5e8f549f6aaf60bf76cf7cdf72ef88ff8f0f851f9b2f913fa74fad5fa36fb97fbf8fb59fcbafc1bfd7cfdddfd3efe9ffe00ff61ffc2ff23008400e5004601a70108026902ca022b038c03ed034e04af0410057105d20533069406f5065607b70718087908da083b099c09fd095e0abf0a200b810be20b430ca40c050d660dc70d280e890eea0e4b0fac0f0d106e10cf1030119111f2115312b41215137613d71338149914fa145b15bc151d167e16df164017a11702186318c41825198619e719481aa91a0a1b6b1bcc1b2d1c8e1cef1c501db11d121e731ed41e351f961ff71f5820b9201a217b21dc213d229e22ff226023c12322248324e4244525a62507266826c9262a278b27ec274d28ae280f297029d129322a932af42a552bb62b172c782cd92c3a2d9b2dfc2d5d2ebe2e1f2f802fe12f4230a33004316531c63127328832e9324a33ab330c346d34ce342f359035f1355236b33614377537d63737389838f9385a39bb391c3a7d3ade3a3f3ba03b013c62",
+      "decoded": {
+        "error": "ProtocolError: bad AUDIO_IN length"
+      },
+      "note": "counted as bad, dropped"
+    }
+  ],
+  "host_to_robot": [
+    {
+      "name": "host_ack",
+      "type": 129,
+      "datagram": "4d56018100000000000000000000000015cd5b0700000000",
+      "header": {
+        "type": 129,
+        "seq": 0,
+        "t_us": 0
+      },
+      "payload": "15cd5b0700000000",
+      "decoded": {
+        "host_clock_us": 123456789
+      },
+      "note": "receiver.py sends seq 0 and t_us 0 in the header of every HOST_ACK"
+    },
+    {
+      "name": "face_state_nobody",
+      "type": 130,
+      "datagram": "4d5601820300000040420f00000000000000000000000000000000000000000000",
+      "header": {
+        "type": 130,
+        "seq": 3,
+        "t_us": 1000000
+      },
+      "payload": "0000000000000000000000000000000000",
+      "decoded": {
+        "input": {
+          "present": false,
+          "seated": false,
+          "head": null,
+          "position": null,
+          "distance_m": null,
+          "heart_rate": null
+        },
+        "decoded": {
+          "present": false,
+          "seated": false,
+          "head": null,
+          "position": null,
+          "distance_m": null,
+          "heart_rate": null
+        }
+      },
+      "note": "coordinates rounded to the mm and clamped to +-32767; distance and heart rate to u16"
+    },
+    {
+      "name": "face_state_seated",
+      "type": 130,
+      "datagram": "4d5601820300000040420f00000000003f8200adfc26028200adfca0005d03451a",
+      "header": {
+        "type": 130,
+        "seq": 3,
+        "t_us": 1000000
+      },
+      "payload": "3f8200adfc26028200adfca0005d03451a",
+      "decoded": {
+        "input": {
+          "present": true,
+          "seated": true,
+          "head": [
+            130.4,
+            -850.6,
+            550.0
+          ],
+          "position": [
+            130.4,
+            -850.6,
+            160.0
+          ],
+          "distance_m": 0.8606,
+          "heart_rate": 67.254
+        },
+        "decoded": {
+          "present": true,
+          "seated": true,
+          "head": [
+            130.0,
+            -851.0,
+            550.0
+          ],
+          "position": [
+            130.0,
+            -851.0,
+            160.0
+          ],
+          "distance_m": 0.861,
+          "heart_rate": 67.25
+        }
+      },
+      "note": "coordinates rounded to the mm and clamped to +-32767; distance and heart rate to u16"
+    },
+    {
+      "name": "face_state_standing_no_vitals",
+      "type": 130,
+      "datagram": "4d5601820300000040420f00000000001d50fb3cf6e80350fb3cf62c01d50a0000",
+      "header": {
+        "type": 130,
+        "seq": 3,
+        "t_us": 1000000
+      },
+      "payload": "1d50fb3cf6e80350fb3cf62c01d50a0000",
+      "decoded": {
+        "input": {
+          "present": true,
+          "seated": false,
+          "head": [
+            -1200.0,
+            -2500.2,
+            1000.0
+          ],
+          "position": [
+            -1200.0,
+            -2500.2,
+            300.0
+          ],
+          "distance_m": 2.773,
+          "heart_rate": null
+        },
+        "decoded": {
+          "present": true,
+          "seated": false,
+          "head": [
+            -1200.0,
+            -2500.0,
+            1000.0
+          ],
+          "position": [
+            -1200.0,
+            -2500.0,
+            300.0
+          ],
+          "distance_m": 2.773,
+          "heart_rate": null
+        }
+      },
+      "note": "coordinates rounded to the mm and clamped to +-32767; distance and heart rate to u16"
+    },
+    {
+      "name": "face_state_clamped",
+      "type": 130,
+      "datagram": "4d5601820300000040420f000000000039000000000000ff7f01800000ffffffff",
+      "header": {
+        "type": 130,
+        "seq": 3,
+        "t_us": 1000000
+      },
+      "payload": "39000000000000ff7f01800000ffffffff",
+      "decoded": {
+        "input": {
+          "present": true,
+          "seated": false,
+          "head": null,
+          "position": [
+            40000.0,
+            -40000.0,
+            0.0
+          ],
+          "distance_m": 70.0,
+          "heart_rate": 700.0
+        },
+        "decoded": {
+          "present": true,
+          "seated": false,
+          "head": null,
+          "position": [
+            32767.0,
+            -32767.0,
+            0.0
+          ],
+          "distance_m": 65.535,
+          "heart_rate": 655.35
+        }
+      },
+      "note": "coordinates rounded to the mm and clamped to +-32767; distance and heart rate to u16"
+    },
+    {
+      "name": "face_state_rounds_half_to_even",
+      "type": 130,
+      "datagram": "4d5601820300000040420f00000000003d0000feff040000000200020000007c17",
+      "header": {
+        "type": 130,
+        "seq": 3,
+        "t_us": 1000000
+      },
+      "payload": "3d0000feff040000000200020000007c17",
+      "decoded": {
+        "input": {
+          "present": true,
+          "seated": false,
+          "head": [
+            -0.5,
+            -1.5,
+            3.5
+          ],
+          "position": [
+            0.5,
+            1.5,
+            2.5
+          ],
+          "distance_m": 0.0005,
+          "heart_rate": 60.125
+        },
+        "decoded": {
+          "present": true,
+          "seated": false,
+          "head": [
+            0.0,
+            -2.0,
+            4.0
+          ],
+          "position": [
+            0.0,
+            2.0,
+            2.0
+          ],
+          "distance_m": 0.0,
+          "heart_rate": 60.12
+        }
+      },
+      "note": "coordinates rounded to the mm and clamped to +-32767; distance and heart rate to u16"
+    },
+    {
+      "name": "face_event_arrived",
+      "type": 131,
+      "datagram": "4d56018304000000e0c810000000000001",
+      "header": {
+        "type": 131,
+        "seq": 4,
+        "t_us": 1100000
+      },
+      "payload": "01",
+      "decoded": {
+        "event": "arrived",
+        "code": 1
+      }
+    },
+    {
+      "name": "face_event_left",
+      "type": 131,
+      "datagram": "4d56018304000000e0c810000000000002",
+      "header": {
+        "type": 131,
+        "seq": 4,
+        "t_us": 1100000
+      },
+      "payload": "02",
+      "decoded": {
+        "event": "left",
+        "code": 2
+      }
+    },
+    {
+      "name": "face_event_approached",
+      "type": 131,
+      "datagram": "4d56018304000000e0c810000000000003",
+      "header": {
+        "type": 131,
+        "seq": 4,
+        "t_us": 1100000
+      },
+      "payload": "03",
+      "decoded": {
+        "event": "approached",
+        "code": 3
+      }
+    },
+    {
+      "name": "face_event_sat_down",
+      "type": 131,
+      "datagram": "4d56018304000000e0c810000000000004",
+      "header": {
+        "type": 131,
+        "seq": 4,
+        "t_us": 1100000
+      },
+      "payload": "04",
+      "decoded": {
+        "event": "sat_down",
+        "code": 4
+      }
+    },
+    {
+      "name": "face_event_stood_up",
+      "type": 131,
+      "datagram": "4d56018304000000e0c810000000000005",
+      "header": {
+        "type": 131,
+        "seq": 4,
+        "t_us": 1100000
+      },
+      "payload": "05",
+      "decoded": {
+        "event": "stood_up",
+        "code": 5
+      }
+    },
+    {
+      "name": "face_event_still_long",
+      "type": 131,
+      "datagram": "4d56018304000000e0c810000000000006",
+      "header": {
+        "type": 131,
+        "seq": 4,
+        "t_us": 1100000
+      },
+      "payload": "06",
+      "decoded": {
+        "event": "still_long",
+        "code": 6
+      }
+    },
+    {
+      "name": "face_event_vitals_acquired",
+      "type": 131,
+      "datagram": "4d56018304000000e0c810000000000007",
+      "header": {
+        "type": 131,
+        "seq": 4,
+        "t_us": 1100000
+      },
+      "payload": "07",
+      "decoded": {
+        "event": "vitals_acquired",
+        "code": 7
+      }
+    },
+    {
+      "name": "face_event_vitals_lost",
+      "type": 131,
+      "datagram": "4d56018304000000e0c810000000000008",
+      "header": {
+        "type": 131,
+        "seq": 4,
+        "t_us": 1100000
+      },
+      "payload": "08",
+      "decoded": {
+        "event": "vitals_lost",
+        "code": 8
+      }
+    },
+    {
+      "name": "audio_out_6_samples",
+      "type": 132,
+      "datagram": "4d56018405000000804f120000000000030000000000000064009cffff7f00800700",
+      "header": {
+        "type": 132,
+        "seq": 5,
+        "t_us": 1200000
+      },
+      "payload": "030000000000000064009cffff7f00800700",
+      "decoded": {
+        "stream": 3,
+        "index": 0,
+        "samples": 6,
+        "first": [
+          0,
+          100,
+          -100,
+          32767,
+          -32768,
+          7
+        ]
+      }
+    },
+    {
+      "name": "audio_out_320_samples_wrapping",
+      "type": 132,
+      "datagram": "4d56018405000000804f120000000000ffffa0ffffffe0e805e92ae94fe974e999e9bee9e3e908ea2dea52ea77ea9ceac1eae6ea0beb30eb55eb7aeb9febc4ebe9eb0eec33ec58ec7deca2ecc7ececec11ed36ed5bed80eda5edcaedefed14ee39ee5eee83eea8eecdeef2ee17ef3cef61ef86efabefd0eff5ef1af03ff064f089f0aef0d3f0f8f01df142f167f18cf1b1f1d6f1fbf120f245f26af28ff2b4f2d9f2fef223f348f36df392f3b7f3dcf301f426f44bf470f495f4baf4dff404f529f54ef573f598f5bdf5e2f507f62cf651f676f69bf6c0f6e5f60af72ff754f779f79ef7c3f7e8f70df832f857f87cf8a1f8c6f8ebf810f935f95af97ff9a4f9c9f9eef913fa38fa5dfa82faa7faccfaf1fa16fb3bfb60fb85fbaafbcffbf4fb19fc3efc63fc88fcadfcd2fcf7fc1cfd41fd66fd8bfdb0fdd5fdfafd1ffe44fe69fe8efeb3fed8fefdfe22ff47ff6cff91ffb6ffdbff000025004a006f009400b900de00030128014d0172019701bc01e10106022b02500275029a02bf02e40209032e03530378039d03c203e7030c04310456047b04a004c504ea040f05340559057e05a305c805ed05120637065c068106a606cb06f00615073a075f078407a907ce07f30718083d0862088708ac08d108f6081b09400965098a09af09d409f9091e0a430a680a8d0ab20ad70afc0a210b460b6b0b900bb50bda0bff0b240c490c6e0c930cb80cdd0c020d270d4c0d710d960dbb0de00d050e2a0e4f0e740e990ebe0ee30e080f2d0f520f770f9c0fc10fe60f0b10301055107a109f10c410e9100e11331158117d11a211c711ec11111236125b128012a512ca12ef12141339135e138313a813cd13f21317143c1461148614ab14d014f5141a153f1564158915ae15d315f8151d16421667168c16b116d616fb16",
+      "header": {
+        "type": 132,
+        "seq": 5,
+        "t_us": 1200000
+      },
+      "payload": "ffffa0ffffffe0e805e92ae94fe974e999e9bee9e3e908ea2dea52ea77ea9ceac1eae6ea0beb30eb55eb7aeb9febc4ebe9eb0eec33ec58ec7deca2ecc7ececec11ed36ed5bed80eda5edcaedefed14ee39ee5eee83eea8eecdeef2ee17ef3cef61ef86efabefd0eff5ef1af03ff064f089f0aef0d3f0f8f01df142f167f18cf1b1f1d6f1fbf120f245f26af28ff2b4f2d9f2fef223f348f36df392f3b7f3dcf301f426f44bf470f495f4baf4dff404f529f54ef573f598f5bdf5e2f507f62cf651f676f69bf6c0f6e5f60af72ff754f779f79ef7c3f7e8f70df832f857f87cf8a1f8c6f8ebf810f935f95af97ff9a4f9c9f9eef913fa38fa5dfa82faa7faccfaf1fa16fb3bfb60fb85fbaafbcffbf4fb19fc3efc63fc88fcadfcd2fcf7fc1cfd41fd66fd8bfdb0fdd5fdfafd1ffe44fe69fe8efeb3fed8fefdfe22ff47ff6cff91ffb6ffdbff000025004a006f009400b900de00030128014d0172019701bc01e10106022b02500275029a02bf02e40209032e03530378039d03c203e7030c04310456047b04a004c504ea040f05340559057e05a305c805ed05120637065c068106a606cb06f00615073a075f078407a907ce07f30718083d0862088708ac08d108f6081b09400965098a09af09d409f9091e0a430a680a8d0ab20ad70afc0a210b460b6b0b900bb50bda0bff0b240c490c6e0c930cb80cdd0c020d270d4c0d710d960dbb0de00d050e2a0e4f0e740e990ebe0ee30e080f2d0f520f770f9c0fc10fe60f0b10301055107a109f10c410e9100e11331158117d11a211c711ec11111236125b128012a512ca12ef12141339135e138313a813cd13f21317143c1461148614ab14d014f5141a153f1564158915ae15d315f8151d16421667168c16b116d616fb16",
+      "decoded": {
+        "stream": 65535,
+        "index": 4294967200,
+        "samples": 320,
+        "first": [
+          -5920,
+          -5883,
+          -5846,
+          -5809,
+          -5772,
+          -5735
+        ]
+      }
+    },
+    {
+      "name": "audio_out_too_many_samples",
+      "type": 132,
+      "decoded": {
+        "error": "ProtocolError: AUDIO_OUT carries 1 to 480 samples, not 481",
+        "samples": 481
+      },
+      "note": "encode refuses more than 480 samples (30 ms)"
+    },
+    {
+      "name": "audio_ctrl_mic_start",
+      "type": 133,
+      "datagram": "4d5601850600000020d61300000000000100",
+      "header": {
+        "type": 133,
+        "seq": 6,
+        "t_us": 1300000
+      },
+      "payload": "0100",
+      "decoded": {
+        "command": 1,
+        "argument_in": 0,
+        "argument": 0
+      }
+    },
+    {
+      "name": "audio_ctrl_mic_stop",
+      "type": 133,
+      "datagram": "4d5601850600000020d61300000000000200",
+      "header": {
+        "type": 133,
+        "seq": 6,
+        "t_us": 1300000
+      },
+      "payload": "0200",
+      "decoded": {
+        "command": 2,
+        "argument_in": 0,
+        "argument": 0
+      }
+    },
+    {
+      "name": "audio_ctrl_play_stop",
+      "type": 133,
+      "datagram": "4d5601850600000020d61300000000000300",
+      "header": {
+        "type": 133,
+        "seq": 6,
+        "t_us": 1300000
+      },
+      "payload": "0300",
+      "decoded": {
+        "command": 3,
+        "argument_in": 0,
+        "argument": 0
+      }
+    },
+    {
+      "name": "audio_ctrl_volume_60",
+      "type": 133,
+      "datagram": "4d5601850600000020d6130000000000043c",
+      "header": {
+        "type": 133,
+        "seq": 6,
+        "t_us": 1300000
+      },
+      "payload": "043c",
+      "decoded": {
+        "command": 4,
+        "argument_in": 60,
+        "argument": 60
+      }
+    },
+    {
+      "name": "audio_ctrl_mic_gain_12",
+      "type": 133,
+      "datagram": "4d5601850600000020d6130000000000050c",
+      "header": {
+        "type": 133,
+        "seq": 6,
+        "t_us": 1300000
+      },
+      "payload": "050c",
+      "decoded": {
+        "command": 5,
+        "argument_in": 12,
+        "argument": 12
+      }
+    },
+    {
+      "name": "audio_ctrl_argument_clamped",
+      "type": 133,
+      "datagram": "4d5601850600000020d613000000000004ff",
+      "header": {
+        "type": 133,
+        "seq": 6,
+        "t_us": 1300000
+      },
+      "payload": "04ff",
+      "decoded": {
+        "command": 4,
+        "argument_in": 300,
+        "argument": 255
+      }
+    },
+    {
+      "name": "sound_chirp",
+      "type": 134,
+      "datagram": "4d56018607000000c05c15000000000001",
+      "header": {
+        "type": 134,
+        "seq": 7,
+        "t_us": 1400000
+      },
+      "payload": "01",
+      "decoded": {
+        "sound": "chirp",
+        "id": 1,
+        "duration_ms": 140
+      }
+    },
+    {
+      "name": "sound_beep",
+      "type": 134,
+      "datagram": "4d56018607000000c05c15000000000002",
+      "header": {
+        "type": 134,
+        "seq": 7,
+        "t_us": 1400000
+      },
+      "payload": "02",
+      "decoded": {
+        "sound": "beep",
+        "id": 2,
+        "duration_ms": 120
+      }
+    },
+    {
+      "name": "sound_wake",
+      "type": 134,
+      "datagram": "4d56018607000000c05c15000000000003",
+      "header": {
+        "type": 134,
+        "seq": 7,
+        "t_us": 1400000
+      },
+      "payload": "03",
+      "decoded": {
+        "sound": "wake",
+        "id": 3,
+        "duration_ms": 200
+      }
+    },
+    {
+      "name": "sound_done",
+      "type": 134,
+      "datagram": "4d56018607000000c05c15000000000004",
+      "header": {
+        "type": 134,
+        "seq": 7,
+        "t_us": 1400000
+      },
+      "payload": "04",
+      "decoded": {
+        "sound": "done",
+        "id": 4,
+        "duration_ms": 200
+      }
+    },
+    {
+      "name": "sound_error",
+      "type": 134,
+      "datagram": "4d56018607000000c05c15000000000005",
+      "header": {
+        "type": 134,
+        "seq": 7,
+        "t_us": 1400000
+      },
+      "payload": "05",
+      "decoded": {
+        "sound": "error",
+        "id": 5,
+        "duration_ms": 360
+      }
+    },
+    {
+      "name": "sound_hello",
+      "type": 134,
+      "datagram": "4d56018607000000c05c15000000000006",
+      "header": {
+        "type": 134,
+        "seq": 7,
+        "t_us": 1400000
+      },
+      "payload": "06",
+      "decoded": {
+        "sound": "hello",
+        "id": 6,
+        "duration_ms": 430
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "too_short",
+      "datagram": "4d56010100000000000000000000",
+      "error": "ProtocolError: datagram shorter than the header"
+    },
+    {
+      "name": "bad_magic",
+      "datagram": "58580000000000000000000000000000",
+      "error": "ProtocolError: bad magic"
+    },
+    {
+      "name": "unsupported_version",
+      "datagram": "4d560201000000000000000000000000",
+      "error": "ProtocolError: unsupported protocol version 2"
+    }
+  ]
+}

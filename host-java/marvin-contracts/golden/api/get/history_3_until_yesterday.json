@@ -1,0 +1,54 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/history?days=3&date=2026-09-20"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "days": [
+      {
+        "date": "2026-09-18",
+        "seated_s": 27327.8,
+        "present_s": 29177.2,
+        "sessions": 9,
+        "breaks": 8,
+        "longest_s": 5352.8
+      },
+      {
+        "date": "2026-09-19",
+        "seated_s": 5634.3,
+        "present_s": 6336.8,
+        "sessions": 2,
+        "breaks": 1,
+        "longest_s": 4058.2
+      },
+      {
+        "date": "2026-09-20",
+        "seated_s": 7238.0,
+        "present_s": 7726.3,
+        "sessions": 2,
+        "breaks": 1,
+        "longest_s": 3690.5
+      }
+    ]
+  },
+  "shape": {
+    "days": [
+      {
+        "date": "string",
+        "seated_s": "number",
+        "present_s": "number",
+        "sessions": "number",
+        "breaks": "number",
+        "longest_s": "number"
+      }
+    ]
+  }
+}

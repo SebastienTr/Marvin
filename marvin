@@ -1,0 +1,525 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# Marvin's host, one command. Everything else happens in the app at http://localhost:8765/.
+#
+#   ./marvin up        start everything: PostgreSQL, the Java host (which starts its sidecars)
+#   ./marvin demo      the same with a simulated robot and a simulated past week
+#   ./marvin down      stop what `up` or `demo` started (the data is kept)
+#   ./marvin status    what is running, and the host's health
+#   ./marvin logs      follow the host's log (-n N: the last N lines and exit)
+#   ./marvin doctor    check this machine and say how to fix what is missing
+#
+# macOS (Apple Silicon) and Linux (x64, arm64). Needs curl and tar. Installs nothing system-wide:
+# a JDK 25, when there is none, goes to ~/.local/share/marvin/jdk; PostgreSQL runs in Docker
+# (pgvector/pgvector:pg18 on 127.0.0.1:5433, data in the Docker volume marvin-pgdata), or, with no
+# Docker, inside the host (data in ~/.local/share/marvin/pg).
+#
+# Environment: MARVIN_DATA_DIR (default ~/.local/share/marvin), MARVIN_PORT (8765), MARVIN_BIND
+# (0.0.0.0), MARVIN_DB (auto | docker | embedded), MARVIN_JAVA_HOME (a JDK 25 to use).
+
+set -eu
+
+ROOT=$(cd "$(dirname "$0")" && pwd)
+JAVA_DIR="$ROOT/host-java"
+JAR="$JAVA_DIR/marvin-app/target/marvin-host.jar"
+DATA_DIR=${MARVIN_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/marvin}
+RUN_DIR="$DATA_DIR/run"
+LOG_DIR="$DATA_DIR/logs"
+PID_FILE="$RUN_DIR/host.pid"
+STATE_FILE="$RUN_DIR/host.env"
+LOG_FILE="$LOG_DIR/host.log"
+PORT=${MARVIN_PORT:-8765}
+BIND=${MARVIN_BIND:-0.0.0.0}
+PG_CONTAINER=marvin-postgres
+PG_VOLUME=marvin-pgdata
+PG_IMAGE=pgvector/pgvector:pg18
+PG_PORT=5433
+JDK_FEATURE=25
+JDK_HOME_DIR="$DATA_DIR/jdk"
+VENV="$ROOT/host/.venv"
+OLLAMA_URL=${OLLAMA_HOST:-http://localhost:11434}
+case "$OLLAMA_URL" in http*) ;; *) OLLAMA_URL="http://$OLLAMA_URL" ;; esac
+
+# ------------------------------------------------------------------------------------ output
+
+if [ -t 1 ]; then
+    B=$(printf '\033[1m'); G=$(printf '\033[32m'); Y=$(printf '\033[33m'); R=$(printf '\033[31m'); N=$(printf '\033[0m')
+else
+    B=; G=; Y=; R=; N=
+fi
+say() { printf '%s\n' "$*"; }
+step() { printf '%s\n' "${B}$*${N}"; }
+warn() { printf '%s\n' "${Y}warning:${N} $*" >&2; }
+die() { printf '%s\n' "${R}error:${N} $*" >&2; exit 1; }
+
+# ------------------------------------------------------------------------------------ platform
+
+platform() {
+    case "$(uname -s)" in
+        Darwin) OS=mac ;;
+        Linux) OS=linux ;;
+        *) die "unsupported system $(uname -s): Marvin's host runs on macOS and Linux" ;;
+    esac
+    case "$(uname -m)" in
+        arm64 | aarch64) ARCH=aarch64 ;;
+        x86_64 | amd64) ARCH=x64 ;;
+        *) die "unsupported processor $(uname -m)" ;;
+    esac
+}
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# ------------------------------------------------------------------------------------ Java
+
+# prints the feature version of a java binary (25 for "25.0.1"), or nothing
+java_version() {
+    "$1" -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java\.specification\.version = \([0-9]*\).*/\1/p' | head -n 1
+}
+
+# sets JAVA_HOME to a JDK 25 or newer, or returns 1
+find_jdk() {
+    for candidate in ${MARVIN_JAVA_HOME:-} ${JAVA_HOME:-} "$JDK_HOME_DIR/current"; do
+        if [ -x "$candidate/bin/java" ] && [ -x "$candidate/bin/javac" ]; then
+            v=$(java_version "$candidate/bin/java")
+            if [ -n "$v" ] && [ "$v" -ge "$JDK_FEATURE" ]; then
+                JAVA_HOME=$candidate; export JAVA_HOME
+                return 0
+            fi
+        fi
+    done
+    if [ "$(uname -s)" = Darwin ] && [ -x /usr/libexec/java_home ]; then
+        candidate=$(/usr/libexec/java_home -v "$JDK_FEATURE+" 2>/dev/null || true)
+        if [ -n "$candidate" ] && [ -x "$candidate/bin/javac" ]; then
+            JAVA_HOME=$candidate; export JAVA_HOME
+            return 0
+        fi
+    fi
+    if have javac && have java; then
+        v=$(java_version "$(command -v java)")
+        if [ -n "$v" ] && [ "$v" -ge "$JDK_FEATURE" ]; then
+            JAVA_HOME=$(cd "$(dirname "$(command -v javac)")/.." && pwd -P)
+            export JAVA_HOME
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# downloads Eclipse Temurin 25 for this machine into $JDK_HOME_DIR (Adoptium API)
+install_jdk() {
+    platform
+    have curl || die "curl is needed to download a JDK"
+    have tar || die "tar is needed to unpack the JDK"
+    url="https://api.adoptium.net/v3/binary/latest/$JDK_FEATURE/ga/$OS/$ARCH/jdk/hotspot/normal/eclipse"
+    step "Downloading Eclipse Temurin $JDK_FEATURE ($OS, $ARCH) into $JDK_HOME_DIR ..."
+    mkdir -p "$JDK_HOME_DIR"
+    tmp="$JDK_HOME_DIR/download.$$"
+    rm -rf "$tmp" && mkdir -p "$tmp"
+    if ! curl -fL --retry 3 --progress-bar -o "$tmp/jdk.tar.gz" "$url"; then
+        rm -rf "$tmp"
+        die "could not download the JDK from $url (offline? install a JDK $JDK_FEATURE and set MARVIN_JAVA_HOME)"
+    fi
+    tar -xzf "$tmp/jdk.tar.gz" -C "$tmp"
+    dir=$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+    [ -n "$dir" ] || die "the JDK archive was empty"
+    if [ -d "$dir/Contents/Home" ]; then home="$dir/Contents/Home"; else home="$dir"; fi
+    name=$(basename "$dir")
+    rm -rf "${JDK_HOME_DIR:?}/$name"
+    mv "$dir" "$JDK_HOME_DIR/$name"
+    rm -rf "$tmp"
+    case "$home" in */Contents/Home) target="$name/Contents/Home" ;; *) target="$name" ;; esac
+    rm -f "$JDK_HOME_DIR/current"
+    ln -s "$target" "$JDK_HOME_DIR/current"
+    [ -x "$JDK_HOME_DIR/current/bin/java" ] || die "the downloaded JDK has no bin/java"
+    say "JDK installed: $JDK_HOME_DIR/current ($("$JDK_HOME_DIR/current/bin/java" -version 2>&1 | grep -v "^Picked up" | head -n 1))"
+}
+
+ensure_jdk() {
+    find_jdk || { install_jdk; find_jdk || die "no usable JDK $JDK_FEATURE"; }
+    PATH="$JAVA_HOME/bin:$PATH"; export PATH
+}
+
+# ------------------------------------------------------------------------------------ build
+
+# true when the jar is missing or older than a source file or a build file
+jar_is_stale() {
+    [ -f "$JAR" ] || return 0
+    newer=$(find "$JAVA_DIR" \( -name target -o -name .mvn \) -prune -o -type f \
+        \( -path '*/src/*' -o -name pom.xml -o -path '*/golden/*' \) -newer "$JAR" -print 2>/dev/null | head -n 1)
+    [ -n "$newer" ]
+}
+
+ensure_built() {
+    if jar_is_stale; then
+        step "Building the Java host (first time: a few minutes) ..."
+        (cd "$JAVA_DIR" && ./mvnw -q -DskipTests package) || die "the build failed (see above)"
+        [ -f "$JAR" ] || die "the build did not produce $JAR"
+    fi
+}
+
+# ------------------------------------------------------------------------------------ PostgreSQL
+
+docker_ok() { have docker && docker info >/dev/null 2>&1; }
+
+pg_running() {
+    [ "$(docker inspect -f '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null || true)" = true ]
+}
+
+start_postgres() {
+    if pg_running; then
+        return 0
+    fi
+    if docker inspect "$PG_CONTAINER" >/dev/null 2>&1; then
+        step "Starting PostgreSQL (Docker container $PG_CONTAINER) ..."
+        docker start "$PG_CONTAINER" >/dev/null
+    else
+        step "Starting PostgreSQL 18 with pgvector (Docker, first time: downloading the image) ..."
+        docker run -d --name "$PG_CONTAINER" --label org.marvin.role=database \
+            -e POSTGRES_USER=marvin -e POSTGRES_PASSWORD=marvin -e POSTGRES_DB=marvin \
+            -v "$PG_VOLUME:/var/lib/postgresql" -p "127.0.0.1:$PG_PORT:5432" \
+            --restart no "$PG_IMAGE" >/dev/null ||
+            die "could not start PostgreSQL in Docker (is port $PG_PORT free? ./marvin doctor)"
+    fi
+    i=0
+    until docker exec "$PG_CONTAINER" pg_isready -q -U marvin -d marvin >/dev/null 2>&1; do
+        i=$((i + 1))
+        [ "$i" -le 60 ] || die "PostgreSQL did not become ready (docker logs $PG_CONTAINER)"
+        sleep 1
+    done
+}
+
+stop_postgres() {
+    if have docker && pg_running; then
+        step "Stopping PostgreSQL (the data stays in the Docker volume $PG_VOLUME) ..."
+        docker stop "$PG_CONTAINER" >/dev/null
+    fi
+}
+
+# decides where the database is: sets DB_MODE (docker | embedded)
+choose_db() {
+    case "${MARVIN_DB:-auto}" in
+        docker) docker_ok || die "MARVIN_DB=docker but Docker is not running"; DB_MODE=docker ;;
+        embedded) DB_MODE=embedded ;;
+        auto) if docker_ok; then DB_MODE=docker; else DB_MODE=embedded; fi ;;
+        *) die "MARVIN_DB must be auto, docker or embedded" ;;
+    esac
+}
+
+# ------------------------------------------------------------------------------------ Python
+
+python_ok() {
+    have python3 && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null
+}
+
+# the host's Python environment, created on demand (the voice sidecar runs from it)
+ensure_venv() {
+    if [ -x "$VENV/bin/python" ]; then
+        return 0
+    fi
+    python_ok || die "Python 3.10 or newer is needed for the voice (./marvin doctor)"
+    step "Creating the Python environment for the voice in host/.venv (a few minutes) ..."
+    python3 -m venv "$VENV"
+    "$VENV/bin/python" -m pip install -q --upgrade pip
+    "$VENV/bin/python" -m pip install -q -e "$ROOT/host[voice]" || die "pip install failed (see above)"
+}
+
+# ------------------------------------------------------------------------------------ the host
+
+host_pid() {
+    [ -f "$PID_FILE" ] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && { printf '%s\n' "$pid"; return 0; }
+    return 1
+}
+
+health() {
+    curl -fsS --max-time 2 "http://127.0.0.1:$PORT/api/health" 2>/dev/null
+}
+
+port_busy() {
+    # TCP port $1 accepts connections on this machine
+    curl -s --max-time 1 -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null
+}
+
+start_host() {
+    mode=$1
+    voice=$2
+    if pid=$(host_pid); then
+        say "Marvin's host is already running (pid $pid). ./marvin down first to restart it."
+        return 0
+    fi
+    port_busy "$PORT" && die "port $PORT is already in use (the Python host? stop it, or set MARVIN_PORT)"
+    platform
+    ensure_jdk
+    ensure_built
+    choose_db
+    if [ "$DB_MODE" = docker ]; then
+        start_postgres
+        db_env="MARVIN_DB_MODE=external MARVIN_DB_URL=jdbc:postgresql://127.0.0.1:$PG_PORT/marvin"
+    else
+        [ "$(id -u)" -ne 0 ] || die "PostgreSQL refuses to run as root: start Docker, or run ./marvin as a normal user"
+        if [ "${MARVIN_DB:-auto}" = embedded ]; then
+            say "PostgreSQL runs inside the host (data in $DATA_DIR/pg)."
+        else
+            say "Docker is not running: PostgreSQL runs inside the host (data in $DATA_DIR/pg)."
+        fi
+        db_env="MARVIN_DB_MODE=embedded"
+    fi
+    if [ "$voice" = yes ]; then
+        ensure_venv
+    fi
+    python_env=
+    [ -x "$VENV/bin/python" ] && python_env="MARVIN_PYTHON=$VENV/bin/python"
+    mkdir -p "$RUN_DIR" "$LOG_DIR"
+    step "Starting Marvin's host ($mode) ..."
+    # shellcheck disable=SC2086 # db_env and python_env are lists of VAR=value words
+    env MARVIN_MODE="$mode" MARVIN_PORT="$PORT" MARVIN_BIND="$BIND" MARVIN_DATA_DIR="$DATA_DIR" \
+        MARVIN_REPO="$ROOT" $db_env $python_env \
+        nohup "$JAVA_HOME/bin/java" -XX:+UseZGC -jar "$JAR" >>"$LOG_FILE" 2>&1 </dev/null &
+    pid=$!
+    printf '%s\n' "$pid" >"$PID_FILE"
+    printf 'MODE=%s\nDB=%s\n' "$mode" "$DB_MODE" >"$STATE_FILE"
+    i=0
+    until health >/dev/null; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            rm -f "$PID_FILE"
+            tail -n 30 "$LOG_FILE" >&2
+            die "the host stopped while starting (log above, all of it: ./marvin logs)"
+        fi
+        i=$((i + 1))
+        [ "$i" -le 120 ] || die "the host did not answer on port $PORT within 2 minutes (./marvin logs)"
+        sleep 1
+    done
+    say "${G}Marvin's app: http://localhost:$PORT/${N}"
+    say "  log: ./marvin logs    stop: ./marvin down"
+}
+
+stop_host() {
+    if pid=$(host_pid); then
+        step "Stopping Marvin's host (pid $pid) ..."
+        kill "$pid" 2>/dev/null || true
+        i=0
+        while kill -0 "$pid" 2>/dev/null; do
+            i=$((i + 1))
+            if [ "$i" -gt 20 ]; then
+                warn "the host did not stop in 10 s: killing it"
+                kill -9 "$pid" 2>/dev/null || true
+                break
+            fi
+            sleep 0.5
+        done
+    fi
+    rm -f "$PID_FILE"
+}
+
+# ------------------------------------------------------------------------------------ commands
+
+usage() {
+    sed -n '4,11p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+cmd_up() {
+    voice=no
+    for a in "$@"; do
+        case "$a" in
+            --voice) voice=yes ;;
+            *) die "unknown option $a (./marvin up [--voice])" ;;
+        esac
+    done
+    start_host live "$voice"
+}
+
+cmd_demo() {
+    voice=no
+    for a in "$@"; do
+        case "$a" in
+            --voice) voice=yes ;;
+            *) die "unknown option $a (./marvin demo [--voice])" ;;
+        esac
+    done
+    start_host demo "$voice"
+}
+
+cmd_down() {
+    stop_host
+    stop_postgres
+    rm -f "$STATE_FILE"
+    say "Stopped."
+}
+
+cmd_status() {
+    if pid=$(host_pid); then
+        mode=$(sed -n 's/^MODE=//p' "$STATE_FILE" 2>/dev/null || true)
+        say "host:       running (pid $pid, ${mode:-?}), http://localhost:$PORT/"
+        h=$(health || true)
+        if [ -n "$h" ]; then say "health:     $h"; else say "health:     not answering"; fi
+    else
+        say "host:       not running"
+    fi
+    if have docker && docker info >/dev/null 2>&1; then
+        if pg_running; then
+            say "postgres:   running (Docker container $PG_CONTAINER, 127.0.0.1:$PG_PORT)"
+        else
+            say "postgres:   not running in Docker"
+        fi
+    else
+        say "postgres:   Docker not available (the host runs its own PostgreSQL)"
+    fi
+    say "data:       $DATA_DIR"
+}
+
+cmd_logs() {
+    [ -f "$LOG_FILE" ] || die "no log yet ($LOG_FILE)"
+    case "${1:-}" in
+        -n) tail -n "${2:-100}" "$LOG_FILE" ;;
+        "") tail -n 50 -f "$LOG_FILE" ;;
+        *) die "usage: ./marvin logs [-n LINES]" ;;
+    esac
+}
+
+# doctor: one line per check; FAILED counts what blocks `./marvin up`
+ok() { printf '  %s %s\n' "${G}ok${N}  " "$*"; }
+note() { printf '  %s %s\n' "${Y}note${N}" "$*"; }
+bad() { printf '  %s %s\n' "${R}FAIL${N}" "$*"; FAILED=$((FAILED + 1)); }
+fix() { printf '         %s\n' "-> $*"; }
+
+embedded_as_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        bad "running as root: the PostgreSQL inside the host refuses to start as root"
+        fix "run ./marvin as a normal user, or start Docker"
+    fi
+}
+
+cmd_doctor() {
+    FAILED=0
+    step "Marvin doctor"
+    platform
+    ok "system: $OS $ARCH ($(uname -sr))"
+    for t in curl tar; do
+        if have "$t"; then ok "$t"; else bad "$t is missing"; fix "install $t with your package manager"; fi
+    done
+
+    if find_jdk; then
+        ok "JDK: $("$JAVA_HOME/bin/java" -version 2>&1 | grep -v "^Picked up" | head -n 1) at $JAVA_HOME"
+    else
+        note "no JDK $JDK_FEATURE: ./marvin up will download Eclipse Temurin $JDK_FEATURE into $JDK_HOME_DIR"
+        fix "or install one yourself and set MARVIN_JAVA_HOME"
+    fi
+    if [ -f "$JAR" ] && ! jar_is_stale; then
+        ok "Java host built: $JAR"
+    else
+        note "the Java host will be built by ./marvin up (host-java/mvnw -DskipTests package)"
+    fi
+
+    if have docker; then
+        if docker info >/dev/null 2>&1; then
+            ok "Docker: $(docker version -f '{{.Server.Version}}' 2>/dev/null || echo running)"
+            if docker image inspect "$PG_IMAGE" >/dev/null 2>&1; then
+                ok "image $PG_IMAGE"
+            else
+                note "image $PG_IMAGE will be downloaded by ./marvin up (about 160 MB)"
+            fi
+            if pg_running; then
+                ok "PostgreSQL running ($PG_CONTAINER, 127.0.0.1:$PG_PORT)"
+            elif port_busy "$PG_PORT" || (have lsof && lsof -nP -iTCP:"$PG_PORT" -sTCP:LISTEN >/dev/null 2>&1); then
+                bad "port $PG_PORT is taken by something else: PostgreSQL cannot start there"
+                fix "stop what listens on $PG_PORT (lsof -nP -iTCP:$PG_PORT), or use MARVIN_DB=embedded"
+            else
+                ok "port $PG_PORT free for PostgreSQL"
+            fi
+        else
+            note "Docker is installed but not running: PostgreSQL will run inside the host instead"
+            fix "start Docker Desktop (macOS) or the docker service (Linux) to use the Docker database"
+            embedded_as_root
+        fi
+    else
+        note "no Docker: PostgreSQL will run inside the host (no pgvector there yet: memory features need Docker)"
+        fix "install Docker Desktop (macOS) or Docker Engine (Linux) for the full database"
+        embedded_as_root
+    fi
+
+    if pid=$(host_pid); then
+        ok "Marvin's host is running (pid $pid) on port $PORT"
+    elif port_busy "$PORT"; then
+        bad "port $PORT is in use (the Python host, marvin-host run/ui?)"
+        fix "stop it, or set MARVIN_PORT"
+    else
+        ok "port $PORT free for the app"
+    fi
+    if python_ok; then
+        busy=$(python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+try:
+    s.bind(('0.0.0.0', 47100)); print('free')
+except OSError:
+    print('busy')
+" 2>/dev/null || echo unknown)
+        if [ "$busy" = busy ] && ! host_pid >/dev/null; then
+            bad "UDP port 47100 (the robot link) is in use: only one host can talk to the robot"
+            fix "stop the other host (marvin-host run)"
+        else
+            ok "UDP port 47100 for the robot"
+        fi
+    fi
+
+    if python_ok; then
+        ok "Python: $(python3 --version 2>&1)"
+        if [ -x "$VENV/bin/python" ]; then
+            ok "Python environment: host/.venv"
+            if "$VENV/bin/python" -c 'import sounddevice, webrtcvad' >/dev/null 2>&1; then
+                ok "voice extra installed"
+            else
+                note "the voice extra is not installed in host/.venv"
+                fix "$VENV/bin/pip install -e \"host[voice]\" (or ./marvin up --voice)"
+            fi
+        else
+            note "no host/.venv: the voice needs it; ./marvin up --voice creates it"
+        fi
+    else
+        note "no Python 3.10+: the voice, the simulator and the viewer need it"
+        fix "macOS: brew install python; Linux: your package manager"
+    fi
+
+    tags=$(curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" 2>/dev/null || true)
+    if [ -n "$tags" ]; then
+        ok "Ollama at $OLLAMA_URL"
+        model=qwen3:4b-instruct
+        if [ -f "${MARVIN_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/marvin}/voice.json" ]; then
+            m=$(sed -n 's/.*"llm_model" *: *"\([^"]*\)".*/\1/p' \
+                "${MARVIN_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/marvin}/voice.json" | head -n 1)
+            [ -n "$m" ] && model=$m
+        fi
+        case "$tags" in
+            *"\"$model\""*) ok "model $model pulled" ;;
+            *) note "model $model is not pulled"; fix "ollama pull $model" ;;
+        esac
+    else
+        note "Ollama is not running at $OLLAMA_URL: Marvin can't talk without it"
+        fix "install it from https://ollama.com, then: ollama serve, and ollama pull qwen3:4b-instruct"
+    fi
+
+    if [ "$FAILED" -gt 0 ]; then
+        say "${R}$FAILED problem(s) to fix before ./marvin up${N}"
+        return 1
+    fi
+    say "${G}Ready: ./marvin up (or ./marvin demo)${N}"
+}
+
+main() {
+    cmd=${1:-help}
+    [ $# -gt 0 ] && shift
+    case "$cmd" in
+        up) cmd_up "$@" ;;
+        demo) cmd_demo "$@" ;;
+        down | stop) cmd_down ;;
+        status) cmd_status ;;
+        logs | log) cmd_logs "$@" ;;
+        doctor) cmd_doctor ;;
+        help | -h | --help) usage ;;
+        *) usage >&2; exit 2 ;;
+    esac
+}
+
+main "$@"

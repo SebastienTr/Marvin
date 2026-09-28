@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/?token=contract-key&tab=talk"
+  },
+  "status": 303,
+  "headers": {
+    "content-type": "text/plain",
+    "cache-control": "no-store",
+    "location": "/?tab=talk",
+    "set-cookie": "marvin_key=contract-key; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": null,
+  "body_bytes": 0
+}

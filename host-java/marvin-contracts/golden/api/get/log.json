@@ -1,0 +1,118 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/log?limit=50"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "entries": [
+      {
+        "id": 10,
+        "ts": 1789983042.0381064,
+        "source": "brain",
+        "level": "info",
+        "text": "Breathing 16/min, heart 64/min",
+        "kind": "vitals_acquired"
+      },
+      {
+        "id": 9,
+        "ts": 1789983041.5011263,
+        "source": "brain",
+        "level": "info",
+        "text": "You sat down",
+        "kind": "sat_down"
+      },
+      {
+        "id": 8,
+        "ts": 1789983019.013872,
+        "source": "brain",
+        "level": "info",
+        "text": "You came in",
+        "kind": "arrived"
+      },
+      {
+        "id": 7,
+        "ts": 1789983010.0020695,
+        "source": "device",
+        "level": "info",
+        "text": "MR60BHA2 ready",
+        "device": "marvin-c6b0a2"
+      },
+      {
+        "id": 6,
+        "ts": 1789983010.00202,
+        "source": "device",
+        "level": "info",
+        "text": "wifi: connected, rssi -58 dBm",
+        "device": "marvin-a1b2c3"
+      },
+      {
+        "id": 5,
+        "ts": 1789983010.0019693,
+        "source": "device",
+        "level": "info",
+        "text": "firmware 0.6.0 up: lidar D500, radar LD2450, camera, audio",
+        "device": "marvin-a1b2c3"
+      },
+      {
+        "id": 4,
+        "ts": 1789983010.001854,
+        "source": "device",
+        "level": "info",
+        "text": "marvin-c6b0a2 connected (MR60BHA2 kit (XIAO ESP32C6), firmware mr60-0.2.1, simulated sensors)",
+        "device": "marvin-c6b0a2"
+      },
+      {
+        "id": 3,
+        "ts": 1789983010.0015018,
+        "source": "device",
+        "level": "info",
+        "text": "marvin-a1b2c3 connected (XIAO ESP32S3 Sense, firmware 0.6.0, simulated sensors)",
+        "device": "marvin-a1b2c3"
+      },
+      {
+        "id": 2,
+        "ts": 1789983009.9614859,
+        "source": "host",
+        "level": "info",
+        "text": "Connected to the robot",
+        "kind": "robot_online"
+      },
+      {
+        "id": 1,
+        "ts": 1789983000.306938,
+        "source": "host",
+        "level": "info",
+        "text": "Marvin started",
+        "kind": "host_started"
+      }
+    ]
+  },
+  "shape": {
+    "entries": [
+      {
+        "id": "number",
+        "ts": "number",
+        "source": "string",
+        "level": "string",
+        "text": "string",
+        "kind": "string"
+      },
+      {
+        "id": "number",
+        "ts": "number",
+        "source": "string",
+        "level": "string",
+        "text": "string",
+        "device": "string"
+      }
+    ]
+  }
+}

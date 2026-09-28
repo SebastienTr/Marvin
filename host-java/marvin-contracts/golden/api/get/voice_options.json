@@ -1,0 +1,108 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/voice/options"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "llm_models": [],
+    "ollama": {
+      "ok": false,
+      "error": "Ollama is not running at http://localhost:11434 ([Errno 111] Connection refused)",
+      "fix": "Install Ollama (https://ollama.com/download or `brew install ollama`), then start it: `ollama serve` or the Ollama app.",
+      "host": "http://localhost:11434"
+    },
+    "stt_backends": [
+      "auto",
+      "mlx",
+      "faster-whisper"
+    ],
+    "stt_models": [
+      "auto",
+      "tiny",
+      "base",
+      "small",
+      "medium",
+      "large-v3",
+      "turbo"
+    ],
+    "tts_backends": [
+      {
+        "name": "auto",
+        "available": true
+      },
+      {
+        "name": "say",
+        "available": false
+      },
+      {
+        "name": "piper",
+        "available": false
+      },
+      {
+        "name": "espeak",
+        "available": false
+      }
+    ],
+    "voices": {
+      "piper": [],
+      "say": []
+    },
+    "languages": [
+      "auto",
+      "fr",
+      "en"
+    ],
+    "platform": "linux",
+    "tools": [
+      {
+        "name": "get_weather",
+        "description": "Get the real weather for a place: the current conditions, or today's or tomorrow's forecast. Use it whenever the person asks about the weather, temperature, rain or wind. When they name no place, call it without one: it then uses the owner's home, or says which city to ask for.",
+        "online": true
+      }
+    ]
+  },
+  "shape": {
+    "llm_models": [],
+    "ollama": {
+      "ok": "boolean",
+      "error": "string",
+      "fix": "string",
+      "host": "string"
+    },
+    "stt_backends": [
+      "string"
+    ],
+    "stt_models": [
+      "string"
+    ],
+    "tts_backends": [
+      {
+        "name": "string",
+        "available": "boolean"
+      }
+    ],
+    "voices": {
+      "piper": [],
+      "say": []
+    },
+    "languages": [
+      "string"
+    ],
+    "platform": "string",
+    "tools": [
+      {
+        "name": "string",
+        "description": "string",
+        "online": "boolean"
+      }
+    ]
+  }
+}

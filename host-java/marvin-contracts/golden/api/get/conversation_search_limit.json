@@ -1,0 +1,116 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/conversation?q=e&limit=3"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "q": "e",
+    "results": [
+      {
+        "language": "en",
+        "latency": {},
+        "first_word_s": null,
+        "interrupted": false,
+        "proactive": true,
+        "error": null,
+        "hint": "",
+        "id": 1790610495669,
+        "t": 1789982760.2827182,
+        "kind": "reply",
+        "text": "You've been sitting for 50 minutes. Time to stretch?"
+      },
+      {
+        "language": "en",
+        "latency": {
+          "endpoint": 0.55,
+          "stt": 0.09,
+          "llm_first_token": 0.19,
+          "first_chunk": 0.3,
+          "tts": 0.12,
+          "audio_start": 0.62,
+          "speculative": 1.0
+        },
+        "first_word_s": 1.17,
+        "interrupted": false,
+        "proactive": false,
+        "error": null,
+        "hint": "",
+        "context": "Context:\n- It is Monday 21 September 2026, 09:08 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 28 minutes.\n- Your 60 GHz radar measures their breathing at 14 per minute, right now.\n- Your 60 GHz radar measures their heart rate at 66 beats per minute, right now.",
+        "prompt": "Context:\n- It is Monday 21 September 2026, 09:08 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 28 minutes.\n- Your 60 GHz radar measures their breathing at 14 per minute, right now.\n- Your 60 GHz radar measures their heart rate at 66 beats per minute, right now.\n\nThe person says: What's my heart rate right now?\n\n(Answer in English.)",
+        "model": "qwen3:4b-instruct",
+        "id": 1790610495667,
+        "t": 1789981680.2827182,
+        "kind": "reply",
+        "text": "About 66 beats a minute, and you're breathing 14 times a minute. Calm, as far as I can tell."
+      },
+      {
+        "language": "en",
+        "source": "voice",
+        "raw": "Marvin, what's my heart rate right now?",
+        "id": 1790610495666,
+        "t": 1789981680.2827182,
+        "kind": "heard",
+        "text": "What's my heart rate right now?"
+      }
+    ]
+  },
+  "shape": {
+    "q": "string",
+    "results": [
+      {
+        "language": "string",
+        "latency": {},
+        "first_word_s": "null",
+        "interrupted": "boolean",
+        "proactive": "boolean",
+        "error": "null",
+        "hint": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "language": "string",
+        "latency": {
+          "endpoint": "number",
+          "stt": "number",
+          "llm_first_token": "number",
+          "first_chunk": "number",
+          "tts": "number",
+          "audio_start": "number",
+          "speculative": "number"
+        },
+        "first_word_s": "number",
+        "interrupted": "boolean",
+        "proactive": "boolean",
+        "error": "null",
+        "hint": "string",
+        "context": "string",
+        "prompt": "string",
+        "model": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "language": "string",
+        "source": "string",
+        "raw": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      }
+    ]
+  }
+}

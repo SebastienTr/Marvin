@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/voice/ask",
+    "body": {
+      "text": "Are you there?"
+    }
+  },
+  "status": 409,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "error": "Marvin's voice is off"
+  },
+  "shape": {
+    "error": "string"
+  }
+}

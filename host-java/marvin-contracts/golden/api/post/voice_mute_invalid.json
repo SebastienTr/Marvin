@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/voice/mute",
+    "body": {
+      "muted": "yes"
+    }
+  },
+  "status": 400,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "error": "muted must be true or false"
+  },
+  "shape": {
+    "error": "string"
+  }
+}

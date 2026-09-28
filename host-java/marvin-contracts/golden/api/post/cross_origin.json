@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/settings",
+    "headers": {
+      "Origin": "http://evil.example"
+    },
+    "body": {
+      "break_interval_min": 45
+    }
+  },
+  "status": 403,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "error": "cross-origin request"
+  },
+  "shape": {
+    "error": "string"
+  }
+}

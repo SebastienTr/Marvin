@@ -1,0 +1,73 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/voice/listen",
+    "body": {
+      "on": false
+    }
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "voice": {
+      "state": "on",
+      "status": "idle",
+      "muted": false,
+      "error": "",
+      "fix": "",
+      "model": "qwen3:4b-instruct",
+      "wake": true,
+      "chime": true,
+      "listen_s": null
+    },
+    "settings": {
+      "llm_model": "qwen3:4b-instruct",
+      "stt": "auto",
+      "stt_model": null,
+      "tts": "auto",
+      "tts_voice": null,
+      "language": null,
+      "wake": true,
+      "follow_up_s": 5.0,
+      "tools": true,
+      "internet": true,
+      "home_place": "",
+      "reminders": true,
+      "welcome_back": false
+    }
+  },
+  "shape": {
+    "voice": {
+      "state": "string",
+      "status": "string",
+      "muted": "boolean",
+      "error": "string",
+      "fix": "string",
+      "model": "string",
+      "wake": "boolean",
+      "chime": "boolean",
+      "listen_s": "null"
+    },
+    "settings": {
+      "llm_model": "string",
+      "stt": "string",
+      "stt_model": "null",
+      "tts": "string",
+      "tts_voice": "null",
+      "language": "null",
+      "wake": "boolean",
+      "follow_up_s": "number",
+      "tools": "boolean",
+      "internet": "boolean",
+      "home_place": "string",
+      "reminders": "boolean",
+      "welcome_back": "boolean"
+    }
+  }
+}

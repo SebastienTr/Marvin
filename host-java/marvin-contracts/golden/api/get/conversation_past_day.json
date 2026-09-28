@@ -1,0 +1,177 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/conversation?day=2026-09-18"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "day": "2026-09-18",
+    "entries": [
+      {
+        "id": 1789721583458,
+        "t": 1789721583.4588957,
+        "kind": "note",
+        "text": "Voice on: say “Marvin, …”"
+      },
+      {
+        "reason": "known hallucination",
+        "dbfs": -44.0,
+        "id": 1789724482352,
+        "t": 1789724482.351483,
+        "kind": "ignored",
+        "text": "Thank you."
+      },
+      {
+        "language": "en",
+        "source": "voice",
+        "raw": "Marvin, am I breathing normally?",
+        "id": 1789729393720,
+        "t": 1789729393.7186677,
+        "kind": "heard",
+        "text": "Am I breathing normally?"
+      },
+      {
+        "language": "en",
+        "latency": {
+          "endpoint": 0.55,
+          "stt": 0.12,
+          "llm_first_token": 0.28,
+          "tts": 0.15,
+          "speculative": 1.0,
+          "first_chunk": 0.36,
+          "audio_start": 0.65
+        },
+        "first_word_s": 1.2,
+        "interrupted": false,
+        "proactive": false,
+        "error": null,
+        "hint": "",
+        "context": "Context:\n- It is Friday 18 September 2026, 11:03 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 25 minutes.\n- Your 60 GHz radar measures their breathing at 14 per minute, right now.\n- Your 60 GHz radar measures their heart rate at 67 beats per minute, right now.",
+        "prompt": "Context:\n- It is Friday 18 September 2026, 11:03 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 25 minutes.\n- Your 60 GHz radar measures their breathing at 14 per minute, right now.\n- Your 60 GHz radar measures their heart rate at 67 beats per minute, right now.\n\nThe person says: Am I breathing normally?\n\n(Answer in English.)",
+        "model": "qwen3:4b-instruct",
+        "id": 1789729395721,
+        "t": 1789729395.7186677,
+        "kind": "reply",
+        "text": "Fourteen breaths a minute, calm and regular. I'm not a doctor, though."
+      },
+      {
+        "language": "en",
+        "source": "voice",
+        "raw": "Marvin, remind me what I was doing before lunch?",
+        "id": 1789733309158,
+        "t": 1789733309.1540275,
+        "kind": "heard",
+        "text": "Remind me what I was doing before lunch?"
+      },
+      {
+        "language": "en",
+        "latency": {
+          "endpoint": 0.55,
+          "stt": 0.09,
+          "llm_first_token": 0.23,
+          "tts": 0.14,
+          "speculative": 1.0,
+          "first_chunk": 0.31,
+          "audio_start": 0.56
+        },
+        "first_word_s": 1.11,
+        "interrupted": false,
+        "proactive": false,
+        "error": null,
+        "hint": "",
+        "context": "Context:\n- It is Friday 18 September 2026, 12:08 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 5 minutes.\n- Your 60 GHz radar measures their breathing at 13 per minute, right now.\n- Your 60 GHz radar measures their heart rate at 66 beats per minute, right now.",
+        "prompt": "Context:\n- It is Friday 18 September 2026, 12:08 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 5 minutes.\n- Your 60 GHz radar measures their breathing at 13 per minute, right now.\n- Your 60 GHz radar measures their heart rate at 66 beats per minute, right now.\n\nThe person says: Remind me what I was doing before lunch?\n\n(Answer in English.)",
+        "model": "qwen3:4b-instruct",
+        "id": 1789733311159,
+        "t": 1789733311.1540275,
+        "kind": "reply",
+        "text": "I only know when you sat and stood, not what you did. You worked for about two hours before lunch."
+      },
+      {
+        "language": "en",
+        "latency": {},
+        "first_word_s": null,
+        "interrupted": false,
+        "proactive": true,
+        "error": null,
+        "hint": "",
+        "id": 1789736149755,
+        "t": 1789736149.7499144,
+        "kind": "reply",
+        "text": "You've been sitting for 50 minutes. Time to stretch?"
+      }
+    ]
+  },
+  "shape": {
+    "day": "string",
+    "entries": [
+      {
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "reason": "string",
+        "dbfs": "number",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "language": "string",
+        "source": "string",
+        "raw": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "language": "string",
+        "latency": {
+          "endpoint": "number",
+          "stt": "number",
+          "llm_first_token": "number",
+          "tts": "number",
+          "speculative": "number",
+          "first_chunk": "number",
+          "audio_start": "number"
+        },
+        "first_word_s": "number",
+        "interrupted": "boolean",
+        "proactive": "boolean",
+        "error": "null",
+        "hint": "string",
+        "context": "string",
+        "prompt": "string",
+        "model": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "language": "string",
+        "latency": {},
+        "first_word_s": "null",
+        "interrupted": "boolean",
+        "proactive": "boolean",
+        "error": "null",
+        "hint": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      }
+    ]
+  }
+}

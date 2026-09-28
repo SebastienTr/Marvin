@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: MIT
+# Marvin's host. Every value can be set from the environment (./marvin sets the MARVIN_* ones).
+server:
+  port: ${MARVIN_PORT:8765}
+  address: ${MARVIN_BIND:0.0.0.0}
+  shutdown: graceful
+
+spring:
+  application:
+    name: marvin-host
+  main:
+    banner-mode: off
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${MARVIN_DB_URL:jdbc:postgresql://127.0.0.1:5433/marvin}
+    username: ${MARVIN_DB_USER:marvin}
+    password: ${MARVIN_DB_PASSWORD:marvin}
+    hikari:
+      maximum-pool-size: 8
+
+marvin:
+  # live: wait for the real robot; demo: a simulated robot and a simulated past week
+  mode: ${MARVIN_MODE:live}
+  data-dir: ${MARVIN_DATA_DIR:${user.home}/.local/share/marvin}
+  db:
+    # external: the PostgreSQL at spring.datasource.url (Docker); embedded: started by the host
+    mode: ${MARVIN_DB_MODE:external}
+    embedded:
+      data-directory: ${marvin.data-dir}/pg
+      port: ${MARVIN_EMBEDDED_DB_PORT:5434}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: warn
+    marvin.host: info
+    org.springframework.boot.web.embedded: info

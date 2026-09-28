@@ -1,0 +1,294 @@
+// SPDX-License-Identifier: MIT
+//
+// The contract between Marvin's Java core and the voice sidecar (docs/design.md, section 4).
+//
+// The sidecar owns the real-time audio loop: audio in and out, VAD and segmentation, the echo gate,
+// the wake word and listening windows, speculative and final speech recognition with its filters,
+// chunking text for speech, synthesis and playback pacing, barge-in. The core owns the
+// conversation: what to answer and with which context, the model, the tools, memory, and the
+// robot's UDP socket (it relays the robot's microphone to the sidecar and the sidecar's speaker
+// frames to the robot).
+//
+// One long-lived bidirectional stream per session (Voice.Session). The core opens it, sends
+// Configure first, and re-sends Configure whenever the settings change. Audio is always 16 kHz
+// mono signed 16-bit little-endian PCM (docs/protocol.md, "Audio messages"). Times are seconds
+// (double) unless the name says otherwise. Health: the standard grpc.health.v1.Health service,
+// served by the sidecar next to this one.
+//
+// Compatibility: fields are only ever added. A breaking change is a new package (marvin.voice.v2).
+syntax = "proto3";
+
+package marvin.voice.v1;
+
+option java_multiple_files = true;
+option java_package = "marvin.host.contracts.voice.v1";
+option java_outer_classname = "VoiceProto";
+
+service Voice {
+  // The live session: audio and commands in, what the voice hears and does out.
+  rpc Session(stream CoreToVoice) returns (stream VoiceToCore);
+  // Batch recognition, for recordings: not the live loop.
+  rpc Transcribe(AudioClip) returns (Transcript);
+  // What the settings can offer: backends, models, voices (the app's voice settings).
+  rpc Options(OptionsRequest) returns (VoiceOptions);
+}
+
+// ============================================================================ core -> sidecar
+
+message CoreToVoice {
+  oneof m {
+    Configure configure = 1;
+    AudioFrame robot_mic = 2;       // a relayed AUDIO_IN, same samples
+    ReplyStart reply_start = 3;     // an answer begins: text pieces follow
+    TextPiece text = 4;             // a piece of the answer, as the model streams it
+    ReplyEnd reply_end = 5;         // no more text for this answer
+    Say say = 6;                    // speak a whole text now (reminders, welcome back, errors)
+    ListenNow listen_now = 7;       // Talk now (or stop listening)
+    Mute mute = 8;
+    StopSpeaking stop = 9;
+    Filler filler = 10;             // a short sentence while a tool runs ("Let me check.")
+    RobotLink robot_link = 11;      // a robot with audio connected or left
+  }
+}
+
+// The voice's settings: the keys of voice.json that the sidecar uses (docs/voice.md).
+message Configure {
+  uint32 contract_version = 1;                 // 1
+  VoiceSettings settings = 2;
+  AudioRoute route = 3;
+}
+
+message VoiceSettings {
+  string stt = 1;                   // auto | mlx | faster-whisper
+  string stt_model = 2;             // tiny ... large-v3, turbo
+  string tts = 3;                   // auto | say | piper | espeak
+  string tts_voice = 4;             // empty: the default for the language
+  string language = 5;              // empty: auto; fr | en
+  string default_language = 6;
+  bool wake = 7;                    // wait for "Marvin"
+  bool duplex = 8;
+  double echo_tail_s = 9;
+  double follow_up_s = 10;
+  double listen_window_s = 11;
+  bool speculative_stt = 12;
+  double end_silence_ms = 13;       // 0: the default
+  bool chime = 14;                  // the listening chime on the speaker
+  string input_device = 15;         // local audio only; empty: the system default
+  string output_device = 16;
+}
+
+// Where the voice hears and speaks.
+enum AudioRoute {
+  AUDIO_ROUTE_UNSPECIFIED = 0;
+  AUDIO_ROUTE_LOCAL = 1;            // the computer's microphone and speaker (inside the sidecar)
+  AUDIO_ROUTE_ROBOT = 2;            // the robot's, relayed by the core (robot_mic, robot_speaker)
+}
+
+message AudioFrame {
+  string device = 1;                // e.g. marvin-a1b2c3
+  uint32 sample_index = 2;          // index of the first sample in its stream (wraps)
+  uint64 robot_time_us = 3;         // robot clock of the first sample (the UDP header's clock)
+  bytes pcm = 4;                    // int16 little-endian, 320 samples (20 ms) from the robot
+}
+
+message ReplyStart {
+  uint64 reply_id = 1;              // chosen by the core, unique in the session
+  string language = 2;              // the language to speak it in
+  bool proactive = 3;               // Marvin speaks on its own (not an answer)
+  uint64 utterance_uid = 4;         // the utterance it answers (Heard.uid), 0 if none
+}
+
+message TextPiece {
+  uint64 reply_id = 1;
+  string text = 2;                  // raw model text: the sidecar cleans and chunks it for speech
+}
+
+message ReplyEnd {
+  uint64 reply_id = 1;
+  string error = 2;                 // not empty: the answer failed (the sidecar may say so)
+}
+
+message Say {
+  uint64 reply_id = 1;
+  string text = 2;
+  string language = 3;
+  bool force = 4;                   // speak even while muted or in quiet hours
+  bool proactive = 5;
+}
+
+message ListenNow {
+  bool on = 1;                      // false: stop listening
+}
+
+message Mute {
+  bool muted = 1;
+}
+
+message StopSpeaking {
+}
+
+message Filler {
+  uint64 reply_id = 1;
+  string text = 2;
+  string language = 3;
+}
+
+message RobotLink {
+  string device = 1;
+  bool connected = 2;
+  bool has_audio = 3;               // HELLO flag bit 2
+}
+
+// ============================================================================ sidecar -> core
+
+message VoiceToCore {
+  oneof m {
+    Status status = 1;
+    Heard heard = 2;                // a question for Marvin: the core answers it
+    Ignored ignored = 3;            // heard, not answered, and why
+    Level level = 4;                // microphone loudness, ~16 per second
+    Partial partial = 5;            // the words understood so far
+    SpeakerFrame robot_speaker = 6; // PCM for the robot, already paced (150 ms lead)
+    RobotAudioCtrl ctrl = 7;        // AUDIO_CTRL for the robot (mic start every second, stop, volume)
+    SayProgress say = 8;            // a piece of speech starts playing
+    Interrupted interrupted = 9;    // speech stopped early (barge-in, Stop)
+    RobotSound sound = 10;          // SOUND for the robot (earcons)
+    Utterance utterance = 11;       // someone started / stopped talking
+    ReplySpoken spoken = 12;        // an answer has been said entirely, with its timings
+  }
+}
+
+message Status {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STARTING = 1;
+    IDLE = 2;                       // waiting for "Marvin"
+    LISTENING = 3;
+    THINKING = 4;
+    SPEAKING = 5;
+    STOPPED = 6;
+    ERROR = 7;
+  }
+  State state = 1;
+  bool muted = 2;
+  string error = 3;                 // with ERROR: what is wrong
+  string fix = 4;                   // with ERROR: how to fix it, one line
+  string stt = 5;                   // the backends actually in use, e.g. "mlx large-v3-turbo"
+  string tts = 6;
+}
+
+message Heard {
+  uint64 uid = 1;                   // utterance id
+  string text = 2;                  // the question, without "Marvin,"
+  string raw = 3;                   // the full transcript, when it differs
+  string language = 4;              // the language to answer in
+  string source = 5;                // voice | typed
+  map<string, double> latency = 6;  // endpoint, queue, stt, wake ... (seconds)
+  double wall_time = 7;             // Unix seconds, when the question ended
+}
+
+message Ignored {
+  string text = 1;
+  string reason = 2;                // e.g. "own voice", "too quiet", "conversation closed: ..."
+  optional double dbfs = 3;
+}
+
+message Level {
+  double mic = 1;                   // 0..1 (-60..-10 dBFS)
+  bool speech = 2;
+  bool gated = 3;
+}
+
+message Partial {
+  uint64 uid = 1;
+  string text = 2;
+}
+
+message Utterance {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    START = 1;
+    END = 2;
+    DONE = 3;
+  }
+  State state = 1;
+  uint64 uid = 2;
+}
+
+message SpeakerFrame {
+  string device = 1;
+  uint32 stream = 2;                // AUDIO_OUT stream id (u16)
+  uint32 sample_index = 3;
+  bytes pcm = 4;                    // int16 little-endian, 1..480 samples
+}
+
+message RobotAudioCtrl {
+  string device = 1;
+  uint32 command = 2;               // docs/protocol.md: 1 mic start, 2 mic stop, 3 play stop, 4 volume, 5 mic gain
+  uint32 argument = 3;
+}
+
+message RobotSound {
+  string device = 1;
+  uint32 id = 2;                    // 1 chirp, 2 beep, 3 wake, 4 done, 5 error, 6 hello
+}
+
+message SayProgress {
+  uint64 reply_id = 1;
+  string text = 2;                  // the piece being said
+  double seconds = 3;               // its duration
+  repeated float envelope = 4;      // loudness, 20 values per second, 0..1
+}
+
+message Interrupted {
+  uint64 reply_id = 1;
+  string reason = 2;                // barge-in | stop
+}
+
+message ReplySpoken {
+  uint64 reply_id = 1;
+  map<string, double> latency = 2;  // first_chunk, synthesis, first_audio ... (seconds)
+  bool interrupted = 3;
+}
+
+// ============================================================================ batch and options
+
+message AudioClip {
+  bytes pcm = 1;                    // 16 kHz mono int16 little-endian
+  string language = 2;              // empty: detect
+}
+
+message Transcript {
+  string text = 1;
+  string language = 2;
+  double language_prob = 3;
+  double no_speech_prob = 4;
+  double avg_logprob = 5;
+  double compression_ratio = 6;
+  double seconds = 7;               // how long recognition took
+  string rejected = 8;              // not empty: why it is not trusted
+}
+
+message OptionsRequest {
+}
+
+message VoiceOptions {
+  repeated Backend stt = 1;
+  repeated string stt_models = 2;
+  repeated Backend tts = 3;
+  repeated VoiceChoice voices = 4;
+  repeated string languages = 5;    // fr, en
+}
+
+message Backend {
+  string name = 1;
+  bool installed = 2;
+  string why = 3;                   // when not installed: what is missing
+}
+
+message VoiceChoice {
+  string id = 1;                    // e.g. fr_FR-siwis-medium, or a macOS voice name
+  string engine = 2;                // piper | say | espeak
+  string language = 3;
+  bool installed = 4;
+}

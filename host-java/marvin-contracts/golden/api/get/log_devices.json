@@ -1,0 +1,70 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/log?source=device&limit=20"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "entries": [
+      {
+        "id": 7,
+        "ts": 1789983010.0020695,
+        "source": "device",
+        "level": "info",
+        "text": "MR60BHA2 ready",
+        "device": "marvin-c6b0a2"
+      },
+      {
+        "id": 6,
+        "ts": 1789983010.00202,
+        "source": "device",
+        "level": "info",
+        "text": "wifi: connected, rssi -58 dBm",
+        "device": "marvin-a1b2c3"
+      },
+      {
+        "id": 5,
+        "ts": 1789983010.0019693,
+        "source": "device",
+        "level": "info",
+        "text": "firmware 0.6.0 up: lidar D500, radar LD2450, camera, audio",
+        "device": "marvin-a1b2c3"
+      },
+      {
+        "id": 4,
+        "ts": 1789983010.001854,
+        "source": "device",
+        "level": "info",
+        "text": "marvin-c6b0a2 connected (MR60BHA2 kit (XIAO ESP32C6), firmware mr60-0.2.1, simulated sensors)",
+        "device": "marvin-c6b0a2"
+      },
+      {
+        "id": 3,
+        "ts": 1789983010.0015018,
+        "source": "device",
+        "level": "info",
+        "text": "marvin-a1b2c3 connected (XIAO ESP32S3 Sense, firmware 0.6.0, simulated sensors)",
+        "device": "marvin-a1b2c3"
+      }
+    ]
+  },
+  "shape": {
+    "entries": [
+      {
+        "id": "number",
+        "ts": "number",
+        "source": "string",
+        "level": "string",
+        "text": "string",
+        "device": "string"
+      }
+    ]
+  }
+}

@@ -1,0 +1,201 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/conversation"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "day": "2026-09-21",
+    "entries": [
+      {
+        "language": "en",
+        "source": "voice",
+        "raw": "Marvin, good morning. Anything I should know?",
+        "id": 1790610495661,
+        "t": 1789980720.2827182,
+        "kind": "heard",
+        "text": "Good morning. Anything I should know?"
+      },
+      {
+        "language": "en",
+        "latency": {
+          "endpoint": 0.55,
+          "stt": 0.18,
+          "llm_first_token": 0.21,
+          "first_chunk": 0.34,
+          "tts": 0.14,
+          "audio_start": 0.71,
+          "speculative": 1.0
+        },
+        "first_word_s": 1.26,
+        "interrupted": false,
+        "proactive": false,
+        "error": null,
+        "hint": "",
+        "context": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 12 minutes.\n- Your 60 GHz vital-signs radar has no reliable reading right now: it needs the person seated and still, within about one and a half metres of you, for a few seconds.",
+        "prompt": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 12 minutes.\n- Your 60 GHz vital-signs radar has no reliable reading right now: it needs the person seated and still, within about one and a half metres of you, for a few seconds.\n\nThe person says: Good morning. Anything I should know?\n\n(Answer in English.)",
+        "model": "qwen3:4b-instruct",
+        "id": 1790610495662,
+        "t": 1789980720.2827182,
+        "kind": "reply",
+        "text": "Good morning. You sat down at nine and haven't moved much. The coffee is still warm, I assume."
+      },
+      {
+        "reason": "known hallucination",
+        "dbfs": -41.5,
+        "id": 1790610495663,
+        "t": 1789981140.2827182,
+        "kind": "ignored",
+        "text": "Thanks for watching!"
+      },
+      {
+        "reason": "too quiet (-53 dBFS)",
+        "dbfs": -53.2,
+        "id": 1790610495664,
+        "t": 1789981200.2827182,
+        "kind": "ignored",
+        "text": ""
+      },
+      {
+        "reason": "only 0.18 s of speech",
+        "dbfs": -36.8,
+        "id": 1790610495665,
+        "t": 1789981200.2827182,
+        "kind": "ignored",
+        "text": ""
+      },
+      {
+        "language": "en",
+        "source": "voice",
+        "raw": "Marvin, what's my heart rate right now?",
+        "id": 1790610495666,
+        "t": 1789981680.2827182,
+        "kind": "heard",
+        "text": "What's my heart rate right now?"
+      },
+      {
+        "language": "en",
+        "latency": {
+          "endpoint": 0.55,
+          "stt": 0.09,
+          "llm_first_token": 0.19,
+          "first_chunk": 0.3,
+          "tts": 0.12,
+          "audio_start": 0.62,
+          "speculative": 1.0
+        },
+        "first_word_s": 1.17,
+        "interrupted": false,
+        "proactive": false,
+        "error": null,
+        "hint": "",
+        "context": "Context:\n- It is Monday 21 September 2026, 09:08 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 28 minutes.\n- Your 60 GHz radar measures their breathing at 14 per minute, right now.\n- Your 60 GHz radar measures their heart rate at 66 beats per minute, right now.",
+        "prompt": "Context:\n- It is Monday 21 September 2026, 09:08 (local time).\n- Your sensors are simulated for testing (no real radar or lidar yet): the person below is a simulated one walking in a simulated room on a loop, not the one talking to you. If asked about the room, the person or their vital signs, give the simulated values and say they are simulated.\n- Someone is in front of you, about 0.9 metres from you.\n- They have been seated for 28 minutes.\n- Your 60 GHz radar measures their breathing at 14 per minute, right now.\n- Your 60 GHz radar measures their heart rate at 66 beats per minute, right now.\n\nThe person says: What's my heart rate right now?\n\n(Answer in English.)",
+        "model": "qwen3:4b-instruct",
+        "id": 1790610495667,
+        "t": 1789981680.2827182,
+        "kind": "reply",
+        "text": "About 66 beats a minute, and you're breathing 14 times a minute. Calm, as far as I can tell."
+      },
+      {
+        "reason": "conversation closed: thanks",
+        "dbfs": -33.9,
+        "id": 1790610495668,
+        "t": 1789981740.2827182,
+        "kind": "ignored",
+        "text": "Oui, je sais."
+      },
+      {
+        "language": "en",
+        "latency": {},
+        "first_word_s": null,
+        "interrupted": false,
+        "proactive": true,
+        "error": null,
+        "hint": "",
+        "id": 1790610495669,
+        "t": 1789982760.2827182,
+        "kind": "reply",
+        "text": "You've been sitting for 50 minutes. Time to stretch?"
+      },
+      {
+        "id": 1790610495670,
+        "t": 1789983000.2886887,
+        "kind": "note",
+        "text": "Voice on: say “Marvin, …”"
+      }
+    ]
+  },
+  "shape": {
+    "day": "string",
+    "entries": [
+      {
+        "language": "string",
+        "source": "string",
+        "raw": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "language": "string",
+        "latency": {
+          "endpoint": "number",
+          "stt": "number",
+          "llm_first_token": "number",
+          "first_chunk": "number",
+          "tts": "number",
+          "audio_start": "number",
+          "speculative": "number"
+        },
+        "first_word_s": "number",
+        "interrupted": "boolean",
+        "proactive": "boolean",
+        "error": "null",
+        "hint": "string",
+        "context": "string",
+        "prompt": "string",
+        "model": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "reason": "string",
+        "dbfs": "number",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "language": "string",
+        "latency": {},
+        "first_word_s": "null",
+        "interrupted": "boolean",
+        "proactive": "boolean",
+        "error": "null",
+        "hint": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      },
+      {
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      }
+    ]
+  }
+}

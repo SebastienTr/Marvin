@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/"
+  },
+  "status": 401,
+  "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": null,
+  "body_bytes": 537,
+  "body_text": "<!doctype html>\n<!-- SPDX-License-Identifier: MIT -->\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Marvin</title><link rel=\"stylesheet\" href=\"/static/style.css\"></head>\n<body class=\"locked\"><main class=\"locked-card\">\n<h1>Marvin</h1>\n<p>This app needs its access key.</p>\n<p class=\"muted\">Open the address that <code>marvin-host</code> printed when it started, the one that ends\nwith <code>?token=</code>. Your browser will remember it.</p>\n</main></body></html>\n"
+}

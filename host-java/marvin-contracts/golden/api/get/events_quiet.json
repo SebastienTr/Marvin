@@ -1,0 +1,254 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/events?limit=20&quiet=1"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "events": [
+      {
+        "id": 225,
+        "ts": 1789983041.5011263,
+        "kind": "sat_down",
+        "detail": "0.86 m away",
+        "data": {
+          "distance_m": 0.8625347270697842
+        },
+        "text": "You sat down"
+      },
+      {
+        "id": 224,
+        "ts": 1789983019.013872,
+        "kind": "arrived",
+        "detail": "2.73 m away",
+        "data": {
+          "distance_m": 2.7349805095751494
+        },
+        "text": "You came in"
+      },
+      {
+        "id": 223,
+        "ts": 1789983009.9614859,
+        "kind": "robot_online",
+        "detail": "",
+        "data": {
+          "present": false,
+          "seated": false
+        },
+        "text": "Connected to the robot"
+      },
+      {
+        "id": 222,
+        "ts": 1789983000.306938,
+        "kind": "host_started",
+        "detail": "",
+        "data": {},
+        "text": "Marvin started"
+      },
+      {
+        "id": 221,
+        "ts": 1789982700.099155,
+        "kind": "left",
+        "detail": "not seen for 3 s",
+        "data": {},
+        "text": "You left"
+      },
+      {
+        "id": 220,
+        "ts": 1789982697.099155,
+        "kind": "stood_up",
+        "detail": "after 26 min seated",
+        "data": {
+          "seated_s": 1586.7
+        },
+        "text": "You stood up after 26 min"
+      },
+      {
+        "id": 218,
+        "ts": 1789981110.4016583,
+        "kind": "sat_down",
+        "detail": "0.86 m away",
+        "data": {
+          "distance_m": 0.86
+        },
+        "text": "You sat down"
+      },
+      {
+        "id": 217,
+        "ts": 1789981043.130137,
+        "kind": "arrived",
+        "detail": "1.88 m away",
+        "data": {
+          "distance_m": 1.95
+        },
+        "text": "You came in"
+      },
+      {
+        "id": 216,
+        "ts": 1789905974.1645484,
+        "kind": "left",
+        "detail": "not seen for 3 s",
+        "data": {},
+        "text": "You left"
+      },
+      {
+        "id": 215,
+        "ts": 1789905816.185476,
+        "kind": "stood_up",
+        "detail": "after 59 min seated",
+        "data": {
+          "seated_s": 3547.4
+        },
+        "text": "You stood up after 59 min"
+      },
+      {
+        "id": 213,
+        "ts": 1789905268.7406874,
+        "kind": "still_long",
+        "detail": "seated for 50 min",
+        "data": {
+          "seated_s": 3000
+        },
+        "text": "Time for a break: seated for 50 min"
+      },
+      {
+        "id": 211,
+        "ts": 1789902268.7406874,
+        "kind": "sat_down",
+        "detail": "0.94 m away",
+        "data": {
+          "distance_m": 0.94
+        },
+        "text": "You sat down"
+      },
+      {
+        "id": 210,
+        "ts": 1789902134.9449077,
+        "kind": "stood_up",
+        "detail": "after 62 min seated",
+        "data": {
+          "seated_s": 3690.5
+        },
+        "text": "You stood up after 1 h 01"
+      },
+      {
+        "id": 208,
+        "ts": 1789901444.4145072,
+        "kind": "still_long",
+        "detail": "seated for 50 min",
+        "data": {
+          "seated_s": 3000
+        },
+        "text": "Time for a break: seated for 50 min"
+      },
+      {
+        "id": 206,
+        "ts": 1789898444.4145072,
+        "kind": "sat_down",
+        "detail": "0.93 m away",
+        "data": {
+          "distance_m": 0.93
+        },
+        "text": "You sat down"
+      },
+      {
+        "id": 205,
+        "ts": 1789898247.913436,
+        "kind": "arrived",
+        "detail": "2.07 m away",
+        "data": {
+          "distance_m": 1.82
+        },
+        "text": "You came in"
+      },
+      {
+        "id": 204,
+        "ts": 1789819540.4002905,
+        "kind": "left",
+        "detail": "not seen for 3 s",
+        "data": {},
+        "text": "You left"
+      },
+      {
+        "id": 203,
+        "ts": 1789819241.249794,
+        "kind": "stood_up",
+        "detail": "after 26 min seated",
+        "data": {
+          "seated_s": 1576.1
+        },
+        "text": "You stood up after 26 min"
+      },
+      {
+        "id": 200,
+        "ts": 1789817665.188049,
+        "kind": "sat_down",
+        "detail": "0.91 m away",
+        "data": {
+          "distance_m": 0.91
+        },
+        "text": "You sat down"
+      },
+      {
+        "id": 199,
+        "ts": 1789817389.0400581,
+        "kind": "stood_up",
+        "detail": "after 68 min seated",
+        "data": {
+          "seated_s": 4058.2
+        },
+        "text": "You stood up after 1 h 07"
+      }
+    ]
+  },
+  "shape": {
+    "events": [
+      {
+        "id": "number",
+        "ts": "number",
+        "kind": "string",
+        "detail": "string",
+        "data": {
+          "distance_m": "number"
+        },
+        "text": "string"
+      },
+      {
+        "id": "number",
+        "ts": "number",
+        "kind": "string",
+        "detail": "string",
+        "data": {
+          "present": "boolean",
+          "seated": "boolean"
+        },
+        "text": "string"
+      },
+      {
+        "id": "number",
+        "ts": "number",
+        "kind": "string",
+        "detail": "string",
+        "data": {},
+        "text": "string"
+      },
+      {
+        "id": "number",
+        "ts": "number",
+        "kind": "string",
+        "detail": "string",
+        "data": {
+          "seated_s": "number"
+        },
+        "text": "string"
+      }
+    ]
+  }
+}

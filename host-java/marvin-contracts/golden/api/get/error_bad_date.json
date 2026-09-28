@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/day?date=21-09-2026"
+  },
+  "status": 400,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "error": "date must be YYYY-MM-DD"
+  },
+  "shape": {
+    "error": "string"
+  }
+}

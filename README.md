@@ -98,6 +98,7 @@ marvin/
 │   └── archive/                  # earlier revisions (rev E: Fanou the lighthouse)
 ├── firmware/                     # ESP32 firmware (prototype)
 ├── host/                         # desktop receiver, viewer, simulator
+├── host-java/                    # next-generation host core (Java, in progress; ./marvin runs it)
 ├── docs/                         # BOM, wiring, printing, assembly, architecture
 │   ├── protocol.md               # robot ↔ host UDP protocol
 │   ├── design.md                 # Marvin's brain: next-generation host design (memory, agents, Java core)
@@ -111,7 +112,7 @@ marvin/
 | What | Licence |
 |---|---|
 | Hardware (`hardware/`) | [CERN-OHL-P-2.0](LICENSES/CERN-OHL-P-2.0.txt) |
-| Software (`firmware/`, `host/`, scripts) | [MIT](LICENSES/MIT.txt) |
+| Software (`firmware/`, `host/`, `host-java/`, scripts) | [MIT](LICENSES/MIT.txt) |
 | Documentation and images (`docs/`, READMEs) | [CC BY 4.0](LICENSES/CC-BY-4.0.txt) |
 
 All three are permissive: build it, modify it, sell it. Just keep the attribution.

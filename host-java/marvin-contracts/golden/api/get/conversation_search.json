@@ -1,0 +1,63 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/conversation?q=stretch"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "q": "stretch",
+    "results": [
+      {
+        "language": "en",
+        "latency": {},
+        "first_word_s": null,
+        "interrupted": false,
+        "proactive": true,
+        "error": null,
+        "hint": "",
+        "id": 1790610495669,
+        "t": 1789982760.2827182,
+        "kind": "reply",
+        "text": "You've been sitting for 50 minutes. Time to stretch?"
+      },
+      {
+        "language": "en",
+        "latency": {},
+        "first_word_s": null,
+        "interrupted": false,
+        "proactive": true,
+        "error": null,
+        "hint": "",
+        "id": 1789736149755,
+        "t": 1789736149.7499144,
+        "kind": "reply",
+        "text": "You've been sitting for 50 minutes. Time to stretch?"
+      }
+    ]
+  },
+  "shape": {
+    "q": "string",
+    "results": [
+      {
+        "language": "string",
+        "latency": {},
+        "first_word_s": "null",
+        "interrupted": "boolean",
+        "proactive": "boolean",
+        "error": "null",
+        "hint": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/manifest.webmanifest"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/manifest+json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": null,
+  "body_bytes": 311
+}

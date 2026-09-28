@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/conversation?q=weather"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "q": "weather",
+    "results": [
+      {
+        "language": "en",
+        "source": "typed",
+        "id": 1790610495695,
+        "t": 1789983151.035986,
+        "kind": "heard",
+        "text": "What's the weather in Paris?"
+      }
+    ]
+  },
+  "shape": {
+    "q": "string",
+    "results": [
+      {
+        "language": "string",
+        "source": "string",
+        "id": "number",
+        "t": "number",
+        "kind": "string",
+        "text": "string"
+      }
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: MIT
+name: CI
+
+on:
+  push:
+    paths: ["host/**", "host-java/**", "marvin", ".github/workflows/ci.yml"]
+  pull_request:
+    paths: ["host/**", "host-java/**", "marvin", ".github/workflows/ci.yml"]
+
+jobs:
+  python:
+    name: Python host
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: host/pyproject.toml
+      - name: Install
+        run: pip install -e "host[dev]"
+      - name: Tests
+        working-directory: host
+        run: python -m pytest -q
+      - name: Golden files are up to date
+        # the contract files are regenerated from the Python host; any change must be committed on
+        # purpose. Compressed files (.gz, .png) depend on the zlib version: compare the rest.
+        run: |
+          python host-java/marvin-contracts/tools/generate_all.py --no-api
+          git diff --stat --exit-code -- 'host-java/marvin-contracts/golden/*.json' 'host-java/marvin-contracts/golden/*.jsonl'
+
+  java:
+    name: Java host
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Build and test (unit, ArchUnit, Testcontainers)
+        working-directory: host-java
+        run: ./mvnw -B -ntp verify
+      - name: Launcher
+        run: |
+          sh -n marvin
+          ./marvin doctor

@@ -1,0 +1,24 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/settings",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "raw_body": "{not json"
+  },
+  "status": 400,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+  },
+  "shape": {
+    "error": "string"
+  }
+}

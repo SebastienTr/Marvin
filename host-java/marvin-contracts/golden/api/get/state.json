@@ -1,0 +1,171 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/state"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "state": {
+      "t": 1789983060.0907292,
+      "online": true,
+      "present": true,
+      "seated": true,
+      "seated_s": 18.5,
+      "still_s": 21.5,
+      "distance_m": 0.86,
+      "breath_rate": 15.4,
+      "heart_rate": 64.3,
+      "targets": 1,
+      "vitals_sensor": true,
+      "simulated": true,
+      "expression": null,
+      "status": "You just sat down",
+      "detail": "Breathing 15/min, heart 64/min",
+      "mood": "seated",
+      "quiet": false,
+      "break": {
+        "interval_s": 3000.0,
+        "seated_s": 18.5,
+        "progress": 0.006,
+        "due": false
+      }
+    },
+    "today": {
+      "date": "2026-09-21",
+      "start": 1789948800.0,
+      "end": 1790035200.0,
+      "now": 1789983042.0432403,
+      "present_s": 1680.0,
+      "seated_s": 1587.2,
+      "sessions": 2,
+      "breaks": 1,
+      "break_s": 344.4,
+      "longest_s": 1586.7,
+      "reminders": 0,
+      "first_arrival": 1789981043.130137,
+      "last_departure": null,
+      "breath_rate": 14.0,
+      "heart_rate": 66.3,
+      "timeline": {
+        "present": [
+          [
+            1789981043.1,
+            1789982700.1
+          ],
+          [
+            1789983019.0,
+            1789983042.0
+          ]
+        ],
+        "seated": [
+          [
+            1789981110.4,
+            1789982697.1
+          ],
+          [
+            1789983041.5,
+            1789983042.0
+          ]
+        ],
+        "breaks": [
+          [
+            1789982697.1,
+            1789983041.5
+          ]
+        ],
+        "reminders": []
+      }
+    },
+    "settings": {
+      "break_interval_min": 50,
+      "quiet_hours": {
+        "enabled": false,
+        "start": "22:00",
+        "end": "07:00"
+      },
+      "voice": false,
+      "clock": "24h",
+      "ui_sounds": true
+    }
+  },
+  "shape": {
+    "state": {
+      "t": "number",
+      "online": "boolean",
+      "present": "boolean",
+      "seated": "boolean",
+      "seated_s": "number",
+      "still_s": "number",
+      "distance_m": "number",
+      "breath_rate": "number",
+      "heart_rate": "number",
+      "targets": "number",
+      "vitals_sensor": "boolean",
+      "simulated": "boolean",
+      "expression": "null",
+      "status": "string",
+      "detail": "string",
+      "mood": "string",
+      "quiet": "boolean",
+      "break": {
+        "interval_s": "number",
+        "seated_s": "number",
+        "progress": "number",
+        "due": "boolean"
+      }
+    },
+    "today": {
+      "date": "string",
+      "start": "number",
+      "end": "number",
+      "now": "number",
+      "present_s": "number",
+      "seated_s": "number",
+      "sessions": "number",
+      "breaks": "number",
+      "break_s": "number",
+      "longest_s": "number",
+      "reminders": "number",
+      "first_arrival": "number",
+      "last_departure": "null",
+      "breath_rate": "number",
+      "heart_rate": "number",
+      "timeline": {
+        "present": [
+          [
+            "number"
+          ]
+        ],
+        "seated": [
+          [
+            "number"
+          ]
+        ],
+        "breaks": [
+          [
+            "number"
+          ]
+        ],
+        "reminders": []
+      }
+    },
+    "settings": {
+      "break_interval_min": "number",
+      "quiet_hours": {
+        "enabled": "boolean",
+        "start": "string",
+        "end": "string"
+      },
+      "voice": "boolean",
+      "clock": "string",
+      "ui_sounds": "boolean"
+    }
+  }
+}

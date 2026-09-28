@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/state",
+    "headers": {
+      "Authorization": "Bearer nope"
+    }
+  },
+  "status": 401,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "error": "access key required"
+  },
+  "shape": {
+    "error": "string"
+  }
+}

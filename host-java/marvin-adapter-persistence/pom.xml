@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>marvin.host</groupId>
+    <artifactId>marvin-host-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>marvin-adapter-persistence</artifactId>
+  <name>Marvin persistence adapter</name>
+  <description>PostgreSQL (with pgvector): JDBC repositories, Flyway migrations, one schema per bounded context; embedded PostgreSQL when Docker is not there</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>marvin.host</groupId>
+      <artifactId>marvin-application</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <!-- Flyway itself, not Boot's auto-configuration: each context migrates its own schema (ContextMigrations) -->
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.zonky.test</groupId>
+      <artifactId>embedded-postgres</artifactId>
+      <exclusions>
+        <!-- only the binaries of the platform being built are packaged: see the profiles below -->
+        <exclusion>
+          <groupId>io.zonky.test.postgres</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <!-- PostgreSQL binaries for the embedded mode, for the machine that builds (./marvin builds locally) -->
+  <profiles>
+    <profile>
+      <id>embedded-postgres-macos-arm64</id>
+      <activation>
+        <os>
+          <family>mac</family>
+          <arch>aarch64</arch>
+        </os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>io.zonky.test.postgres</groupId>
+          <artifactId>embedded-postgres-binaries-darwin-arm64v8</artifactId>
+          <scope>runtime</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>embedded-postgres-macos-x64</id>
+      <activation>
+        <os>
+          <family>mac</family>
+          <arch>x86_64</arch>
+        </os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>io.zonky.test.postgres</groupId>
+          <artifactId>embedded-postgres-binaries-darwin-amd64</artifactId>
+          <scope>runtime</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>embedded-postgres-linux-x64</id>
+      <activation>
+        <os>
+          <family>unix</family>
+          <name>Linux</name>
+          <arch>amd64</arch>
+        </os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>io.zonky.test.postgres</groupId>
+          <artifactId>embedded-postgres-binaries-linux-amd64</artifactId>
+          <scope>runtime</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>embedded-postgres-linux-arm64</id>
+      <activation>
+        <os>
+          <family>unix</family>
+          <name>Linux</name>
+          <arch>aarch64</arch>
+        </os>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>io.zonky.test.postgres</groupId>
+          <artifactId>embedded-postgres-binaries-linux-arm64v8</artifactId>
+          <scope>runtime</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
+</project>

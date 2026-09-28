@@ -1,0 +1,73 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/settings",
+    "body": {
+      "break_interval_min": 45
+    }
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "settings": {
+      "break_interval_min": 45,
+      "quiet_hours": {
+        "enabled": false,
+        "start": "22:00",
+        "end": "07:00"
+      },
+      "voice": false,
+      "clock": "24h",
+      "ui_sounds": true
+    },
+    "defaults": {
+      "break_interval_min": 45,
+      "quiet_hours": {
+        "enabled": false,
+        "start": "22:00",
+        "end": "07:00"
+      },
+      "voice": false,
+      "clock": "24h",
+      "ui_sounds": true
+    },
+    "about": {
+      "data_dir": "/tmp/marvin-contracts-wtu22e28",
+      "access_key": true
+    }
+  },
+  "shape": {
+    "settings": {
+      "break_interval_min": "number",
+      "quiet_hours": {
+        "enabled": "boolean",
+        "start": "string",
+        "end": "string"
+      },
+      "voice": "boolean",
+      "clock": "string",
+      "ui_sounds": "boolean"
+    },
+    "defaults": {
+      "break_interval_min": "number",
+      "quiet_hours": {
+        "enabled": "boolean",
+        "start": "string",
+        "end": "string"
+      },
+      "voice": "boolean",
+      "clock": "string",
+      "ui_sounds": "boolean"
+    },
+    "about": {
+      "data_dir": "string",
+      "access_key": "boolean"
+    }
+  }
+}
