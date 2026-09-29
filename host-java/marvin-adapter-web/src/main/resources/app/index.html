@@ -243,71 +243,6 @@
           <p class="notice-fix" id="memory-notice-fix" hidden><span class="muted">Fix:</span> <code id="memory-notice-code"></code></p>
           <button type="button" class="small-button" id="memory-notice-retry">Check again</button>
         </div>
-        <div class="subnav" role="group" aria-label="Memory filter">
-          <button type="button" data-memory-filter="all" aria-pressed="true">All memories<span class="sub-count" data-memory-count="all"></span></button>
-          <button type="button" data-memory-filter="pinned" aria-pressed="false">Pinned<span class="sub-count" data-memory-count="pinned"></span></button>
-          <button type="button" data-memory-filter="suggested" aria-pressed="false">Suggested<span class="sub-count" data-memory-count="suggested"></span></button>
-          <button type="button" data-memory-filter="past" aria-pressed="false">Past<span class="sub-count" data-memory-count="past"></span></button>
-        </div>
-        <div class="memory-layout">
-          <section class="panel facts-panel" aria-labelledby="facts-h">
-            <div class="row"><h3 id="facts-h">Your memories</h3><span class="small muted" id="memory-count" role="status"></span></div>
-            <p class="small muted filter-hint" id="memory-filter-hint"></p>
-            <div class="search-row">
-              <label class="search"><span class="small muted">Find</span><input type="search" id="memory-search" maxlength="200" placeholder="Search a memory…" enterkeyhint="search"></label>
-              <button type="button" id="memory-add" class="add-button"><span aria-hidden="true">+</span><span>Add</span><span class="sr"> a memory</span></button>
-            </div>
-            <div class="bulk" id="memory-bulk" hidden>
-              <p class="small" id="memory-bulk-text"></p>
-              <button type="button" class="small-button" id="memory-review-all">Keep all shown</button>
-            </div>
-            <ol class="facts" id="fact-list" aria-labelledby="facts-h"></ol>
-            <div class="loading-lines" id="memory-loading" aria-hidden="true"><i></i><i></i><i></i></div>
-            <div class="empty" id="memory-empty" hidden><h3 id="memory-empty-title">Nothing here yet.</h3><p class="small" id="memory-empty-text"></p>
-              <button type="button" class="small-button" id="memory-empty-retry" hidden>Try again</button></div>
-            <div class="more-row"><button type="button" class="small-button" id="memory-more" hidden>Show more</button></div>
-          </section>
-          <aside class="stack profile-panel">
-            <section class="panel profile-card" aria-labelledby="profile-h">
-              <div class="row"><span class="label muted" id="profile-h">Your profile</span><span class="small muted" id="profile-tokens"></span></div>
-              <div id="profile-body"><div class="loading-lines" aria-hidden="true"><i></i><i></i></div></div>
-              <button type="button" class="link-button small" id="profile-open">Read profile &amp; versions ↗</button>
-            </section>
-            <section class="panel" aria-labelledby="episodes-h">
-              <div class="panel-head"><h3 id="episodes-h">Days, in Marvin’s words</h3></div>
-              <div class="chips" role="radiogroup" aria-label="Summaries of">
-                <label><input type="radio" name="episode-level" value="day" checked><span>Days</span></label>
-                <label><input type="radio" name="episode-level" value="week"><span>Weeks</span></label>
-                <label><input type="radio" name="episode-level" value="month"><span>Months</span></label>
-              </div>
-              <p class="small muted gap-top" id="episodes-today"></p>
-              <ol class="episodes" id="episodes"></ol>
-              <p class="empty-line muted" id="episodes-empty" hidden></p>
-              <button type="button" class="link-button small" id="episodes-more" hidden>Show all</button>
-            </section>
-            <section class="panel" aria-labelledby="mworker-h">
-              <div class="panel-head"><h3 id="mworker-h">Memory at work</h3><span class="pill" data-worker-pill>–</span></div>
-              <div data-worker-body="full"><div class="loading-lines" aria-hidden="true"><i></i><i></i><i></i></div></div>
-            </section>
-            <section class="panel terms" aria-labelledby="terms-h">
-              <h3 id="terms-h">Memory, on your terms.</h3>
-              <p class="small muted gap-top">Each fact keeps its source. Forgetting a fact removes it from future context; nothing is deleted without your say. Everything stays on this computer.</p>
-              <fieldset class="field sources" id="memory-sources">
-                <legend>What Marvin may learn from</legend>
-                <label class="check"><input type="checkbox" data-source="collect_conversation"><span>Your conversations<small class="muted">What you say to Marvin and what it answers</small></span></label>
-                <label class="check"><input type="checkbox" data-source="collect_brain"><span>What Marvin notices<small class="muted">Presence, breaks and the robot’s moments</small></span></label>
-                <label class="check"><input type="checkbox" checked disabled><span>What you tell it here<small class="muted">Always: your own edits and memories</small></span></label>
-                <p class="hint" id="memory-sources-note">Switching a source off stops it from feeding memory at once. What is already remembered stays until you forget it.</p>
-              </fieldset>
-              <div class="terms-actions">
-                <button type="button" class="small-button" id="memory-settings">Settings</button>
-                <button type="button" class="small-button" id="memory-log">The raw log</button>
-                <button type="button" class="small-button danger" id="memory-forget-all">Forget everything…</button>
-              </div>
-            </section>
-          </aside>
-        </div>
-
         <section class="panel mv" id="memory-views" aria-labelledby="mv-h">
           <div class="panel-head wrap">
             <div><h3 id="mv-h">See your memory</h3><p class="small muted mv-sub" id="mv-intro"></p></div>
@@ -377,6 +312,72 @@
             <details class="mv-list"><summary>Read it as a list</summary><div id="mv-flow-list"></div></details>
           </div>
         </section>
+        <div class="subnav" role="group" aria-label="Memory filter">
+          <button type="button" data-memory-filter="all" aria-pressed="true">All memories<span class="sub-count" data-memory-count="all"></span></button>
+          <button type="button" data-memory-filter="pinned" aria-pressed="false">Pinned<span class="sub-count" data-memory-count="pinned"></span></button>
+          <button type="button" data-memory-filter="suggested" aria-pressed="false">Suggested<span class="sub-count" data-memory-count="suggested"></span></button>
+          <button type="button" data-memory-filter="past" aria-pressed="false">Past<span class="sub-count" data-memory-count="past"></span></button>
+        </div>
+        <div class="memory-layout">
+          <section class="panel facts-panel" aria-labelledby="facts-h">
+            <div class="row"><h3 id="facts-h">Your memories</h3><span class="small muted" id="memory-count" role="status"></span></div>
+            <p class="small muted filter-hint" id="memory-filter-hint"></p>
+            <div class="search-row">
+              <label class="search"><span class="small muted">Find</span><input type="search" id="memory-search" maxlength="200" placeholder="Search a memory…" enterkeyhint="search"></label>
+              <button type="button" id="memory-add" class="add-button"><span aria-hidden="true">+</span><span>Add</span><span class="sr"> a memory</span></button>
+            </div>
+            <div class="bulk" id="memory-bulk" hidden>
+              <p class="small" id="memory-bulk-text"></p>
+              <button type="button" class="small-button" id="memory-review-all">Keep all shown</button>
+            </div>
+            <ol class="facts" id="fact-list" aria-labelledby="facts-h"></ol>
+            <div class="loading-lines" id="memory-loading" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="empty" id="memory-empty" hidden><h3 id="memory-empty-title">Nothing here yet.</h3><p class="small" id="memory-empty-text"></p>
+              <button type="button" class="small-button" id="memory-empty-retry" hidden>Try again</button></div>
+            <div class="more-row"><button type="button" class="small-button" id="memory-more" hidden>Show more</button></div>
+          </section>
+          <aside class="stack profile-panel">
+            <section class="panel profile-card" aria-labelledby="profile-h">
+              <div class="row"><span class="label muted" id="profile-h">Your profile</span><span class="small muted" id="profile-tokens"></span></div>
+              <div id="profile-body"><div class="loading-lines" aria-hidden="true"><i></i><i></i></div></div>
+              <button type="button" class="link-button small" id="profile-open">Read profile &amp; versions ↗</button>
+            </section>
+            <section class="panel" aria-labelledby="episodes-h">
+              <div class="panel-head"><h3 id="episodes-h">Days, in Marvin’s words</h3></div>
+              <div class="chips" role="radiogroup" aria-label="Summaries of">
+                <label><input type="radio" name="episode-level" value="day" checked><span>Days</span></label>
+                <label><input type="radio" name="episode-level" value="week"><span>Weeks</span></label>
+                <label><input type="radio" name="episode-level" value="month"><span>Months</span></label>
+              </div>
+              <p class="small muted gap-top" id="episodes-today"></p>
+              <ol class="episodes" id="episodes"></ol>
+              <p class="empty-line muted" id="episodes-empty" hidden></p>
+              <button type="button" class="link-button small" id="episodes-more" hidden>Show all</button>
+            </section>
+            <section class="panel" aria-labelledby="mworker-h">
+              <div class="panel-head"><h3 id="mworker-h">Memory at work</h3><span class="pill" data-worker-pill>–</span></div>
+              <div data-worker-body="full"><div class="loading-lines" aria-hidden="true"><i></i><i></i><i></i></div></div>
+            </section>
+            <section class="panel terms" aria-labelledby="terms-h">
+              <h3 id="terms-h">Memory, on your terms.</h3>
+              <p class="small muted gap-top">Each fact keeps its source. Forgetting a fact removes it from future context; nothing is deleted without your say. Everything stays on this computer.</p>
+              <fieldset class="field sources" id="memory-sources">
+                <legend>What Marvin may learn from</legend>
+                <label class="check"><input type="checkbox" data-source="collect_conversation"><span>Your conversations<small class="muted">What you say to Marvin and what it answers</small></span></label>
+                <label class="check"><input type="checkbox" data-source="collect_brain"><span>What Marvin notices<small class="muted">Presence, breaks and the robot’s moments</small></span></label>
+                <label class="check"><input type="checkbox" checked disabled><span>What you tell it here<small class="muted">Always: your own edits and memories</small></span></label>
+                <p class="hint" id="memory-sources-note">Switching a source off stops it from feeding memory at once. What is already remembered stays until you forget it.</p>
+              </fieldset>
+              <div class="terms-actions">
+                <button type="button" class="small-button" id="memory-settings">Settings</button>
+                <button type="button" class="small-button" id="memory-log">The raw log</button>
+                <button type="button" class="small-button danger" id="memory-forget-all">Forget everything…</button>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+
       </section>
 
       <!-- ============================================================ activity -->
