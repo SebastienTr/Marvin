@@ -1,0 +1,12 @@
+{"t_us":7005000,"kind":"arrived","detail":"2.74 m away","data":{"distance_m":2.735283024295334}}
+{"t_us":29415000,"kind":"sat_down","detail":"0.86 m away","data":{"distance_m":0.8624489664503614}}
+{"t_us":30130000,"kind":"vitals_acquired","detail":"breath 16/min, heart 65/min","data":{"breath_rate":15.63,"heart_rate":64.74}}
+{"t_us":35115000,"kind":"vitals_lost","detail":"movement","data":{}}
+{"t_us":39585000,"kind":"vitals_acquired","detail":"breath 12/min, heart 73/min","data":{"breath_rate":12.24,"heart_rate":72.69}}
+{"t_us":43035000,"kind":"vitals_lost","detail":"no valid reading","data":{}}
+{"t_us":48115000,"kind":"vitals_acquired","detail":"breath 15/min, heart 64/min","data":{"breath_rate":14.83,"heart_rate":63.92}}
+{"t_us":50045000,"kind":"vitals_lost","detail":"no valid reading","data":{}}
+{"t_us":54105000,"kind":"vitals_acquired","detail":"breath 15/min, heart 71/min","data":{"breath_rate":14.99,"heart_rate":71.47}}
+{"t_us":56035000,"kind":"vitals_lost","detail":"no valid reading","data":{}}
+{"t_us":57560000,"kind":"stood_up","detail":"after 28 s seated","data":{"seated_s":28.145000000000003}}
+{"t_us":68860000,"kind":"left","detail":"not seen for 3 s","data":{}}

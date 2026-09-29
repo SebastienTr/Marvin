@@ -1,0 +1,249 @@
+{
+  "about": "Golden recordings from the simulated robot and the Python host's view of them (host-java/marvin-contracts/tools/recordings.py). Device times in microseconds.",
+  "format": "mvrec v1, gzip (host/marvin_host/record.py)",
+  "brain_config": {
+    "arrive_confirm_s": 0.5,
+    "leave_after_s": 3.0,
+    "approach_m": 0.6,
+    "approach_rearm_m": 0.9,
+    "position_tau_s": 0.2,
+    "speed_tau_s": 0.5,
+    "radar_speed_sign": -1,
+    "still_window_s": 1.0,
+    "still_move_mm": 120.0,
+    "still_speed_cms": 10.0,
+    "sit_max_m": 1.3,
+    "sit_still_s": 3.0,
+    "stand_move_mm": 300.0,
+    "stand_away_m": 0.3,
+    "stand_speed_cms": 30.0,
+    "stand_speed_s": 0.5,
+    "still_long_s": 3000,
+    "vitals_acquire_s": 3.0,
+    "vitals_lose_s": 1.0,
+    "breath_range": [
+      6.0,
+      30.0
+    ],
+    "heart_range": [
+      40.0,
+      140.0
+    ],
+    "head_z_seated_mm": 550.0,
+    "head_z_standing_mm": 1000.0,
+    "clock_reset_s": 1.0,
+    "max_events": 200
+  },
+  "scenarios": [
+    {
+      "name": "room_loop",
+      "description": "One loop of the simulated room: walks in, sits (vital signs acquired, lost at each fidget,\n    acquired again), stands up, leaves.",
+      "file": "room_loop.mvrec.gz",
+      "duration_s": 71.974999,
+      "datagrams": 4157,
+      "events": [
+        "arrived",
+        "sat_down",
+        "vitals_acquired",
+        "vitals_lost",
+        "vitals_acquired",
+        "vitals_lost",
+        "vitals_acquired",
+        "vitals_lost",
+        "vitals_acquired",
+        "vitals_lost",
+        "stood_up",
+        "left"
+      ],
+      "states": 711,
+      "scans": 719,
+      "hellos": [
+        {
+          "address": "192.0.2.1:47101",
+          "device_name": "marvin-53494d",
+          "board": 255,
+          "firmware": "sim-0.1.0",
+          "simulated": true
+        }
+      ],
+      "receiver": {
+        "devices": [
+          {
+            "address": "192.0.2.1:47101",
+            "device_name": "marvin-53494d",
+            "stats": {
+              "datagrams": 4157,
+              "lidar_packets": 26990,
+              "radar_frames": 711,
+              "lost": 0,
+              "crc_errors": 0,
+              "bad": 0
+            }
+          }
+        ]
+      },
+      "meta": {
+        "host_start_unix": 1790000000.0,
+        "host_start": "2026-09-21T14:13:20+00:00",
+        "marvin_host": "0.1.0",
+        "protocol": 1,
+        "simulated": true,
+        "scenario": "room_loop",
+        "sim_options": {
+          "model": 1
+        }
+      }
+    },
+    {
+      "name": "lidar_yaw",
+      "description": "The lidar mounted 37 degrees off: someone walks in (26 s, before sitting). The yaw estimator (calibration.LidarYawEstimator, starting from yaw 0) must find about 37 degrees.",
+      "file": "lidar_yaw.mvrec.gz",
+      "duration_s": 25.974999,
+      "datagrams": 1501,
+      "events": [
+        "arrived"
+      ],
+      "states": 257,
+      "scans": 259,
+      "hellos": [
+        {
+          "address": "192.0.2.1:47101",
+          "device_name": "marvin-53494d",
+          "board": 255,
+          "firmware": "sim-0.1.0",
+          "simulated": true
+        }
+      ],
+      "receiver": {
+        "devices": [
+          {
+            "address": "192.0.2.1:47101",
+            "device_name": "marvin-53494d",
+            "stats": {
+              "datagrams": 1501,
+              "lidar_packets": 9740,
+              "radar_frames": 257,
+              "lost": 0,
+              "crc_errors": 0,
+              "bad": 0
+            }
+          }
+        ]
+      },
+      "meta": {
+        "host_start_unix": 1790000000.0,
+        "host_start": "2026-09-21T14:13:20+00:00",
+        "marvin_host": "0.1.0",
+        "protocol": 1,
+        "simulated": true,
+        "scenario": "lidar_yaw",
+        "sim_options": {
+          "yaw_offset_deg": 37.0
+        }
+      },
+      "lidar_yaw_estimate": {
+        "angle_deg": 36.79439266237765,
+        "spread_deg": 1.0808270375652278,
+        "inliers": 102,
+        "samples": 314
+      }
+    },
+    {
+      "name": "robot_reboot",
+      "description": "Seated with vital signs (scene 26 to 42 s), then the robot reboots: its clock starts again from 0 while the host's goes on. The brain loses the vital signs, says the person left (\"sensor restarted\") and starts over.",
+      "file": "robot_reboot.mvrec.gz",
+      "duration_s": 24.45,
+      "datagrams": 1384,
+      "events": [
+        "arrived",
+        "sat_down",
+        "vitals_acquired",
+        "vitals_lost",
+        "vitals_acquired",
+        "vitals_lost",
+        "left",
+        "arrived"
+      ],
+      "states": 237,
+      "scans": 239,
+      "hellos": [
+        {
+          "address": "192.0.2.1:47101",
+          "device_name": "marvin-53494d",
+          "board": 255,
+          "firmware": "sim-0.1.0",
+          "simulated": true
+        }
+      ],
+      "receiver": {
+        "devices": [
+          {
+            "address": "192.0.2.1:47101",
+            "device_name": "marvin-53494d",
+            "stats": {
+              "datagrams": 1384,
+              "lidar_packets": 8980,
+              "radar_frames": 237,
+              "lost": 0,
+              "crc_errors": 0,
+              "bad": 0
+            }
+          }
+        ]
+      },
+      "meta": {
+        "host_start_unix": 1790000000.0,
+        "host_start": "2026-09-21T14:13:20+00:00",
+        "marvin_host": "0.1.0",
+        "protocol": 1,
+        "simulated": true,
+        "scenario": "robot_reboot"
+      }
+    },
+    {
+      "name": "damaged_link",
+      "description": "A lossy, noisy link (scene 20 to 26 s): frames before the first HELLO (ignored), one datagram in 40 lost (sequence gaps), one lidar packet in 25 with a bad CRC, one LD2450 frame in 20 with a bad tail, and a few datagrams that are not Marvin's (bad magic, protocol v2, too short).",
+      "file": "damaged_link.mvrec.gz",
+      "duration_s": 5.985,
+      "datagrams": 343,
+      "events": [
+        "arrived"
+      ],
+      "states": 59,
+      "scans": 59,
+      "hellos": [
+        {
+          "address": "192.0.2.1:47101",
+          "device_name": "marvin-53494d",
+          "board": 255,
+          "firmware": "sim-0.1.0",
+          "simulated": true
+        }
+      ],
+      "receiver": {
+        "devices": [
+          {
+            "address": "192.0.2.1:47101",
+            "device_name": "marvin-53494d",
+            "stats": {
+              "datagrams": 337,
+              "lidar_packets": 2172,
+              "radar_frames": 56,
+              "lost": 8,
+              "crc_errors": 8,
+              "bad": 2
+            }
+          }
+        ]
+      },
+      "meta": {
+        "host_start_unix": 1790000000.0,
+        "host_start": "2026-09-21T14:13:20+00:00",
+        "marvin_host": "0.1.0",
+        "protocol": 1,
+        "simulated": true,
+        "scenario": "damaged_link"
+      }
+    }
+  ]
+}

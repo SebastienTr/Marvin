@@ -12,7 +12,7 @@ import marvin.host.application.memory.port.out.Embedder;
 
 /**
  * Embeddings through Ollama's {@code POST /api/embed}, in batches. A missing model says how to get it
- * ({@code ollama pull bge-m3}).
+ * ({@code ollama pull qwen3-embedding:0.6b}).
  */
 public final class OllamaEmbedder implements Embedder {
     static final int BATCH = 32;
@@ -45,7 +45,7 @@ public final class OllamaEmbedder implements Embedder {
             }
             if (r == null || r.embeddings() == null || r.embeddings().size() != part.size()) {
                 throw new Unavailable("Ollama returned no embeddings from '" + model + "'",
-                        "Check that '" + model + "' is an embedding model (bge-m3 is the default).");
+                        "Check that '" + model + "' is an embedding model (qwen3-embedding:0.6b is the default).");
             }
             out.addAll(r.embeddings());
         }

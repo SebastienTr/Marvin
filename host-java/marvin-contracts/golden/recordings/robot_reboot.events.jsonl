@@ -1,0 +1,8 @@
+{"t_us":26510000,"kind":"arrived","detail":"0.86 m away","data":{"distance_m":0.85939502600639}}
+{"t_us":29070000,"kind":"sat_down","detail":"0.86 m away","data":{"distance_m":0.8632496819101989}}
+{"t_us":30095000,"kind":"vitals_acquired","detail":"breath 16/min, heart 65/min","data":{"breath_rate":15.62,"heart_rate":64.64}}
+{"t_us":35070000,"kind":"vitals_lost","detail":"no valid reading","data":{}}
+{"t_us":39640000,"kind":"vitals_acquired","detail":"breath 12/min, heart 73/min","data":{"breath_rate":12.23,"heart_rate":72.68}}
+{"t_us":0,"kind":"vitals_lost","detail":"sensor restarted","data":{}}
+{"t_us":0,"kind":"left","detail":"sensor restarted","data":{}}
+{"t_us":7005000,"kind":"arrived","detail":"2.74 m away","data":{"distance_m":2.735283024295334}}

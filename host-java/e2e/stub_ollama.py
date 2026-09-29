@@ -6,7 +6,7 @@ embeddings: texts that share words are close)."""
 import hashlib, json, math, os, re, sys, time, unicodedata
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
-MODELS = ["qwen3:4b-instruct", "qwen3.8:27b-mlx", "bge-m3"]
+MODELS = ["qwen3:4b-instruct", "qwen3.8:27b-mlx", "qwen3-embedding:0.6b"]
 STOP = {"the", "owner", "and", "for", "with", "that", "this", "has", "have", "are", "was", "his", "her", "its", "they",
         "their", "from", "who", "les", "des", "une", "est"}
 

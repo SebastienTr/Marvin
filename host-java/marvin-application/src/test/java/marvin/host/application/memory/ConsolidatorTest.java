@@ -123,12 +123,12 @@ class ConsolidatorTest {
 
     @Test
     void aFactWithoutItsEmbeddingIsNeverWrittenHalfway() {
-        m.embedder.failure = new marvin.host.application.memory.port.out.Embedder.Unavailable("no bge-m3", "Run `ollama pull bge-m3`.");
+        m.embedder.failure = new marvin.host.application.memory.port.out.Embedder.Unavailable("no qwen3-embedding:0.6b", "Run `ollama pull qwen3-embedding:0.6b`.");
         model.extract = r -> List.of(FakeMemoryModel.raw("owner", "The owner lives in Lyon.", 9));
         assertThatThrownBy(() -> m.consolidator.process(talk("J'habite à Lyon"), target, () -> false))
-                .hasMessage("no bge-m3");
+                .hasMessage("no qwen3-embedding:0.6b");
         assertThat(m.embeddings.state()).isEqualTo("unavailable");
-        assertThat(m.embeddings.fix()).contains("ollama pull bge-m3");
+        assertThat(m.embeddings.fix()).contains("ollama pull qwen3-embedding:0.6b");
         assertThat(m.store.log.unconsolidatedCount()).isEqualTo(1);
     }
 }

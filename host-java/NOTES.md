@@ -1732,3 +1732,13 @@ rewrite that drops what ended or was forgotten, and a log of each system prompt'
   `marvin.memory.volatile-budget` from 9.4.
 - Move `OllamaLanguageModel`'s streaming to the JDK client (a cancelled answer would stop Ollama at once).
 - Guess a typed question's language with the voice's recogniser model or a small detector instead of stop words.
+
+## Default embedding model: qwen3-embedding:0.6b
+
+The default embedding model is now `qwen3-embedding:0.6b` instead of `bge-m3`: same size (1024 dimensions, so memory's
+tables and the pgvector HNSW index are unchanged), multilingual, and clearly ahead on the MTEB multilingual benchmark
+(64.3). The 4B (2560) and 8B (4096) variants score higher but exceed pgvector's HNSW limit for `vector` (2000
+dimensions) unless truncated. An existing install that already embedded facts with another model keeps its setting
+(`embed_model` in the app's memory settings); changing it means re-embedding. The relevance floor (0.45) was set on
+bge-m3's distribution: check it with `MemoryEvaluationTest` on the owner's Mac. Qwen3-Embedding also accepts a task
+instruction before queries, which usually helps retrieval a little; not used yet.

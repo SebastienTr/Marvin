@@ -42,7 +42,7 @@ public final class Embeddings {
                 if (v.length != dimensions) {
                     throw new Embedder.Unavailable("the embedding model " + model + " gives " + v.length
                             + " numbers per text, memory was set up for " + dimensions,
-                            "Choose an embedding model with " + dimensions + " dimensions (bge-m3 has 1024), or start "
+                            "Choose an embedding model with " + dimensions + " dimensions (qwen3-embedding:0.6b has 1024), or start "
                                     + "memory on a new database with marvin.memory.embedding-dimensions=" + v.length + ".");
                 }
             }

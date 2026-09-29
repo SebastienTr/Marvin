@@ -109,7 +109,7 @@ class MemoryEvaluationTest {
         String realHost = System.getenv("MARVIN_EVAL_OLLAMA");
         boolean real = realHost != null && !realHost.isBlank();
         String modelName = real ? System.getenv().getOrDefault("MARVIN_EVAL_MODEL", "qwen3:4b-instruct") : "qwen3:4b-instruct";
-        String embedModel = real ? System.getenv().getOrDefault("MARVIN_EVAL_EMBED", "bge-m3") : "bge-m3";
+        String embedModel = real ? System.getenv().getOrDefault("MARVIN_EVAL_EMBED", "qwen3-embedding:0.6b") : "qwen3-embedding:0.6b";
         Map<String, Object> set = (Map<String, Object>) resource("cases.json");
         Map<String, Object> answers = (Map<String, Object>) resource("stub-answers.json");
         ZoneId zone = ZoneId.of((String) set.get("zone"));

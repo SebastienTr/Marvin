@@ -23,8 +23,8 @@ import java.util.List;
  * single candidate (or equal similarities) min-max has no spread; relevance is then 1 for every candidate above the
  * floor.
  *
- * @param relevanceFloor raw cosine below which a fact is never retrieved automatically (bge-m3 gives unrelated
- *                       sentences about 0.3 to 0.45)
+ * @param relevanceFloor raw cosine below which a fact is never retrieved automatically (set on bge-m3, where unrelated
+ *                       sentences scored about 0.3 to 0.45; check it on the current model with the evaluation)
  */
 public record RetrievalScoring(double relevanceWeight, double recencyWeight, double importanceWeight, double recencyBase,
                                double relevanceFloor) {

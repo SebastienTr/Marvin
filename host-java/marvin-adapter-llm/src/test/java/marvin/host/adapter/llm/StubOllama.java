@@ -38,7 +38,7 @@ public final class StubOllama implements AutoCloseable {
     public final List<Map<String, Object>> requests = new CopyOnWriteArrayList<>();
     public final List<Map<String, Object>> embedRequests = new CopyOnWriteArrayList<>();
     private final HttpServer server;
-    public volatile List<String> models = List.of("qwen3:4b-instruct", "bge-m3");
+    public volatile List<String> models = List.of("qwen3:4b-instruct", "qwen3-embedding:0.6b");
     public volatile Function<Map<String, Object>, List<String>> chat = r -> List.of();
     public volatile long delayMs = 5;
     /** Silence before the first chunk (Ollama loading a model and reading the prompt). */

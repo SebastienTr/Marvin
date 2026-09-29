@@ -241,12 +241,12 @@ class MemoryPrivacyAndRobustnessTest {
         m.store.profiles.add(new BlockVersion(0, Block.PROFILE, "Call me Sam.", 3, BlockVersion.Status.ACTIVE, "", List.of(),
                 BlockVersion.Author.WORKER, at(10, 1, 3), at(10, 1, 3), List.of()));
         m.admin.remember("The owner likes the sea.", "owner", Sensitivity.NORMAL);
-        m.embedder.failure = new Embedder.Unavailable("no model bge-m3", "Run `ollama pull bge-m3`.");
+        m.embedder.failure = new Embedder.Unavailable("no model qwen3-embedding:0.6b", "Run `ollama pull qwen3-embedding:0.6b`.");
         model.profile = r -> r.previous() + "\n" + String.join("\n", r.learned());
 
         ConsolidateMemory.Report r = worker.run(ConsolidateMemory.Pass.NIGHTLY);
         assertThat(r.outcome()).isEqualTo("partial");
-        assertThat(r.error()).contains("extract").contains("bge-m3");
+        assertThat(r.error()).contains("extract").contains("qwen3-embedding:0.6b");
         assertThat(r.fix()).contains("ollama pull");
         assertThat(r.counts()).containsEntry("days", 1).containsEntry("profile", 1).containsKey("archived");
         assertThat(model.count(MemoryModel.ExtractRequest.class)).isZero();       // no model call wasted

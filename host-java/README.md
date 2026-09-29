@@ -312,7 +312,7 @@ curl http://localhost:8765/api/health
 | `MARVIN_CONFIG_DIR` | `~/.config/marvin` | Where `voice.json` is (also `$XDG_CONFIG_HOME/marvin`) |
 | `MARVIN_VOICE_SIDECAR`, `MARVIN_VOICE_ARGS` | `true`, none | Start the voice sidecar; more arguments for it (its test mode: `--fake,--say,2:Marvin bonjour`) |
 | `MARVIN_MEMORY_WORKER` | `true` | The memory worker (`false`: memory records but learns nothing) |
-| `MARVIN_EMBEDDING_DIMENSIONS` | `1024` | The embedding model's size (bge-m3), fixed when memory's tables are made |
+| `MARVIN_EMBEDDING_DIMENSIONS` | `1024` | The embedding model's size (qwen3-embedding:0.6b), fixed when memory's tables are made |
 | `MARVIN_MEMORY_VECTOR` | `auto` | pgvector's index when installed; `off`: exact search |
 
 ### The app

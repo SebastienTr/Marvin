@@ -24,6 +24,8 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 recordings/
+# the Java tests' golden recordings are versioned
+!host-java/marvin-contracts/golden/recordings/
 *.rrd
 
 # Blender backups
