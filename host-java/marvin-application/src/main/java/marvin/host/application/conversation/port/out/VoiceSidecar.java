@@ -27,11 +27,23 @@ public interface VoiceSidecar {
     /** What the voice can offer on this computer (backends, voices), or empty when it cannot say. */
     Optional<Options> options();
 
-    /** The voice's settings (the {@code voice.json} keys the audio uses). {@code robot}: hear and speak through the robot. */
+    /**
+     * The voice's settings (the {@code voice.json} keys the audio uses). {@code robot}: hear and speak through the robot.
+     * {@code continueGraceS} and {@code endSilenceLongMs}: {@code null} for the sidecar's default, 0 to turn them off.
+     */
     record Settings(String stt, String sttModel, String tts, String ttsVoice, String language, String defaultLanguage,
                     boolean wake, boolean duplex, double echoTailS, double followUpS, double listenWindowS,
                     boolean speculativeStt, double endSilenceMs, boolean chime, String inputDevice,
-                    String outputDevice, boolean robot) {
+                    String outputDevice, boolean robot, Double continueGraceS, Double endSilenceLongMs) {
+
+        /** With the sidecar's defaults for a question that goes on. */
+        public Settings(String stt, String sttModel, String tts, String ttsVoice, String language, String defaultLanguage,
+                        boolean wake, boolean duplex, double echoTailS, double followUpS, double listenWindowS,
+                        boolean speculativeStt, double endSilenceMs, boolean chime, String inputDevice,
+                        String outputDevice, boolean robot) {
+            this(stt, sttModel, tts, ttsVoice, language, defaultLanguage, wake, duplex, echoTailS, followUpS, listenWindowS,
+                    speculativeStt, endSilenceMs, chime, inputDevice, outputDevice, robot, null, null);
+        }
     }
 
     /** Receives the voice's signals. */
@@ -48,14 +60,33 @@ public interface VoiceSidecar {
      * {@code speaking}, {@code stopped} or {@code error} (with {@code error} and {@code fix}).
      *
      * @param listenS seconds left to talk without the name, in a listening window; else {@code null}
+     * @param hearing someone talks in the listening window (or their words are being understood): it waits for them,
+     *                {@code listenS} is {@code null} meanwhile
      */
-    record Status(String state, boolean muted, String error, String fix, String stt, String tts, Double listenS)
-            implements Signal {
+    record Status(String state, boolean muted, String error, String fix, String stt, String tts, Double listenS,
+                  boolean hearing) implements Signal {
+
+        public Status(String state, boolean muted, String error, String fix, String stt, String tts, Double listenS) {
+            this(state, muted, error, fix, stt, tts, listenS, false);
+        }
     }
 
-    /** A question for Marvin: {@code uid} identifies it in the session; {@code latency} holds the listening stages. */
+    /**
+     * A question for Marvin: {@code uid} identifies it in the session; {@code latency} holds the listening stages.
+     * {@code continues}: the earlier questions (their uids) this one goes on from; their text starts {@code text}, and
+     * they were cancelled (before their answer was heard, or cut by this one).
+     */
     record Heard(long uid, String text, String raw, String language, String source, Map<String, Double> latency,
-                 double wallTime) implements Signal {
+                 double wallTime, List<Long> continues) implements Signal {
+
+        public Heard {
+            continues = continues == null ? List.of() : List.copyOf(continues);
+        }
+
+        public Heard(long uid, String text, String raw, String language, String source, Map<String, Double> latency,
+                     double wallTime) {
+            this(uid, text, raw, language, source, latency, wallTime, List.of());
+        }
     }
 
     /** Heard, not answered, and why. */
@@ -78,7 +109,10 @@ public interface VoiceSidecar {
     record SayProgress(long replyId, String text, double seconds, List<Double> envelope) implements Signal {
     }
 
-    /** Speech stopped or was skipped: {@code barge-in}, {@code stop}, {@code busy} or {@code off}. */
+    /**
+     * Speech stopped or was skipped: {@code barge-in}, {@code stop}, {@code busy}, {@code off}, or {@code merged} (the
+     * question goes on: a {@link Heard} that continues it follows).
+     */
     record Interrupted(long replyId, String reason, long utteranceUid) implements Signal {
     }
 

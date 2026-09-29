@@ -183,9 +183,10 @@ const conversations = {
     this.day = r.day;
     $("convo-day").textContent = dayLabel(r.day);
     const b = new ConvoBuilder();
-    const items = [];
+    let items = [];
     for (const e of r.entries) {
-      const { li, grouped } = b.item(e);
+      const { li, grouped, replaces } = b.item(e);
+      if (replaces.length) items = items.filter((x) => !replaces.includes(Number(x.dataset.id)));
       if (!grouped) { li.classList.add("settled"); items.push(li); }
     }
     $("convo").replaceChildren(...items);

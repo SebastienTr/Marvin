@@ -1802,3 +1802,63 @@ Four read-only pictures of memory on the Memory screen, on real data only (docs/
 - No e2e check in `e2e/e2e.py` for the new tab yet; the graph is capped at 60 nodes and the map at 2000 facts
   (a list of every fact is under each picture). The timeline's range is fixed to now (no scrolling back in time
   beyond "All"). Wheel/pinch zoom is not built (buttons and drag only).
+
+## One thought, one question
+
+The owner was cut off mid-thought: a pause after "Je veux aussi que tu saches que je suis développeur." ended the
+question, Marvin answered, and what he said next was lost; "OK [pause] j'ai pas encore mangé" lost everything after
+"OK"; the listening bar drained while he talked. docs/voice.md, "One thought, one question".
+
+### What exists
+
+- **Sidecar engine** (`voice/engine.py`, shared with `marvin-host talk`/`run`): speech starting within
+  `continue_grace_s` (1.5 s) of a question whose answer has not made a sound holds the answer's first sound
+  (`_maybe_hold`, `_first_sound`); if the new utterance is speech, the pending job is cancelled (`merged`) and one
+  question with both texts is submitted (`continues` = the earlier uids; chains of three work). A barge-in or Talk now
+  within `continue_join_s` (6 s) of the cut question joins it too (reason stays `barge-in`). Speculative recognition
+  now also runs while an answer is held, so the joined question costs no extra wait. `Segmenter.endpoint` asks the
+  engine once per pause of 0.55 s; the engine reads the speculative transcript and returns 1.1 s when
+  `filters.announces_more` (trailing connective, comma, filler, lone "OK"). A lone "OK" ignored in a follow-up window
+  is prefixed to what follows within 1.5 s. A listening window is frozen from utterance start to done
+  (`listen_remaining()` is `None`, `hearing`), then goes on with at least what it had left.
+- **Contract** (fields only added): `Heard.continues`, `Status.hearing`, `Interrupted.reason` "merged",
+  `VoiceSettings.continue_grace_s` and `end_silence_long_ms` (optional: unset is the sidecar's default). The sidecar
+  sends a `Status` at utterance start and done while listening.
+- **Core** (`VoiceService`): a `Heard` that continues others writes its heard entry after the turns it continues are
+  over (so a cut answer's reply entry comes first), with `joined`, `replaces` (heard entries whose turn left no reply:
+  the app removes those bubbles) and `continues` (heard entries answered in between: the bubble says "YOU, GOING ON").
+  A `merged` turn is never remembered and leaves a reply entry only if something was said; a cut turn that was
+  remembered leaves the history (`ConversationMemory.forgetLast`) before the joined question is asked. The reply entry
+  has `joined`, shown by the inspector. `VoiceSnapshot.hearing`: `listen_s` is `null` meanwhile; the app hides the bar
+  and says "Listening…".
+
+### Decisions and deviations
+
+1. **Hold, do not delay**: nothing waits unless the owner actually speaks again within the grace period; the model
+   request goes on while held, so a false alarm (a cough) plays the answer at once.
+2. **Merge at the sidecar, cancel through the existing path**: the core's model request stops through the usual
+   `Interrupted`; no new command.
+3. **1.5 s grace, 6 s join, 1.1 s long endpoint**: inside-turn pauses are mostly under a second; the first word comes
+   1.5-2.5 s after the end of speech, so past 1.5 s the answer is usually playing; 1.1 s keeps a trailing "et" from
+   ending the question without making "OK?" slow. `continue_join_s` is Python-only (not in the contract).
+
+### Verified
+
+- Python: `python3 -m pytest -q` (controller: `replaces`/`continues` entry ids; engine: merge before the audio, a cough only delays, no merge after the grace
+  period, barge-in and Talk now joins, a long-after barge-in stays separate, "OK" then the rest, adaptive endpoint in
+  French and English, the window frozen while talking; sidecar over gRPC: `Interrupted` "merged" then a `Heard` with
+  `continues`, `Status.hearing` without `listen_s`).
+- Java: `VoiceServiceTest` (merged before the audio: one reply, one bubble, nothing in the history; cut then joined:
+  reply kept, history replaced; `hearing` snapshot; settings), `ContextAssemblerTest` (`forgetLast`),
+  `GrpcVoiceSidecarTest` (the new fields).
+
+### Known gaps
+
+- In half duplex (the Mac default) Marvin hears nothing once it speaks: going on after the first word needs Talk now.
+- The app's live bubble of the second part and the merged entry are two steps (the live bubble settles, the first
+  part's bubble dissolves); not checked in a browser here. The Python host's own UI (`marvin-host ui`) drops the
+  replaced bubble but has no "going on" label, and after a cut answer its joined bubble may come before the cut reply.
+- Talk now pressed long after the question (more than 6 s) starts a new question, not a continuation.
+- Talk now pressed while Marvin is still thinking cancels as a barge-in (as before): the empty "interrupted" reply entry
+  stays, and the joined question's bubble says "going on" instead of replacing the first part.
+- The long endpoint depends on the speculative transcript; with `speculative_stt` off it never applies.

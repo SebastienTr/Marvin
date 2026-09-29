@@ -76,6 +76,9 @@ message VoiceSettings {
   bool chime = 14;                  // the listening chime on the speaker
   string input_device = 15;         // local audio only; empty: the system default
   string output_device = 16;
+  // one thought, one question (docs/voice.md): unset means the sidecar's default
+  optional double continue_grace_s = 17;       // speech resuming this soon after a question, before its answer is heard, continues it; 0: never
+  optional double end_silence_long_ms = 18;    // the end-of-question silence when the words so far announce more ("..., et"); 0: never longer
 }
 
 // Where the voice hears and speaks.
@@ -187,6 +190,8 @@ message Status {
   string stt = 5;                   // the backends actually in use, e.g. "mlx large-v3-turbo"
   string tts = 6;
   optional double listen_s = 7;     // with LISTENING: seconds left in the listening window, when sent
+  bool hearing = 8;                 // someone is talking (or their words are being understood): the listening
+                                    // window waits, listen_s is not sent; a Status follows when they are done
 }
 
 message Heard {
@@ -197,6 +202,9 @@ message Heard {
   string source = 5;                // voice | typed
   map<string, double> latency = 6;  // endpoint, queue, stt, wake ... (seconds)
   double wall_time = 7;             // Unix seconds, when the question ended
+  repeated uint64 continues = 8;    // earlier questions (their Heard.uid) this one continues: their text starts
+                                    // `text`; they were cancelled (Interrupted "merged" before their answer was
+                                    // heard, or "barge-in" when this one cut it); the core answers this one only
 }
 
 message Ignored {
@@ -254,7 +262,8 @@ message SayProgress {
 
 message Interrupted {
   uint64 reply_id = 1;              // 0 if the answer had not started yet
-  string reason = 2;                // barge-in | stop | busy (proactive speech during a conversation)
+  string reason = 2;                // barge-in | stop | busy (proactive speech during a conversation) | merged
+                                    // (the question goes on: a Heard that continues it follows)
   uint64 utterance_uid = 3;         // the question it answered (Heard.uid), 0 if none
 }
 

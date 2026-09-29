@@ -31,6 +31,8 @@ SETTINGS = {
     "wake": ("wake", bool), "duplex": ("duplex", bool), "echo_tail_s": ("echo_tail_s", float),
     "follow_up_s": ("follow_up_s", float), "listen_window_s": ("listen_window_s", float),
     "speculative_stt": ("speculative_stt", bool), "end_silence_ms": (None, float),
+    # one thought, one question: a question that goes on is one question (voice/engine.py)
+    "continue_grace_s": ("continue_grace_s", float), "end_silence_long_ms": (None, float),
     # run --voice only: spoken break reminders and "welcome back" (voice/proactive.py)
     "reminders": (None, bool), "welcome_back": (None, bool),
     # tools the model can call (voice/tools): all of them, the online ones, the weather's home
@@ -139,6 +141,8 @@ def _config(args, prefix: str = "", settings: dict | None = None):
         attr, kind = SETTINGS.get(key, (None, None))
         if key == "end_silence_ms":
             c.segmenter.end_silence_s = float(v) / 1000
+        elif key == "end_silence_long_ms":
+            c.segmenter.end_silence_long_s = float(v) / 1000
         elif attr is not None and v is not None:
             setattr(c, attr, kind(v))
     if c.language:

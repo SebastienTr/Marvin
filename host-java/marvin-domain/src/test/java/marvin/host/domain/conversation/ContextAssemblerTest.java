@@ -195,4 +195,15 @@ class ContextAssemblerTest {
         big.remember("q".repeat(40), "a".repeat(40), List.of(), 1);
         assertThat(big.size()).as("the last turn stays whole").isEqualTo(2);
     }
+
+    @Test
+    void aCutTurnCanLeaveTheEndOfTheHistory() {
+        ConversationMemory m = new ConversationMemory(8, 180);
+        m.remember("Q1", "A1", List.of(), 1);
+        m.remember("Q2", "A2 …", List.of(ChatMessage.assistant("call")), 2);
+        assertThat(m.forgetLast("Q1")).as("only the last turn").isFalse();
+        assertThat(m.forgetLast("Q2")).isTrue();
+        assertThat(m.messages(3)).extracting(ChatMessage::content).containsExactly("Q1", "A1");
+        assertThat(new ConversationMemory(8, 180).forgetLast("Q")).isFalse();
+    }
 }

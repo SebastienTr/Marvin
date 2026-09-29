@@ -318,3 +318,16 @@ def test_live_signals_pass_through_and_ids_survive_a_restart(tmp_path):
     b = VoiceController(check=None, path=tmp_path / "voice.json")   # marvin-host again: an open page
     b._on_voice("heard", {"t": 0.0, "text": "encore"})    # must not take this for an entry it has
     assert b.recent()[0]["id"] > a.recent()[0]["id"]
+
+
+def test_a_question_that_goes_on_replaces_or_continues_the_earlier_bubbles(tmp_path):
+    c = VoiceController(check=None, path=tmp_path / "voice.json")
+    c._on_voice("heard", {"t": 1.0, "text": "Je suis développeur.", "uid": 1})
+    c._on_voice("heard", {"t": 2.0, "text": "Raconte une histoire.", "uid": 2})
+    c._on_voice("heard", {"t": 3.0, "text": "Raconte une histoire. Avec des bateaux.", "uid": 3,
+                          "continues": [2], "cut": [2]})
+    c._on_voice("heard", {"t": 4.0, "text": "Je suis développeur. Et marin.", "uid": 4, "continues": [1], "cut": []})
+    first, second, third, fourth = c.recent()
+    assert third["joined"] == 2 and third["continues"] == [second["id"]] and third["replaces"] == []
+    assert fourth["replaces"] == [first["id"]] and fourth["continues"] == []
+    assert "joined" not in first

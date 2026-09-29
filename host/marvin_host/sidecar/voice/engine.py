@@ -13,6 +13,10 @@ come from Marvin's core instead of a model in this process:
 4. at the end `ReplySpoken` (text said, latencies: first_chunk, tts, audio_start, filler_start,
    total), or `Interrupted` (+ `ReplySpoken` with interrupted) after a barge-in or Stop.
 
+One thought, one question: when the person goes on right after a question (before its answer is
+heard), or cuts the answer to go on, the pending question is cancelled (`Interrupted` "merged", or
+"barge-in") and a `Heard` with both texts follows, listing the questions it `continues`.
+
 Proactive speech: `Say` (a whole text), or a `ReplyStart` without a question (streamed); both are
 skipped with `Interrupted` "busy" while a conversation is going on, unless forced.
 
@@ -215,7 +219,7 @@ class SidecarVoice(VoiceEngine):
 
     def status_message(self) -> pb.VoiceToCore:
         s = pb.Status(state=STATES[self.status], muted=self.muted, stt=self.names.get("stt", ""),
-                      tts=self.names.get("tts", ""))
+                      tts=self.names.get("tts", ""), hearing=self.status == Status.LISTENING.value and self.hearing)
         left = self.listen_remaining()
         if left is not None:
             s.listen_s = round(left, 3)
@@ -228,6 +232,9 @@ class SidecarVoice(VoiceEngine):
             msg = pb.VoiceToCore(level=pb.Level(mic=d["mic"], speech=bool(d["speech"]), gated=bool(d["gated"])))
         elif kind == "utterance":
             msg = pb.VoiceToCore(utterance=pb.Utterance(state=UTTERANCE[d["state"]], uid=d["uid"]))
+            if d["state"] != "end" and self.status == Status.LISTENING.value:
+                self._send(msg)                 # then the window's state: frozen while they talk, or its time left
+                msg = self.status_message()
         elif kind == "partial":
             msg = pb.VoiceToCore(partial=pb.Partial(uid=d["uid"], text=d["text"]))
         elif kind == "say":
@@ -241,7 +248,7 @@ class SidecarVoice(VoiceEngine):
         elif kind == "heard":
             msg = pb.VoiceToCore(heard=pb.Heard(
                 uid=d["uid"], text=d["text"], raw=d.get("raw", ""), language=d["language"],
-                source=d.get("source", "voice"), wall_time=d["t"],
+                source=d.get("source", "voice"), wall_time=d["t"], continues=d.get("continues", ()),
                 latency={k: round(float(v), 4) for k, v in self.last_latency.items()}))
         else:
             return

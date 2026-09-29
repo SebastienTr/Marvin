@@ -12,9 +12,10 @@ import java.util.Map;
  * @param status  what the running voice does: {@code idle}, {@code listening}, {@code thinking},
  *                {@code speaking}; {@code off} when it does not run
  * @param listenS seconds left to talk without the name, in a listening window; else {@code null}
+ * @param hearing someone talks in the listening window: it waits for them ({@code listenS} is {@code null})
  */
 public record VoiceSnapshot(String state, String status, boolean muted, String error, String fix, String model,
-                            boolean wake, boolean chime, Double listenS) {
+                            boolean wake, boolean chime, Double listenS, boolean hearing) {
 
     /** In the Python host's key order. */
     public Map<String, Object> toMap() {
@@ -28,6 +29,7 @@ public record VoiceSnapshot(String state, String status, boolean muted, String e
         m.put("wake", wake);
         m.put("chime", chime);
         m.put("listen_s", listenS);
+        m.put("hearing", hearing);
         return m;
     }
 }

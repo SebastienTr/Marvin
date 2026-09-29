@@ -70,6 +70,19 @@ public final class ConversationMemory {
         lastTurn = now;
     }
 
+    /**
+     * Drops the last turn if it is the question {@code question} (its answer was cut to go on: the question that
+     * continues it says it all again). Only the end of the history changes. Whether it was dropped.
+     */
+    public boolean forgetLast(String question) {
+        List<Integer> s = userStarts();
+        if (s.isEmpty() || !history.get(s.getLast()).content().equals(question)) {
+            return false;
+        }
+        history.subList(s.getLast(), history.size()).clear();
+        return true;
+    }
+
     private List<Integer> userStarts() {
         List<Integer> starts = new ArrayList<>();
         for (int i = 0; i < history.size(); i++) {

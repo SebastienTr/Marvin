@@ -57,7 +57,7 @@ class Configure(_message.Message):
     def __init__(self, contract_version: _Optional[int] = ..., settings: _Optional[_Union[VoiceSettings, _Mapping]] = ..., route: _Optional[_Union[AudioRoute, str]] = ...) -> None: ...
 
 class VoiceSettings(_message.Message):
-    __slots__ = ("stt", "stt_model", "tts", "tts_voice", "language", "default_language", "wake", "duplex", "echo_tail_s", "follow_up_s", "listen_window_s", "speculative_stt", "end_silence_ms", "chime", "input_device", "output_device")
+    __slots__ = ("stt", "stt_model", "tts", "tts_voice", "language", "default_language", "wake", "duplex", "echo_tail_s", "follow_up_s", "listen_window_s", "speculative_stt", "end_silence_ms", "chime", "input_device", "output_device", "continue_grace_s", "end_silence_long_ms")
     STT_FIELD_NUMBER: _ClassVar[int]
     STT_MODEL_FIELD_NUMBER: _ClassVar[int]
     TTS_FIELD_NUMBER: _ClassVar[int]
@@ -74,6 +74,8 @@ class VoiceSettings(_message.Message):
     CHIME_FIELD_NUMBER: _ClassVar[int]
     INPUT_DEVICE_FIELD_NUMBER: _ClassVar[int]
     OUTPUT_DEVICE_FIELD_NUMBER: _ClassVar[int]
+    CONTINUE_GRACE_S_FIELD_NUMBER: _ClassVar[int]
+    END_SILENCE_LONG_MS_FIELD_NUMBER: _ClassVar[int]
     stt: str
     stt_model: str
     tts: str
@@ -90,7 +92,9 @@ class VoiceSettings(_message.Message):
     chime: bool
     input_device: str
     output_device: str
-    def __init__(self, stt: _Optional[str] = ..., stt_model: _Optional[str] = ..., tts: _Optional[str] = ..., tts_voice: _Optional[str] = ..., language: _Optional[str] = ..., default_language: _Optional[str] = ..., wake: _Optional[bool] = ..., duplex: _Optional[bool] = ..., echo_tail_s: _Optional[float] = ..., follow_up_s: _Optional[float] = ..., listen_window_s: _Optional[float] = ..., speculative_stt: _Optional[bool] = ..., end_silence_ms: _Optional[float] = ..., chime: _Optional[bool] = ..., input_device: _Optional[str] = ..., output_device: _Optional[str] = ...) -> None: ...
+    continue_grace_s: float
+    end_silence_long_ms: float
+    def __init__(self, stt: _Optional[str] = ..., stt_model: _Optional[str] = ..., tts: _Optional[str] = ..., tts_voice: _Optional[str] = ..., language: _Optional[str] = ..., default_language: _Optional[str] = ..., wake: _Optional[bool] = ..., duplex: _Optional[bool] = ..., echo_tail_s: _Optional[float] = ..., follow_up_s: _Optional[float] = ..., listen_window_s: _Optional[float] = ..., speculative_stt: _Optional[bool] = ..., end_silence_ms: _Optional[float] = ..., chime: _Optional[bool] = ..., input_device: _Optional[str] = ..., output_device: _Optional[str] = ..., continue_grace_s: _Optional[float] = ..., end_silence_long_ms: _Optional[float] = ...) -> None: ...
 
 class AudioFrame(_message.Message):
     __slots__ = ("device", "sample_index", "robot_time_us", "pcm")
@@ -219,7 +223,7 @@ class VoiceToCore(_message.Message):
     def __init__(self, status: _Optional[_Union[Status, _Mapping]] = ..., heard: _Optional[_Union[Heard, _Mapping]] = ..., ignored: _Optional[_Union[Ignored, _Mapping]] = ..., level: _Optional[_Union[Level, _Mapping]] = ..., partial: _Optional[_Union[Partial, _Mapping]] = ..., robot_speaker: _Optional[_Union[SpeakerFrame, _Mapping]] = ..., ctrl: _Optional[_Union[RobotAudioCtrl, _Mapping]] = ..., say: _Optional[_Union[SayProgress, _Mapping]] = ..., interrupted: _Optional[_Union[Interrupted, _Mapping]] = ..., sound: _Optional[_Union[RobotSound, _Mapping]] = ..., utterance: _Optional[_Union[Utterance, _Mapping]] = ..., spoken: _Optional[_Union[ReplySpoken, _Mapping]] = ...) -> None: ...
 
 class Status(_message.Message):
-    __slots__ = ("state", "muted", "error", "fix", "stt", "tts", "listen_s")
+    __slots__ = ("state", "muted", "error", "fix", "stt", "tts", "listen_s", "hearing")
     class State(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
         STATE_UNSPECIFIED: _ClassVar[Status.State]
@@ -245,6 +249,7 @@ class Status(_message.Message):
     STT_FIELD_NUMBER: _ClassVar[int]
     TTS_FIELD_NUMBER: _ClassVar[int]
     LISTEN_S_FIELD_NUMBER: _ClassVar[int]
+    HEARING_FIELD_NUMBER: _ClassVar[int]
     state: Status.State
     muted: bool
     error: str
@@ -252,10 +257,11 @@ class Status(_message.Message):
     stt: str
     tts: str
     listen_s: float
-    def __init__(self, state: _Optional[_Union[Status.State, str]] = ..., muted: _Optional[bool] = ..., error: _Optional[str] = ..., fix: _Optional[str] = ..., stt: _Optional[str] = ..., tts: _Optional[str] = ..., listen_s: _Optional[float] = ...) -> None: ...
+    hearing: bool
+    def __init__(self, state: _Optional[_Union[Status.State, str]] = ..., muted: _Optional[bool] = ..., error: _Optional[str] = ..., fix: _Optional[str] = ..., stt: _Optional[str] = ..., tts: _Optional[str] = ..., listen_s: _Optional[float] = ..., hearing: _Optional[bool] = ...) -> None: ...
 
 class Heard(_message.Message):
-    __slots__ = ("uid", "text", "raw", "language", "source", "latency", "wall_time")
+    __slots__ = ("uid", "text", "raw", "language", "source", "latency", "wall_time", "continues")
     class LatencyEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -270,6 +276,7 @@ class Heard(_message.Message):
     SOURCE_FIELD_NUMBER: _ClassVar[int]
     LATENCY_FIELD_NUMBER: _ClassVar[int]
     WALL_TIME_FIELD_NUMBER: _ClassVar[int]
+    CONTINUES_FIELD_NUMBER: _ClassVar[int]
     uid: int
     text: str
     raw: str
@@ -277,7 +284,8 @@ class Heard(_message.Message):
     source: str
     latency: _containers.ScalarMap[str, float]
     wall_time: float
-    def __init__(self, uid: _Optional[int] = ..., text: _Optional[str] = ..., raw: _Optional[str] = ..., language: _Optional[str] = ..., source: _Optional[str] = ..., latency: _Optional[_Mapping[str, float]] = ..., wall_time: _Optional[float] = ...) -> None: ...
+    continues: _containers.RepeatedScalarFieldContainer[int]
+    def __init__(self, uid: _Optional[int] = ..., text: _Optional[str] = ..., raw: _Optional[str] = ..., language: _Optional[str] = ..., source: _Optional[str] = ..., latency: _Optional[_Mapping[str, float]] = ..., wall_time: _Optional[float] = ..., continues: _Optional[_Iterable[int]] = ...) -> None: ...
 
 class Ignored(_message.Message):
     __slots__ = ("text", "reason", "dbfs")

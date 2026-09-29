@@ -330,6 +330,12 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
                 .setListenWindowS(s.listenWindowS()).setSpeculativeStt(s.speculativeStt())
                 .setEndSilenceMs(s.endSilenceMs()).setChime(s.chime())
                 .setInputDevice(nz(s.inputDevice())).setOutputDevice(nz(s.outputDevice()));
+        if (s.continueGraceS() != null) {
+            b.setContinueGraceS(s.continueGraceS());
+        }
+        if (s.endSilenceLongMs() != null) {
+            b.setEndSilenceLongMs(s.endSilenceLongMs());
+        }
         return Configure.newBuilder().setContractVersion(1).setSettings(b)
                 .setRoute(s.robot() ? AudioRoute.AUDIO_ROUTE_ROBOT : AudioRoute.AUDIO_ROUTE_LOCAL).build();
     }
@@ -523,12 +529,12 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
                     state = "starting";
                 }
                 yield new Status(state, s.getMuted(), s.getError(), s.getFix(), s.getStt(), s.getTts(),
-                        s.hasListenS() ? s.getListenS() : null);
+                        s.hasListenS() ? s.getListenS() : null, s.getHearing());
             }
             case HEARD -> {
                 var h = m.getHeard();
                 yield new Heard(h.getUid(), h.getText(), h.getRaw(), h.getLanguage(), h.getSource(),
-                        new LinkedHashMap<>(h.getLatencyMap()), h.getWallTime());
+                        new LinkedHashMap<>(h.getLatencyMap()), h.getWallTime(), h.getContinuesList());
             }
             case IGNORED -> {
                 var i = m.getIgnored();

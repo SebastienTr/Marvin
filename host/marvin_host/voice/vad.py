@@ -6,7 +6,9 @@ flags frames well above it; it is also what the tests use because it is determin
 
 `Segmenter` turns per-frame decisions into utterances: speech starts when most of the last few
 frames are voiced, ends after a stretch of silence, and keeps a short pre-roll so the first
-syllable ("Mar-") is not clipped.
+syllable ("Mar-") is not clipped. The silence that ends an utterance is `end_silence_s`, unless
+`endpoint` (a callback the engine sets) asks for a longer one for this pause: the words so far
+announce more ("..., et", "parce que", a lone "OK").
 
 SPDX-License-Identifier: MIT
 """
@@ -16,7 +18,7 @@ import logging
 import math
 from collections import deque
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 import numpy as np
 
@@ -92,6 +94,12 @@ class Segment:
     t_speech_end: float = 0.0       # end of the last voiced frame (t_end minus the kept trailing silence)
     uid: int = 0                    # utterance number, see `Segmenter.pending()`
     voiced: int = 0                 # voiced frames in it
+    t_speech_start: float = -1.0    # start of the first voiced frame (t_start plus the pre-roll); -1: unknown
+
+    @property
+    def speech_start(self) -> float:
+        """When the speaker started talking (audio time)."""
+        return self.t_speech_start if self.t_speech_start >= 0 else self.t_start
 
     @property
     def duration(self) -> float:
@@ -103,6 +111,7 @@ class SegmenterConfig:
     start_window: int = 10          # frames looked at to decide that speech started (200 ms)...
     start_ratio: float = 0.6        # ...this share of them voiced
     end_silence_s: float = 0.55     # this much silence ends the utterance (endpointing delay)
+    end_silence_long_s: float = 1.1  # ...or this much when the words so far announce more (0: never)
     tail_kept_s: float = 0.15       # trailing silence kept in the segment
     pre_roll_s: float = 0.3         # audio kept before the detected start
     min_speech_s: float = 0.25      # shorter utterances (clicks, coughs) are dropped
@@ -123,7 +132,12 @@ class Segmenter:
         self._voiced_count = 0
         self._n = 0                     # frames consumed
         self._start_n = 0
+        self._voice_n = 0               # first voiced frame of the utterance
         self._uid = 0
+        self._end_s: float | None = None    # the silence that ends this pause, once decided
+        # called once per pause, when the silence reaches end_silence_s: the silence that should end this
+        # pause (seconds), or None for end_silence_s (voice/engine.py: the adaptive endpoint)
+        self.endpoint: Callable[[], float | None] | None = None
 
     @property
     def in_speech(self) -> bool:
@@ -134,6 +148,11 @@ class Segmenter:
     def time(self) -> float:
         """Audio time, seconds."""
         return self._n * FRAME_MS / 1000
+
+    @property
+    def speech_start(self) -> float | None:
+        """When the current utterance's first voiced frame began (audio time), None outside utterances."""
+        return self._voice_n * FRAME_MS / 1000 if self._in_speech else None
 
     @property
     def silence_s(self) -> float:
@@ -154,7 +173,8 @@ class Segmenter:
         frames = self._frames[:len(self._frames) - max(0, self._silence - keep)]
         pcm = np.concatenate(frames)
         t0 = self._start_n * FRAME_MS / 1000
-        return Segment(pcm, t0, t0 + len(pcm) / SAMPLE_RATE, self.time - self.silence_s, self._uid, self._voiced_count)
+        return Segment(pcm, t0, t0 + len(pcm) / SAMPLE_RATE, self.time - self.silence_s, self._uid, self._voiced_count,
+                       self._voice_n * FRAME_MS / 1000)
 
     def advance(self) -> None:
         """A frame that was not heard (microphone muted while Marvin speaks): time moves on, and
@@ -177,6 +197,7 @@ class Segmenter:
                 self._frames = [f for f, _ in kept]
                 self._voiced_count = sum(v for _, v in kept)
                 self._start_n = self._n - len(kept)
+                self._voice_n = self._start_n + (first - max(0, first - pre))
                 self._in_speech = True
                 self._uid += 1
                 self._silence = 0
@@ -187,11 +208,20 @@ class Segmenter:
         if voiced:
             self._silence = 0
             self._voiced_count += 1
+            self._end_s = None
         else:
             self._silence += 1
         if self._silence * FRAME_MS / 1000 >= c.end_silence_s:
-            trim = max(0, self._silence - int(c.tail_kept_s * 1000 / FRAME_MS))
-            return self._finish(trim)
+            if self._end_s is None:
+                self._end_s = c.end_silence_s
+                if self.endpoint is not None:
+                    try:
+                        self._end_s = max(c.end_silence_s, float(self.endpoint() or 0.0))
+                    except Exception:                       # noqa: BLE001 - never lose the utterance
+                        log.exception("endpoint decision failed")
+            if self._silence * FRAME_MS / 1000 >= self._end_s - 1e-9:
+                trim = max(0, self._silence - int(c.tail_kept_s * 1000 / FRAME_MS))
+                return self._finish(trim)
         if len(self._frames) * FRAME_MS / 1000 >= c.max_segment_s:
             return self._finish(0)
         return None
@@ -204,6 +234,7 @@ class Segmenter:
         self._in_speech = False
         self._frames = []
         self._silence = 0
+        self._end_s = None
         self._ring.clear()
         self._voiced.clear()
 
@@ -216,4 +247,5 @@ class Segmenter:
             return None
         pcm = np.concatenate(frames)
         t0 = self._start_n * FRAME_MS / 1000
-        return Segment(pcm, t0, t0 + len(pcm) / SAMPLE_RATE, speech_end, self._uid, voiced)
+        return Segment(pcm, t0, t0 + len(pcm) / SAMPLE_RATE, speech_end, self._uid, voiced,
+                       self._voice_n * FRAME_MS / 1000)

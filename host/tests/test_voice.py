@@ -1215,3 +1215,206 @@ def test_context_says_the_sensors_are_simulated():
                                                         heart_rate=66.0)))
     assert "simulated" in text and "heart rate at 66" in text
     assert "simulated" not in " ".join(persona.context_facts(PresenceState(t_us=1, present=True)))
+
+
+# ---------------------------------------------------------------- one thought, one question
+
+@pytest.mark.parametrize("text", [
+    "Je veux aussi que tu saches que", "Ok.", "OK", "Bon...", "Alors,", "d'accord", "Marvin, ok",
+    "Il fait beau, mais", "Je ne viens pas parce que", "Je voudrais un", "Et donc", "euh",
+    "I went there and", "because", "OK so", "I was, um", "Well,", "It was great but",
+])
+def test_announces_more(text):
+    from marvin_host.voice.filters import announces_more
+    assert announces_more(text)
+
+
+@pytest.mark.parametrize("text", [
+    "", "Marvin.", "Je suis développeur.", "Quelle heure est-il ?", "Et alors ?", "Ça marche !",
+    "J'ai faim.", "I think so.", "What time is it?", "Hello there.", "That's all.", "Merci beaucoup.",
+])
+def test_does_not_announce_more(text):
+    from marvin_host.voice.filters import announces_more
+    assert not announces_more(text)
+
+
+def _segments(audio, endpoint=None, **cfg):
+    seg = Segmenter(EnergyVad(), SegmenterConfig(**cfg))
+    seg.endpoint = endpoint
+    out = [s for i in range(len(audio) // FRAME_SAMPLES)
+           if (s := seg.feed(audio[i * FRAME_SAMPLES:(i + 1) * FRAME_SAMPLES]))]
+    return out
+
+
+def test_segmenter_waits_longer_when_asked():
+    audio = np.concatenate([silence(0.5), voice(1.0), silence(0.8), voice(1.0), silence(1.5)])
+    assert len(_segments(audio)) == 2                                   # 0.8 s ends it at 0.55 s
+    asked = []
+    one = _segments(audio, endpoint=lambda: asked.append(1) or 1.1)
+    assert len(one) == 1 and one[0].duration > 2.5 and len(asked) == 2  # asked once per pause
+    assert one[0].speech_start == pytest.approx(0.5, abs=0.05)          # the first voiced frame, not the pre-roll
+    assert len(_segments(audio, endpoint=lambda: None)) == 2
+    assert len(_segments(audio, endpoint=lambda: 1.1, end_silence_long_s=0.0)) == 1     # the callback decides
+    long_pause = np.concatenate([silence(0.5), voice(1.0), silence(1.3), voice(1.0), silence(1.5)])
+    assert len(_segments(long_pause, endpoint=lambda: 1.1)) == 2        # longer than the long silence
+
+
+@pytest.mark.parametrize("first, whole, one", [
+    ("Marvin, je voudrais savoir et", "Marvin, je voudrais savoir et quelle heure il est.", True),
+    ("Marvin, I'd like to know because", "Marvin, I'd like to know because I'm late.", True),
+    ("Marvin, OK.", "Marvin, OK, what time is it?", True),
+    ("Marvin, quelle heure est-il ?", "", False),
+])
+def test_adaptive_endpoint(first, whole, one):
+    # a 0.8 s pause: longer than end_silence_s (0.55 s), shorter than end_silence_long_s (1.1 s)
+    va, t = make([("quiet", 0.5), ("say", 1.0), ("quiet", 0.8), ("say", 1.0), ("quiet", 1.5), ("idle",)],
+                 [first, whole], ["Bien.", "Bien."], continue_grace_s=0.0)
+    va.run()
+    if one:
+        assert len(t.llm.calls) == 1 and said(t.llm.calls[0][-1]) == match_wake_word(whole)
+        assert len(t.stt.calls) == 2 and t.stt.calls[1] > 2.0                   # one utterance, both parts
+    else:
+        assert said(t.llm.calls[0][-1]) == "quelle heure est-il ?"
+        assert t.stt.calls[0] < 1.5                                             # it ended at the pause
+
+
+def slow_llm(replies, delay_s=0.4):
+    """A model that takes `delay_s` before its first word: the listening goes on meanwhile."""
+    replies = list(replies)
+
+    def reply(messages):
+        time.sleep(delay_s)
+        return replies.pop(0) if replies else ""
+
+    return FakeLLM(reply)
+
+
+def _events(va):
+    events = []
+    va.add_listener(lambda kind, d: events.append((kind, d)))
+    return events
+
+
+def test_speech_resuming_before_the_answer_continues_the_question(caplog):
+    caplog.set_level("INFO", logger="marvin.voice")
+    va, t = make([("quiet", 0.5), ("say", 1.5), ("quiet", 0.9), ("say", 1.0), ("quiet", 1.0), ("idle",)],
+                 ["Marvin, je veux aussi que tu saches que je suis développeur.", "Et j'aime la voile."],
+                 slow_llm(["C'est noté.", "Développeur et marin, c'est noté."]))
+    events = _events(va)
+    va.run()
+    joined = "je veux aussi que tu saches que je suis développeur. Et j'aime la voile."
+    assert [said(c[-1]) for c in t.llm.calls] == ["je veux aussi que tu saches que je suis développeur.", joined]
+    assert " ".join(s for s, _ in t.tts.said) == "Développeur et marin, c'est noté."  # the first answer never played
+    assert t.log["reply"] == ["Développeur et marin, c'est noté."]
+    assert [m["content"] for m in va.history if m["role"] == "user"] == [t.llm.calls[1][-1]["content"]]
+    heard = [d for k, d in events if k == "heard"]
+    assert [h["text"] for h in heard] == ["je veux aussi que tu saches que je suis développeur.", joined]
+    assert heard[1]["continues"] == [heard[0]["uid"]] and "continues" not in heard[0]
+    assert heard[1]["cut"] == []                                                    # nothing was heard of its answer
+    assert [d for k, d in events if k == "reply"][0]["interrupted"] is False        # no reply for the first one
+    assert len([k for k, _ in events if k == "reply"]) == 1
+    assert len(t.stt.calls) == 2                                                    # both transcribed speculatively
+    assert "joined 2 utterances (before the answer)" in caplog.text
+
+
+def test_no_merge_after_the_grace_period():
+    va, t = make([("quiet", 0.5), ("say", 1.5), ("quiet", 2.0), ("say", 1.0), ("quiet", 1.0), ("idle",)],
+                 ["Marvin, je suis développeur.", "Et j'aime la voile."],
+                 slow_llm(["C'est noté.", "Autre chose."]))
+    events = _events(va)
+    va.run()
+    assert [said(c[-1]) for c in t.llm.calls] == ["je suis développeur."]      # the rest needed the name
+    assert t.log["reply"] == ["C'est noté."]
+    assert not any("continues" in d for k, d in events if k == "heard")
+
+
+def test_a_cough_after_the_question_only_delays_the_answer():
+    # speech resumes within the grace period, but it is nothing: the answer plays, whole
+    va, t = make([("quiet", 0.5), ("say", 1.5), ("quiet", 0.9), ("say", 0.6), ("quiet", 1.0), ("idle",)],
+                 ["Marvin, quelle heure est-il ?", "Merci."], slow_llm(["Midi."]))
+    va.run()
+    assert [said(c[-1]) for c in t.llm.calls] == ["quelle heure est-il ?"]
+    assert t.log["reply"] == ["Midi."]
+
+
+class OnceBlockingSink(BlockingSink):
+    """Blocks (a long answer being said) until it is stopped once; then plays at once."""
+
+    def wait(self):
+        if not self.stops:
+            super().wait()
+
+
+def test_barge_in_soon_after_the_question_joins_it():
+    reply = "Il était une fois un phare au bout du monde. Son gardien parlait peu."
+    va, t = make([("say", 1.0), ("quiet", 1), ("status", "speaking"),
+                  ("say", 1.2), ("quiet", 1), ("idle",)],
+                 ["Marvin, raconte-moi une histoire.", "Marvin, avec des bateaux."],
+                 [reply, "Il était une fois un bateau."], sink=OnceBlockingSink(), duplex=True)
+    events = _events(va)
+    va.run()
+    joined = "raconte-moi une histoire. avec des bateaux."
+    assert [said(c[-1]) for c in t.llm.calls] == ["raconte-moi une histoire.", joined]
+    # the cut answer is not in the history: the joined question says it all
+    assert [said(m) for m in t.llm.calls[1][1:]] == [joined]
+    assert [said(m) for m in va.history] == [joined, "Il était une fois un bateau."]
+    heard = [d for k, d in events if k == "heard"]
+    assert heard[1]["continues"] == [heard[0]["uid"]] and heard[1]["cut"] == [heard[0]["uid"]]
+    replies = [d for k, d in events if k == "reply"]
+    assert replies[0]["interrupted"] and replies[0]["text"]                       # what was said stays shown
+    assert not replies[1]["interrupted"]
+
+
+def test_barge_in_long_after_the_question_is_a_new_question():
+    reply = "Il était une fois un phare au bout du monde. Son gardien parlait peu."
+    va, t = make([("say", 1.0), ("quiet", 1), ("status", "speaking"),
+                  ("quiet", 6), ("say", 1.2), ("quiet", 1), ("idle",)],
+                 ["Marvin, raconte-moi une histoire.", "Marvin, quelle heure est-il ?"],
+                 [reply, "Midi."], sink=OnceBlockingSink(), duplex=True)
+    va.run()
+    assert [said(c[-1]) for c in t.llm.calls] == ["raconte-moi une histoire.", "quelle heure est-il ?"]
+
+
+def test_talk_now_after_cutting_the_answer_joins_the_question():
+    box = {}
+    reply = "Il était une fois un phare au bout du monde. Son gardien parlait peu."
+    va, t = make([("say", 1.0), ("quiet", 1), ("status", "speaking"), ("call", lambda: box["va"].listen_now()),
+                  ("quiet", 0.5), ("say", 1.2), ("quiet", 1), ("idle",)],
+                 ["Marvin, raconte-moi une histoire.", "Avec des bateaux."],
+                 [reply, "Il était une fois un bateau."], sink=OnceBlockingSink())
+    box["va"] = va
+    events = _events(va)
+    va.run()
+    assert said(t.llm.calls[-1][-1]) == "raconte-moi une histoire. Avec des bateaux."
+    heard = [d for k, d in events if k == "heard"]
+    assert heard[-1]["continues"] == [heard[0]["uid"]]
+
+
+def test_ok_then_the_rest_in_a_follow_up_window():
+    # "Ok" [a pause longer than the long endpoint] "j'ai pas encore mangé": one question
+    va, t = make([("say", 1.0), ("quiet", 1), ("idle",), ("quiet", 1.5), ("say", 0.5), ("quiet", 1.3),
+                  ("say", 1.2), ("quiet", 1.5), ("idle",)],
+                 ["Marvin, tu as mangé ?", "Ok.", "J'ai pas encore mangé, j'ai faim là."],
+                 ["Non, je suis un robot.", "Alors mange quelque chose !"], follow_up_s=5.0)
+    va.run()
+    assert [said(c[-1]) for c in t.llm.calls] == ["tu as mangé ?", "Ok. J'ai pas encore mangé, j'ai faim là."]
+
+
+def test_listening_window_waits_while_someone_talks():
+    box = {}
+    seen = []
+
+    def during():
+        seen.append((box["va"].listen_remaining(), box["va"].hearing, box["va"].status))
+
+    va, t = make([("quiet", 0.5), ("call", lambda: box["va"].listen_now()), ("quiet", 5.0), ("say", 0.8),
+                  ("call", during),                     # talking when the window would run out
+                  ("quiet", 1.5), ("call", during),     # "Euh." was nothing: the window goes on
+                  ("say", 1.2), ("quiet", 1), ("idle",)],
+                 ["Euh.", "Quelle heure est-il ?"], ["Midi."])
+    box["va"] = va
+    va.run()
+    assert seen[0] == (None, True, "listening")
+    left, hearing, status = seen[1]
+    assert status == "listening" and not hearing and 0.5 < left <= 1.5
+    assert t.log["transcript"] == ["Quelle heure est-il ?"]

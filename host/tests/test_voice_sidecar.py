@@ -339,6 +339,40 @@ def test_mute_and_talk_now(sidecar, cores):
     assert not last.muted
 
 
+def test_a_question_that_goes_on_is_one_question(sidecar, cores):
+    first = "Marvin, je veux aussi que tu saches que je suis développeur."
+    t2 = 1.0 + fake.speech_seconds(first) + 0.9          # he goes on after a 0.9 s pause
+    port, _ = sidecar([(1.0, first), (t2, "Et j'aime la voile.")])
+    core = cores(port)
+    core.send(**configure())
+    core.ready()
+    q1 = core.wait("heard")
+    assert q1.text == "je veux aussi que tu saches que je suis développeur." and not q1.continues
+    # the core is still thinking (no reply yet): the question is cancelled, and asked again whole
+    gone = core.wait("interrupted", lambda m: m.utterance_uid == q1.uid)
+    assert gone.reason == "merged"
+    q2 = core.wait("heard", lambda h: h.uid != q1.uid)
+    assert q2.text == "je veux aussi que tu saches que je suis développeur. Et j'aime la voile."
+    assert list(q2.continues) == [q1.uid]
+    core.reply(9, q1.uid, "Trop tard.")                  # an answer to the cancelled question is not said
+    core.reply(10, q2.uid, "Développeur et marin, c'est noté.")
+    spoken = core.wait("spoken", lambda m: m.utterance_uid == q2.uid)
+    assert spoken.text == "Développeur et marin, c'est noté." and not spoken.interrupted
+    assert all(s.reply_id != 9 for s in core.of("say"))
+
+
+def test_the_listening_window_waits_while_someone_talks(sidecar, cores):
+    port, _ = sidecar([(3.0, "Quelle heure est-il ?")])
+    core = cores(port)
+    core.send(**configure())
+    core.ready()
+    core.send(listen_now=pb.ListenNow(on=True))
+    core.wait("status", lambda s: s.state == pb.Status.LISTENING and s.HasField("listen_s"))
+    talking = core.wait("status", lambda s: s.state == pb.Status.LISTENING and s.hearing)
+    assert not talking.HasField("listen_s")              # no countdown while they talk
+    assert core.wait("heard").text == "Quelle heure est-il ?"
+
+
 def test_robot_audio_through_the_core(sidecar, cores):
     port, _ = sidecar([(1000.0, "Marvin, allume la lumière.")])   # phrase 0, said by the robot below
     core = cores(port)

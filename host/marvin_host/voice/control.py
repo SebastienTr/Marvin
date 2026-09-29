@@ -270,6 +270,7 @@ class VoiceController:
         self.fix = ""
         self.muted = False
         self.transcript: deque[dict] = deque(maxlen=history)
+        self._heard_entries: dict[int, int] = {}            # question uid -> its heard entry (joined questions)
         # ids keep growing across restarts of marvin-host, so an open page never mistakes a new
         # entry for one it already shows
         self._ids = itertools.count(int(time.time() * 1000))
@@ -550,6 +551,9 @@ class VoiceController:
             # seconds left to speak without the name (None outside a listening window)
             "listen_s": (va.listen_remaining() if (va is not None and self.state == ON
                                                     and hasattr(va, "listen_remaining")) else None),
+            # someone talks in a listening window: it waits for them (listen_s is None meanwhile)
+            "hearing": bool(va is not None and self.state == ON and getattr(va, "hearing", False)
+                            and va.status == "listening"),
         }
 
     def _set_state(self, state: str) -> None:
@@ -578,8 +582,20 @@ class VoiceController:
             self._publish("voice", self.snapshot())
         elif kind == "heard":
             extra = {"raw": data["raw"]} if data.get("raw") else {}
-            self._entry("heard", data["t"], text=data["text"], language=data.get("language"),
-                        source=data.get("source", "voice"), **extra)
+            if data.get("continues"):           # one thought said in several breaths
+                cut = set(data.get("cut") or ())
+                ids = [(u, self._heard_entries.get(u)) for u in data["continues"]]
+                extra["joined"] = len(data["continues"]) + 1
+                # the app drops the bubbles of the parts nothing was answered to, and marks this one as going on
+                # after the answers that were cut
+                extra["replaces"] = [i for u, i in ids if i is not None and u not in cut]
+                extra["continues"] = [i for u, i in ids if i is not None and u in cut]
+            e = self._entry("heard", data["t"], text=data["text"], language=data.get("language"),
+                            source=data.get("source", "voice"), **extra)
+            if data.get("uid"):
+                self._heard_entries[data["uid"]] = e["id"]
+                while len(self._heard_entries) > 64:
+                    self._heard_entries.pop(next(iter(self._heard_entries)))
         elif kind == "reply":
             lat = {k: round(float(v), 3) for k, v in (data.get("latency") or {}).items()}
             first = None
@@ -596,6 +612,9 @@ class VoiceController:
             self._entry("ignored", data["t"], text=data.get("text", ""), reason=data.get("reason", ""), **extra)
         elif kind in LIVE_KINDS:
             self._publish(kind, data)           # live only: not kept in the transcript
+            va = self.assistant
+            if kind == "utterance" and data.get("state") != "end" and va is not None and va.status == "listening":
+                self._publish("voice", self.snapshot())     # the window waits while they talk, then goes on
 
     def recent(self, since: int = 0) -> list[dict]:
         """Conversation entries after id `since`, oldest first."""

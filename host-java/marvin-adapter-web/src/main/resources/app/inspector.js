@@ -171,6 +171,8 @@ export function openInspector(e) {
   if (heard) {
     const sec = section(heard.source === "typed" ? "You typed" : "Marvin heard");
     sec.append(el("p", "insp-quote", heard.text));
+    const joined = e.joined || heard.joined;
+    if (joined > 1) sec.append(el("p", "insp-raw muted", `Joined ${joined} utterances: you went on after a pause, so Marvin took it as one question.`));
     if (heard.raw && heard.raw !== heard.text) {
       const raw = el("p", "insp-raw");
       raw.append(el("span", "muted", "Transcript: "), el("q", null, heard.raw));

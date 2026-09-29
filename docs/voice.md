@@ -72,6 +72,10 @@ How to talk to it:
 - **"Marvin."** alone: a soft two-note chime, then ask within 6 seconds.
 - **Follow-up**: for 5 seconds after an answer, ask again without the name.
 - **Interrupt**: say "Marvin" while it thinks. While it speaks, only with `--duplex` (see below).
+- **Take your time**: a short pause does not cut you off. If you go on right after a question,
+  before Marvin's first word, it waits and takes both as one question; a sentence that stops on
+  "et", "parce que", "and", a comma or a lone "OK" gets a longer pause. See
+  [One thought, one question](#one-thought-one-question).
 - It answers in the language you speak (French and English are expected; French by default).
   `--lang` forces one.
 - It forgets the conversation after 3 minutes of silence.
@@ -123,7 +127,8 @@ options given on that command line into it, keeping the rest. Example:
 ```
 
 Other keys: `ollama_host`, `tts_voice`, `default_language`, `wake`, `follow_up_s`,
-`listen_window_s`, `speculative_stt`, `tools` (default true), `internet` (online tools, default
+`listen_window_s`, `speculative_stt`, `continue_grace_s` (default 1.5, 0 turns merging off),
+`end_silence_long_ms` (default 1100, 0 turns the longer pause off), `tools` (default true), `internet` (online tools, default
 true), `home_place` (the weather's place when none is said, e.g. `"Nice"`, default empty), and for
 `run` only `reminders` (spoken break reminders, default true) and `welcome_back` (default false).
 
@@ -290,6 +295,40 @@ rehearsing a real question (same system prompt, same options: `num_ctx` 8192, `t
 server did not reuse the cache. Options that differ between requests (for instance another app
 using the same model with another `num_ctx`) make Ollama reload the model.
 
+## One thought, one question
+
+People pause in the middle of a thought ("Je veux aussi que tu saches que je suis développeur.
+[pause] Et j'aime la voile."). Three rules keep Marvin from cutting in, without delaying every
+answer ([`engine.py`](../host/marvin_host/voice/engine.py)):
+
+1. **A question that goes on is one question.** When speech starts again less than
+   `continue_grace_s` (1.5 s) after a question ended, and Marvin has not made a sound yet, the
+   answer waits (the model keeps writing, nothing is played). If the new utterance is real speech,
+   the pending answer is cancelled (the core's model request too: `Interrupted` "merged") and both
+   texts go as one question; a cough or a "Merci." is ignored and the waiting answer plays at once.
+   The log says `joined 2 utterances`, the app shows one bubble, and the reply inspector says the
+   question was joined. 1.5 s because pauses inside a turn are mostly under a second, while the
+   first word comes 1.5-2.5 s after the end of speech: past 1.5 s Marvin is usually already
+   speaking, and the rule below takes over.
+2. **Cut to go on.** When a question cuts Marvin's answer (saying "Marvin, ..." in duplex mode,
+   or Talk now then speaking) less than `continue_join_s` (6 s) after the question it cuts ended,
+   they are joined too, so the model gets the whole thought. What Marvin said stays in the
+   conversation, marked interrupted; the cut turn leaves the model's history (the joined question
+   says it all again).
+3. **The pause that ends a question adapts.** The speculative transcript (started after 0.25 s of
+   silence) is read when the pause reaches `end_silence_ms` (0.55 s): if it ends with a comma or an
+   ellipsis, a conjunction or connective ("et", "mais", "que", "parce que", "donc", "alors", "and",
+   "but", "so", "because"...), a filler ("euh", "um") or is only a lead-in ("OK", "bon", "alors",
+   "OK so"), the question ends after `end_silence_long_ms` (1.1 s) instead
+   (`filters.announces_more`). A question or an exclamation never waits. The transcript was going to
+   be waited for anyway, so a finished question costs nothing more. A lone "OK" in a follow-up
+   window is also kept and put in front of what follows within 1.5 s.
+
+**The listening window waits for you.** From the moment you start talking in a listening window
+(follow-up, Talk now, "Marvin." alone) until what you said is judged, the window does not run out
+(`listen_remaining()` is `None`, `Status.hearing` is set, the app shows "Listening…" instead of the
+draining bar); if nothing was asked, it goes on with at least the time it had left (and 1.5 s).
+
 ## Latency
 
 Every answer logs where the time went, from the moment you stop talking to Marvin's first word:
@@ -306,7 +345,7 @@ What to expect on an Apple Silicon Mac with the defaults (estimates; the log tel
 
 | Stage | Time | How it is kept short |
 |---|---|---|
-| End of speech | 0.55 s | Silence that ends a question (`end_silence_ms`); shorter cuts people off mid-sentence |
+| End of speech | 0.55 s (1.1 s after "et", "parce que", a lone "OK"...) | Silence that ends a question (`end_silence_ms`); shorter cuts people off mid-sentence. Longer only when the words announce more (see [One thought, one question](#one-thought-one-question)) |
 | Speech recognition | 0.1-0.7 s left to wait | MLX turbo on the GPU (0.2-0.5 s for a question); it starts speculatively after 0.25 s of silence, so part of it is already done when the question ends |
 | Model, first token | 0.1-0.3 s (4B), about 1.4 s (27B, measured) | Model loaded and prompt cached at start-up, kept loaded; the system prompt never changes (the live context is in the question), so Ollama reuses it |
 | First chunk | + 0.1-0.4 s | The first clause (3 words, up to a comma) or the first sentence is spoken without waiting for the rest, nor for the space after its punctuation |
@@ -404,9 +443,9 @@ One turn, as the core sees it:
 | `Configure` (the `voice.json` keys the audio uses, and the route: computer or robot) | `Status` STARTING, then IDLE (or ERROR with a fix) |
 | `RobotLink`, then the robot's `AUDIO_IN` as `AudioFrame`s (robot route) | `RobotAudioCtrl` MIC_START every second |
 | | `Level` (~16/s), `Utterance`, `Partial`, `Ignored` |
-| | `Heard` (uid, text, language, source, latency so far) and `Status` THINKING |
+| | `Heard` (uid, text, language, source, latency so far, `continues`: the questions it goes on from) and `Status` THINKING |
 | `ReplyStart` (for that uid), `TextPiece`s as the model writes, `Filler` while a tool runs, `ReplyEnd` | `SayProgress` per piece (text, seconds, mouth envelope), `SpeakerFrame`s paced for the robot (robot route), `Status` SPEAKING |
-| | `ReplySpoken` (text said, first_chunk, tts, audio_start, total) or `Interrupted` (barge-in, stop) |
+| | `ReplySpoken` (text said, first_chunk, tts, audio_start, total) or `Interrupted` (barge-in, stop, merged: a `Heard` that continues it follows) |
 
 Commands: `Ask` (a typed question, answered like a heard one), `ListenNow` (Talk now, or stop
 listening), `Mute`, `StopSpeaking`, `Say` (proactive speech; skipped with `Interrupted` "busy"
@@ -462,8 +501,10 @@ process, as before.
 - The name must be at the start ("Marvin, ...", "Hey Marvin ...", "Dis Marvin ...") or at the end
   ("..., Marvin?"). In the middle of a sentence it is ignored: talking *about* Marvin is not
   talking *to* it.
-- A pause longer than 0.55 s in the middle of a question ends it; raise `end_silence_ms` if you
-  speak slowly.
+- A pause longer than 0.55 s in the middle of a question ends it (1.1 s after a word that announces
+  more); if you go on within 1.5 s, before Marvin's first word, both parts are joined. Raise
+  `end_silence_ms` if you speak slowly. In half duplex, once Marvin speaks it hears nothing: press
+  Talk now to go on (the rest is joined within 6 s of the question).
 - One speaker at a time, no speaker identification.
 - One tool so far (the weather). No calendar, no reminders, no web search.
 - How well a model calls tools varies: small models (1.7-4B) sometimes call the weather when they

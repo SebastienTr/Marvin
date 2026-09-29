@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -70,6 +71,12 @@ import marvin.host.domain.shared.TokenEstimator;
  * says it and reports when it is done ({@code ReplySpoken}) or interrupted. The transcript entries (heard,
  * reply with its latency breakdown and what the model was given, ignored, notes) are kept in the
  * conversation store and published live, with the voice's live signals.
+ *
+ * <p>One thought, one question: a {@code Heard} that {@code continues} earlier questions (the owner went on talking
+ * after them) is answered alone. The questions it continues were cancelled by the voice: one cancelled before its
+ * answer was heard ({@code merged}) leaves nothing (no reply entry, nothing in the history), one whose answer was cut
+ * leaves what was said but leaves the history, and the heard entry of the joined question, written after them,
+ * says which entries it {@code replaces} (the app shows one bubble) or {@code continues}.
  */
 public final class VoiceService implements VoiceControl {
     private static final Logger log = Logger.getLogger("marvin.voice");
@@ -124,6 +131,13 @@ public final class VoiceService implements VoiceControl {
     private final AtomicLong ids;
     private final AtomicLong replyIds = new AtomicLong(1);
     private final Map<Long, Turn> turns = new ConcurrentHashMap<>();
+    /** The last turns by utterance uid, finished or not: what a question that continues them needs to know. */
+    private final Map<Long, Turn> recentTurns = Collections.synchronizedMap(new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Long, Turn> eldest) {
+            return size() > 32;
+        }
+    });
     /** The last turn heard: each turn builds its messages only once the one before is over (Python's single worker). */
     private Turn lastTurn;
     private final Map<Long, String> proactiveReplies = new ConcurrentHashMap<>();
@@ -501,7 +515,8 @@ public final class VoiceService implements VoiceControl {
         boolean robot = "robot".equals(c.audioRoute()) || "auto".equals(c.audioRoute()) && robotAudio.getAsBoolean();
         return new VoiceSidecar.Settings(c.stt(), c.sttModel(), c.tts(), c.ttsVoice(), c.language(),
                 c.defaultLanguage(), c.wake(), c.duplex(), c.echoTailS(), c.followUpS(), c.listenWindowS(),
-                c.speculativeStt(), c.endSilenceMs(), c.chime(), c.inputDevice(), c.outputDevice(), robot);
+                c.speculativeStt(), c.endSilenceMs(), c.chime(), c.inputDevice(), c.outputDevice(), robot,
+                c.continueGraceS(), c.endSilenceLongMs());
     }
 
     /** A robot with audio connected or left: with the {@code auto} route, the voice moves to it or back. */
@@ -687,12 +702,16 @@ public final class VoiceService implements VoiceControl {
         String model = s.get("llm_model") instanceof String m && !m.isEmpty() ? m : VoiceSettings.DEFAULT_MODEL;
         return new VoiceSnapshot(state, on && st != null && RUNNING.contains(st.state()) ? st.state() : "off", muted,
                 error, fix, model, !Boolean.FALSE.equals(s.getOrDefault("wake", true)),
-                !Boolean.FALSE.equals(s.getOrDefault("chime", true)), on ? listenLeft(st) : null);
+                !Boolean.FALSE.equals(s.getOrDefault("chime", true)), on ? listenLeft(st) : null,
+                on && st != null && st.hearing() && "listening".equals(st.state()));
     }
 
-    /** Seconds left in the listening window now (the voice reports it only when its state changes). */
+    /**
+     * Seconds left in the listening window now (the voice reports it when its state changes, and when someone starts
+     * or stops talking in the window: it does not count down while they talk).
+     */
     private Double listenLeft(VoiceSidecar.Status st) {
-        if (st == null || st.listenS() == null || !"listening".equals(st.state())) {
+        if (st == null || st.listenS() == null || st.hearing() || !"listening".equals(st.state())) {
             return null;
         }
         double left = st.listenS() - (clocks.monotonicSeconds() - statusAt);
@@ -821,8 +840,8 @@ public final class VoiceService implements VoiceControl {
     /** One question and its answer. */
     private final class Turn {
         final VoiceSidecar.Heard heard;
-        /** The conversation entry of what was heard. */
-        final long said;
+        /** The conversation entry of what was heard (written late for a question that continues others). */
+        volatile long said;
         final long replyId;
         final long number = turnSeq.incrementAndGet();
         /** The memory candidates for this question, searched while it was still being recognised when possible. */
@@ -834,31 +853,41 @@ public final class VoiceService implements VoiceControl {
         volatile boolean superseded;
         volatile boolean cancelled;
         volatile double cancelledAt;
+        /** Why it was cancelled first ({@code merged}: a question that continues it follows). */
+        volatile String cancelReason;
+        /** The user message sent to the model, once built. */
+        volatile String userMessage;
+        /** It is in the history (and was the last question there when it was put). */
+        volatile boolean remembered;
+        /** A reply entry was written for it. */
+        volatile boolean replied;
 
-        Turn(VoiceSidecar.Heard heard, long said, long replyId) {
+        Turn(VoiceSidecar.Heard heard, long replyId) {
             this.heard = heard;
-            this.said = said;
             this.replyId = replyId;
         }
 
         void cancel(String reason) {
             if (!cancelled) {
                 cancelledAt = clocks.monotonicSeconds();
+                cancelReason = reason;
             }
             cancelled = true;
+        }
+
+        boolean merged() {
+            return cancelled && "merged".equals(cancelReason);
         }
     }
 
     private void onHeard(VoiceSidecar.Heard h) {
         language = h.language() == null || h.language().isEmpty() ? language : h.language();
-        Map<String, Object> d = new LinkedHashMap<>();
-        d.put("language", h.language());
-        d.put("source", h.source().isEmpty() ? "voice" : h.source());
-        if (h.raw() != null && !h.raw().isEmpty()) {
-            d.put("raw", h.raw());
+        boolean continues = !h.continues().isEmpty();
+        Turn turn = new Turn(h, replyIds.getAndIncrement());
+        if (!continues) {
+            turn.said = heardEntry(h).id();
         }
-        ConversationEntry heard = entry("heard", h.wallTime() > 0 ? h.wallTime() : clocks.wallSeconds(), h.text(), d);
-        Turn turn = new Turn(h, heard.id(), replyIds.getAndIncrement());
+        recentTurns.put(h.uid(), turn);
         startRecollection(turn);
         Turn previous;
         synchronized (lock) {
@@ -873,6 +902,10 @@ public final class VoiceService implements VoiceControl {
             try {
                 if (previous != null) {
                     previous.done.join();       // its answer (even cut short) is in the history first
+                }
+                if (continues) {
+                    // after what the questions it continues left (a cut answer): one bubble, in order
+                    turn.said = heardEntry(h).id();
                 }
                 if (turn.cancelled) {
                     return;                     // dropped by the voice before its turn came: nothing to answer
@@ -893,6 +926,31 @@ public final class VoiceService implements VoiceControl {
                 maybeRewarm();
             }
         });
+    }
+
+    /** The conversation entry of a question heard; with what it continues, when it continues earlier ones. */
+    private ConversationEntry heardEntry(VoiceSidecar.Heard h) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("language", h.language());
+        d.put("source", h.source().isEmpty() ? "voice" : h.source());
+        if (h.raw() != null && !h.raw().isEmpty()) {
+            d.put("raw", h.raw());
+        }
+        if (!h.continues().isEmpty()) {
+            List<Long> replaces = new ArrayList<>();
+            List<Long> goesOn = new ArrayList<>();
+            for (long uid : h.continues()) {
+                Turn t = recentTurns.get(uid);
+                if (t != null && t.said != 0) {
+                    (t.replied ? goesOn : replaces).add(t.said);
+                }
+            }
+            d.put("joined", h.continues().size() + 1);
+            d.put("replaces", replaces);        // their bubbles give way to this one: nothing was answered in between
+            d.put("continues", goesOn);         // this one goes on after their (cut) answers
+            log.info("joined " + (h.continues().size() + 1) + " utterances: " + h.text());
+        }
+        return entry("heard", h.wallTime() > 0 ? h.wallTime() : clocks.wallSeconds(), h.text(), d);
     }
 
     private void onInterrupted(VoiceSidecar.Interrupted i) {
@@ -944,6 +1002,13 @@ public final class VoiceService implements VoiceControl {
         long epoch = historyEpoch.get();
         List<ChatMessage> history;
         synchronized (memory) {
+            for (long uid : h.continues()) {
+                // a question whose answer this one cut: this one says it all again, the cut turn leaves the history
+                Turn t = recentTurns.get(uid);
+                if (t != null && t.remembered && t.userMessage != null) {
+                    t.remembered = !memory.forgetLast(t.userMessage);
+                }
+            }
             history = memory.messages(now);
         }
         LocalDateTime local = LocalDateTime.ofInstant(Instant.ofEpochMilli((long) (clocks.wallSeconds() * 1000)), days.zone());
@@ -958,6 +1023,7 @@ public final class VoiceService implements VoiceControl {
         }
         String context = asm.context();
         String user = Persona.userMessage(h.text(), context, lang);
+        turn.userMessage = user;
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPrompt(lang, offer, reg, profile)));
         messages.addAll(history);
@@ -998,6 +1064,17 @@ public final class VoiceService implements VoiceControl {
             return;                             // dropped before it was said: nothing to record
         }
         boolean interrupted = turn.cancelled || spoken.interrupted();
+        int joined = h.continues().isEmpty() ? 0 : h.continues().size() + 1;
+        if (turn.merged()) {
+            // the owner went on talking: the question that continues this one is answered instead, this one is not
+            // remembered, and shows only if Marvin had started saying something
+            if (!SpeechText.cleanForSpeech(spoken.text()).isEmpty()) {
+                reply(spoken.text(), lang, latency(h.latency(), out.latency(), spoken.latency()), true, out, context, user,
+                        c, null, "", asm.report(profile, usage), joined);
+                turn.replied = true;
+            }
+            return;
+        }
         String said = out.saidAnswer();
         Map<String, Double> lat = latency(h.latency(), out.latency(), spoken.latency());
         lat.forEach((k, v) -> span.attribute("marvin.latency." + k, v));
@@ -1005,7 +1082,9 @@ public final class VoiceService implements VoiceControl {
         span.attribute("marvin.interrupted", Boolean.toString(turn.cancelled || spoken.interrupted()));
         if (out.failure() != null) {
             span.error(out.failure());
-            reply(spoken.text(), lang, lat, false, out, context, user, c, out.failure(), out.hint(), asm.report(profile, usage));
+            reply(spoken.text(), lang, lat, false, out, context, user, c, out.failure(), out.hint(), asm.report(profile, usage),
+                    joined);
+            turn.replied = true;
             return;
         }
         synchronized (memory) {
@@ -1014,12 +1093,15 @@ public final class VoiceService implements VoiceControl {
             if (keep && interrupted) {
                 if (!said.isEmpty() || !out.exchange().isEmpty()) {
                     memory.remember(user, (said + " …").strip(), out.exchange(), clocks.monotonicSeconds());
+                    turn.remembered = true;
                 }
             } else if (keep) {
                 memory.remember(user, said, out.exchange(), clocks.monotonicSeconds());
+                turn.remembered = true;
             }
         }
-        reply(spoken.text(), lang, lat, interrupted, out, context, user, c, null, "", asm.report(profile, usage));
+        reply(spoken.text(), lang, lat, interrupted, out, context, user, c, null, "", asm.report(profile, usage), joined);
+        turn.replied = true;
     }
 
     private VoiceSidecar.ReplySpoken awaitSpoken(Turn turn) {
@@ -1065,7 +1147,8 @@ public final class VoiceService implements VoiceControl {
     }
 
     private void reply(String text, String lang, Map<String, Double> lat, boolean interrupted, AnswerLoop.Outcome out,
-                       String context, String prompt, VoiceConfig c, String failure, String hint, Map<String, Object> memoryReport) {
+                       String context, String prompt, VoiceConfig c, String failure, String hint, Map<String, Object> memoryReport,
+                       int joined) {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("language", lang);
         d.put("latency", lat);
@@ -1083,6 +1166,9 @@ public final class VoiceService implements VoiceControl {
         }
         if (memoryReport != null) {
             d.put("memory", memoryReport);
+        }
+        if (joined > 1) {
+            d.put("joined", joined);            // the question was said in this many breaths (the inspector says so)
         }
         entry("reply", clocks.wallSeconds(), text, d);
     }

@@ -25,7 +25,8 @@ public final class VoiceSettings {
     public static final List<String> FILE_KEYS = List.of("stt", "stt_model", "llm_model", "ollama_host", "tts",
             "tts_voice", "language", "default_language", "wake", "duplex", "echo_tail_s", "follow_up_s",
             "listen_window_s", "speculative_stt", "end_silence_ms", "reminders", "welcome_back", "tools", "internet",
-            "home_place", "chime", "audio_route", "input_device", "output_device");
+            "home_place", "chime", "audio_route", "input_device", "output_device", "continue_grace_s",
+            "end_silence_long_ms");
     public static final int MAX_HOME_PLACE = 80;
     public static final String DEFAULT_MODEL = "qwen3:4b-instruct";
     public static final String DEFAULT_OLLAMA = "http://localhost:11434";
@@ -176,7 +177,8 @@ public final class VoiceSettings {
                 str(settings, "input_device", null), str(settings, "output_device", null),
                 bool(settings, "tools", true), bool(settings, "internet", true),
                 str(settings, "home_place", "").strip(), bool(settings, "reminders", true),
-                bool(settings, "welcome_back", false), route(str(settings, "audio_route", "computer")));
+                bool(settings, "welcome_back", false), route(str(settings, "audio_route", "computer")),
+                optionalNum(settings, "continue_grace_s"), optionalNum(settings, "end_silence_long_ms"));
     }
 
     private static String route(String s) {
@@ -208,6 +210,12 @@ public final class VoiceSettings {
         return dflt;
     }
 
+    /** A number of the file, or {@code null} when it is missing or not a number (negative: 0). */
+    private static Double optionalNum(Map<String, Object> m, String k) {
+        double v = num(m, k, Double.NaN);
+        return Double.isNaN(v) ? null : Math.max(0.0, v);
+    }
+
     private static double num(Map<String, Object> m, String k, double dflt) {
         Object v = m.get(k);
         if (v instanceof Number n) {
@@ -229,13 +237,17 @@ public final class VoiceSettings {
      * @param language      forced language, {@code null} to follow the speaker
      * @param endSilenceMs  0: the sidecar's default
      * @param audioRoute    {@code computer}, {@code robot} or {@code auto}
+     * @param continueGraceS speech resuming this soon after a question, before its answer is heard, continues it;
+     *                      {@code null}: the sidecar's default, 0: never
+     * @param endSilenceLongMs the end-of-question silence when the words so far announce more; {@code null}: the
+     *                      sidecar's default, 0: never longer
      */
     public record VoiceConfig(String llmModel, String ollamaHost, String language, String defaultLanguage,
                               String stt, String sttModel, String tts, String ttsVoice, boolean wake, boolean duplex,
                               double echoTailS, double followUpS, double listenWindowS, boolean speculativeStt,
                               double endSilenceMs, boolean chime, String inputDevice, String outputDevice,
                               boolean tools, boolean internet, String homePlace, boolean reminders,
-                              boolean welcomeBack, String audioRoute) {
+                              boolean welcomeBack, String audioRoute, Double continueGraceS, Double endSilenceLongMs) {
 
         /** Languages the speaker is expected to use. */
         public List<String> languages() {

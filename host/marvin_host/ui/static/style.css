@@ -518,6 +518,7 @@ body[data-view="talk"] .foot { display: none; }
   transition: opacity 0.3s;
 }
 .listen[data-mode="listening"]::after { opacity: 0.75; }
+.listen[data-mode="listening"].hearing::after { opacity: 0; }   /* you are talking: the window waits for you */
 .listen-wave { flex: 1; min-width: 0; height: 28px; }
 .listen-label { flex: none; font-size: 0.8125rem; color: var(--muted); white-space: nowrap; transition: color 0.4s; }
 .listen[data-mode="listening"], .listen.hearing {

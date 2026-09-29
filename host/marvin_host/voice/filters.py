@@ -14,6 +14,10 @@ readily "hears" the end of a video: "Thank you.", "Thanks for watching!", "I'm g
    `follow_up_reason` also requires the conversation's language (unless the detection is sure)
    and at least two words, with a few exceptions (see `follow_up_reason`).
 
+Not a filter, but read from the same words: `announces_more` tells whether what was said so far
+clearly goes on ("..., et", "parce que", "and", a lone "OK"), so the pause may wait longer before
+ending the utterance (the adaptive endpoint, voice/engine.py).
+
 Extend `HALLUCINATIONS` when a new one shows up in the log as "heard: ..." followed by a turn nobody
 asked for: write it as said, the matching normalises case, accents and punctuation.
 
@@ -177,3 +181,45 @@ def follow_up_decision(text: str, language: str | None, language_prob: float | N
         return (ACCEPT, "answer to its question") if last_reply.rstrip().endswith("?") \
             else (CLOSE, "yes/no without a question")
     return ACCEPT, ""
+
+
+# ---------------------------------------------------------------- 5. more to come (adaptive endpoint)
+
+# The last word of an unfinished sentence: conjunctions and connectives, fillers, and a few words that
+# cannot end a sentence (articles, prepositions). Normalised like `normalize` (no accents, "qu'" -> "qu").
+TRAILING = {
+    # French
+    "et", "mais", "ou", "donc", "alors", "car", "puis", "que", "qu", "parce", "puisque", "quand", "lorsque",
+    "si", "comme", "sinon", "ensuite", "euh", "heu", "ben", "bah", "hum",
+    "un", "une", "des", "du", "de", "d", "l", "au", "aux", "pour", "avec", "dans", "sur", "chez", "sans",
+    "mon", "ma", "mes", "ton", "ta", "tes", "son", "sa", "ses", "notre", "votre", "leur", "cette",
+    # English
+    "and", "but", "or", "so", "because", "cause", "if", "um", "uh", "erm", "the", "a", "an", "my", "your",
+}
+# ...unless they end a set phrase that is complete
+COMPLETE_ENDINGS = {"think so", "hope so", "guess so", "believe so", "said so", "do so", "et alors", "ou pas",
+                    "and so on", "or so", "even so", "if so", "a si"}
+# A lone "OK", "bon", "alors"...: the speaker is only starting (up to 3 of these words)
+LEAD_INS = {"ok", "okay", "bon", "alors", "donc", "et", "mais", "euh", "ben", "bah", "d", "accord", "ouais",
+            "well", "so", "and", "but", "um", "uh", "right"}
+_OPEN_PUNCTUATION = (",", ";", ":", "-", "\u2013", "\u2014", "...", "\u2026")
+
+
+def announces_more(text: str) -> bool:
+    """True when `text` (the words so far) clearly goes on: it ends with a comma or an ellipsis, a
+    conjunction or connective ("et", "mais", "parce que", "and", "because"), a filler ("euh", "um"),
+    or is only a lead-in ("OK", "bon", "alors", "OK so"). A question or an exclamation is finished."""
+    t = text.strip().strip("\"'\u00bb\u00ab ").rstrip()
+    if not t or t.endswith(("?", "!")):
+        return False
+    if t.endswith(_OPEN_PUNCTUATION):
+        return True
+    words = [w for w in normalize(t).split() if not is_wake_word(w)]
+    if not words:
+        return False                            # "Marvin." alone: it listens at once (with a chime)
+    if len(words) <= 3 and all(w in LEAD_INS for w in words):
+        return True
+    for n in (3, 2):
+        if " ".join(words[-n:]) in COMPLETE_ENDINGS:
+            return False
+    return words[-1] in TRAILING

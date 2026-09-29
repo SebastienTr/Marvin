@@ -64,7 +64,9 @@ function addTranscript(e, { fresh = false } = {}) {
   if (fresh) earconFor(e);
   const ol = $("transcript");
   if (e.kind === "ignored" && live.you) { dissolve(live.you.li); live.you = null; }
-  const { li, grouped } = chat.item(e);
+  const { li, grouped, replaces } = chat.item(e);
+  // one thought said in several breaths: the question that goes on takes the place of its first part
+  for (const id of replaces) dissolve(ol.querySelector(`:scope > li[data-id="${id}"]`));
   $("transcript-empty").hidden = true;
   if (!grouped) {
     const pending = e.kind === "heard" && e.source !== "typed" ? live.you : e.kind === "reply" ? live.marvin : null;
@@ -243,7 +245,8 @@ function setFading(node, text) {
 
 function updateLive(v) {
   const mode = liveMode(v);
-  if (mode === "listening" && v.listen_s != null) {
+  if (mode === "listening" && v.listen_s != null && !v.hearing) {
+    live.frozenLeft = null;
     const now = performance.now() / 1000;
     if (live.mode !== "listening" || !live.windowEnd) live.windowTotal = Math.max(1, v.listen_s);
     live.windowEnd = now + v.listen_s;
@@ -279,11 +282,17 @@ function labelLive() {
     if (live.closingUntil > performance.now()) text = "Stopped listening";
     else text = app.voice && app.voice.wake ? "Say “Marvin, …”" : "Waiting for you to speak";
   }
-  if (live.speech && (live.mode === "idle" || live.mode === "listening")) text = live.mode === "listening" ? "I’m listening…" : "Hearing something…";
+  if (live.speech && (live.mode === "idle" || live.mode === "listening")) text = live.mode === "listening" ? "Listening…" : "Hearing something…";
   if (live.heardUid != null && !live.speech && live.mode !== "thinking" && live.mode !== "speaking") text = "Understanding…";
   strip.classList.toggle("closing", live.closingUntil > performance.now());
-  strip.classList.toggle("hearing", !!live.speech);
+  // while you talk (or your words are being understood) the listening window waits: no draining bar
+  strip.classList.toggle("hearing", !!live.speech || (live.mode === "listening" && hearing()));
   setFading($("listen-label"), text);
+}
+
+/** Someone talks in the listening window, or their words are being understood: it does not run out. */
+function hearing() {
+  return !!live.speech || live.heardUid != null || !!(app.voice && app.voice.hearing);
 }
 
 function onLevel(l) {
@@ -313,7 +322,13 @@ function frame(ts) {
   }
   const lv = live.lvl.toFixed(3);
   if (live.windowEnd) {
-    if (live.speech || live.heardUid != null) live.windowEnd = Math.max(live.windowEnd, now + 0.6);
+    if (hearing()) {
+      // frozen at what was left when they started talking (the voice sends the time left once they are done)
+      if (live.frozenLeft == null) live.frozenLeft = Math.max(0, live.windowEnd - now);
+      live.windowEnd = now + live.frozenLeft;
+    } else {
+      live.frozenLeft = null;
+    }
     const remain = Math.max(0, Math.min(1, (live.windowEnd - now) / live.windowTotal));
     $("listen").style.setProperty("--remain", remain.toFixed(3));
   }

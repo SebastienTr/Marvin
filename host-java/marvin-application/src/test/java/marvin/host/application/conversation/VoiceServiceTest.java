@@ -453,6 +453,100 @@ class VoiceServiceTest {
         assertThat(model.calls.get(3).get(model.calls.get(3).size() - 1).content()).contains("Trois ?");
     }
 
+    // ------------------------------------------------------------------ one thought, one question
+
+    @Test
+    void aQuestionThatGoesOnBeforeItsAnswerIsHeardIsAnsweredOnceWhole() throws InterruptedException {
+        FakeModel model = FakeModel.of("w", "w", "C'est noté.", "Développeur et marin, c'est noté.");
+        started(model);
+        waitFor(() -> model.calls.size() == 2);
+        sidecar.autoSpeak = false;
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Je suis développeur.", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> !sidecar.sent(VoiceSidecar.ReplyEnd.class).isEmpty());
+        long rid = sidecar.sent(VoiceSidecar.ReplyStart.class).get(0).replyId();
+        // the owner went on talking before the answer was heard: the voice cancels it and asks both as one
+        sidecar.signals.signal(new VoiceSidecar.Interrupted(rid, "merged", 1));
+        sidecar.autoSpeak = true;
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Je suis développeur. Et j'aime la voile.", "", "fr", "voice",
+                Map.of(), 0, List.of(1L)));
+        sidecar.signals.signal(new VoiceSidecar.ReplySpoken(rid, 1, "", true, Map.of("total", 0.3)));
+        waitFor(() -> kinds("reply").size() == 1);
+        Thread.sleep(100);
+        assertThat(kinds("reply")).hasSize(1);
+        Map<String, Object> reply = kinds("reply").get(0);
+        assertThat(reply).containsEntry("text", "Développeur et marin, c'est noté.").containsEntry("joined", 2)
+                .containsEntry("interrupted", false);
+        List<Map<String, Object>> heard = kinds("heard");
+        assertThat(heard).hasSize(2);
+        assertThat(heard.get(1)).containsEntry("joined", 2).containsEntry("replaces", List.of(heard.get(0).get("id")))
+                .containsEntry("continues", List.of());
+        // the model sees the whole thought once, and nothing of the cancelled question
+        var last = model.calls.get(model.calls.size() - 1);
+        assertThat(last).hasSize(2);
+        assertThat(last.get(1).content()).contains("The person says: Je suis développeur. Et j'aime la voile.");
+        // ...and so does the next question
+        sidecar.signals.signal(new VoiceSidecar.Heard(3, "Et toi ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 2);
+        var next = model.calls.get(model.calls.size() - 1);
+        assertThat(next).hasSize(4);
+        assertThat(next.get(1).content()).contains("Je suis développeur. Et j'aime la voile.");
+    }
+
+    @Test
+    void aQuestionThatCutsAnAnswerToGoOnTakesItsPlaceInTheHistory() throws InterruptedException {
+        FakeModel model = FakeModel.of("w", "w", "Il était une fois un phare. Son gardien parlait peu.",
+                "Il était une fois un bateau.");
+        started(model);
+        waitFor(() -> model.calls.size() == 2);
+        sidecar.autoSpeak = false;
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Raconte une histoire.", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> !sidecar.sent(VoiceSidecar.ReplyEnd.class).isEmpty());
+        long rid = sidecar.sent(VoiceSidecar.ReplyStart.class).get(0).replyId();
+        sidecar.signals.signal(new VoiceSidecar.Interrupted(rid, "barge-in", 1));
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Raconte une histoire. Avec des bateaux.", "", "fr", "voice",
+                Map.of(), 0, List.of(1L)));
+        sidecar.autoSpeak = true;
+        sidecar.signals.signal(new VoiceSidecar.ReplySpoken(rid, 1, "Il était une fois un phare.", true, Map.of("total", 0.9)));
+        waitFor(() -> kinds("reply").size() == 2);
+        // what was said stays in the conversation, before the question that goes on
+        assertThat(transcript.stream().map(e -> (String) e.get("kind")).filter(k -> !"note".equals(k)).toList())
+                .containsExactly("heard", "reply", "heard", "reply");
+        assertThat(kinds("reply").get(0)).containsEntry("interrupted", true);
+        List<Map<String, Object>> heard = kinds("heard");
+        assertThat(heard.get(1)).containsEntry("replaces", List.of())
+                .containsEntry("continues", List.of(heard.get(0).get("id")));
+        // the cut turn left the history: the joined question says it all
+        var last = model.calls.get(model.calls.size() - 1);
+        assertThat(last).hasSize(2);
+        assertThat(last.get(1).content()).contains("Raconte une histoire. Avec des bateaux.");
+    }
+
+    @Test
+    void theListeningWindowWaitsWhileSomeoneTalks() throws InterruptedException {
+        VoiceService v = started(FakeModel.of("w", "w"));
+        sidecar.signals.signal(new VoiceSidecar.Status("listening", false, "", "", "fake", "fake", 2.0));
+        assertThat(v.snapshot().hearing()).isFalse();
+        sidecar.signals.signal(new VoiceSidecar.Status("listening", false, "", "", "fake", "fake", null, true));
+        clock.mono += 10.0;
+        assertThat(v.snapshot().listenS()).isNull();
+        assertThat(v.snapshot().hearing()).isTrue();
+        assertThat(v.snapshot().toMap()).containsEntry("hearing", true).containsEntry("listen_s", null);
+        sidecar.signals.signal(new VoiceSidecar.Status("listening", false, "", "", "fake", "fake", 1.5));
+        assertThat(v.snapshot().listenS()).isCloseTo(1.5, org.assertj.core.data.Offset.offset(0.01));
+        assertThat(v.snapshot().hearing()).isFalse();
+    }
+
+    @Test
+    void theSettingsForAQuestionThatGoesOnReachTheVoice() throws InterruptedException {
+        started(FakeModel.of("w", "w"));
+        assertThat(sidecar.opened.getLast().continueGraceS()).isNull();
+        assertThat(sidecar.opened.getLast().endSilenceLongMs()).isNull();
+        VoiceSettings.VoiceConfig c = VoiceSettings.config(Map.of("continue_grace_s", 1.2, "end_silence_long_ms", 0));
+        assertThat(c.continueGraceS()).isEqualTo(1.2);
+        assertThat(c.endSilenceLongMs()).isEqualTo(0.0);
+        assertThat(VoiceSettings.FILE_KEYS).contains("continue_grace_s", "end_silence_long_ms");
+    }
+
     @Test
     void breakRemindersAreSpokenButNeverDuringAConversation() throws InterruptedException {
         VoiceService v = started(FakeModel.of("w", "w"));

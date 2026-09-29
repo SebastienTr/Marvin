@@ -2,7 +2,8 @@
 // One line of the conversation per entry ("heard", "reply", "ignored", "note"), the same for the live chat
 // (Talk) and past days (Activity > History). Answers open their inspector; a remember, recall or forget tool
 // leaves a chip under the answer; consecutive ignored entries fold into one discreet line that opens to show
-// each one and why.
+// each one and why. A question said in several breaths (the owner went on after a pause) is one bubble: its entry
+// `replaces` the bubbles of the earlier parts, or `continues` them when Marvin had started answering in between.
 
 import { el, fmtTime, fmtSeconds, plural, reduceMotion } from "./core.js";
 import { openInspector } from "./inspector.js";
@@ -52,10 +53,13 @@ export function transcriptItem(e) {
   const li = el("li", `msg ${you ? "you" : "marvin"}${e.proactive ? " proactive" : ""}`);
   li.dataset.id = e.id;
   const bubble = el("div", "bubble");
-  const label = you ? (e.source === "typed" ? "YOU, TYPED" : "YOU") : e.proactive ? "MARVIN, ON HIS OWN" : "MARVIN";
+  const goesOn = you && (e.continues || []).length > 0;
+  const label = you ? (e.source === "typed" ? "YOU, TYPED" : goesOn ? "YOU, GOING ON" : "YOU")
+    : e.proactive ? "MARVIN, ON HIS OWN" : "MARVIN";
   bubble.append(who(label, e));
   bubble.append(el("span", "text", e.text));
   li.append(bubble);
+  if (you && e.joined > 1) li.title = `Said in ${e.joined} breaths, heard as one question`;
   if (you) return li;
   const chips = memoryChips(e);
   if (chips) li.append(chips);
@@ -138,7 +142,8 @@ class IgnoredGroup {
 
 /**
  * Turns entries, in order, into list items: pairs answers with what was heard, folds consecutive ignored entries.
- * `item(e)` returns {li, grouped}: grouped means `e` went into the ignored line already on screen.
+ * `item(e)` returns {li, grouped, replaces}: grouped means `e` went into the ignored line already on screen;
+ * `replaces` lists the ids of earlier entries whose bubbles this one takes the place of (remove them).
  */
 export class ConvoBuilder {
   constructor() { this.reset(); }
@@ -158,6 +163,6 @@ export class ConvoBuilder {
       }
       this.lastReply = e;
     }
-    return { li: transcriptItem(e), grouped: false };
+    return { li: transcriptItem(e), grouped: false, replaces: e.kind === "heard" ? e.replaces || [] : [] };
   }
 }

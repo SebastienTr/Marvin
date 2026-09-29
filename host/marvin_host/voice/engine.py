@@ -11,6 +11,13 @@ States: idle -> listening -> thinking -> speaking -> (listening for a follow-up)
 - Barge-in: saying "Marvin" while it thinks stops it. While it speaks, only in `duplex` mode
   (half duplex does not hear anything while it speaks), and never while its own reply contains
   the name.
+- One thought, one question: speech that resumes within `continue_grace_s` of the end of a
+  question, before Marvin's first word, continues it. Marvin holds its answer while the person
+  talks; if they did say something, the pending answer is cancelled and the two texts go as one
+  question (its "heard" event lists the questions it `continues`). A question that interrupts an
+  answer (barge-in, Talk now) within `continue_join_s` of the interrupted question joins it too.
+- The pause that ends a question is `end_silence_s`, or `end_silence_long_s` when the words so
+  far announce more ("..., et", "parce que", "and", a lone "OK"): see `_endpoint`.
 
 `VoiceEngine` is everything but the conversation: what to answer is decided by `_answer(job)`,
 which a subclass implements. `VoiceAssistant` (assistant.py) answers in process with a local
@@ -102,6 +109,9 @@ class VoiceConfig:
     echo_tail_s: float = 0.8                # half duplex: still deaf this long after the speaker stops
     speculative_stt: bool = True            # start Whisper during the pause that may end the question
     speculate_after_s: float = 0.25         # ...after this much silence
+    # one thought, one question (see the module docstring)
+    continue_grace_s: float = 1.5           # speech resuming this soon after a question, before the answer is heard, continues it (0: off)
+    continue_join_s: float = 6.0            # a question interrupting the answer this soon after the one it cut joins it (0: off)
     segmenter: SegmenterConfig = field(default_factory=SegmenterConfig)
 
 
@@ -116,7 +126,21 @@ class _Job:
     uid: int = 0                            # the question's id ("heard" events), 0 for "say"
     reply_id: int = 0                       # the answer's id when someone else writes it (the sidecar)
     source: str = "voice"                   # voice | typed
-    cancel_reason: str = ""                 # why it was cancelled: "barge-in" or "stop"
+    cancel_reason: str = ""                 # why it was cancelled: "barge-in", "stop" or "merged" (continued)
+    continues: tuple[int, ...] = ()         # the earlier questions (uids) this one continues
+    audible: bool = False                   # its first sound was played (answer or filler)
+    done: bool = False                      # finished (answered, failed or cancelled)
+
+
+@dataclass
+class _Asked:
+    """The last question heard: what a continuation joins."""
+    uids: list[int]                         # its uid last, after the questions it already continues
+    text: str
+    raw: str
+    language: str
+    t_speech_end: float                     # audio time its speech ended
+    job: _Job
 
 
 def chime(rate: int = SAMPLE_RATE) -> np.ndarray:
@@ -158,6 +182,7 @@ class VoiceEngine:
         self.stt, self.tts = stt, tts
         self.wake = wake or TranscriptWakeWord(stt)
         self.segmenter = Segmenter(vad or make_vad(c.vad), c.segmenter)
+        self.segmenter.endpoint = self._endpoint
         self.on_status, self.on_transcript, self.on_reply = on_status, on_transcript, on_reply
         self._listeners: list[Callable[[str, dict], None]] = []
         self._muted = False
@@ -186,6 +211,13 @@ class VoiceEngine:
         self._current: _Job | None = None
         self._spec: tuple[int, int, concurrent.futures.Future] | None = None   # (uid, voiced, transcript)
         self._spec_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="marvin-voice-stt")
+        self._asked: _Asked | None = None                    # the last question heard (continuations)
+        self._lead_in: tuple[str, float] | None = None       # a lone "OK" heard in a window: (text, speech end)
+        self._audio_ok = threading.Event()                   # cleared: an answer's first sound waits (someone goes on)
+        self._audio_ok.set()
+        self._hold_lock = threading.Lock()
+        self._frozen_left: float | None = None               # listening window left when someone started talking
+        self._heard_aloud: set[int] = set()                  # questions whose answer made a sound (recent ones)
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
         self._capture: threading.Thread | None = None
@@ -228,6 +260,7 @@ class VoiceEngine:
         if self._closed.is_set():
             return
         self._closed.set()
+        self._audio_ok.set()
         self._interrupt()
         self._jobs.put(None)
         self._frames.put(None)
@@ -287,7 +320,7 @@ class VoiceEngine:
         if self._closed.is_set():
             return False
         if self._pending > 0 or self._status in (Status.THINKING, Status.SPEAKING):
-            self._interrupt()
+            self._interrupt("barge-in")         # what comes next may continue the question it cuts
         if self._muted:
             self.mute(False)
         # from what the listening has reached (it may lag behind the capture while Whisper works),
@@ -305,11 +338,18 @@ class VoiceEngine:
         return True
 
     def listen_remaining(self) -> float | None:
-        """Seconds left in the listening window (None outside one); it waits while someone talks."""
+        """Seconds left in the listening window (None outside one, and while someone talks: the
+        window waits for them, see `hearing`)."""
         with self._lock:
-            if self._status != Status.LISTENING or self._listen_until is None:
+            if self._status != Status.LISTENING or self._listen_until is None or self.hearing:
                 return None
             return max(0.0, self._listen_until - self._audio_now)
+
+    @property
+    def hearing(self) -> bool:
+        """Someone is talking, or what they said is being understood: a listening window does not
+        run out meanwhile (what they say counts if it started in the window)."""
+        return self.segmenter.in_speech or self._utt is not None
 
     @property
     def muted(self) -> bool:
@@ -343,9 +383,11 @@ class VoiceEngine:
         """Calls `fn(kind, data)` from the assistant's threads (keep it quick) for:
 
         - "status": {"status": "idle" | "listening" | "thinking" | "speaking"}
-        - "heard": {"text", "language", "source": "voice" | "typed", "uid", "raw"?}: a question
-          Marvin answers ("raw": the full transcript, when it differs from the question, e.g. the
-          name; "uid": the question's id, unique while the engine runs)
+        - "heard": {"text", "language", "source": "voice" | "typed", "uid", "raw"?, "continues"?,
+          "cut"?}: a question Marvin answers ("raw": the full transcript, when it differs from the
+          question, e.g. the name; "uid": the question's id, unique while the engine runs;
+          "continues": the earlier questions it goes on from, their text first; "cut": those of them
+          whose answer had started to be heard)
         - "reply": {"text", "language", "latency": {stage: seconds}, "interrupted": bool,
           "proactive": bool, "error": None | "llm_down" | "error", "hint": str}; answers also
           carry what the model was given: "context" (the context block), "prompt" (the whole
@@ -414,12 +456,110 @@ class VoiceEngine:
                 if self.segmenter.in_speech and self._utt != self.segmenter.utterance_key[0]:
                     self._utterance_done()
                     self._utterance("start", self.segmenter.utterance_key[0])
+                    self._maybe_hold()
                 elif not self.segmenter.in_speech:
                     self._utterance_done()      # too short: dropped by the segmenter
                 self._speculate()
+        if not self._audio_ok.is_set() and not self.segmenter.in_speech:
+            self._audio_ok.set()                # judged (or dropped): the answer, if still wanted, may play
         self._live_level(frame, gated)
         self._audio_now = self.segmenter.time
         self._tick()
+
+    # ------------------------------------------------------------ one thought, one question
+
+    def _continuable(self, t_speech: float | None) -> _Asked | None:
+        """The question that speech starting at `t_speech` (audio time) continues, if any: asked
+        less than `continue_grace_s` before, and its answer not heard yet."""
+        a, grace = self._asked, self.config.continue_grace_s
+        if a is None or grace <= 0 or t_speech is None:
+            return None
+        j = a.job
+        if j.cancel.is_set() or j.done or j.audible or t_speech - a.t_speech_end > grace:
+            return None
+        return a
+
+    def _joinable(self, seg: Segment) -> _Asked | None:
+        """The question that `seg` joins after cutting its answer (barge-in, Talk now), if any: its
+        speech started less than `continue_join_s` after that question ended."""
+        a, span = self._asked, self.config.continue_join_s
+        if a is None or span <= 0 or seg.speech_start - a.t_speech_end > span:
+            return None
+        j = a.job
+        if j.cancel.is_set():
+            return a if j.cancel_reason == "barge-in" else None
+        return None if j.done else a
+
+    def _maybe_hold(self) -> None:
+        """Someone starts talking right after a question: its answer does not start playing until
+        they stop (and is cancelled if they said something, see `_continue`)."""
+        a = self._continuable(self.segmenter.speech_start)
+        if a is None:
+            return
+        with self._hold_lock:
+            if a.job.audible or a.job.cancel.is_set():
+                return
+            self._audio_ok.clear()
+        log.debug("speech resumes %.2f s after the question: its answer waits",
+                  (self.segmenter.speech_start or 0.0) - a.t_speech_end)
+
+    ENDPOINT_WAIT_S = 1.5       # longest wait for the speculative transcript when deciding the endpoint
+
+    def _endpoint(self) -> float | None:
+        """The segmenter asks, once per pause of `end_silence_s`, whether to wait longer: yes
+        (`end_silence_long_s`) when the speculative transcript of the words so far announces more
+        (filters.announces_more). The transcript was started at `speculate_after_s` and the answer
+        would wait for it anyway, so asking costs nothing when the question is over."""
+        c, sg = self.config, self.segmenter
+        long_s = c.segmenter.end_silence_long_s
+        spec = self._spec
+        if long_s <= c.segmenter.end_silence_s or spec is None or spec[:2] != sg.utterance_key:
+            return None
+        try:
+            tr = spec[2].result(timeout=self.ENDPOINT_WAIT_S)
+        except Exception:                               # noqa: BLE001 - a timeout or a failed transcription
+            return None
+        text = (tr.text or "").strip()
+        if tr.rejected or not filters.announces_more(text):
+            return None
+        log.info("more to come after %r: waiting for %.2f s of silence", text, long_s)
+        return long_s
+
+    def _continue(self, prev: _Asked, seg: Segment, t0: float, lat: dict) -> None:
+        """`seg` continues the question `prev`, whose answer has not been heard: the answer is
+        cancelled and both go as one question, unless `seg` was nothing (then the answer plays)."""
+        tr = self._full_transcript(seg, lat)
+        text = (tr.text or "").strip()
+        if self._own_voice(text, self._seg_started):
+            return
+        bad = tr.rejected or filters.decoder_reason(tr.no_speech_prob, tr.avg_logprob, tr.compression_ratio)
+        if bad or not text:
+            self._ignored(text, bad or "nothing understood")
+            return
+        rest = match_wake_word(text)
+        if rest is not None and not rest.strip():   # "Marvin." again: stop and listen, as a barge-in
+            log.info("barge-in")
+            self._interrupt("barge-in")
+            self._reply_language(tr)
+            self._listen(seg.t_end, with_chime=self.config.chime)
+            return
+        text = text if rest is None else rest.strip()
+        why = filters.hallucination_reason(text)
+        if why:
+            self._ignored(text, why)
+            return
+        self._join(prev, text, tr, t0, lat, seg, "merged")
+
+    def _join(self, prev: _Asked, text: str, tr: Transcript | None, t0: float, lat: dict, seg: Segment,
+              reason: str) -> None:
+        """Asks `prev`'s text and `text` as one question; `prev`'s answer is stopped (`reason`)."""
+        joined = f"{prev.text.rstrip()} {text.strip()}"
+        log.info("joined %d utterances (%s): %s", len(prev.uids) + 1,
+                 "before the answer" if reason == "merged" else "after a barge-in", joined)
+        if not prev.job.cancel.is_set():
+            self._interrupt(reason)
+        raw = f"{prev.raw} {(tr.text or '').strip() if tr is not None else text}".strip()
+        self._submit(joined, prev.language, tr, t0, lat, seg=seg, continues=tuple(prev.uids), raw=raw)
 
     # ------------------------------------------------------------ live signals for the app
 
@@ -440,7 +580,18 @@ class VoiceEngine:
 
     def _utterance(self, state: str, uid: int) -> None:
         """"start": someone started talking; "end": they stopped, the words are being understood;
-        "done": decided (a "heard" or "ignored" event may have come just before)."""
+        "done": decided (a "heard" or "ignored" event may have come just before). A listening window
+        is frozen from "start" to "done": when nothing was asked, it goes on with at least the time
+        it had left (and `continue_grace_s`, for the rest of a sentence that began with "OK")."""
+        with self._lock:
+            listening = self._status == Status.LISTENING and self._listen_until is not None
+            if state == "start" and listening and self._frozen_left is None:
+                self._frozen_left = max(0.0, self._listen_until - self._audio_now)
+            elif state == "done":
+                if listening and self._frozen_left is not None:
+                    self._listen_until = max(self._listen_until,
+                                             self._audio_now + max(self._frozen_left, self.config.continue_grace_s))
+                self._frozen_left = None
         self._utt = uid if state != "done" else None
         self._emit("utterance", state=state, uid=uid)
 
@@ -454,8 +605,8 @@ class VoiceEngine:
         c, sg = self.config, self.segmenter
         if not c.speculative_stt or not sg.in_speech or sg.silence_s < c.speculate_after_s:
             return
-        if self._pending > 0:                 # busy: only a barge-in could come, no need to hurry
-            return
+        if self._pending > 0 and self._audio_ok.is_set():   # busy: only a barge-in could come, no need to hurry
+            return                                            # (unless it may continue the question)
         if self._spec is not None and self._spec[:2] == sg.utterance_key:
             return
         pend = sg.pending()
@@ -592,6 +743,11 @@ class VoiceEngine:
             self._ignored("", weak, quiet=not (no_name and not busy and not late))
             return
 
+        prev = None if late else self._continuable(seg.speech_start)
+        if prev is not None:                    # the question goes on, before its answer is heard
+            self._continue(prev, seg, t0, lat)
+            return
+
         if busy or late:
             # only "Marvin" counts, and not if Marvin is saying its own name right now
             if not (c.wake and c.barge_in):
@@ -603,10 +759,11 @@ class VoiceEngine:
             m = self._wake_check(seg, lat)
             if m is None or (m.transcript is not None and self._own_voice(m.transcript.text, self._seg_started)):
                 return
+            join = self._joinable(seg)          # "Marvin, ... and also ...": the rest of the question it cuts
             if busy:
                 log.info("barge-in")
                 self._interrupt("barge-in")
-            self._handle_match(m, seg, t0, lat)
+            self._handle_match(m, seg, t0, lat, join=join)
             return
 
         if no_name:
@@ -622,6 +779,7 @@ class VoiceEngine:
             if rest is not None and not text:   # "Marvin." again: keep listening
                 self._listen(seg.t_end)
                 return
+            join = self._joinable(seg) if window and self._asked_to_listen else None
             if rest is None and not (window and self._asked_to_listen):
                 # no name, and nobody asked Marvin to listen: be strict (filters.follow_up_decision).
                 # After Talk now or "Marvin." alone, what comes is the question.
@@ -634,20 +792,25 @@ class VoiceEngine:
                     self._close_conversation(text, why)
                     return
                 if decision == filters.IGNORE:
+                    if filters.announces_more(text):    # "OK": the rest of the sentence may follow
+                        self._lead_in = (text, seg.t_speech_end)
                     self._ignored(text, why)
                     return
             bad = filters.hallucination_reason(text)
             if bad:
                 self._ignored(tr.text, bad)
                 return
-            self._submit(text, self._reply_language(tr), tr, t0, lat)
+            if join is not None:                # Talk now (or "Marvin." alone) cut the answer: go on
+                self._join(join, text, tr, t0, lat, seg, "barge-in")
+                return
+            self._submit(text, self._reply_language(tr), tr, t0, lat, seg=seg)
             return
 
         m = self._wake_check(seg, lat)
         if m is not None and not (m.transcript is not None and self._own_voice(m.transcript.text, self._seg_started)):
-            self._handle_match(m, seg, t0, lat)
+            self._handle_match(m, seg, t0, lat, join=self._joinable(seg) if late else None)
 
-    def _handle_match(self, m: WakeMatch, seg: Segment, t0: float, lat: dict) -> None:
+    def _handle_match(self, m: WakeMatch, seg: Segment, t0: float, lat: dict, join: _Asked | None = None) -> None:
         tr = m.transcript
         query = m.query
         if tr is not None and (tr.rejected or filters.decoder_reason(tr.no_speech_prob, tr.avg_logprob,
@@ -660,8 +823,10 @@ class VoiceEngine:
             tr = self._full_transcript(seg, lat)
             query = match_wake_word(tr.text)
             query = tr.text if query is None else query
-        if query:
-            self._submit(query, self._reply_language(tr), tr, t0, lat)
+        if query and join is not None:
+            self._join(join, query, tr, t0, lat, seg, "barge-in")
+        elif query:
+            self._submit(query, self._reply_language(tr), tr, t0, lat, seg=seg)
         else:
             self._reply_language(tr)
             self._listen(seg.t_end, with_chime=self.config.chime)
@@ -675,13 +840,23 @@ class VoiceEngine:
             self.sink.play(chime())
 
     def _submit(self, text: str, language: str, tr: Transcript | None = None, t0: float | None = None,
-                lat: dict | None = None, source: str = "voice") -> None:
+                lat: dict | None = None, source: str = "voice", *, seg: Segment | None = None,
+                continues: tuple[int, ...] = (), raw: str | None = None) -> None:
+        raw = raw if raw is not None else ((tr.text or "").strip() if tr is not None else "")
+        lead, self._lead_in = self._lead_in, None
+        grace = self.config.continue_grace_s
+        if lead is not None and seg is not None and grace > 0 and 0 <= seg.speech_start - lead[1] <= grace:
+            text, raw = f"{lead[0].rstrip()} {text}", f"{lead[0].rstrip()} {raw or text}"   # "OK, j'ai faim."
         log.info("heard (%s): %s", language, text)
         self.last_latency = dict(lat or {})
-        raw = (tr.text or "").strip() if tr is not None else ""
         extra = {"raw": raw} if raw and raw != text else {}
+        if continues:
+            extra["continues"] = list(continues)
+            extra["cut"] = [u for u in continues if u in self._heard_aloud]     # answered (in part) in between
         uid = next(self._question_ids)
-        job = _Job("ask", text, language, t0 or time.monotonic(), uid=uid, source=source)
+        job = _Job("ask", text, language, t0 or time.monotonic(), uid=uid, source=source, continues=tuple(continues))
+        self._asked = (_Asked([*continues, uid], text, raw or text, language, seg.t_speech_end, job)
+                       if seg is not None and source == "voice" else None)
         with self._lock:
             # the job exists before anyone hears of it: an answer may come back at once (the sidecar)
             self._prepare(job)
@@ -745,6 +920,7 @@ class VoiceEngine:
             except Exception:
                 log.exception("voice job failed")
             finally:
+                job.done = True
                 with self._lock:
                     self._current = None
                     self._pending -= 1
@@ -786,7 +962,7 @@ class VoiceEngine:
             except Exception:                               # noqa: BLE001 - never kill the speaker thread
                 log.exception("speech synthesis failed for %r", text)
                 continue
-            if job.cancel.is_set():
+            if job.cancel.is_set() or not self._first_sound(job):
                 return
             if filler:
                 lat.setdefault("filler_start", time.monotonic() - job.t_heard)
@@ -803,6 +979,23 @@ class VoiceEngine:
                 extra = {"reply_id": job.reply_id} if job.reply_id else {}
                 self._emit("say", text=text, seconds=round(len(pcm) / rate, 3), envelope=envelope(pcm, rate),
                            **extra)
+
+    def _first_sound(self, job: _Job) -> bool:
+        """Before the first sound of an answer: waits while the person goes on talking right after
+        their question (`_maybe_hold`). False if the answer was cancelled meanwhile."""
+        while not job.audible:
+            with self._hold_lock:
+                if self._audio_ok.is_set():
+                    job.audible = True
+                    if job.uid:
+                        if len(self._heard_aloud) > 256:
+                            self._heard_aloud.clear()
+                        self._heard_aloud.add(job.uid)
+                    break
+            if job.cancel.is_set():
+                return False
+            self._audio_ok.wait(0.02)
+        return not job.cancel.is_set()
 
     def _speak_all(self, job: _Job, produce: Callable[[Callable[[str], None]], None], lat: dict) -> str:
         """Runs `produce(emit)` (which calls emit(chunk) as text becomes available, and

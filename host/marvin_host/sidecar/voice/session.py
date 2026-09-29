@@ -36,7 +36,8 @@ LOCAL, ROBOT = pb.AUDIO_ROUTE_LOCAL, pb.AUDIO_ROUTE_ROBOT
 def settings_dict(s: pb.VoiceSettings) -> dict:
     """`VoiceSettings` as voice.json keys (voice/cli.py). Proto3 cannot tell 0 from unset: empty
     strings and a 0 for echo_tail_s, listen_window_s or end_silence_ms mean "the default"
-    (follow_up_s 0 means no follow-up window, as in voice.json)."""
+    (follow_up_s 0 means no follow-up window, as in voice.json); continue_grace_s and
+    end_silence_long_ms are optional: unset is the default, 0 turns them off."""
     out = {"stt": s.stt or "auto", "tts": s.tts or "auto", "wake": s.wake, "duplex": s.duplex,
            "follow_up_s": s.follow_up_s, "speculative_stt": s.speculative_stt, "chime": s.chime}
     for key in ("stt_model", "tts_voice", "language", "default_language", "input_device", "output_device"):
@@ -47,6 +48,9 @@ def settings_dict(s: pb.VoiceSettings) -> dict:
         v = getattr(s, key)
         if v > 0:
             out[key] = v
+    for key in ("continue_grace_s", "end_silence_long_ms"):
+        if s.HasField(key):
+            out[key] = max(0.0, getattr(s, key))
     return out
 
 

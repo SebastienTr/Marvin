@@ -353,6 +353,7 @@ small, .small { font-size: 12px; }
   opacity: 0; transform-origin: left center; transform: scaleX(var(--remain, 0)); transition: opacity 0.3s;
 }
 .listen[data-mode="listening"]::after { opacity: 0.75; }
+.listen[data-mode="listening"].hearing::after { opacity: 0; }   /* you are talking: the window waits for you */
 .listen[data-mode="listening"], .listen.hearing { border-color: var(--accent); }
 .listen-wave { flex: 1; min-width: 0; height: 28px; }
 .listen-label { flex: none; font-size: 13px; color: var(--muted); white-space: nowrap; }

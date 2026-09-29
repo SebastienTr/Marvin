@@ -75,6 +75,7 @@ class VoiceAssistant(VoiceEngine):
         self.llm = llm
         self.history: list[dict] = []
         self._last_turn = 0.0                                # monotonic
+        self._remembered_uid = 0                             # the question the history ends with
         super().__init__(source, sink, c, stt=stt, tts=tts, vad=vad, wake=wake,
                          on_status=on_status, on_transcript=on_transcript, on_reply=on_reply)
 
@@ -99,6 +100,12 @@ class VoiceAssistant(VoiceEngine):
         if self.history and now - self._last_turn > self.config.memory_reset_s:
             log.debug("conversation forgotten after %.0f s of silence", now - self._last_turn)
             self.history.clear()
+        if job.continues and self._remembered_uid in job.continues:
+            # its answer was cut to go on: this question says it all again, the cut turn goes
+            starts = [i for i, m in enumerate(self.history) if m["role"] == "user"]
+            if starts:
+                del self.history[starts[-1]:]
+            self._remembered_uid = 0
         home = self.config.home_place.strip() if schemas else ""
         job.context = persona.context_block(state, events, home=home)
         user = persona.user_message(job.text, language=job.language, context=job.context)
@@ -250,15 +257,19 @@ class VoiceAssistant(VoiceEngine):
             emit_reply(error=failure[0], hint=hint[0] if hint else "")
             return
         if job.cancel.is_set():
-            log.info("interrupted")
+            log.info("interrupted (%s)", job.cancel_reason or "stop")
+            if job.cancel_reason == "merged":   # the question went on: the joined one is answered instead
+                if job.audible:
+                    emit_reply(interrupted=True)
+                return
             if said_answer or exchange:
-                self._remember(user, (said_answer + " …").strip(), exchange)
+                self._remember(user, (said_answer + " …").strip(), exchange, uid=job.uid)
             emit_reply(interrupted=True)
             return
         log.info("said: %s", text)
         self._last_reply = text
         log.info("latency: %s", format_latency(lat))
-        self._remember(user, said_answer, exchange)
+        self._remember(user, said_answer, exchange, uid=job.uid)
         emit_reply()
         if self.on_reply:
             try:
@@ -271,7 +282,7 @@ class VoiceAssistant(VoiceEngine):
         """The language model's name, as the app shows it."""
         return str(getattr(self.llm, "model", None) or self.config.llm_model)
 
-    def _remember(self, question: str, answer: str, exchange: list[dict] | tuple = ()) -> None:
+    def _remember(self, question: str, answer: str, exchange: list[dict] | tuple = (), uid: int = 0) -> None:
         """Keeps the conversation for the next question: the question, the tool calls and results
         in between (`exchange`), and the answer. The model server reuses its work on everything up
         to the first message that changed, so the history only ever grows at the end: dropping the
@@ -285,3 +296,4 @@ class VoiceAssistant(VoiceEngine):
             keep = max(1, self.config.memory_turns // 2)
             del self.history[:starts[-keep]]
         self._last_turn = time.monotonic()
+        self._remembered_uid = uid
