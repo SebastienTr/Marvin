@@ -372,11 +372,39 @@ small, .small { font-size: 12px; }
 .now-items { display: flex; gap: 10px; white-space: nowrap; overflow: hidden; }
 .now-part.lead { color: var(--ink); }
 .now-part.sim { font-style: italic; }
-.composer { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 15px; border: 1px solid var(--line); border-radius: 17px; background: var(--bg); }
+.composer { display: flex; align-items: center; gap: 8px; padding: 7px 8px 7px 6px; border: 1px solid var(--line); border-radius: 17px; background: var(--bg); }
 .composer input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 16px; }
 .composer input:focus-visible { outline: none; }
 .composer:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 .composer button { flex: none; padding: 8px 12px; }
+/* showing Marvin an image: the button, the phone's menu, the preview, the bubble's image, dropping one */
+.attach-wrap { position: relative; flex: none; display: flex; }
+.composer .attach-button { padding: 8px 10px; color: var(--muted); }
+.composer .attach-button:hover:not(:disabled) { color: var(--ink); background: var(--soft); }
+.attach-menu { position: absolute; bottom: calc(100% + 10px); left: 0; z-index: 20; display: grid; gap: 2px; min-width: 190px; padding: 6px; background: var(--raised); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px var(--shadow); }
+.attach-menu[hidden] { display: none; }
+.attach-menu button { justify-content: flex-start; border: 0; width: 100%; padding: 10px 12px; }
+.attach-menu button:hover, .attach-menu button:focus-visible { background: var(--soft); }
+.attach { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+.attach[hidden] { display: none; }
+.attach-thumb { width: 56px; height: 56px; border-radius: 10px; overflow: hidden; flex: none; background: var(--soft); display: grid; place-items: center; color: var(--muted); }
+.attach-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.attach[data-state="preparing"] .attach-thumb, .attach[data-state="sending"] .attach-thumb { opacity: 0.6; }
+.attach[data-state="ready"] { border-color: var(--accent); }
+.attach-text { flex: 1; min-width: 0; }
+.attach-note { font-size: 13px; color: var(--ink); }
+.attach-meta { overflow-wrap: anywhere; margin-top: 2px; }
+.attach-error { font-size: 13px; color: var(--attention); margin-bottom: 10px; overflow-wrap: anywhere; }
+.attach-error .quiet-link { min-height: 0; padding: 0; color: var(--attention); text-decoration: underline; text-underline-offset: 3px; }
+.msg-image { display: block; margin: 2px 0 10px; }
+.msg-image img { display: block; max-width: min(240px, 100%); max-height: 200px; border-radius: 12px; border: 1px solid var(--line); }
+.msg-image.placeholder { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); padding: 6px 10px; border: 1px dashed var(--strong); border-radius: 10px; }
+.insp-image { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.insp-image .msg-image { margin: 0; }
+.drop-hint { display: none; }
+.conversation { position: relative; }
+.conversation.dropping .drop-hint { display: grid; place-items: center; position: absolute; inset: 8px; z-index: 5; pointer-events: none; border: 2px dashed var(--accent); border-radius: calc(var(--radius) - 4px); background: var(--surface); opacity: 0.94; color: var(--ink); font-size: 15px; }
+.hint.bad { color: var(--attention); }
 .context-block { padding: 16px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .context-block:last-child { border: 0; padding-bottom: 0; }
 .context-block p, .context-block .muted { color: var(--muted); margin-top: 6px; }

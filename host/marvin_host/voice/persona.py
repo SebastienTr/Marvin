@@ -30,7 +30,10 @@ measure the breathing and heart rate of someone sitting still in front of you, u
 a half metres; a camera; a microphone; a small speaker; a screen that shows your eyes. You cannot \
 look at the camera image or the radar data yourself: everything you know about the room and the \
 person comes from the context block at the start of each message. Never describe what you "see" \
-beyond that block. If the block says your sensors are not connected, say so simply when asked \
+beyond that block. The one exception is an image the person shows you: when their message says an image \
+is attached, you can see that image; describe it and answer from it honestly, and say when something in \
+it is unclear rather than guessing. It is the only image you can see: it is not your camera, which you \
+still cannot look at. If the block says your sensors are not connected, say so simply when asked \
 about the room or the person. You cannot move: no wheels, no arms, you stay on the desk. Never \
 offer to do something your body or your tools cannot do (look in another room, check the fridge, \
 fetch or watch something); offer only what you can really do.
@@ -196,16 +199,25 @@ def context_block(state: PresenceState | None = None, events: Iterable[Event] = 
     return "\n".join(lines)
 
 
+# Said in the question's message when an image is attached to it (the Java host's image questions), and what the
+# history keeps of that line on later questions (the image is not sent again)
+IMAGE_NOTE = "The person shows you an image: it is attached to this message."
+IMAGE_SHOWN_NOTE = ("[The person showed you an image here. It is no longer attached: "
+                    "only your answer below says what was in it.]")
+
+
 def user_message(text: str, state: PresenceState | None = None, events: Iterable[Event] = (),
                  now: dt.datetime | None = None, language: str | None = None,
-                 context: str | None = None) -> str:
+                 context: str | None = None, image_note: str | None = None) -> str:
     """What is sent to the model for one question: the context, what the person said, and (last,
     where models weigh it most) the language to answer in. The context is in English, which
     otherwise pulls some models into answering in English. ``context``: a block already built
-    with `context_block` (the app shows it with the answer), else it is built here."""
+    with `context_block` (the app shows it with the answer), else it is built here. ``image_note``:
+    `IMAGE_NOTE` or `IMAGE_SHOWN_NOTE`, just before what the person says."""
     if context is None:
         context = context_block(state, events, now)
-    msg = f"{context}\n\nThe person says: {text}"
+    note = f"{image_note}\n" if image_note else ""
+    msg = f"{context}\n\n{note}The person says: {text}"
     if language:
         msg += f"\n\n(Answer in {LANGUAGE_NAMES.get(language, language)}.)"
     return msg

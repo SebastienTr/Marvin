@@ -5,8 +5,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 
@@ -80,6 +82,9 @@ public final class OllamaLanguageModel implements LanguageModel {
         }
         if (m.toolName() != null) {
             b.toolName(m.toolName());
+        }
+        if (!m.images().isEmpty()) {
+            b.images(m.images());               // base64, on the question being asked only
         }
         return b.build();
     }
@@ -169,6 +174,33 @@ public final class OllamaLanguageModel implements LanguageModel {
         }
     }
 
+    /**
+     * Ollama's {@code POST /api/show}: its {@code capabilities}; a server too old to list them is asked whether the
+     * model has a vision projector ({@code projector_info}), which is what "vision" means there.
+     */
+    @Override
+    public Set<String> capabilities(String host, String model) {
+        OllamaApi.ShowModelResponse r;
+        try {
+            r = api(host).showModel(new OllamaApi.ShowModelRequest(model));
+        } catch (RuntimeException e) {
+            RuntimeException t = translate(e, host, model);
+            if (t.getCause() == null && t != e) {
+                t.initCause(e);
+            }
+            throw t;
+        }
+        Set<String> caps = new LinkedHashSet<>();
+        if (r != null && r.capabilities() != null) {
+            caps.addAll(r.capabilities());
+        } else if (r != null && r.projectorInfo() != null && !r.projectorInfo().isEmpty()) {
+            caps.add("completion");
+            caps.add(VISION);
+        }
+        log.info("{} can: {}", model, caps);
+        return caps;
+    }
+
     /** The model server's error, as the Python host words it. */
     static RuntimeException translate(RuntimeException e, String host, String model) {
         for (Throwable t = e; t != null; t = t.getCause()) {
@@ -180,6 +212,11 @@ public final class OllamaLanguageModel implements LanguageModel {
             } else if (t instanceof RestClientResponseException w) {
                 body = w.getResponseBodyAsString();
                 code = w.getStatusCode().value();
+            } else if (t instanceof org.springframework.ai.retry.NonTransientAiException
+                    && t.getMessage() != null && t.getMessage().matches("(?s)\\d{3} - .*")) {
+                // Spring AI's error handler on the blocking calls (/api/show): "404 - {body}"
+                code = Integer.parseInt(t.getMessage().substring(0, 3));
+                body = t.getMessage().substring(6);
             }
             if (code != 0) {
                 String msg = errorOf(body);

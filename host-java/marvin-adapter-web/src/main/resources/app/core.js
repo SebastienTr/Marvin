@@ -52,6 +52,7 @@ export function cssVar(name) {
 
 export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 export const fmtSeconds = (x) => `${x < 10 ? x.toFixed(2) : x.toFixed(1)} s`;
+export const fmtBytes = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 
 export function fmtDuration(s, { short = false } = {}) {
   s = Math.max(0, s || 0);

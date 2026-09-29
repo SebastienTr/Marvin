@@ -22,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -43,6 +44,7 @@ import marvin.host.domain.conversation.ChatMessage;
 import marvin.host.domain.conversation.ContextAssembler;
 import marvin.host.domain.conversation.ConversationEntry;
 import marvin.host.domain.conversation.ConversationMemory;
+import marvin.host.domain.conversation.ImageAttachment;
 import marvin.host.domain.conversation.Persona;
 import marvin.host.domain.conversation.ProactiveSpeech;
 import marvin.host.domain.conversation.SpeechText;
@@ -77,6 +79,13 @@ import marvin.host.domain.shared.TokenEstimator;
  * answer was heard ({@code merged}) leaves nothing (no reply entry, nothing in the history), one whose answer was cut
  * leaves what was said but leaves the history, and the heard entry of the joined question, written after them,
  * says which entries it {@code replaces} (the app shows one bubble) or {@code continues}.
+ *
+ * <p>An image the owner shows (docs/voice.md "Showing Marvin an image") waits in memory for the next question, typed
+ * or spoken, and goes to the model with that question's message only: the history keeps the question's text with a
+ * note, so later questions neither send the image again nor lose the prompt cache for it. The model that looks at it
+ * is the vision model of the settings, or the voice's; one that cannot see images (Ollama's capabilities, asked once
+ * per model) is refused when the image is attached. The conversation entry records what the image was (size, bytes,
+ * SHA-256), never the image.
  */
 public final class VoiceService implements VoiceControl {
     private static final Logger log = Logger.getLogger("marvin.voice");
@@ -110,6 +119,8 @@ public final class VoiceService implements VoiceControl {
     static final double MEMORY_WAIT_S = 0.3;
     /** The history's token budget (docs/design.md 5.3). */
     static final int HISTORY_TOKENS = 4000;
+    /** How long an image waits for the question it goes with, then it is dropped. */
+    static final double IMAGE_WAIT_S = 600.0;
 
     private final VoiceSidecar voice;
     private final LanguageModel model;
@@ -142,6 +153,10 @@ public final class VoiceService implements VoiceControl {
     private Turn lastTurn;
     private final Map<Long, String> proactiveReplies = new ConcurrentHashMap<>();
     private final Map<String, Boolean> toolSupport = new ConcurrentHashMap<>();
+    /** What each model can do, by host and model (Ollama's capabilities): asked once, again after a settings change. */
+    private final Map<String, Set<String>> capabilities = new ConcurrentHashMap<>();
+    /** The image waiting for the next question. */
+    private final AtomicReference<PendingImage> pendingImage = new AtomicReference<>();
     private final ConversationMemory memory;
 
     private volatile String state = OFF;
@@ -152,6 +167,8 @@ public final class VoiceService implements VoiceControl {
     /** When {@link #status} came (monotonic seconds): {@code listen_s} counts down from there. */
     private volatile double statusAt;
     private volatile boolean opened;
+    /** The settings the voice session was last opened with. */
+    private volatile VoiceSidecar.Settings openedWith;
     private volatile boolean closed;
     private volatile String language;
     private volatile VoiceConfig config;
@@ -269,6 +286,7 @@ public final class VoiceService implements VoiceControl {
         Map<String, Object> values = VoiceSettings.validate(update);
         settingsStore.save(values);
         if (!values.isEmpty()) {
+            capabilities.clear();               // a model may have been pulled again, or another chosen
             boolean running = ON.equals(state) || STARTING.equals(state);
             note("Voice settings saved" + (running ? ": restarting" : ""));
             if (running) {
@@ -400,6 +418,7 @@ public final class VoiceService implements VoiceControl {
 
     private void teardown() {
         proactive = null;
+        pendingImage.set(null);
         turns.values().forEach(t -> t.cancel("off"));
         if (opened) {
             voice.close();
@@ -418,8 +437,17 @@ public final class VoiceService implements VoiceControl {
         CompletableFuture<VoiceSidecar.Status> r = new CompletableFuture<>();
         ready = r;
         try {
-            voice.open(sidecarSettings(c), this::onSignal);
+            VoiceSidecar.Settings wanted = sidecarSettings(c);
+            // a restart for a setting the voice does not use (the model, the tools, the model for images): the voice
+            // keeps running as it is and reports nothing new, so it is ready as it was
+            boolean unchanged = opened && wanted.equals(openedWith);
+            voice.open(wanted, this::onSignal);
             opened = true;
+            openedWith = wanted;
+            VoiceSidecar.Status now = status;
+            if (unchanged && now != null && RUNNING.contains(now.state())) {
+                r.complete(now);
+            }
             voice.send(new VoiceSidecar.Mute(muted));
         } catch (RuntimeException e) {
             ready = null;
@@ -640,6 +668,11 @@ public final class VoiceService implements VoiceControl {
 
     @Override
     public void ask(String text) {
+        ask(text, null);
+    }
+
+    @Override
+    public void ask(String text, byte[] image) {
         String t = text == null ? "" : text.strip();
         if (t.isEmpty()) {
             throw new IllegalArgumentException("nothing to ask");
@@ -648,6 +681,9 @@ public final class VoiceService implements VoiceControl {
             throw new IllegalArgumentException("a question is at most 500 characters");
         }
         running();
+        if (image != null) {
+            attachImage(image);
+        }
         long seq = statusSeq;
         voice.send(new VoiceSidecar.Ask(t, ""));
         awaitStatus(seq, 0.3);
@@ -665,6 +701,87 @@ public final class VoiceService implements VoiceControl {
     public void stopSpeaking() {
         running();
         voice.send(new VoiceSidecar.StopSpeaking());
+    }
+
+    // ------------------------------------------------------------------ an image for the next question
+
+    /** An image waiting for its question, and the model that will look at it. */
+    private record PendingImage(ImageAttachment image, String model, double at) {
+
+        /** What the app and the conversation entry show of it. */
+        Map<String, Object> info() {
+            Map<String, Object> m = new LinkedHashMap<>(image.describe());
+            m.put("model", model);
+            return m;
+        }
+    }
+
+    @Override
+    public Map<String, Object> attachImage(byte[] bytes) {
+        running();
+        ImageAttachment image = ImageAttachment.of(bytes);
+        VoiceConfig c = config != null ? config : VoiceSettings.config(settings());
+        String m = c.imageModel();
+        boolean sees;
+        try {
+            sees = canSee(c.ollamaHost(), m);
+        } catch (LanguageModel.Unavailable e) {
+            throw new ImageRefused("Cannot tell whether " + m + " can see images: " + e.getMessage());
+        }
+        if (!sees) {
+            throw new ImageRefused(refusal(c));
+        }
+        PendingImage p = new PendingImage(image, m, clocks.monotonicSeconds());
+        pendingImage.set(p);
+        log.info("an image waits for the next question: " + image.width() + "x" + image.height() + ", " + image.bytes()
+                + " bytes, for " + m);
+        publish("voice", snapshot().toMap());
+        return p.info();
+    }
+
+    /** Why the model cannot be shown an image, and what to do (the app shows it as is). */
+    static String refusal(VoiceConfig c) {
+        return (c.visionModel().isBlank() ? "This model" : c.imageModel())
+                + " cannot see images; choose a vision model in Marvin > Voice";
+    }
+
+    @Override
+    public void removeImage() {
+        if (pendingImage.getAndSet(null) != null) {
+            publish("voice", snapshot().toMap());
+        }
+    }
+
+    /** Whether {@code model} can look at images (the model server's capabilities, asked once per model). */
+    boolean canSee(String host, String model) {
+        String key = host + " " + model;
+        Set<String> caps = capabilities.get(key);
+        if (caps == null) {
+            caps = Set.copyOf(this.model.capabilities(host, model));
+            capabilities.put(key, caps);
+        }
+        return caps.contains(LanguageModel.VISION);
+    }
+
+    /** The image waiting for a question, unless it waited too long. */
+    private PendingImage waitingImage() {
+        PendingImage p = pendingImage.get();
+        if (p != null && clocks.monotonicSeconds() - p.at() > IMAGE_WAIT_S) {
+            pendingImage.compareAndSet(p, null);
+            log.info("the image waited " + (int) IMAGE_WAIT_S + " s for a question: dropped");
+            return null;
+        }
+        return p;
+    }
+
+    /** The question heard now takes the waiting image. */
+    private PendingImage takeImage() {
+        PendingImage p = waitingImage();
+        if (p != null && pendingImage.compareAndSet(p, null)) {
+            publish("voice", snapshot().toMap());
+            return p;
+        }
+        return null;
     }
 
     @Override
@@ -700,10 +817,11 @@ public final class VoiceService implements VoiceControl {
         VoiceSidecar.Status st = status;
         boolean on = ON.equals(state);
         String model = s.get("llm_model") instanceof String m && !m.isEmpty() ? m : VoiceSettings.DEFAULT_MODEL;
+        PendingImage image = on ? waitingImage() : null;
         return new VoiceSnapshot(state, on && st != null && RUNNING.contains(st.state()) ? st.state() : "off", muted,
                 error, fix, model, !Boolean.FALSE.equals(s.getOrDefault("wake", true)),
                 !Boolean.FALSE.equals(s.getOrDefault("chime", true)), on ? listenLeft(st) : null,
-                on && st != null && st.hearing() && "listening".equals(st.state()));
+                on && st != null && st.hearing() && "listening".equals(st.state()), image == null ? null : image.info());
     }
 
     /**
@@ -861,6 +979,8 @@ public final class VoiceService implements VoiceControl {
         volatile boolean remembered;
         /** A reply entry was written for it. */
         volatile boolean replied;
+        /** The image the owner showed with it ({@code null}: none). */
+        volatile PendingImage image;
 
         Turn(VoiceSidecar.Heard heard, long replyId) {
             this.heard = heard;
@@ -884,8 +1004,16 @@ public final class VoiceService implements VoiceControl {
         language = h.language() == null || h.language().isEmpty() ? language : h.language();
         boolean continues = !h.continues().isEmpty();
         Turn turn = new Turn(h, replyIds.getAndIncrement());
+        turn.image = takeImage();
+        for (long uid : h.continues()) {
+            // a question said in several breaths keeps the image its first part took
+            Turn t = recentTurns.get(uid);
+            if (turn.image == null && t != null && t.image != null) {
+                turn.image = t.image;
+            }
+        }
         if (!continues) {
-            turn.said = heardEntry(h).id();
+            turn.said = heardEntry(h, turn.image).id();
         }
         recentTurns.put(h.uid(), turn);
         startRecollection(turn);
@@ -905,7 +1033,7 @@ public final class VoiceService implements VoiceControl {
                 }
                 if (continues) {
                     // after what the questions it continues left (a cut answer): one bubble, in order
-                    turn.said = heardEntry(h).id();
+                    turn.said = heardEntry(h, turn.image).id();
                 }
                 if (turn.cancelled) {
                     return;                     // dropped by the voice before its turn came: nothing to answer
@@ -929,12 +1057,15 @@ public final class VoiceService implements VoiceControl {
     }
 
     /** The conversation entry of a question heard; with what it continues, when it continues earlier ones. */
-    private ConversationEntry heardEntry(VoiceSidecar.Heard h) {
+    private ConversationEntry heardEntry(VoiceSidecar.Heard h, PendingImage image) {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("language", h.language());
         d.put("source", h.source().isEmpty() ? "voice" : h.source());
         if (h.raw() != null && !h.raw().isEmpty()) {
             d.put("raw", h.raw());
+        }
+        if (image != null) {
+            d.put("image", image.image().describe());      // what it was, never the image
         }
         if (!h.continues().isEmpty()) {
             List<Long> replaces = new ArrayList<>();
@@ -990,7 +1121,9 @@ public final class VoiceService implements VoiceControl {
         VoiceSidecar.Heard h = turn.heard;
         VoiceConfig c = config != null ? config : VoiceSettings.config(settings());
         ToolRegistry reg = tools;
-        String key = c.ollamaHost() + " " + c.llmModel();
+        PendingImage image = turn.image;
+        String modelName = image != null ? image.model() : c.llmModel();
+        String key = c.ollamaHost() + " " + modelName;
         boolean offer = reg != null && reg.ollamaTools() != null && toolSupport.getOrDefault(key, true);
         String lang = h.language() == null || h.language().isEmpty() ? language : h.language();
         double now = clocks.monotonicSeconds();
@@ -1022,12 +1155,14 @@ public final class VoiceService implements VoiceControl {
             span.attribute("marvin.memory.tokens", asm.estimatedTokens());
         }
         String context = asm.context();
-        String user = Persona.userMessage(h.text(), context, lang);
-        turn.userMessage = user;
+        String user = Persona.userMessage(h.text(), context, lang, image != null ? Persona.IMAGE_NOTE : null);
+        // the history keeps the text with a note, never the image: later questions do not send it again
+        String kept = image != null ? Persona.userMessage(h.text(), context, lang, Persona.IMAGE_SHOWN_NOTE) : user;
+        turn.userMessage = kept;
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPrompt(lang, offer, reg, profile)));
         messages.addAll(history);
-        messages.add(ChatMessage.user(user));
+        messages.add(image != null ? ChatMessage.user(user, List.of(image.image().base64())) : ChatMessage.user(user));
         List<ChatMessage> previous;
         synchronized (promptLock) {
             previous = lastPrompt;
@@ -1042,7 +1177,7 @@ public final class VoiceService implements VoiceControl {
         toolContext.put(MemoryTools.OTHERS_PRESENT, turn.othersPresent);
 
         voice.send(new VoiceSidecar.ReplyStart(turn.replyId, lang, false, h.uid()));
-        AnswerLoop.Outcome out = loop.answer(c.ollamaHost(), c.llmModel(), messages, reg, offer, lang,
+        AnswerLoop.Outcome out = loop.answer(c.ollamaHost(), modelName, messages, reg, offer, lang,
                 c.maxToolRounds(), MODEL_TIMEOUT_S, () -> turn.cancelled, new AnswerLoop.Speaker() {
                     @Override
                     public void say(String sentence) {
@@ -1070,7 +1205,7 @@ public final class VoiceService implements VoiceControl {
             // remembered, and shows only if Marvin had started saying something
             if (!SpeechText.cleanForSpeech(spoken.text()).isEmpty()) {
                 reply(spoken.text(), lang, latency(h.latency(), out.latency(), spoken.latency()), true, out, context, user,
-                        c, null, "", asm.report(profile, usage), joined);
+                        modelName, image, null, "", asm.report(profile, usage), joined);
                 turn.replied = true;
             }
             return;
@@ -1082,8 +1217,8 @@ public final class VoiceService implements VoiceControl {
         span.attribute("marvin.interrupted", Boolean.toString(turn.cancelled || spoken.interrupted()));
         if (out.failure() != null) {
             span.error(out.failure());
-            reply(spoken.text(), lang, lat, false, out, context, user, c, out.failure(), out.hint(), asm.report(profile, usage),
-                    joined);
+            reply(spoken.text(), lang, lat, false, out, context, user, modelName, image, out.failure(), out.hint(),
+                    asm.report(profile, usage), joined);
             turn.replied = true;
             return;
         }
@@ -1092,15 +1227,16 @@ public final class VoiceService implements VoiceControl {
             boolean keep = historyEpoch.get() == epoch;
             if (keep && interrupted) {
                 if (!said.isEmpty() || !out.exchange().isEmpty()) {
-                    memory.remember(user, (said + " …").strip(), out.exchange(), clocks.monotonicSeconds());
+                    memory.remember(kept, (said + " …").strip(), out.exchange(), clocks.monotonicSeconds());
                     turn.remembered = true;
                 }
             } else if (keep) {
-                memory.remember(user, said, out.exchange(), clocks.monotonicSeconds());
+                memory.remember(kept, said, out.exchange(), clocks.monotonicSeconds());
                 turn.remembered = true;
             }
         }
-        reply(spoken.text(), lang, lat, interrupted, out, context, user, c, null, "", asm.report(profile, usage), joined);
+        reply(spoken.text(), lang, lat, interrupted, out, context, user, modelName, image, null, "",
+                asm.report(profile, usage), joined);
         turn.replied = true;
     }
 
@@ -1147,8 +1283,8 @@ public final class VoiceService implements VoiceControl {
     }
 
     private void reply(String text, String lang, Map<String, Double> lat, boolean interrupted, AnswerLoop.Outcome out,
-                       String context, String prompt, VoiceConfig c, String failure, String hint, Map<String, Object> memoryReport,
-                       int joined) {
+                       String context, String prompt, String modelName, PendingImage image, String failure, String hint,
+                       Map<String, Object> memoryReport, int joined) {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("language", lang);
         d.put("latency", lat);
@@ -1160,7 +1296,10 @@ public final class VoiceService implements VoiceControl {
         d.put("hint", hint);
         d.put("context", context);
         d.put("prompt", prompt);
-        d.put("model", c.llmModel());
+        d.put("model", modelName);
+        if (image != null) {
+            d.put("image", image.info());      // what the model was shown (never the image) and which model it was
+        }
         if (!out.calls().isEmpty()) {
             d.put("tools", out.calls());
         }
@@ -1443,7 +1582,27 @@ public final class VoiceService implements VoiceControl {
         out.put("languages", List.of("auto", "fr", "en"));
         out.put("platform", platform);
         out.put("tools", catalog);
+        out.put("vision", vision(c, Boolean.TRUE.equals(ollama.get("ok"))));
         return out;
+    }
+
+    /** Whether the model for images can see them, for the settings panel ({@code sees} {@code null}: unknown). */
+    private Map<String, Object> vision(VoiceConfig c, boolean ollamaOk) {
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("model", c.imageModel());
+        v.put("own_model", !c.visionModel().isBlank());
+        Boolean sees = null;
+        String problem = "";
+        if (ollamaOk) {
+            try {
+                sees = canSee(c.ollamaHost(), c.imageModel());
+            } catch (LanguageModel.Unavailable e) {
+                problem = e.getMessage();
+            }
+        }
+        v.put("sees", sees);
+        v.put("error", sees == null ? problem : sees ? "" : refusal(c));
+        return v;
     }
 
     private static Map<String, Object> ordered(Object... kv) {

@@ -139,4 +139,39 @@ class OllamaLanguageModelTest {
         stub.models = List.of("qwen3:4b-instruct", "llama3.2:3b");
         assertThat(model.models(stub.url())).containsExactly("qwen3:4b-instruct", "llama3.2:3b");
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void anImageGoesOnTheQuestionOnlyAndTheStubRecordsIt() throws Exception {
+        stub = new StubOllama();
+        stub.chat = r -> StubOllama.text("A cat.");
+        byte[] raw = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, 1, 2, 3};
+        String b64 = java.util.Base64.getEncoder().encodeToString(raw);
+        List<ChatMessage> msgs = List.of(ChatMessage.system("You are Marvin."), ChatMessage.user("Earlier."),
+                ChatMessage.assistant("Yes."), ChatMessage.user("What is this?", List.of(b64)));
+        model.streamChat(stub.url(), "qwen3.8:27b-mlx", msgs, null, 60, new Collect());
+        List<Map<String, Object>> sent = (List<Map<String, Object>>) stub.requests.get(0).get("messages");
+        assertThat(sent.get(3)).containsEntry("images", List.of(b64)).containsEntry("role", "user");
+        assertThat(sent.subList(0, 3)).allSatisfy(m -> assertThat(m).doesNotContainKey("images"));
+        assertThat(stub.images).hasSize(1);
+        assertThat(stub.images.get(0)).containsEntry("message", 3).containsEntry("role", "user").containsEntry("last", true)
+                .containsEntry("bytes", 6).containsKey("sha256");
+    }
+
+    @Test
+    void capabilitiesComeFromShowAndAMissingModelSaysHowToGetIt() throws Exception {
+        stub = new StubOllama();
+        stub.models = List.of("qwen3:4b-instruct", "qwen3.8:27b-mlx");
+        stub.vision = java.util.Set.of("qwen3.8:27b-mlx");
+        assertThat(model.capabilities(stub.url(), "qwen3.8:27b-mlx")).containsExactly("completion", "tools", "vision");
+        assertThat(model.capabilities(stub.url(), "qwen3:4b-instruct")).doesNotContain(LanguageModel.VISION);
+        assertThat(stub.showRequests).containsExactly("qwen3.8:27b-mlx", "qwen3:4b-instruct");
+        assertThatThrownBy(() -> model.capabilities(stub.url(), "llava:7b")).isInstanceOf(LanguageModel.Unavailable.class)
+                .hasMessageContaining("Ollama has no model 'llava:7b'")
+                .satisfies(e -> assertThat(((LanguageModel.Unavailable) e).hint()).isEqualTo("Run `ollama pull llava:7b`."));
+        stub.close();
+        assertThatThrownBy(() -> model.capabilities(stub.url(), "qwen3.8:27b-mlx")).isInstanceOf(LanguageModel.Unavailable.class)
+                .hasMessageContaining("cannot reach Ollama");
+        stub = null;
+    }
 }

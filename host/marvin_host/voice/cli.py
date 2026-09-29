@@ -39,6 +39,8 @@ SETTINGS = {
     "tools": ("tools", bool), "internet": ("internet", bool), "home_place": ("home_place", str),
     # the listening chime, and where the Java host's voice hears and speaks (computer, robot, auto)
     "chime": ("chime", bool), "audio_route": (None, str),
+    # the model for questions with an image, empty for the voice's model (the Java host only)
+    "vision_model": (None, str),
 }
 DEVICE_KEYS = ("input_device", "output_device")
 

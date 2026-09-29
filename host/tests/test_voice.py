@@ -1418,3 +1418,14 @@ def test_listening_window_waits_while_someone_talks():
     left, hearing, status = seen[1]
     assert status == "listening" and not hearing and 0.5 < left <= 1.5
     assert t.log["transcript"] == ["Quelle heure est-il ?"]
+
+
+def test_a_question_with_an_image_says_so_and_the_history_keeps_a_note():
+    ctx = persona.context_block(None)
+    asked = persona.user_message("What is this?", context=ctx, language="en", image_note=persona.IMAGE_NOTE)
+    assert asked.endswith(f"{persona.IMAGE_NOTE}\nThe person says: What is this?\n\n(Answer in English.)")
+    kept = persona.user_message("What is this?", context=ctx, language="en", image_note=persona.IMAGE_SHOWN_NOTE)
+    assert persona.IMAGE_NOTE not in kept and persona.IMAGE_SHOWN_NOTE in kept
+    assert persona.user_message("Hi", context=ctx) == f"{ctx}\n\nThe person says: Hi"
+    # the rule is in every system prompt: showing an image does not change it
+    assert "The one exception is an image the person shows you" in persona.persona_prompt("fr")

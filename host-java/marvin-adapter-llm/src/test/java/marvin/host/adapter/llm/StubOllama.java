@@ -27,16 +27,28 @@ import marvin.host.domain.shared.JsonText;
  *   <li>{@code /api/chat} answers each request with the lines {@link #chat} gives (newline-delimited JSON, flushed one
  *       by one: streamed text, tool calls, or a structured answer with {@link #json}), or with an HTTP error when the
  *       first line is {@code "!<status> <body>"};</li>
+ *   <li>{@code /api/show} gives {@link #capabilities} ({@code completion} and {@code tools}, and {@code vision} for the
+ *       models in {@link #vision}); a model not in {@link #models} gets Ollama's 404;</li>
  *   <li>{@code /api/embed} answers with {@link #embedding} vectors: deterministic, and texts that share words are
  *       close, which is enough to exercise reconciliation; a model not in {@link #models} gets Ollama's 404.</li>
  * </ul>
- * Request bodies are kept in {@link #requests} (chat) and {@link #embedRequests}. The {@code done} line of a chat
+ * Request bodies are kept in {@link #requests} (chat) and {@link #embedRequests}; the images chat requests carried,
+ * where they were and what they were, in {@link #images}. The {@code done} line of a chat
  * reports a {@code prompt_eval_count} as Ollama does with its prompt cache: only the messages after those the previous
  * request shared, at {@link #CHARS_PER_TOKEN} characters per token, plus the chat template's tokens.
  */
 public final class StubOllama implements AutoCloseable {
     public final List<Map<String, Object>> requests = new CopyOnWriteArrayList<>();
     public final List<Map<String, Object>> embedRequests = new CopyOnWriteArrayList<>();
+    /** The models {@code /api/show} was asked about. */
+    public final List<String> showRequests = new CopyOnWriteArrayList<>();
+    /** Models that can see images. */
+    public volatile Set<String> vision = Set.of();
+    /**
+     * Each image a chat request carried: {@code request} (its index in {@link #requests}), {@code message} (the index of
+     * its message), {@code role}, {@code last} (whether it was on the last message), {@code bytes}, {@code sha256}.
+     */
+    public final List<Map<String, Object>> images = new CopyOnWriteArrayList<>();
     private final HttpServer server;
     public volatile List<String> models = List.of("qwen3:4b-instruct", "qwen3-embedding:8b");
     public volatile Function<Map<String, Object>, List<String>> chat = r -> List.of();
@@ -55,6 +67,7 @@ public final class StubOllama implements AutoCloseable {
         server.createContext("/api/tags", this::tags);
         server.createContext("/api/chat", this::chat);
         server.createContext("/api/embed", this::embed);
+        server.createContext("/api/show", this::show);
         server.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         server.start();
     }
@@ -159,6 +172,57 @@ public final class StubOllama implements AutoCloseable {
         send(ex, 200, "application/json", b.append("]}").toString());
     }
 
+    /** What {@code model} can do, as Ollama lists it. */
+    public List<String> capabilities(String model) {
+        List<String> caps = new ArrayList<>(List.of("completion", "tools"));
+        if (vision.contains(model)) {
+            caps.add("vision");
+        }
+        return caps;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void show(HttpExchange ex) throws IOException {
+        Map<String, Object> body = (Map<String, Object>) JsonText.parse(new String(ex.getRequestBody().readAllBytes(),
+                StandardCharsets.UTF_8));
+        String model = String.valueOf(body.getOrDefault("model", body.get("name")));
+        showRequests.add(model);
+        if (!models.contains(model) && !models.contains(model + ":latest")) {
+            send(ex, 404, "application/json", "{\"error\":\"model '" + model + "' not found\"}");
+            return;
+        }
+        send(ex, 200, "application/json", JsonText.write(Map.of("capabilities", capabilities(model),
+                "details", Map.of("family", "qwen3"), "model_info", Map.of("general.architecture", "qwen3"))));
+    }
+
+    /** Records the images of a chat request (never keeps them). */
+    private void recordImages(Map<String, Object> body, int request) {
+        List<?> messages = body.get("messages") instanceof List<?> l ? l : List.of();
+        for (int i = 0; i < messages.size(); i++) {
+            if (messages.get(i) instanceof Map<?, ?> m && m.get("images") instanceof List<?> imgs) {
+                for (Object o : imgs) {
+                    byte[] raw = java.util.Base64.getDecoder().decode(String.valueOf(o));
+                    Map<String, Object> r = new LinkedHashMap<>();
+                    r.put("request", request);
+                    r.put("message", i);
+                    r.put("role", m.get("role"));
+                    r.put("last", i == messages.size() - 1);
+                    r.put("bytes", raw.length);
+                    r.put("sha256", sha256(raw));
+                    images.add(r);
+                }
+            }
+        }
+    }
+
+    private static String sha256(byte[] raw) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(raw));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private void embed(HttpExchange ex) throws IOException {
         Map<String, Object> body = (Map<String, Object>) JsonText.parse(new String(ex.getRequestBody().readAllBytes(),
@@ -188,6 +252,7 @@ public final class StubOllama implements AutoCloseable {
         Map<String, Object> body = (Map<String, Object>) JsonText.parse(new String(ex.getRequestBody().readAllBytes(),
                 StandardCharsets.UTF_8));
         requests.add(body);
+        recordImages(body, requests.size() - 1);
         int promptTokens = promptEvalCount(body);
         List<String> lines = chat.apply(body);
         if (!lines.isEmpty() && lines.get(0).startsWith("!")) {

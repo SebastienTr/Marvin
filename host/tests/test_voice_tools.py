@@ -506,3 +506,11 @@ def test_the_home_place_is_in_the_context_when_tools_are_on():
     assert "Your owner lives in Nice, France" in t.llm.calls[0][-1]["content"]
     va, t = ask("Bonjour", ["Bonjour."], home_place="Nice, France", tools=ToolRegistry([], enabled=False))
     assert "lives in" not in t.llm.calls[0][-1]["content"]
+
+
+def test_the_model_for_images_is_a_setting_empty_for_the_voice_model():
+    assert validate({"vision_model": "qwen2.5vl:7b"}) == {"vision_model": "qwen2.5vl:7b"}
+    assert validate({"vision_model": ""}) == {"vision_model": ""}
+    assert validate({"vision_model": None}) == {"vision_model": ""}
+    with pytest.raises(ValueError, match="vision_model must be an Ollama model name"):
+        validate({"vision_model": "bad name"})

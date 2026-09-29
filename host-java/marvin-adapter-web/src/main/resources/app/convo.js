@@ -4,9 +4,11 @@
 // leaves a chip under the answer; consecutive ignored entries fold into one discreet line that opens to show
 // each one and why. A question said in several breaths (the owner went on after a pause) is one bubble: its entry
 // `replaces` the bubbles of the earlier parts, or `continues` them when Marvin had started answering in between.
+// A question asked with an image shows it above its words (the thumbnail this tab kept, else its size).
 
 import { el, fmtTime, fmtSeconds, plural, reduceMotion } from "./core.js";
 import { openInspector } from "./inspector.js";
+import { imageFigure } from "./attach.js";
 
 let seq = 0;
 
@@ -57,6 +59,7 @@ export function transcriptItem(e) {
   const label = you ? (e.source === "typed" ? "YOU, TYPED" : goesOn ? "YOU, GOING ON" : "YOU")
     : e.proactive ? "MARVIN, ON HIS OWN" : "MARVIN";
   bubble.append(who(label, e));
+  if (you && e.image) bubble.append(imageFigure(e.image));
   bubble.append(el("span", "text", e.text));
   li.append(bubble);
   if (you && e.joined > 1) li.title = `Said in ${e.joined} breaths, heard as one question`;

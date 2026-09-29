@@ -54,10 +54,17 @@ class VoiceServiceTest {
         volatile Status onOpen = new Status("idle", false, "", "", "fake", "fake", null);
         boolean autoSpeak = true;
 
+        /** As the real voice does: opened again with the same settings, it keeps running and says nothing. */
+        boolean quietWhenUnchanged;
+
         @Override
         public void open(Settings settings, Signals s) {
+            boolean same = open && !opened.isEmpty() && opened.getLast().equals(settings);
             opened.add(settings);
             signals = s;
+            if (quietWhenUnchanged && same) {
+                return;
+            }
             open = true;
             s.signal(new Status("starting", false, "", "", "", "", null));
             s.signal(onOpen);
@@ -656,7 +663,9 @@ class VoiceServiceTest {
         VoiceService v = service(FakeModel.of());
         Map<String, Object> o = v.options();
         assertThat(new ArrayList<>(o.keySet())).containsExactly("llm_models", "ollama", "stt_backends", "stt_models",
-                "tts_backends", "voices", "languages", "platform", "tools");
+                "tts_backends", "voices", "languages", "platform", "tools", "vision");
+        assertThat(o.get("vision")).isEqualTo(Map.of("model", "qwen3:4b-instruct", "own_model", false, "sees", false,
+                "error", "This model cannot see images; choose a vision model in Marvin > Voice"));
         assertThat(o.get("llm_models")).isEqualTo(List.of("qwen3:4b-instruct"));
         assertThat(o.get("platform")).isEqualTo("linux");
         assertThat(o.get("voices")).isEqualTo(Map.of("piper", List.of(Map.of("name", "fr_FR-siwis-medium", "installed", true)),
@@ -673,5 +682,174 @@ class VoiceServiceTest {
         VoiceService v = service(FakeModel.of());
         assertThat(v.recent(0)).extracting(ConversationEntry::text).containsExactly("Bonjour");
         assertThat(v.recent(5)).isEmpty();
+    }
+
+    // ------------------------------------------------------------------ an image with a question
+
+    /** A JPEG's structure (the pixels are not real) with EXIF saying where it was taken. */
+    static byte[] jpeg(int width, int height) {
+        java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+        o.writeBytes(new byte[] {(byte) 0xff, (byte) 0xd8});
+        segment(o, 0xe1, "Exif\0\0GPS 43.70N 7.26E".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+        segment(o, 0xc0, new byte[] {8, (byte) (height >> 8), (byte) height, (byte) (width >> 8), (byte) width, 1, 1, 0x11, 0});
+        segment(o, 0xda, new byte[] {1, 1, 0, 0, 0x3f, 0});
+        o.writeBytes(new byte[] {0x12, 0x34, (byte) 0xff, (byte) 0xd9});
+        return o.toByteArray();
+    }
+
+    static void segment(java.io.ByteArrayOutputStream o, int marker, byte[] data) {
+        int len = data.length + 2;
+        o.writeBytes(new byte[] {(byte) 0xff, (byte) marker, (byte) (len >> 8), (byte) len});
+        o.writeBytes(data);
+    }
+
+    /** A model that answers everything the same way, and sees images when {@code vision} names it. */
+    static FakeModel answering(String answer, String... vision) {
+        FakeModel m = new FakeModel(msgs -> new ArrayList<>(List.of(answer)));
+        Map<String, java.util.Set<String>> caps = new LinkedHashMap<>();
+        for (String name : vision) {
+            caps.put(name, java.util.Set.of("completion", "vision", "tools"));
+        }
+        m.capabilities = caps;
+        return m;
+    }
+
+    static boolean anyImage(List<marvin.host.domain.conversation.ChatMessage> messages) {
+        return messages.stream().anyMatch(x -> !x.images().isEmpty());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void anImageGoesWithTheNextQuestionOnlyAndTheHistoryKeepsANote() throws InterruptedException {
+        FakeModel model = answering("A red square on a white card.", "qwen3:4b-instruct");
+        VoiceService v = started(model);
+        waitFor(() -> model.calls.size() == 2);
+        Map<String, Object> info = v.attachImage(jpeg(1280, 960));
+        assertThat(info).containsEntry("type", "image/jpeg").containsEntry("width", 1280).containsEntry("height", 960)
+                .containsEntry("model", "qwen3:4b-instruct").containsKeys("bytes", "sha256");
+        assertThat(v.snapshot().toMap()).containsEntry("image", info);
+        assertThat(published).contains("voice");
+
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "C'est quoi ?", "", "fr", "typed", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 1);
+        List<marvin.host.domain.conversation.ChatMessage> asked = model.calls.get(2);
+        marvin.host.domain.conversation.ChatMessage last = asked.getLast();
+        assertThat(last.images()).hasSize(1);
+        String sent = new String(java.util.Base64.getDecoder().decode(last.images().get(0)), java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertThat(sent).doesNotContain("GPS");                     // the metadata never reaches the model
+        assertThat(last.content()).contains(marvin.host.domain.conversation.Persona.IMAGE_NOTE + "\nThe person says: C'est quoi ?");
+        assertThat(asked.subList(0, asked.size() - 1)).noneMatch(x -> !x.images().isEmpty());
+        assertThat(asked.get(0)).as("the system prompt does not change with an image").isEqualTo(model.calls.get(0).get(0));
+        assertThat(v.snapshot().toMap()).doesNotContainKey("image");
+
+        Map<String, Object> heard = kinds("heard").get(0);
+        assertThat((Map<String, Object>) heard.get("image")).containsOnlyKeys("type", "width", "height", "bytes", "sha256")
+                .containsEntry("sha256", info.get("sha256"));
+        Map<String, Object> reply = kinds("reply").get(0);
+        assertThat(reply).containsEntry("model", "qwen3:4b-instruct").containsEntry("image", info);
+        assertThat((String) reply.get("prompt")).contains(marvin.host.domain.conversation.Persona.IMAGE_NOTE);
+        // what is stored holds no image
+        String b64 = last.images().get(0);
+        assertThat(store.entries).allSatisfy(e -> assertThat(e.data().toString()).doesNotContain(b64.substring(0, 16)));
+
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Et sa couleur ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 2);
+        List<marvin.host.domain.conversation.ChatMessage> next = model.calls.get(3);
+        assertThat(anyImage(next)).as("the image is not sent again").isFalse();
+        assertThat(next.get(1).content()).contains(marvin.host.domain.conversation.Persona.IMAGE_SHOWN_NOTE
+                + "\nThe person says: C'est quoi ?").doesNotContain(marvin.host.domain.conversation.Persona.IMAGE_NOTE);
+        assertThat(next.get(2).content()).isEqualTo("A red square on a white card.");
+        assertThat(kinds("heard").get(1)).doesNotContainKey("image");
+        assertThat(kinds("reply").get(1)).doesNotContainKey("image");
+    }
+
+    @Test
+    void aModelThatCannotSeeIsRefusedAndTheVisionModelLooksInstead() throws InterruptedException {
+        FakeModel model = answering("Réponse.", "qwen2.5vl:7b");
+        VoiceService v = started(model);
+        assertThatThrownBy(() -> v.attachImage(jpeg(640, 480))).isInstanceOf(VoiceControl.ImageRefused.class)
+                .hasMessage("This model cannot see images; choose a vision model in Marvin > Voice");
+        assertThatThrownBy(() -> v.ask("What is it?", jpeg(640, 480))).isInstanceOf(VoiceControl.ImageRefused.class);
+        assertThat(model.capabilityCalls).as("asked once, then remembered").containsExactly("qwen3:4b-instruct");
+        assertThat(sidecar.sent(VoiceSidecar.Ask.class)).as("a refused image does not ask").isEmpty();
+
+        v.updateSettings(Map.of("vision_model", "llama3.2:3b"));
+        waitFor(() -> sidecar.opened.size() == 2);
+        waitFor(() -> v.snapshot().state().equals("on"));
+        assertThatThrownBy(() -> v.attachImage(jpeg(640, 480)))
+                .hasMessage("llama3.2:3b cannot see images; choose a vision model in Marvin > Voice");
+
+        v.updateSettings(Map.of("vision_model", "qwen2.5vl:7b"));
+        waitFor(() -> sidecar.opened.size() == 3);
+        waitFor(() -> v.snapshot().state().equals("on"));
+        assertThat(v.appSettings()).containsEntry("vision_model", "qwen2.5vl:7b");
+        v.ask("Qu'est-ce que c'est ?", jpeg(640, 480));
+        assertThat(sidecar.sent(VoiceSidecar.Ask.class)).extracting(VoiceSidecar.Ask::text).containsExactly("Qu'est-ce que c'est ?");
+        int before = model.calls.size();
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Qu'est-ce que c'est ?", "", "fr", "typed", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 1);
+        assertThat(model.modelNames.get(before)).isEqualTo("qwen2.5vl:7b");
+        assertThat(model.calls.get(before).getLast().images()).hasSize(1);
+        assertThat(kinds("reply").get(0)).containsEntry("model", "qwen2.5vl:7b");
+
+        // the questions without an image stay with the voice's model
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Merci.", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 2);
+        assertThat(model.modelNames.getLast()).isEqualTo("qwen3:4b-instruct");
+        assertThat(kinds("reply").get(1)).containsEntry("model", "qwen3:4b-instruct");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> vision = (Map<String, Object>) v.options().get("vision");
+        assertThat(vision).containsEntry("model", "qwen2.5vl:7b").containsEntry("own_model", true).containsEntry("sees", true);
+    }
+
+    @Test
+    void anImageWaitsForASpokenQuestionCanBeRemovedAndExpires() throws InterruptedException {
+        FakeModel model = answering("Oui.", "qwen3:4b-instruct");
+        VoiceService v = service(model);
+        assertThatThrownBy(() -> v.attachImage(jpeg(10, 10))).isInstanceOf(VoiceControl.VoiceOff.class);
+        v.start();
+        waitFor(() -> v.snapshot().state().equals("on"));
+        assertThatThrownBy(() -> v.attachImage("not an image".getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                .isInstanceOf(marvin.host.domain.conversation.ImageAttachment.InvalidImage.class)
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> v.ask("  ", jpeg(10, 10))).hasMessage("nothing to ask");
+        assertThat(v.snapshot().toMap()).doesNotContainKey("image");
+
+        v.attachImage(jpeg(10, 10));
+        v.removeImage();
+        assertThat(v.snapshot().toMap()).doesNotContainKey("image");
+
+        v.attachImage(jpeg(20, 10));
+        clock.mono += VoiceService.IMAGE_WAIT_S + 1;
+        assertThat(v.snapshot().toMap()).as("dropped after waiting too long").doesNotContainKey("image");
+        int before = model.calls.size();
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Tu vois ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 1);
+        assertThat(anyImage(model.calls.get(before))).isFalse();
+
+        // a spoken question takes it as a typed one does
+        v.attachImage(jpeg(30, 20));
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Et maintenant ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 2);
+        assertThat(model.calls.getLast().getLast().images()).hasSize(1);
+        assertThat(kinds("heard").get(1)).containsKey("image");
+        v.stop();
+        waitFor(() -> v.snapshot().state().equals("off"));
+    }
+
+    @Test
+    void aSettingTheVoiceDoesNotUseRestartsWithoutWaitingForIt() throws InterruptedException {
+        sidecar.quietWhenUnchanged = true;
+        VoiceService v = started(answering("Oui.", "qwen2.5vl:7b"));
+        v.updateSettings(Map.of("vision_model", "qwen2.5vl:7b"));
+        waitFor(() -> sidecar.opened.size() == 2);
+        waitFor(() -> v.snapshot().state().equals("on"));
+        v.updateSettings(Map.of("llm_model", "qwen3:4b-instruct", "home_place", "Nice"));
+        waitFor(() -> sidecar.opened.size() == 3);
+        waitFor(() -> v.snapshot().state().equals("on"));
+        v.updateSettings(Map.of("wake", false));                // one it uses: it reports again
+        waitFor(() -> sidecar.opened.size() == 4);
+        waitFor(() -> v.snapshot().state().equals("on"));
+        assertThat(sidecar.opened.get(3).wake()).isFalse();
     }
 }

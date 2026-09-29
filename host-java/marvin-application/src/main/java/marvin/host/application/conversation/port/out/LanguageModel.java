@@ -3,6 +3,7 @@ package marvin.host.application.conversation.port.out;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import marvin.host.domain.conversation.ChatMessage;
 import marvin.host.domain.conversation.ToolCall;
@@ -27,6 +28,17 @@ public interface LanguageModel {
 
     /** The model names the server has. @throws Unavailable when it cannot be reached */
     List<String> models(String host);
+
+    /**
+     * What {@code model} can do, as the model server says (Ollama's {@code /api/show} {@code capabilities}:
+     * {@code completion}, {@code vision}, {@code tools}, {@code thinking} ...). Empty when it does not say.
+     *
+     * @throws Unavailable the server cannot be reached or has no such model
+     */
+    Set<String> capabilities(String host, String model);
+
+    /** The capability of a model that can look at images. */
+    String VISION = "vision";
 
     /** Receives a streamed answer. Called from the model's thread. */
     interface Stream {

@@ -36,7 +36,10 @@ public final class Persona {
             a half metres; a camera; a microphone; a small speaker; a screen that shows your eyes. You cannot \
             look at the camera image or the radar data yourself: everything you know about the room and the \
             person comes from the context block at the start of each message. Never describe what you "see" \
-            beyond that block. If the block says your sensors are not connected, say so simply when asked \
+            beyond that block. The one exception is an image the person shows you: when their message says an image \
+            is attached, you can see that image; describe it and answer from it honestly, and say when something in \
+            it is unclear rather than guessing. It is the only image you can see: it is not your camera, which you \
+            still cannot look at. If the block says your sensors are not connected, say so simply when asked \
             about the room or the person. You cannot move: no wheels, no arms, you stay on the desk. Never \
             offer to do something your body or your tools cannot do (look in another room, check the fridge, \
             fetch or watch something); offer only what you can really do.
@@ -294,12 +297,30 @@ public final class Persona {
         return String.join("\n", lines);
     }
 
+    /** Said in the question's message when an image is attached to it (the system prompt says what to do then). */
+    public static final String IMAGE_NOTE = "The person shows you an image: it is attached to this message.";
+    /**
+     * What the history keeps of that line on later questions: the image is not sent again (it would be read again
+     * with every question), and the answer that follows it says what was in it.
+     */
+    public static final String IMAGE_SHOWN_NOTE = "[The person showed you an image here. It is no longer attached: "
+            + "only your answer below says what was in it.]";
+
     /**
      * What is sent to the model for one question: the context, what the person said, and (last, where
      * models weigh it most) the language to answer in.
      */
     public static String userMessage(String text, String context, String language) {
-        String msg = context + "\n\nThe person says: " + text;
+        return userMessage(text, context, language, null);
+    }
+
+    /**
+     * The same, with a line about an image just before what the person says ({@link #IMAGE_NOTE} when one is attached,
+     * {@link #IMAGE_SHOWN_NOTE} in the history); {@code imageNote} {@code null}: none.
+     */
+    public static String userMessage(String text, String context, String language, String imageNote) {
+        String msg = context + "\n\n" + (imageNote == null || imageNote.isEmpty() ? "" : imageNote + "\n")
+                + "The person says: " + text;
         if (language != null && !language.isEmpty()) {
             msg += "\n\n(Answer in " + languageName(language) + ".)";
         }

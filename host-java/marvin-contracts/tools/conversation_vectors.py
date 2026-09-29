@@ -49,6 +49,13 @@ def persona_vectors():
                     for lang in ("fr", "en", "de", "xx") for tools in (False, True)],
         "phrases": [{"key": k, "language": lang, "text": persona.phrase(k, lang, minutes=42)}
                     for k in persona.PHRASES for lang in ("fr", "en", "de")],
+        # a question with an image, as sent (IMAGE_NOTE) and as the history keeps it (IMAGE_SHOWN_NOTE)
+        "image": {"note": persona.IMAGE_NOTE, "shown": persona.IMAGE_SHOWN_NOTE,
+                  "messages": [{"language": lang, "note": note,
+                                "text": persona.user_message("Qu'est-ce que c'est ?", language=lang,
+                                                             context=persona.context_block(None, now=NOW),
+                                                             image_note=note)}
+                               for lang in ("fr", None) for note in (persona.IMAGE_NOTE, persona.IMAGE_SHOWN_NOTE)]},
     }
 
 
@@ -178,6 +185,7 @@ SETTINGS_OK = [
     {"wake": False}, {"reminders": True}, {"welcome_back": True}, {"tools": False}, {"internet": False},
     {"follow_up_s": 0}, {"follow_up_s": 30}, {"follow_up_s": 2.5},
     {"llm_model": "hf.co/user/model:Q4_K_M", "language": "en", "follow_up_s": 7},
+    {"vision_model": "qwen2.5vl:7b"}, {"vision_model": ""}, {"vision_model": None},
 ]
 SETTINGS_BAD = [
     {"llm_model": ""}, {"llm_model": "bad name"}, {"llm_model": 3}, {"stt": "whisper"}, {"stt_model": "a b"},
@@ -185,6 +193,7 @@ SETTINGS_BAD = [
     {"language": "de"}, {"language": 1}, {"home_place": 5}, {"home_place": "x" * 81}, {"home_place": "Nice{}"},
     {"home_place": "Ni\u0007ce"}, {"wake": "yes"}, {"wake": 1}, {"tools": None}, {"follow_up_s": "soon"},
     {"follow_up_s": True}, {"follow_up_s": 31}, {"follow_up_s": -1}, {"volume": 3},
+    {"vision_model": "bad name"}, {"vision_model": 3},
 ]
 
 

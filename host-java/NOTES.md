@@ -1885,3 +1885,86 @@ The owner now runs `qwen3.8:27b` (256K context, dense). The request options were
   an evaluation set to measure it.
 - The Python host (`host/marvin_host/voice/llm.py`) keeps 8192/200: `marvin-host talk` is a tool now, and running it
   beside the Java host with another `num_ctx` would reload the model.
+
+## Showing Marvin an image
+
+The owner shows Marvin a photo in Talk and asks about it, typed or spoken (docs/voice.md "Showing Marvin an image",
+docs/ui.md). The robot's camera is still not the conversation's: a `look` tool (Marvin takes a picture when a question
+needs it, sent the same way, on the question's message only) is a later step, not built.
+
+### What exists
+
+- **Domain**: `ImageAttachment` (JPEG or PNG recognised from the bytes, size from the frame header or `IHDR`, at most
+  2 MB and 4096 px a side, metadata removed: JPEG APP1-APP15 and comments, PNG `tEXt`/`zTXt`/`iTXt`/`tIME`/`eXIf`;
+  SHA-256 of what is sent; `describe()` never holds the bytes). `ChatMessage.images` (base64, on a user message).
+  `Persona`: one rule in the persona (the same for every question), `IMAGE_NOTE` in the question's message and
+  `IMAGE_SHOWN_NOTE` for the history; Python `persona.py` the same, vectors regenerated (`persona.image`, and
+  `vision_model` in the settings cases). `VoiceSettings.vision_model` (empty: the voice's model, `imageModel()`), in
+  Python `control.py`/`cli.py` too (the Python host accepts and ignores it). `VoiceSnapshot.image` (only while one
+  waits: the key is absent otherwise). `EventFeeds`: a heard entry with an image gets
+  "[the owner showed an image with this question]" in memory's log.
+- **Ports**: `LanguageModel.capabilities(host, model)` (Ollama `/api/show`; an older server without `capabilities`:
+  a `projector_info` means vision); `VoiceControl.attachImage`, `removeImage`, `ask(text, image)`, `ImageRefused`.
+- **VoiceService**: the image waits in memory (`PendingImage`: the image, the model chosen when it was attached) for
+  the next `Heard`, typed or spoken (a question said in several breaths keeps the image its first part took); it is
+  dropped after 10 minutes, on remove, or when the voice stops. Capabilities are asked once per host and model and
+  forgotten on a settings change. The turn uses the image's model (the tools' support is kept per model), sends
+  the image on the last message only, keeps the text with `IMAGE_SHOWN_NOTE` in the history and in `turn.userMessage`
+  (so `forgetLast` still matches), and records `image` (type, size, bytes, SHA-256, model) in the heard and reply
+  entries. `options()` has `vision` (the model, whether it can see) for the settings screen.
+- **Adapters**: `OllamaLanguageModel` sends `images` and reads `/api/show` (Spring AI's `NonTransientAiException`
+  "404 - ..." is now translated like the streamed errors). `POST /api/voice/image` (the body is the image;
+  `AccessFilter` accepts `image/jpeg` and `image/png` there, up to 2 MB, and a larger body for `/api/voice/ask` with
+  `"image"` in base64), `POST /api/voice/image/remove`; 413, 415, 400, 422 (cannot see), 409 (voice off).
+- **App**: `attach.js` (picker; on a phone a menu with `capture="environment"` for the camera and the library;
+  drop on the conversation; paste in the text box; downscale with `createImageBitmap` and a canvas to 1280 px JPEG
+  0.85, a 240 px thumbnail as a `data:` URL since the page's policy allows `data:` images and not `blob:`), the
+  preview synced with the voice's `image`, the refusal with a link to Marvin > Voice; the bubble's image and the
+  inspector's "Image sent" (`convo.js`, `inspector.js`); **Model for images** in Marvin > Voice with a hint from
+  `options().vision`. `e2e/vision.py` walks it; `e2e/stub_ollama.py` and `StubOllama` report `vision` for chosen
+  models and record every image a request carries.
+
+### Decisions and deviations
+
+1. **No thumbnail in the conversation store.** A small JPEG would be cheap, but images of a desk hold documents,
+   screens and people, the conversation is searched, exported and kept, and the owner was told the host keeps no
+   image or sound (docs/ui.md "Privacy"). The entry keeps what was shown (pixels, bytes, SHA-256, model); the
+   thumbnail lives in the browser tab (`sessionStorage`, 16 at most), so a reload in the same tab still shows it and
+   another device shows "Image · W × H".
+2. **The image waits on the host, not in the page.** A spoken question has no request the page could attach the image
+   to, so the page uploads it when it is chosen and the next `Heard` takes it, whatever its source; a typed question
+   waits for an upload still on its way. The API's `ask` also takes the image for a client that wants one request.
+3. **Refused when attached, not when asked.** Knowing at once that the model cannot see saves a question asked for
+   nothing; the check at attach time uses the model the settings name then, and the turn uses that same model.
+4. **The persona rule is in the system prompt, the note in the message.** The rule is the same bytes for every
+   question (cached once); the per-turn line says the image is attached. The history's line says it no longer is,
+   so a later question never makes the model describe an image it does not have.
+5. **Restart without waiting for the voice when its settings did not change** (found here): changing only a setting
+   the voice sidecar does not use (the model, tools, the model for images) sent it the same `Configure`, which it
+   ignores, and the restart waited 300 s for a status in `starting`. `doStart` now counts the running voice as ready
+   when the session's settings are unchanged (`VoiceServiceTest.aSettingTheVoiceDoesNotUseRestartsWithoutWaitingForIt`).
+
+### Verified
+
+- `JAVA_HOME=/opt/jdk25 ./mvnw -o -q test`: all green (new: `ImageAttachmentTest` 5, `VoiceImageApiTest` 4 behind the
+  real `AccessFilter`, `VoiceServiceTest` +4 (the image only on the current message, never in the history, the
+  entries without the bytes; refusal, the vision model and the capability cache; expiry, remove, spoken question;
+  the restart fix), `OllamaLanguageModelTest` +2 (`images` on the wire and recorded by the stub; `/api/show`, 404,
+  unreachable), `ConversationVectorsTest` +1, `RulesTest` (the log's note)). Docker is not available: the
+  Testcontainers ITs did not run.
+- Python: `python3 -m pytest -q` green (+2: the image notes, `vision_model` validation).
+- The host run as a non-root user on the embedded PostgreSQL with `e2e/stub_ollama.py` and the voice sidecar in its
+  test mode, `llm_model` `qwen3.8:27b-mlx` (vision per the stub): `e2e/vision.py` passed for Day and Night at 1440 and
+  390 wide, no console error but the refusal's intended 422, no sideways scroll. By hand with curl: the EXIF of a
+  2400x1600 JPEG removed, one image in the stub for the question and none for the next, the system prompt's hash the
+  same for every request, memory's log with the note. Screenshots: `/mnt/user-data/outputs/vision-shots/`.
+
+### Known gaps
+
+- One image per question; the image goes with whatever question is heard next (in "just talk" mode, possibly a
+  sentence not meant for it). No HEIC on browsers that cannot decode it (the page says so).
+- A vision model other than the voice's is not warmed up: the first question with an image pays its loading.
+- The API contract goldens (`golden/api`, recorded from the Python host) have no image routes, and the voice's state
+  there predates `hearing`; `ApiContractIT` needs Docker and was not run.
+- The Python host's own app and voice have no images.
+

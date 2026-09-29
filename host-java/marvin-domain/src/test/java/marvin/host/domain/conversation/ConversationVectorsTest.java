@@ -71,6 +71,24 @@ class ConversationVectorsTest {
     }
 
     @Test
+    void aQuestionWithAnImageAndWhatTheHistoryKeepsOfIt() {
+        Map<String, Object> img = map(map(v.get("persona")).get("image"));
+        assertThat(Persona.IMAGE_NOTE).isEqualTo(img.get("note"));
+        assertThat(Persona.IMAGE_SHOWN_NOTE).isEqualTo(img.get("shown"));
+        LocalDateTime now = LocalDateTime.parse((String) map(v.get("context")).get("now"));
+        List<Object> messages = list(img.get("messages"));
+        assertThat(messages).hasSize(4);
+        for (Object o : messages) {
+            Map<String, Object> c = map(o);
+            assertThat(Persona.userMessage("Qu'est-ce que c'est ?", Persona.contextBlock(null, List.of(), now, ""),
+                    (String) c.get("language"), (String) c.get("note"))).isEqualTo(c.get("text"));
+        }
+        // the rule is in the system prompt for every question, so the prompt stays the same whether or not one is shown
+        assertThat(Persona.personaPrompt(null, true)).contains("The one exception is an image the person shows you")
+                .contains("it is not your camera, which you still cannot look at");
+    }
+
+    @Test
     void contextBlocksAndUserMessages() {
         Map<String, Object> ctx = map(v.get("context"));
         LocalDateTime now = LocalDateTime.parse((String) ctx.get("now"));

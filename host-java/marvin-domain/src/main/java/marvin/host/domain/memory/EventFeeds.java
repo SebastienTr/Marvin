@@ -38,9 +38,16 @@ public final class EventFeeds {
                 d.put(k, data.get(k));
             }
         }
+        String said = text.strip();
+        if ("heard".equals(kind) && data != null && data.get("image") instanceof Map<?, ?>) {
+            said += " " + IMAGE_NOTE;           // a note, never the image: Marvin's answer says what was in it
+        }
         return Optional.of(MemoryEvent.draft(instant(t), MemorySources.CONVERSATION, kind, Sensitivity.NORMAL,
-                conversationRef(entryId), Redaction.redact(text.strip()), d));
+                conversationRef(entryId), Redaction.redact(said), d));
     }
+
+    /** What the log keeps of an image the owner showed with a question. */
+    public static final String IMAGE_NOTE = "[the owner showed an image with this question]";
 
     /** The log's reference to a line of the conversation. */
     public static String conversationRef(long entryId) {

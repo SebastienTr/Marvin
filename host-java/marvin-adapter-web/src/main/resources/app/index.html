@@ -38,6 +38,7 @@
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 17.5l4.8-4.3 3.7 3.2 2.8-2.4 3.7 3.2"/></symbol>
 </svg>
 
 <a class="skip" href="#main">Skip to content</a>
@@ -188,6 +189,7 @@
             </div>
 
             <ol class="messages" id="transcript" aria-label="Conversation" aria-live="polite" aria-relevant="additions"></ol>
+            <div class="drop-hint" id="drop-hint" aria-hidden="true"><p>Drop the image to show it to Marvin</p></div>
             <div class="transcript-empty" id="transcript-empty"><p>Say “Marvin, …” or type below.</p></div>
 
             <div class="composer-area">
@@ -203,7 +205,25 @@
                   <button type="button" id="stop-speaking"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg><span>Stop</span></button>
                 </div>
               </div>
+              <div class="attach" id="attach" data-state="none" hidden>
+                <div class="attach-thumb" id="attach-thumb" aria-hidden="true"></div>
+                <div class="attach-text">
+                  <p class="attach-note" id="attach-note" role="status" aria-live="polite"></p>
+                  <p class="small muted attach-meta" id="attach-meta"></p>
+                </div>
+                <button type="button" class="icon-button attach-remove" id="attach-remove" title="Remove the image"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg><span class="sr">Remove the image</span></button>
+              </div>
+              <p class="attach-error" id="attach-error" role="alert" hidden></p>
               <form class="composer" id="ask-form" autocomplete="off">
+                <div class="attach-wrap">
+                  <button type="button" class="icon-button attach-button" id="attach-button" title="Show Marvin an image"><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><span class="sr">Show Marvin an image</span></button>
+                  <div class="attach-menu" id="attach-menu" role="menu" aria-label="Show Marvin an image" hidden>
+                    <button type="button" role="menuitem" id="attach-camera">Take a photo</button>
+                    <button type="button" role="menuitem" id="attach-library">Choose a photo</button>
+                  </div>
+                  <input type="file" id="attach-file" accept="image/*" hidden>
+                  <input type="file" id="attach-capture" accept="image/*" capture="environment" hidden>
+                </div>
                 <label for="ask-input" class="sr">Write to Marvin</label>
                 <input id="ask-input" type="text" maxlength="500" placeholder="Write to Marvin…" enterkeyhint="send">
                 <button type="submit" class="primary" id="ask-send"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg><span class="sr">Send</span></button>
@@ -580,6 +600,11 @@
                 <input id="v-llm" type="text" list="v-llm-list" spellcheck="false" autocapitalize="off" required>
                 <datalist id="v-llm-list"></datalist>
                 <p class="hint" id="v-llm-hint">Models installed in Ollama.</p>
+              </div>
+              <div class="field">
+                <label for="v-vision">Model for images</label>
+                <input id="v-vision" type="text" list="v-llm-list" spellcheck="false" autocapitalize="off" placeholder="The language model">
+                <p class="hint" id="v-vision-hint">Looks at the images you show Marvin in Talk. Empty: the language model, if it can see images.</p>
               </div>
               <div class="field two">
                 <div><label for="v-stt">Speech recognition</label><select id="v-stt"></select></div>

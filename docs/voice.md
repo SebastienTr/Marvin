@@ -329,6 +329,50 @@ answer ([`engine.py`](../host/marvin_host/voice/engine.py)):
 (`listen_remaining()` is `None`, `Status.hearing` is set, the app shows "Listening…" instead of the
 draining bar); if nothing was asked, it goes on with at least the time it had left (and 1.5 s).
 
+## Showing Marvin an image
+
+With the Java host, the owner can show Marvin a photo in Talk and ask about it. Marvin still cannot
+look through its own camera: the photo is the only image it sees, and only with the question it came
+with.
+
+- **In the app**: the image button beside the text box (on a phone: **Take a photo** or **Choose a
+  photo**), or drop a picture on the conversation, or paste one into the text box. The page makes it
+  small first (longest side 1280 px, JPEG at 0.85; redrawing it also leaves out where and when it was
+  taken), sends it, and shows it above the text box: "Goes with your next question, typed or spoken",
+  with its size and the model that will look at it, and a button to remove it. The next question,
+  typed or spoken ("Marvin, what is this?"), takes it; the question's bubble shows the thumbnail and
+  the reply inspector says what was sent (pixels, bytes) and which model saw it.
+- **The host** checks the image from its bytes (JPEG or PNG, at most 2 MB and 4096 pixels a side,
+  whatever the client says it is), removes its metadata (a JPEG's EXIF, XMP and comments; a PNG's
+  text and EXIF chunks), keeps it in memory until the next question takes it (or ten minutes pass),
+  and sends it as base64 in Ollama's `images`, on that question's message only. The history the next
+  questions carry keeps the question's words with a note, "[The person showed you an image here. It
+  is no longer attached: only your answer below says what was in it.]", and Marvin's answer, which
+  says what it saw: the image is never sent again, so the prompt cache and the first word stay as
+  fast as before.
+- **Which model**: `vision_model` in Marvin > Voice (**Model for images**); empty means the language
+  model. The host asks Ollama once per model (`/api/show`, `capabilities` containing `vision`); a
+  model that cannot see images is refused as soon as the image is attached: "This model cannot see
+  images; choose a vision model in Marvin > Voice". With another model for images, questions with an
+  image go to it (the first one loads it) and the others stay with the language model.
+- **The prompt**: the system prompt has one rule for it, the same for every question (so it stays
+  cached): when the message says an image is attached, describe it and answer from it honestly, and
+  it is not the camera. The question's own message says "The person shows you an image: it is attached
+  to this message." just before what the person said.
+- **Kept**: nothing of the image. The conversation entry records its type, size in pixels and bytes and
+  its SHA-256; memory's log gets "[the owner showed an image with this question]" after the question.
+  The thumbnails in the conversation live in the browser tab only (`sessionStorage`); after that, the
+  bubble shows "Image · 1280 × 960".
+- API: `POST /api/voice/image` with the image as the body (`Content-Type: image/jpeg` or `image/png`)
+  returns what is known of it; `POST /api/voice/image/remove`; `POST /api/voice/ask` also takes
+  `"image"`, base64 or a `data:` URL, for a question and its image in one request. 413 when too large,
+  415 for another type, 400 for what is not an image, 422 when the model cannot see, 409 when the voice
+  is off. The voice's state has `image` while one waits.
+
+Later, a `look` tool could let Marvin take a picture with the robot's camera when a question needs it
+(the same path: an image on the question's message only). It is not built: the camera is not
+connected to the conversation yet.
+
 ## Latency
 
 Every answer logs where the time went, from the moment you stop talking to Marvin's first word:
@@ -507,6 +551,8 @@ process, as before.
   Talk now to go on (the rest is joined within 6 s of the question).
 - One speaker at a time, no speaker identification.
 - One tool so far (the weather). No calendar, no reminders, no web search.
+- Images: one per question, shown from the app (Java host only); Marvin cannot look through its own
+  camera yet.
 - How well a model calls tools varies: small models (1.7-4B) sometimes call the weather when they
   should not, or not when they should. Watch the inspector.
 

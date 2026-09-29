@@ -2,9 +2,11 @@
 // The reply inspector: why Marvin said that. What it heard (and the raw transcript), where the time went, the
 // tools it used, the memory that went into the question (the profile's version, each section with its budget,
 // each candidate with its score, kept or not, the timings, Ollama's counts), what it knew of the moment, the
-// model and the language, and the exact message sent to the model.
+// model and the language, the image shown with the question (never kept: its size and the model that looked at it),
+// and the exact message sent to the model.
 
-import { el, fmtSeconds, fmtTime, openDialog, plural } from "./core.js";
+import { el, fmtBytes, fmtSeconds, fmtTime, openDialog, plural } from "./core.js";
+import { imageFigure } from "./attach.js";
 
 const LANG_NAMES = { fr: "French", en: "English", de: "German", es: "Spanish", it: "Italian", nl: "Dutch", pt: "Portuguese" };
 // the stages between the end of your question and Marvin's first word, in order
@@ -164,6 +166,21 @@ function memorySection(m) {
   return sec;
 }
 
+/** The image sent with the question: what it was and which model looked at it (the host keeps no copy). */
+function imageSection(image) {
+  const sec = section("Image sent");
+  const row = el("div", "insp-image");
+  row.append(imageFigure(image, "The image sent with the question"));
+  const facts = el("ul", "insp-facts");
+  if (image.width && image.height) facts.append(el("li", null, `${image.width} × ${image.height} pixels`));
+  if (image.bytes) facts.append(el("li", null, `${fmtBytes(image.bytes)} ${image.type === "image/png" ? "PNG" : "JPEG"}, without its metadata`));
+  if (image.model) facts.append(el("li", null, `Seen by ${image.model}`));
+  facts.append(el("li", "muted", "Sent with this question only; not kept by Marvin."));
+  row.append(facts);
+  sec.append(row);
+  return sec;
+}
+
 /** Fills the dialog with the inspector of the answer `e` (`e._heard`: the question it answered). */
 export function openInspector(e) {
   const body = openDialog("Why Marvin said that", { label: `Answer · ${fmtTime(e.t)}`, wide: true });
@@ -180,6 +197,7 @@ export function openInspector(e) {
     }
     body.append(sec);
   }
+  if (e.image) body.append(imageSection(e.image));
   const answer = section("Marvin answered");
   answer.append(el("p", "insp-quote", e.text));
   body.append(answer);

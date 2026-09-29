@@ -3,13 +3,14 @@
 // ~16 Hz), "utterance" (someone talks, stops, is judged), "partial" (the words understood so far) and "say" (a
 // piece of the reply as it goes to the speaker). Your bubble forms while you speak and Marvin's writes itself as
 // he says it; the listening strip and Marvin's face follow the microphone, or Marvin's voice while he speaks.
-// Voice on and off, Talk now, Mute, Stop, typed questions, and beside it what Marvin knows right now and the
-// memory its last answer used.
+// Voice on and off, Talk now, Mute, Stop, typed questions (with an image: attach.js), and beside it what Marvin
+// knows right now and the memory its last answer used.
 
 import { $, app, el, api, post, on, emit, fmtDuration, fmtTime, fmtSeconds, cssVar, reduceMotion, toast } from "./core.js";
 import { Face, setLevelSource } from "./face.js";
 import { ConvoBuilder } from "./convo.js";
 import { openInspector } from "./inspector.js";
+import { setup as setupAttach, settled as imageSettled } from "./attach.js";
 
 const WAVE_BARS = 56;
 const chat = new ConvoBuilder();
@@ -588,12 +589,14 @@ export function setup() {
     if (!text) return;
     input.value = "";
     scrollTranscript(true);
+    await imageSettled();                 // an image still on its way goes with this question
     await voiceCommand("/api/voice/ask", { text });
     input.focus();
   });
   $("now-line").addEventListener("click", () => { location.hash = "#marvin/robot"; });
   $("open-last-inspector").addEventListener("click", () => { if (lastReply) openInspector(lastReply); });
   on("voice", renderVoice);
+  setupAttach();
   on("transcript", ({ entry, fresh }) => addTranscript(entry, { fresh }));
   on("level", onLevel);
   on("utterance", onUtterance);

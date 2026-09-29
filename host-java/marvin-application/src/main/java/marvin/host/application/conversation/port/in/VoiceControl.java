@@ -63,6 +63,32 @@ public interface VoiceControl {
      */
     void ask(String text);
 
+    /**
+     * A typed question with an image (JPEG or PNG bytes; {@code null}: none): the image is attached as with
+     * {@link #attachImage(byte[])}, then the question is asked.
+     *
+     * @throws IllegalArgumentException empty or too long a question, or not a usable image
+     *                                  ({@link marvin.host.domain.conversation.ImageAttachment.InvalidImage})
+     * @throws ImageRefused             the model cannot see images
+     * @throws VoiceOff                 the voice is not running
+     */
+    void ask(String text, byte[] image);
+
+    /**
+     * An image for the next question, typed or spoken (docs/voice.md "Showing Marvin an image"): kept in memory only,
+     * until that question takes it, it is removed, another replaces it, or {@code IMAGE_WAIT_S} pass. Returns what is
+     * known of it (type, width, height, bytes, sha256 and the model that will look at it), never the image.
+     *
+     * @throws IllegalArgumentException not a usable image
+     *                                  ({@link marvin.host.domain.conversation.ImageAttachment.InvalidImage})
+     * @throws ImageRefused             the model cannot see images
+     * @throws VoiceOff                 the voice is not running
+     */
+    Map<String, Object> attachImage(byte[] image);
+
+    /** Drops the image waiting for the next question, if any. */
+    void removeImage();
+
     /** Talk now ({@code on}), or close the listening window. @throws VoiceOff the voice is not running */
     void listenNow(boolean on);
 
@@ -74,6 +100,13 @@ public interface VoiceControl {
 
     /** What the settings panel offers: models, speech recognition, voices, tools. */
     Map<String, Object> options();
+
+    /** An image the model cannot look at; the message says what to do, for the owner. */
+    class ImageRefused extends RuntimeException {
+        public ImageRefused(String message) {
+            super(message);
+        }
+    }
 
     /** A command for the voice while it is not running. */
     class VoiceOff extends RuntimeException {

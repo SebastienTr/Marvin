@@ -39,6 +39,12 @@ class RulesTest {
         assertThat(heard.data()).containsOnlyKeys("language", "source");
         assertThat(heard.ts()).isEqualTo(Instant.ofEpochSecond(1_790_000_000L, 250_000_000));
         assertThat(EventFeeds.conversation(1, 0, "note", "Voice on", Map.of())).isEmpty();
+        // a question asked with an image: a note in the log, never the image or what is known of it
+        MemoryEvent shown = EventFeeds.conversation(43, 1_790_000_001, "heard", "What is this plant?",
+                Map.of("language", "en", "source", "typed", "image", Map.of("width", 1280, "height", 960, "bytes", 212_000,
+                        "sha256", "ab12"))).orElseThrow();
+        assertThat(shown.body()).isEqualTo("What is this plant? [the owner showed an image with this question]");
+        assertThat(shown.data()).containsOnlyKeys("language", "source");
         assertThat(EventFeeds.presence(7, 0, "host_started", "Marvin started", Map.of())).isEmpty();
         MemoryEvent vitals = EventFeeds.presence(8, 0, "vitals_acquired", "Breathing 14/min",
                 Map.of("breath_rate", 14.0)).orElseThrow();

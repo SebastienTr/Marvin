@@ -24,6 +24,7 @@ import marvin.host.application.robot.port.in.RobotLinkQuery;
 import marvin.host.application.settings.port.in.ManageSettings;
 import marvin.host.application.system.port.in.HostLog;
 import marvin.host.domain.conversation.ConversationEntry;
+import marvin.host.domain.conversation.ImageAttachment;
 import marvin.host.domain.shared.Clocks;
 import tools.jackson.core.JacksonException;
 
@@ -235,7 +236,14 @@ public class ApiController {
                     if (!(b.get("text") instanceof String text)) {
                         throw new BadRequest("text must be a string");
                     }
-                    voice.ask(text);
+                    Object image = b.get("image");
+                    if (image == null) {
+                        voice.ask(text);
+                    } else if (image instanceof String i) {
+                        voice.ask(text, ImageAttachment.decodeBase64(i));
+                    } else {
+                        throw new BadRequest("image must be a JPEG or PNG in base64");
+                    }
                 }
                 case "/api/voice/listen" -> {
                     Object on = b.containsKey("on") ? b.get("on") : Boolean.TRUE;
@@ -254,6 +262,10 @@ public class ApiController {
             }
         } catch (VoiceControl.VoiceOff e) {
             return Responses.error(409, e.getMessage());
+        } catch (VoiceControl.ImageRefused e) {
+            return Responses.error(422, e.getMessage());
+        } catch (ImageAttachment.InvalidImage e) {
+            return Responses.error(e.tooLarge() ? 413 : 400, e.getMessage());
         } catch (IllegalArgumentException e) {
             throw new BadRequest(e.getMessage());
         }
@@ -261,6 +273,43 @@ public class ApiController {
         m.put("voice", voice.snapshot().toMap());
         m.put("settings", voice.appSettings());
         return Responses.json(m);
+    }
+
+    /**
+     * An image for the next question, typed or spoken: the request's body is the image itself (a JPEG or PNG, checked
+     * by the access filter's type and size and again from its bytes). 422 when the model cannot see images.
+     */
+    @PostMapping(AccessFilter.IMAGE_PATH)
+    public ResponseEntity<byte[]> voiceImage(HttpServletRequest rq) {
+        byte[] raw = (byte[]) rq.getAttribute(AccessFilter.BODY);
+        if (!voice.available()) {
+            return Responses.error(404, "voice control is not available");
+        }
+        Map<String, Object> image;
+        try {
+            image = voice.attachImage(raw == null ? new byte[0] : raw);
+        } catch (VoiceControl.VoiceOff e) {
+            return Responses.error(409, e.getMessage());
+        } catch (VoiceControl.ImageRefused e) {
+            return Responses.error(422, e.getMessage());
+        } catch (ImageAttachment.InvalidImage e) {
+            return Responses.error(e.tooLarge() ? 413 : 400, e.getMessage());
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("voice", voice.snapshot().toMap());
+        m.put("image", image);
+        return Responses.json(m);
+    }
+
+    /** Drops the image waiting for the next question. */
+    @PostMapping("/api/voice/image/remove")
+    public ResponseEntity<byte[]> removeVoiceImage(HttpServletRequest rq) {
+        body(rq);
+        if (!voice.available()) {
+            return Responses.error(404, "voice control is not available");
+        }
+        voice.removeImage();
+        return Responses.json(Map.of("voice", voice.snapshot().toMap()));
     }
 
     private Map<String, Object> settingsPayload() {

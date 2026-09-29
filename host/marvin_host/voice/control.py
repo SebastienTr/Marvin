@@ -49,8 +49,9 @@ PIPER_VOICES = ("fr_FR-siwis-medium", "fr_FR-tom-medium", "fr_FR-upmc-medium", "
                 "en_GB-alan-medium", "en_GB-northern_english_male-medium", "en_US-lessac-medium",
                 "en_US-ryan-high")
 APP_KEYS = ("llm_model", "stt", "stt_model", "tts", "tts_voice", "language", "wake", "follow_up_s",
-            "reminders", "welcome_back", "tools", "internet", "home_place")
-DEFAULTS = {"reminders": True, "welcome_back": False}
+            "reminders", "welcome_back", "tools", "internet", "home_place", "vision_model")
+# vision_model: the model for questions with an image ("": the voice's model); only the Java host shows images
+DEFAULTS = {"reminders": True, "welcome_back": False, "vision_model": ""}
 MAX_HOME_PLACE = 80
 
 OFF, STARTING, ON, STOPPING, ERROR = "off", "starting", "on", "stopping", "error"
@@ -82,6 +83,10 @@ def validate(update: dict) -> dict:
         if key == "llm_model":
             if not isinstance(v, str) or not re.fullmatch(r"[\w.:/@+-]{1,120}", v):
                 raise ValueError("llm_model must be an Ollama model name, e.g. qwen3:4b-instruct")
+        elif key == "vision_model":
+            v = "" if v is None else v
+            if not isinstance(v, str) or (v and not re.fullmatch(r"[\w.:/@+-]{1,120}", v)):
+                raise ValueError("vision_model must be an Ollama model name, or empty to use the voice's model")
         elif key == "stt":
             if v not in voice_cli.STT_CHOICES:
                 raise ValueError(f"stt must be one of {', '.join(voice_cli.STT_CHOICES)}")

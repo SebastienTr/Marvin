@@ -2,11 +2,19 @@
 # SPDX-License-Identifier: MIT
 """A stand-in for Ollama: /api/tags, /api/show, /api/chat (streamed NDJSON, tool calls, a </think> leak, and
 structured answers for memory's jobs when the request has a JSON schema in "format"), /api/embed (deterministic
-embeddings: texts that share words are close)."""
+embeddings: texts that share words are close).
+
+Images: /api/show lists "vision" among the capabilities of the models in STUB_VISION (comma-separated; by default
+the owner's model, qwen3.8:27b-mlx, as Ollama reports it). Every image a chat request carries is recorded (which
+message, its role, its size and SHA-256; never kept) and served at GET /stub/images; a question whose message has
+an image is answered about it."""
 import hashlib, json, math, os, re, sys, time, unicodedata
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 MODELS = ["qwen3:4b-instruct", "qwen3.8:27b-mlx", "qwen3-embedding:8b"]
+VISION = [m for m in os.environ.get("STUB_VISION", "qwen3.8:27b-mlx").split(",") if m]
+IMAGES = []     # what chat requests carried: {"request", "message", "role", "bytes", "sha256", "model"}
+REQUESTS = [0]
 STOP = {"the", "owner", "and", "for", "with", "that", "this", "has", "have", "are", "was", "his", "her", "its", "they",
         "their", "from", "who", "les", "des", "une", "est"}
 
@@ -137,8 +145,26 @@ def chunk(content="", done=False, tool_calls=None):
     return json.dumps(d)
 
 
+def record_images(req):
+    """Every image of the request (its place, size and hash); whether the last user message has one."""
+    import base64
+    REQUESTS[0] += 1
+    msgs = req.get("messages", [])
+    last_user = max((i for i, m in enumerate(msgs) if m.get("role") == "user"), default=-1)
+    for i, m in enumerate(msgs):
+        for img in m.get("images") or []:
+            raw = base64.b64decode(img)
+            IMAGES.append({"request": REQUESTS[0], "message": i, "last_user": i == last_user, "role": m.get("role"),
+                           "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(), "model": req.get("model")})
+            LOG.write(f"IMAGE request {REQUESTS[0]} message {i} ({m.get('role')}) {len(raw)} bytes\n"); LOG.flush()
+    return last_user >= 0 and bool(msgs[last_user].get("images"))
+
+
 def answer(req):
     msgs = req.get("messages", [])
+    if record_images(req):
+        return [chunk("I can see the picture you showed me: "), chunk("a small test card with a few coloured shapes. "),
+                chunk("What would you like to know about it?"), chunk(done=True)]
     said_last = next((m.get("content", "") for m in reversed(msgs) if m.get("role") == "user"), "")
     last_user = said_last.lower()
     has_tool = bool(msgs) and msgs[-1].get("role") == "tool"
@@ -210,6 +236,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(200, {"models": [{"name": m, "model": m, "size": 1} for m in MODELS]})
         if self.path.startswith("/api/version"):
             return self._json(200, {"version": "0.12.0"})
+        if self.path.startswith("/stub/images"):
+            return self._json(200, {"images": IMAGES})
         self._json(404, {"error": "not found"})
 
     def do_HEAD(self):
@@ -230,7 +258,11 @@ class H(BaseHTTPRequestHandler):
         req = json.loads(raw or b"{}")
         LOG.write(f"{time.strftime('%H:%M:%S')} POST {self.path} {json.dumps(req)[:400]}\n"); LOG.flush()
         if self.path.startswith("/api/show"):
-            return self._json(200, {"capabilities": ["completion", "tools"], "details": {"family": "qwen3"},
+            model = req.get("model") or req.get("name") or ""
+            if model not in MODELS and model + ":latest" not in MODELS:
+                return self._json(404, {"error": f"model '{model}' not found"})
+            caps = ["completion", "tools"] + (["vision", "thinking"] if model in VISION else [])
+            return self._json(200, {"capabilities": caps, "details": {"family": "qwen3"},
                                     "model_info": {"general.architecture": "qwen3"}})
         if self.path.startswith("/api/embed"):
             model = req.get("model", "")

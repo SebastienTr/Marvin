@@ -21,6 +21,8 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import marvin.host.domain.conversation.ImageAttachment;
+
 /**
  * The app's access rules, as the Python host applies them (docs/ui.md):
  * <ul>
@@ -30,7 +32,9 @@ import jakarta.servlet.http.HttpServletResponse;
  * <li>{@code /static/*}, the icon and the manifest are public;</li>
  * <li>a page opened with {@code ?token=} sets the {@code marvin_key} cookie and redirects to the same
  * address without it;</li>
- * <li>every POST must be JSON (at most 16 KiB) from the same origin.</li>
+ * <li>every POST must be JSON (at most 16 KiB) from the same origin; a typed question may carry an image (up to
+ * {@link #MAX_ASK_BODY}), and {@code /api/voice/image} takes the image itself, a JPEG or PNG of at most
+ * {@link ImageAttachment#MAX_BYTES}.</li>
  * </ul>
  * Every response carries {@code X-Content-Type-Options}, {@code Referrer-Policy} and
  * {@code X-Frame-Options}. The checked POST body is handed on as the {@link #BODY} request attribute.
@@ -39,8 +43,13 @@ public final class AccessFilter implements Filter {
     static final String COOKIE = "marvin_key";
     static final String BODY = "marvin.body";
     static final int MAX_BODY = 16384;
+    /** A typed question with an image in base64. */
+    static final int MAX_ASK_BODY = ImageAttachment.MAX_BYTES / 3 * 4 + 4 + MAX_BODY;
+    /** The route that takes an image as it is (not JSON). */
+    static final String IMAGE_PATH = "/api/voice/image";
     static final Set<String> POST_PATHS = Set.of("/api/settings", "/api/voice/settings", "/api/voice/on",
             "/api/voice/off", "/api/voice/ask", "/api/voice/listen", "/api/voice/mute", "/api/voice/stop-speaking",
+            IMAGE_PATH, "/api/voice/image/remove",
             "/api/memory/consolidate", "/api/memory/facts/remember", "/api/memory/facts/edit", "/api/memory/facts/pin",
             "/api/memory/facts/archive", "/api/memory/facts/review", "/api/memory/facts/forget", "/api/memory/forget/confirm",
             "/api/memory/forget/cancel", "/api/memory/forget-everything", "/api/memory/profile", "/api/memory/profile/restore",
@@ -112,22 +121,26 @@ public final class AccessFilter implements Filter {
                 write(rs, 403, Responses.JSON, error("cross-origin request"));
                 return;
             }
-            String type = header(rq, "Content-Type").split(";")[0].strip();
-            if (!type.equals("application/json")) {
-                write(rs, 415, Responses.JSON, error("send JSON"));
+            String type = header(rq, "Content-Type").split(";")[0].strip().toLowerCase(Locale.ROOT);
+            boolean image = path.equals(IMAGE_PATH);
+            if (image ? !ImageAttachment.TYPES.contains(type) : !type.equals("application/json")) {
+                write(rs, 415, Responses.JSON, error(image ? "send a JPEG or PNG image" : "send JSON"));
                 return;
             }
+            int max = image ? ImageAttachment.MAX_BYTES : path.equals("/api/voice/ask") ? MAX_ASK_BODY : MAX_BODY;
+            String tooLarge = image ? "the image is too large: at most " + ImageAttachment.MAX_BYTES / (1024 * 1024) + " MB"
+                    : "too large";
             long length = rq.getContentLengthLong();
-            if (length > MAX_BODY) {
-                write(rs, 413, Responses.JSON, error("too large"));
+            if (length > max) {
+                write(rs, 413, Responses.JSON, error(tooLarge));
                 return;
             }
             byte[] body;
             try (InputStream in = rq.getInputStream()) {
-                body = in.readNBytes(MAX_BODY + 1);
+                body = in.readNBytes(max + 1);
             }
-            if (body.length > MAX_BODY) {
-                write(rs, 413, Responses.JSON, error("too large"));
+            if (body.length > max) {
+                write(rs, 413, Responses.JSON, error(tooLarge));
                 return;
             }
             rq.setAttribute(BODY, body);

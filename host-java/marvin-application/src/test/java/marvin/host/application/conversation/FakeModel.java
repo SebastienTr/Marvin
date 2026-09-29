@@ -4,6 +4,7 @@ package marvin.host.application.conversation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import marvin.host.application.conversation.port.out.LanguageModel;
@@ -48,6 +49,7 @@ final class FakeModel implements LanguageModel {
             throw new ToolsUnsupported(model + " cannot use tools: " + model + " does not support tools");
         }
         callNanos.add(System.nanoTime());
+        modelNames.add(model);
         calls.add(List.copyOf(messages));
         tools.add(t);
         for (Object part : replies.apply(messages)) {
@@ -71,6 +73,22 @@ final class FakeModel implements LanguageModel {
         if (u != null) {
             stream.usage(u.apply(messages));
         }
+    }
+
+    /** What each model can do; a model not here can only write. */
+    volatile Map<String, Set<String>> capabilities = Map.of();
+    /** The models asked for their capabilities, in order. */
+    final List<String> capabilityCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
+    /** The model name of each request, in order. */
+    final List<String> modelNames = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    @Override
+    public Set<String> capabilities(String host, String model) {
+        if (down) {
+            throw new Unavailable("cannot reach Ollama at " + host + ": Connection refused", "Start Ollama.");
+        }
+        capabilityCalls.add(model);
+        return capabilities.getOrDefault(model, Set.of("completion"));
     }
 
     @Override

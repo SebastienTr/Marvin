@@ -467,6 +467,12 @@ function fillVoiceForm(s) {
   else if (!o.ollama.ok) hint.textContent = `${o.ollama.error}. ${o.ollama.fix}`;
   else if (o.llm_models.length && !o.llm_models.includes(s.llm_model) && !o.llm_models.includes(`${s.llm_model}:latest`)) hint.textContent = `Not installed yet: ollama pull ${s.llm_model}`;
   else hint.textContent = `${o.llm_models.length} model${o.llm_models.length === 1 ? "" : "s"} installed in Ollama.`;
+  $("v-vision").value = s.vision_model || "";
+  const vh = $("v-vision-hint"), vi = o && o.vision;
+  if (!vi || vi.sees == null) vh.textContent = vi && vi.error ? `Cannot tell whether ${vi.model} can see images: ${vi.error}` : "Looks at the images you show Marvin in Talk. Empty: the language model, if it can see images.";
+  else if (vi.sees) vh.textContent = `${vi.model} can see images: it looks at the ones you show Marvin in Talk.`;
+  else vh.textContent = `${vi.model} cannot see images. Choose a model whose Ollama capabilities include vision.`;
+  vh.classList.toggle("bad", !!vi && vi.sees === false);
   fillSelect($("v-stt"), (o ? o.stt_backends : ["auto", "mlx", "faster-whisper"]).map((b) => ({ value: b, label: STT_LABELS[b] || b })), s.stt);
   fillSelect($("v-stt-model"), (o ? o.stt_models : ["auto"]).map((m) => ({ value: m === "auto" ? "" : m, label: m === "auto" ? "Default" : m })), s.stt_model || "");
   fillSelect($("v-tts"), (o ? o.tts_backends : [{ name: "auto", available: true }]).map((b) => ({ value: b.name, label: (TTS_LABELS[b.name] || b.name) + (b.available ? "" : " (not installed)"), disabled: !b.available && b.name !== s.tts })), s.tts);
@@ -650,6 +656,7 @@ function setupVoiceForm() {
     const form = ev.target;
     const body = {
       llm_model: $("v-llm").value.trim(),
+      vision_model: $("v-vision").value.trim(),
       stt: $("v-stt").value,
       stt_model: $("v-stt-model").value || "auto",
       tts: $("v-tts").value,
@@ -669,6 +676,7 @@ function setupVoiceForm() {
       const running = r.voice.state === "on" || r.voice.state === "starting";
       flash("voice-saved", running ? "Saved. Marvin’s voice restarts." : "Saved");
       renderOverview();
+      loadVoiceForm();                    // whether the model for images can see them
     } catch (e) {
       err.textContent = e.message;
       err.hidden = false;

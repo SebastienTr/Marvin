@@ -20,13 +20,13 @@ public final class VoiceSettings {
     public static final List<String> AUDIO_ROUTES = List.of("computer", "robot", "auto");
     /** The settings the app edits. */
     public static final List<String> APP_KEYS = List.of("llm_model", "stt", "stt_model", "tts", "tts_voice", "language",
-            "wake", "follow_up_s", "reminders", "welcome_back", "tools", "internet", "home_place");
+            "wake", "follow_up_s", "reminders", "welcome_back", "tools", "internet", "home_place", "vision_model");
     /** Every key of voice.json. */
     public static final List<String> FILE_KEYS = List.of("stt", "stt_model", "llm_model", "ollama_host", "tts",
             "tts_voice", "language", "default_language", "wake", "duplex", "echo_tail_s", "follow_up_s",
             "listen_window_s", "speculative_stt", "end_silence_ms", "reminders", "welcome_back", "tools", "internet",
             "home_place", "chime", "audio_route", "input_device", "output_device", "continue_grace_s",
-            "end_silence_long_ms");
+            "end_silence_long_ms", "vision_model");
     public static final int MAX_HOME_PLACE = 80;
     public static final String DEFAULT_MODEL = "qwen3:4b-instruct";
     public static final String DEFAULT_OLLAMA = "http://localhost:11434";
@@ -58,6 +58,12 @@ public final class VoiceSettings {
                 case "llm_model" -> {
                     if (!(v instanceof String s) || !MODEL.matcher(s).matches()) {
                         throw bad("llm_model must be an Ollama model name, e.g. qwen3:4b-instruct");
+                    }
+                }
+                case "vision_model" -> {
+                    v = v == null ? "" : v;
+                    if (!(v instanceof String s) || !s.isEmpty() && !MODEL.matcher(s).matches()) {
+                        throw bad("vision_model must be an Ollama model name, or empty to use the voice's model");
                     }
                 }
                 case "stt" -> {
@@ -150,6 +156,7 @@ public final class VoiceSettings {
         out.put("home_place", "");
         out.put("reminders", true);
         out.put("welcome_back", false);
+        out.put("vision_model", "");
         for (String k : APP_KEYS) {
             if (settings.containsKey(k)) {
                 out.put(k, settings.get(k));
@@ -178,7 +185,8 @@ public final class VoiceSettings {
                 bool(settings, "tools", true), bool(settings, "internet", true),
                 str(settings, "home_place", "").strip(), bool(settings, "reminders", true),
                 bool(settings, "welcome_back", false), route(str(settings, "audio_route", "computer")),
-                optionalNum(settings, "continue_grace_s"), optionalNum(settings, "end_silence_long_ms"));
+                optionalNum(settings, "continue_grace_s"), optionalNum(settings, "end_silence_long_ms"),
+                str(settings, "vision_model", "").strip());
     }
 
     private static String route(String s) {
@@ -241,13 +249,20 @@ public final class VoiceSettings {
      *                      {@code null}: the sidecar's default, 0: never
      * @param endSilenceLongMs the end-of-question silence when the words so far announce more; {@code null}: the
      *                      sidecar's default, 0: never longer
+     * @param visionModel   the model for questions with an image; empty: the voice's model ({@link #imageModel()})
      */
     public record VoiceConfig(String llmModel, String ollamaHost, String language, String defaultLanguage,
                               String stt, String sttModel, String tts, String ttsVoice, boolean wake, boolean duplex,
                               double echoTailS, double followUpS, double listenWindowS, boolean speculativeStt,
                               double endSilenceMs, boolean chime, String inputDevice, String outputDevice,
                               boolean tools, boolean internet, String homePlace, boolean reminders,
-                              boolean welcomeBack, String audioRoute, Double continueGraceS, Double endSilenceLongMs) {
+                              boolean welcomeBack, String audioRoute, Double continueGraceS, Double endSilenceLongMs,
+                              String visionModel) {
+
+        /** The model that answers a question with an image: the vision model, or the voice's when there is none. */
+        public String imageModel() {
+            return visionModel == null || visionModel.isBlank() ? llmModel : visionModel;
+        }
 
         /** Languages the speaker is expected to use. */
         public List<String> languages() {
