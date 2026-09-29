@@ -132,9 +132,12 @@ QUESTION_WORDS = {"pourquoi", "comment", "quand", "ou", "combien", "qui", "quoi"
                   "vraiment", "why", "how", "when", "where", "who", "what", "which", "really"}
 YES_NO = {"oui", "non", "ouais", "si", "yes", "no", "yeah", "nope", "yep"}
 # ...and these end the conversation politely (no answer, no more listening)
-CLOSERS = {"merci", "merci beaucoup", "ok", "okay", "d accord", "super", "parfait", "genial", "cool",
+CLOSERS = {"merci", "merci beaucoup", "super", "parfait", "genial", "cool",
            "thanks", "thank you", "great", "perfect", "au revoir", "bye", "a plus", "bonne nuit",
            "c est bon", "ca marche", "that s all", "good night"}
+# ...but "ok" or "d'accord" alone often starts a sentence the speaker has not finished ("OK, j'ai pas encore
+# mangé..."): they close only next to a real closer ("ok, merci"), never on their own
+SOFT_CLOSERS = {"ok", "okay", "d", "accord", "bon"}
 
 ACCEPT, IGNORE, CLOSE = "accept", "ignore", "close"
 
@@ -154,9 +157,11 @@ def follow_up_decision(text: str, language: str | None, language_prob: float | N
     if language and conversation_language and language != conversation_language \
             and (language_prob is None or language_prob < FOLLOW_UP_LANGUAGE_PROB):
         return IGNORE, f"{language} in a {conversation_language} conversation (p={language_prob})"
-    if n in CLOSERS or (words and all(w in CLOSERS or w in {"merci", "ok", "super"} for w in words)
-                        and len(words) <= 3):
+    if n in CLOSERS or (words and len(words) <= 3 and all(w in CLOSERS or w in SOFT_CLOSERS for w in words)
+                        and any(w in CLOSERS for w in words)):
         return CLOSE, "thanks or goodbye"
+    if words and all(w in SOFT_CLOSERS for w in words):
+        return IGNORE, "just an ok (the sentence may go on)"
     if len(words) == 1:
         w = words[0]
         if w in YES_NO:

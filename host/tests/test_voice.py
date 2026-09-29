@@ -1035,6 +1035,9 @@ def test_follow_up_decisions():
     assert d("What do you see now?", "en", 0.95, "fr")[0] == ACCEPT            # sure: the person switched
     assert d("Merci.", "fr", None, "fr")[0] == CLOSE
     assert d("OK, super, merci !", "fr", None, "fr")[0] == CLOSE
+    assert d("OK.", "fr", None, "fr")[0] != CLOSE          # a sentence may follow
+    assert d("D'accord.", "fr", None, "fr")[0] != CLOSE
+    assert d("Ok merci", "fr", None, "fr")[0] == CLOSE
     assert d("Pourquoi ?", "fr", None, "fr")[0] == ACCEPT
     assert d("Oui.", "fr", None, "fr", "Une petite pause ?")[0] == ACCEPT      # answers its question
     assert d("Oui.", "fr", None, "fr", "Il est midi.")[0] == CLOSE
