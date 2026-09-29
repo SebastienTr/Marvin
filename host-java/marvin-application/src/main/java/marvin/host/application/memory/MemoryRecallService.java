@@ -158,8 +158,11 @@ public final class MemoryRecallService implements RecallMemory, MemoryListener {
         try {
             Sensitivity max = audience.sensitiveAllowed() ? Sensitivity.SENSITIVE : Sensitivity.PERSONAL;
             List<FactStore.Scored> near = facts.nearest(q, CANDIDATES, new FactStore.Filter(now, true, false, max));
+            // fewer current facts than candidates: memory is still small, so every fact the audience may hear is
+            // offered, ranked, and the budget cuts; "what do you know about me?" matches no single fact by meaning
+            double floor = near.size() < CANDIDATES ? Double.NEGATIVE_INFINITY : scoring.floorFor(embeddings.model());
             List<RetrievalScoring.Scored> scored = scoring.score(near.stream().map(FactStore.Scored::fact).toList(),
-                    near.stream().map(FactStore.Scored::similarity).toList(), now);
+                    near.stream().map(FactStore.Scored::similarity).toList(), now, floor);
             List<Line> lines = new ArrayList<>();
             for (RetrievalScoring.Scored s : scored) {
                 Fact f = s.fact();

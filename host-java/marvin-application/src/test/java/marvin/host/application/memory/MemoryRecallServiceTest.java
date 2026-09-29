@@ -71,8 +71,9 @@ class MemoryRecallServiceTest {
         RecallMemory.Recollection r = recall.recollect("Where does my sister Claire live, Lyon?", RecallMemory.Audience.OWNER);
         assertThat(r.problem()).isEmpty();
         assertThat(texts(r.facts())).contains("The owner's sister Claire lives in Lyon.")
-                .doesNotContain("The owner's sister Claire lived in Paris.", "The owner's sister Claire loves Lyon markets.",
-                        "The owner drinks green tea every morning.");
+                .doesNotContain("The owner's sister Claire lived in Paris.", "The owner's sister Claire loves Lyon markets.");
+        // a small memory offers every current fact, ranked: the unrelated one comes last
+        assertThat(texts(r.facts()).getLast()).isEqualTo("The owner drinks green tea every morning.");
         assertThat(r.facts().getFirst().key()).isEqualTo(sister.id().toString());
         assertThat(r.facts()).isSortedAccordingTo((a, b) -> Double.compare(b.score(), a.score()));
         assertThat(r.facts().getFirst().detail()).containsKeys("similarity", "relevance", "recency", "importance", "learned");
@@ -184,6 +185,17 @@ class MemoryRecallServiceTest {
                 .containsExactly("The owner went sailing.");
     }
 
+    @Test
+    void aLargerMemoryKeepsUnrelatedFactsOut() {
+        admin.remember("The owner's sister Claire lives in Lyon.", "owner", null);
+        for (int i = 0; i < MemoryRecallService.CANDIDATES + 5; i++) {
+            admin.remember("The owner keeps receipt number " + i + " in the blue folder.", "owner", null);
+        }
+        RecallMemory.Recollection r = recall.recollect("Where does my sister Claire live, Lyon?", RecallMemory.Audience.OWNER);
+        assertThat(texts(r.facts())).contains("The owner's sister Claire lives in Lyon.")
+                .noneMatch(t -> t.contains("receipt"));
+    }
+
     // ------------------------------------------------------------------ forgetting
 
     @Test
@@ -202,7 +214,8 @@ class MemoryRecallServiceTest {
         assertThat(later.done()).isTrue();
         assertThat(later.forgotten().facts()).isEqualTo(1);
         assertThat(m.store.facts.get(f.id())).isEmpty();
-        assertThat(recall.recollect("neighbour Paul", RecallMemory.Audience.OWNER).facts()).isEmpty();
+        assertThat(texts(recall.recollect("neighbour Paul", RecallMemory.Audience.OWNER).facts()))
+                .noneMatch(t -> t.contains("Paul"));
         assertThat(forgetting.confirm(p.code(), 6, null).done()).as("a code is used once").isFalse();
     }
 

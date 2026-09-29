@@ -31,6 +31,15 @@ public record RetrievalScoring(double relevanceWeight, double recencyWeight, dou
 
     public static final RetrievalScoring DEFAULT = new RetrievalScoring(1.0, 0.5, 0.7, 0.995, 0.45);
 
+    /**
+     * The floor for an embedding model: Qwen3-Embedding with its task instruction on the question gives lower cosines
+     * than bge-m3 (measured on the owner's facts: a related fact 0.45 to 0.66, an unrelated one 0.16 to 0.35), so its
+     * floor is 0.35; other models keep {@link #relevanceFloor}.
+     */
+    public double floorFor(String embedModel) {
+        return embedModel != null && embedModel.startsWith("qwen3-embedding") ? Math.min(relevanceFloor, 0.35) : relevanceFloor;
+    }
+
     /** A fact with its terms and score. */
     public record Scored(Fact fact, double similarity, double relevance, double recency, double importance, double score) {
     }
@@ -47,6 +56,11 @@ public record RetrievalScoring(double relevanceWeight, double recencyWeight, dou
      * returns the rest best first (ties: the most similar, then the newest).
      */
     public List<Scored> score(List<Fact> facts, List<Double> similarities, Instant now) {
+        return score(facts, similarities, now, relevanceFloor);
+    }
+
+    /** As {@link #score(List, List, Instant)} with another floor ({@link Double#NEGATIVE_INFINITY}: keep every one). */
+    public List<Scored> score(List<Fact> facts, List<Double> similarities, Instant now, double floor) {
         if (facts.size() != similarities.size()) {
             throw new IllegalArgumentException("one similarity per fact");
         }
@@ -55,7 +69,7 @@ public record RetrievalScoring(double relevanceWeight, double recencyWeight, dou
         double max = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < facts.size(); i++) {
             double s = similarities.get(i);
-            if (s >= relevanceFloor) {
+            if (s >= floor) {
                 kept.add(i);
                 min = Math.min(min, s);
                 max = Math.max(max, s);
