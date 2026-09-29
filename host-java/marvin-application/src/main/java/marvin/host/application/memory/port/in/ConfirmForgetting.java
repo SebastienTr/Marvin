@@ -24,9 +24,10 @@ public interface ConfirmForgetting {
      * @param origin    {@code voice} or {@code app}
      * @param turn      the conversation turn that asked (voice), -1 from the app
      * @param everything forget everything (then {@code facts} is empty)
+     * @param asked     the log's reference to the line that asked (voice; withheld with the facts), "" when none
      */
     record Proposal(String code, String query, List<Fact> facts, boolean everything, String origin, long turn,
-                    Instant createdAt, Instant expiresAt) {
+                    Instant createdAt, Instant expiresAt, String asked) {
     }
 
     /** The result of a confirmation. */
@@ -34,7 +35,12 @@ public interface ConfirmForgetting {
     }
 
     /** Facts matching a query (current ones, best first), proposed for forgetting; empty facts: nothing matched. */
-    Proposal proposeMatching(String query, String origin, long turn, RecallMemory.Audience audience);
+    Proposal proposeMatching(String query, String origin, long turn, String asked, RecallMemory.Audience audience);
+
+    /** {@link #proposeMatching(String, String, long, String, RecallMemory.Audience)} with no line that asked. */
+    default Proposal proposeMatching(String query, String origin, long turn, RecallMemory.Audience audience) {
+        return proposeMatching(query, origin, turn, "", audience);
+    }
 
     /** One fact and all its versions, proposed from the app. */
     Proposal proposeFact(UUID id);

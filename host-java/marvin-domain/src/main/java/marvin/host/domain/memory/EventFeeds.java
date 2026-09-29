@@ -39,7 +39,12 @@ public final class EventFeeds {
             }
         }
         return Optional.of(MemoryEvent.draft(instant(t), MemorySources.CONVERSATION, kind, Sensitivity.NORMAL,
-                "conversation:" + entryId, Redaction.redact(text.strip()), d));
+                conversationRef(entryId), Redaction.redact(text.strip()), d));
+    }
+
+    /** The log's reference to a line of the conversation. */
+    public static String conversationRef(long entryId) {
+        return "conversation:" + entryId;
     }
 
     /** A stored brain event; empty for the host's own markers. {@code text}: the sentence the app shows for it. */

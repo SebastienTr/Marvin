@@ -146,6 +146,15 @@ class ContextAssemblerTest {
     }
 
     @Test
+    void withNoLanguageTheSystemPromptIsTheSameForEveryLanguage() {
+        String any = Persona.systemPrompt(null, true, true, "The owner is called Sam.");
+        assertThat(any).contains(Persona.ANY_LANGUAGE).doesNotContain("{language}").doesNotContain("Answer in French");
+        // only the language line differs from a named language's
+        assertThat(any.replace(Persona.ANY_LANGUAGE, "- Answer in French, the language you are spoken to in."))
+                .isEqualTo(Persona.systemPrompt("fr", true, true, "The owner is called Sam."));
+    }
+
+    @Test
     void theContextJoinsOnlyTheSectionsThatKeptSomething() {
         assertThat(Persona.context(List.of("Context:\n- a", "", "Facts:\n- b"))).isEqualTo("Context:\n- a\n\nFacts:\n- b");
     }

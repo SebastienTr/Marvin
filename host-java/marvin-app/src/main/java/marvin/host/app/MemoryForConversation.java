@@ -13,6 +13,7 @@ import marvin.host.application.memory.port.in.ConfirmForgetting;
 import marvin.host.application.memory.port.in.ManageFacts;
 import marvin.host.application.memory.port.in.RecallMemory;
 import marvin.host.domain.conversation.ContextAssembler;
+import marvin.host.domain.memory.EventFeeds;
 import marvin.host.domain.memory.Fact;
 
 /**
@@ -95,9 +96,10 @@ final class MemoryForConversation implements MemoryContext {
     }
 
     @Override
-    public ToolAnswer forget(String query, String confirm, long turn, Audience audience) {
+    public ToolAnswer forget(String query, String confirm, long turn, long said, Audience audience) {
         if (confirm == null || confirm.isBlank()) {
-            ConfirmForgetting.Proposal p = forgetting.proposeMatching(query, "voice", turn, audience(audience));
+            ConfirmForgetting.Proposal p = forgetting.proposeMatching(query, "voice", turn,
+                    said >= 0 ? EventFeeds.conversationRef(said) : "", audience(audience));
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("matches", p.facts().stream().map(Fact::statement).toList());
             if (p.facts().isEmpty()) {

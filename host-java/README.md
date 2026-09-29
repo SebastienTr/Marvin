@@ -6,7 +6,7 @@ bounded contexts that could later become services. The design is in
 [docs/design.md](../docs/design.md); the engineering log (decisions, deviations, known gaps, per
 migration phase) is in [NOTES.md](NOTES.md).
 
-Status: **phase 2b, parity with the Python host**, and the default way to run Marvin (`./marvin up`).
+Status: **phase 3, memory v1**, on top of parity with the Python host (phase 2b); the default way to run Marvin (`./marvin up`).
 The host owns the robot's UDP port (protocol v1, byte for byte as the Python host), runs the presence
 brain on it, feeds the robot's face, records, replays and taps the datagrams, keeps the history in
 PostgreSQL, serves its app (the current design) with the Python host's API, event streams and access key, and
@@ -15,13 +15,11 @@ memory, break reminders) runs in Java, the audio loop in the Python voice sideca
 ([docs/voice.md](../docs/voice.md#the-voice-sidecar)). The Python host (`marvin-host`) stays for the
 simulator, the Rerun viewer and replays; only one host can own UDP 47100 at a time.
 
-Memory v1 is under way (design phase 3): the event log, facts, episodes, the profile and the memory worker (the
-write path); the profile in the system prompt, the question's memory sections within their token budgets, the
-`remember`, `recall` and `forget` tools and the memory API (the read path); the new app with its Day and Night
-appearances, Home, Talk and the reply inspector's memory report (the app shell); the Memory screen (facts with their
-sources, corrections, pins, forgetting, the profile and its versions, the days and weeks, the worker, the sources it
-learns from, export and "forget everything"), Activity and Marvin with System (the app screens). How it works:
-[docs/memory.md](../docs/memory.md).
+**Memory v1** (design phase 3) is built: an append-only event log fed by the conversation and the brain, facts on two
+clocks with their sources, day, week and month summaries, a profile with versions, a memory worker that learns when
+the voice is idle and at night, the profile and the facts that matter in each question, the `remember`, `recall` and
+`forget` tools, and the owner's control over all of it in the new app (Day, Night or Auto; Home, Talk, Memory,
+Activity, Marvin). How it works: [docs/memory.md](../docs/memory.md); the app: [docs/ui.md](../docs/ui.md).
 
 Before relying on it with real boards and a real model, run the manual
 [test plan](../docs/test-plan.md); to review the change, start with the
@@ -53,25 +51,25 @@ flowchart LR
     subgraph core["The core (plain Java, no framework)"]
         direction TB
         subgraph app["application: use cases"]
-            pin(["port.in<br/>ManageSettings · VoiceControl<br/>RobotInbound · PresenceQuery …"])
-            svc["RobotLinkService · PresenceService<br/>VoiceService · ConversationService<br/>SettingsService · HealthService"]
-            pout(["port.out<br/>LanguageModel · ConversationStore<br/>RobotOutbound · VoiceSidecar …"])
+            pin(["port.in<br/>ManageSettings · VoiceControl<br/>RobotInbound · PresenceQuery<br/>RecallMemory · ManageFacts …"])
+            svc["RobotLinkService · PresenceService<br/>VoiceService · ConversationService<br/>MemoryWorker · MemoryRecallService<br/>SettingsService · HealthService"]
+            pout(["port.out<br/>LanguageModel · ConversationStore<br/>RobotOutbound · VoiceSidecar<br/>EventLog · FactStore · MemoryModel · Embedder …"])
             pin --> svc --> pout
         end
-        dom["domain<br/>protocol v1 · presence brain<br/>persona · tools · face"]
+        dom["domain<br/>protocol v1 · presence brain<br/>persona · tools · face<br/>memory rules · retrieval scoring"]
         svc --> dom
     end
 
     subgraph out_adapters["Outbound adapters"]
         pg["adapter-persistence<br/>JDBC · Flyway"]
-        llm["adapter-llm<br/>Spring AI · HTTPS"]
+        llm["adapter-llm<br/>Spring AI · JDK HTTP"]
         udp_out["adapter-robot<br/>UdpRobotLink"]
         side["adapter-sidecar<br/>gRPC client · supervisor"]
     end
 
     subgraph driven["What Marvin drives"]
         db[("PostgreSQL 18<br/>+ pgvector")]
-        ollama["Ollama<br/>(local LLM)"]
+        ollama["Ollama<br/>(local LLM, embeddings)"]
         meteo["Open-Meteo"]
         robot_out["🤖 The robot<br/>face · speaker"]
         voice_out["🎙️ Voice sidecar"]
@@ -204,7 +202,7 @@ sequenceDiagram
     Note over S: the robot's eyes change,<br/>the history is written,<br/>the phone gets it over SSE
 ```
 
-**A spoken question becomes a spoken answer.**
+**A spoken question becomes a spoken answer, with what Marvin remembers.**
 
 ```mermaid
 sequenceDiagram
@@ -212,14 +210,17 @@ sequenceDiagram
     participant S as 🎙️ Voice sidecar<br/>(Python)
     participant G as GrpcVoiceSidecar<br/>(adapter-sidecar)
     participant V as VoiceService<br/>(conversation)
+    participant K as MemoryContext<br/>(memory, via marvin-app)
     participant M as OllamaLanguageModel<br/>(adapter-llm)
     participant W as WeatherTool<br/>(conversation)
     participant D as JdbcConversationStore<br/>(adapter-persistence)
     participant A as 📱 App
 
-    S->>G: "Marvin, il fait quel temps ?" (transcript)
+    S->>G: partial transcript, then "Marvin, il fait quel temps ?"
     G->>V: VoiceSidecar.Signals
-    V->>M: LanguageModel.streamChat(context, tools)
+    V->>K: recollect (started on the partial, while recognition ends)
+    K-->>V: facts and summaries within their token budget
+    V->>M: LanguageModel.streamChat(system prompt with the profile,<br/>question with context and memory, tools)
     M-->>V: tool call get_weather
     V->>W: run (JsonFetcher → Open-Meteo)
     W-->>V: forecast
@@ -228,7 +229,8 @@ sequenceDiagram
     V->>G: VoiceSidecar.send(say …)
     G->>S: speak (Piper)
     V->>D: ConversationStore.save(turn)
-    V-->>A: VoiceListener → SSE (partial, say)
+    V-->>A: VoiceListener → SSE (partial, say, the reply's memory report)
+    Note over D: the kept lines reach memory's event log;<br/>the memory worker learns from them when the voice is idle
 ```
 
 ## Run it
@@ -270,8 +272,9 @@ From the repository root, one command does everything (JDK, build, database, hos
   host's SQLite file: events, minute samples, settings, conversation) is imported into PostgreSQL,
   once. Both hosts use the same data directory and the same access key (`ui_token`).
 - **Build**: `./marvin` builds the jar when it is missing or older than the sources.
-- **Memory**: the JVM runs with `-XX:+UseSerialGC -Xmx384m` (about 250 MB resident at idle);
-  `MARVIN_JAVA_OPTS` replaces these options. `host.log` is rotated to `host.log.1` past 10 MB.
+- **The JVM**: `-XX:+UseSerialGC -Xmx384m` (about 250 MB resident at idle); `MARVIN_JAVA_OPTS` replaces these
+  options. The host gives virtual threads at least 8 carrier threads whatever the number of processors (a start-up
+  hang seen on two processors, NOTES "final verification"). `host.log` is rotated to `host.log.1` past 10 MB.
 - **Health and traces**: `/api/health` (the app's), `/actuator/health` with its components
   (`db`, `marvin/database`, `marvin/robot`, `marvin/voice`), `/actuator/health/readiness` (down
   without the database) and `/actuator/health/liveness`. Each question is a trace
@@ -308,6 +311,9 @@ curl http://localhost:8765/api/health
 | `MARVIN_DEMO_SIMULATOR`, `MARVIN_DEMO_SEED` | `true`, `true` | Demo: the Python simulator as the robot; the simulated past week |
 | `MARVIN_CONFIG_DIR` | `~/.config/marvin` | Where `voice.json` is (also `$XDG_CONFIG_HOME/marvin`) |
 | `MARVIN_VOICE_SIDECAR`, `MARVIN_VOICE_ARGS` | `true`, none | Start the voice sidecar; more arguments for it (its test mode: `--fake,--say,2:Marvin bonjour`) |
+| `MARVIN_MEMORY_WORKER` | `true` | The memory worker (`false`: memory records but learns nothing) |
+| `MARVIN_EMBEDDING_DIMENSIONS` | `1024` | The embedding model's size (bge-m3), fixed when memory's tables are made |
+| `MARVIN_MEMORY_VECTOR` | `auto` | pgvector's index when installed; `off`: exact search |
 
 ### The app
 
@@ -366,12 +372,12 @@ stand-in for Ollama; they are skipped when the sidecar cannot run.
 | `marvin-adapter-web` | `marvin.host.adapter.web` | The app, its REST API and SSE (Spring MVC) | application |
 | `marvin-adapter-robot` | `marvin.host.adapter.robot` | UDP protocol v1, `.mvrec`, datagram tap | application |
 | `marvin-adapter-persistence` | `marvin.host.adapter.persistence` | PostgreSQL, one schema and one Flyway history per context | application |
-| `marvin-adapter-llm` | `marvin.host.adapter.llm` | Spring AI's Ollama client (streamed chat, models), the tools' HTTPS requests | application |
+| `marvin-adapter-llm` | `marvin.host.adapter.llm` | Spring AI's Ollama client (streamed chat, models), the tools' HTTPS requests; memory's model and embeddings (the JDK's HTTP client, so that a cancelled call really stops) | application |
 | `marvin-adapter-sidecar` | `marvin.host.adapter.sidecar` | The voice sidecar over gRPC, the process supervisor, the demo's simulator | application, contracts |
 | `marvin-app` | `marvin.host.app` | Spring Boot main, wiring; `ArchitectureTest` | everything |
 | `marvin-contracts` | `marvin.host.contracts.voice.v1` (generated) | Golden files from the Python host, `voice.proto` ([README](marvin-contracts/README.md)) | protobuf, gRPC |
 
-Bounded contexts today: `robot`, `presence`, `conversation`, `settings`, `system`, `face`. A context
+Bounded contexts today: `robot`, `presence`, `conversation`, `settings`, `system`, `face`, `memory`. A context
 reaches another only through its application ports (`application.<context>.port.in|out`) and its
 domain events (`domain.<context>.event`); `domain.shared` is the shared kernel. Each context owns a
 PostgreSQL schema of the same name.

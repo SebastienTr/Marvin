@@ -21,7 +21,7 @@ Every sensor on its own is half-blind. A lidar draws perfect walls but cannot te
 
 1. **Capture: the robot is dumb on purpose.** The ESP32-S3 reads every sensor, stamps each packet with the same clock and streams it over Wi-Fi. It draws its own eyes and plays its own sounds.
 2. **Fuse: the computer does the thinking.** It places every measurement in the same 3D frame (lidar geometry, radar people and speeds, vital signs, camera colour) and shows one live overlay in [Rerun](https://rerun.io).
-3. **Live: a companion that notices.** It looks at you when you sit down, reminds you to take a break after about 50 minutes seated, shows your breathing and heart rate (measured, not diagnosed), and answers your questions with what its sensors tell it. No cloud is required, and no image needs to leave the room; the one optional exception is the weather tool, which sends a place name to Open-Meteo and can be switched off.
+3. **Live: a companion that notices.** It looks at you when you sit down, reminds you to take a break after about 50 minutes seated, shows your breathing and heart rate (measured, not diagnosed), and answers your questions with what its sensors tell it and what it remembers of you (every memory shows where it comes from, and you can correct or forget it). No cloud is required, and no image needs to leave the room; the one optional exception is the weather tool, which sends a place name to Open-Meteo and can be switched off.
 
 ## Designed around the sensors
 
@@ -81,7 +81,7 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 2. **Print** following [docs/printing.md](docs/printing.md). Print the 5-minute lidar template first.
 3. **Solder** two header strips, then **wire** the 29 connections in [docs/wiring.md](docs/wiring.md). The guide is written for first-timers.
 4. **Assemble** following [docs/assembly.md](docs/assembly.md).
-5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) already talk to each other with simulated sensors (a Wemos D1 mini is enough to try the firmware); the real-sensor firmware waits for the first build. The host turns what it sees into events, a face, a local voice and an app for your phone: `./marvin up` starts it (`./marvin demo` without a robot, `./marvin doctor` says what is missing). The Python host's `marvin-host` commands stay as tools: the simulator, the viewer, replays.
+5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) already talk to each other with simulated sensors (a Wemos D1 mini is enough to try the firmware); the real-sensor firmware waits for the first build. The host turns what it sees into events, a face, a local voice, a local memory you can read, correct and erase, and an app for your computer and your phone: `./marvin up` starts it (`./marvin demo` without a robot, `./marvin doctor` says what is missing). The Python host's `marvin-host` commands stay as tools: the simulator, the viewer, replays.
 
 The body parts are ready to print; the head parts arrive with the head CAD.
 

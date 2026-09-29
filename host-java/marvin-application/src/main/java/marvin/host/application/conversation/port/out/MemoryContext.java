@@ -77,9 +77,10 @@ public interface MemoryContext {
 
     /**
      * {@code forget(query, confirm)}: without {@code confirm}, the matches and a code; with it, forgets them if the
-     * code was given in an earlier {@code turn}.
+     * code was given in an earlier {@code turn}. {@code said}: the conversation entry of the question that asked (its
+     * line, and the answer to it, go with what is forgotten: they repeat it), -1 when unknown.
      */
-    ToolAnswer forget(String query, String confirm, long turn, Audience audience);
+    ToolAnswer forget(String query, String confirm, long turn, long said, Audience audience);
 
     /** No memory: nothing in the prompt, no tools. */
     MemoryContext NONE = new MemoryContext() {
@@ -113,7 +114,7 @@ public interface MemoryContext {
         }
 
         @Override
-        public ToolAnswer forget(String query, String confirm, long turn, Audience audience) {
+        public ToolAnswer forget(String query, String confirm, long turn, long said, Audience audience) {
             return ToolAnswer.failed("memory is not available");
         }
     };

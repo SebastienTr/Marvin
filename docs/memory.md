@@ -233,8 +233,9 @@ sequenceDiagram
 ```
 
 **The prompt.** The system prompt is the persona, the memory tools' rules (when they are offered) and the profile.
-It changes only with the language, the tools and the profile's version, so from one question to the next it is
-byte-identical and Ollama reuses its cached work; a new profile version (the nightly rewrite, an edit in the app, a
+It changes only with the tools and the profile's version, so from one question to the next it is byte-identical and
+Ollama reuses its cached work. It does not name the language either (the Python host's persona does): the question's
+message ends with "(Answer in French.)", so an owner who switches between French and English keeps the cache; a new profile version (the nightly rewrite, an edit in the app, a
 forgotten fact's line removed) warms the voice up again with the new system prompt. Everything that changes at each
 question goes into the last user message:
 
@@ -311,7 +312,7 @@ the tool block stays cached. They are local: offered without the internet.
 |---|---|
 | `remember(statement)` | The owner said "remember that ...": written at once as the owner's fact, confidence 1, with an owner event as its source |
 | `recall(query, period?)` | Facts (past and archived ones too, with their validity and where they came from), day summaries and what was said, as a short dated list; `period`: `today`, `yesterday`, `this_week`, `last_week`, `this_month`, `last_month`, `this_year` |
-| `forget(query, confirm?)` | Lists the matching facts and gives a six-character code; nothing is forgotten until the owner says yes in a later turn (the model then calls it again with the code) or confirms in the app, where every pending proposal is listed |
+| `forget(query, confirm?)` | Lists the matching facts and gives a six-character code; nothing is forgotten until the owner says yes in a later turn (the model then calls it again with the code) or confirms in the app, where every pending proposal is listed. Once confirmed, the line that asked and Marvin's answer to it are withheld too: they repeat what is forgotten, and the next pass would learn it again from them |
 
 A confirmation in the same turn as the proposal is refused ("the person has not confirmed yet"): the model cannot
 forget on its own. Codes expire after five minutes and work once.
@@ -387,6 +388,7 @@ flowchart LR
   F --> P["profile lines stating it removed,<br/>from every version"]
   F --> R["statement waits for the next rewrite<br/>(reworded lines), then dropped"]
   F --> H["the voice drops its history"]
+  F --> Q["asked by voice: the request<br/>and its answer withheld too"]
 ```
 
 The conversation itself stays in History (it is the conversation's). The owner event it leaves has no content, and

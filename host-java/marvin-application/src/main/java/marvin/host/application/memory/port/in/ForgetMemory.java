@@ -23,6 +23,13 @@ public interface ForgetMemory {
 
     Forgotten forgetEvent(long id);
 
+    /**
+     * A request to forget, said in the conversation: its line and the answer to it (they repeat what was forgotten)
+     * are withheld like a forgotten fact's sources, and the summaries of their day blanked. {@code externalRef}: the
+     * log's reference to the line that asked.
+     */
+    Forgotten forgetRequest(String externalRef);
+
     /** Everything memory holds: log, facts, episodes, profile versions. The conversation's own history is not memory's. */
     Forgotten forgetEverything();
 }

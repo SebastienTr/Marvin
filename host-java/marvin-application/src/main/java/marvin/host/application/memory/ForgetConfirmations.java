@@ -73,11 +73,13 @@ public final class ForgetConfirmations implements ConfirmForgetting {
         }
     }
 
-    private synchronized Proposal add(String query, List<Fact> matches, boolean everything, String origin, long turn) {
+    private synchronized Proposal add(String query, List<Fact> matches, boolean everything, String origin, long turn,
+                                      String asked) {
         expire();
         Instant now = now();
         String code = ids.get().toString().replace("-", "").substring(0, 6).toUpperCase(Locale.ROOT);
-        Proposal p = new Proposal(code, query, List.copyOf(matches), everything, origin, turn, now, now.plus(TTL));
+        Proposal p = new Proposal(code, query, List.copyOf(matches), everything, origin, turn, now, now.plus(TTL),
+                asked == null ? "" : asked);
         if (!matches.isEmpty() || everything) {
             pending.put(code, p);
         }
@@ -90,7 +92,7 @@ public final class ForgetConfirmations implements ConfirmForgetting {
     }
 
     @Override
-    public Proposal proposeMatching(String query, String origin, long turn, RecallMemory.Audience audience) {
+    public Proposal proposeMatching(String query, String origin, long turn, String asked, RecallMemory.Audience audience) {
         String q = query == null ? "" : query.strip();
         Instant now = now();
         Sensitivity max = audience.sensitiveAllowed() ? Sensitivity.SENSITIVE : Sensitivity.PERSONAL;
@@ -116,7 +118,7 @@ public final class ForgetConfirmations implements ConfirmForgetting {
         List<Fact> matches = new ArrayList<>();
         found.entrySet().stream().sorted(Map.Entry.<UUID, Double>comparingByValue().reversed()).limit(MAX_MATCHES)
                 .forEach(e -> facts.get(e.getKey()).ifPresent(matches::add));
-        Proposal p = add(q, matches, false, origin, turn);
+        Proposal p = add(q, matches, false, origin, turn, asked);
         if (!matches.isEmpty()) {
             changed();
         }
@@ -126,14 +128,14 @@ public final class ForgetConfirmations implements ConfirmForgetting {
     @Override
     public Proposal proposeFact(UUID id) {
         Fact f = facts.get(id).orElseThrow(() -> new IllegalArgumentException("no such fact"));
-        Proposal p = add(f.statement(), List.of(f), false, "app", -1);
+        Proposal p = add(f.statement(), List.of(f), false, "app", -1, "");
         changed();          // every open app shows it (the phone as well as the page that asked)
         return p;
     }
 
     @Override
     public Proposal proposeEverything() {
-        Proposal p = add("", List.of(), true, "app", -1);
+        Proposal p = add("", List.of(), true, "app", -1, "");
         changed();
         return p;
     }
@@ -173,6 +175,12 @@ public final class ForgetConfirmations implements ConfirmForgetting {
                 events += one.events();
                 n += one.facts();
                 stale += one.staleEpisodes();
+            }
+            if (!p.asked().isEmpty()) {
+                // the request repeats what it asks to forget: its line would be learned again the next pass
+                ForgetMemory.Forgotten asked = forget.forgetRequest(p.asked());
+                events += asked.events();
+                stale += asked.staleEpisodes();
             }
             done = new ForgetMemory.Forgotten(events, n, stale);
         }

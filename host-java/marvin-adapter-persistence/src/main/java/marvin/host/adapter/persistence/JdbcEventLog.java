@@ -97,6 +97,12 @@ public class JdbcEventLog implements EventLog {
     }
 
     @Override
+    public Optional<MemoryEvent> byRef(String source, String externalRef) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE source = ? AND external_ref = ? AND NOT withheld")
+                .params(source, externalRef).query(JdbcEventLog::event).optional();
+    }
+
+    @Override
     public List<MemoryEvent> recent(String query, long beforeId, int limit) {
         String like = "%" + query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
         return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE NOT withheld AND (? = 0 OR id < ?) "

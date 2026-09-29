@@ -529,11 +529,13 @@ public final class VoiceService implements VoiceControl {
 
     /**
      * The system prompt: the persona, the memory tools' rules when they are offered, the profile. Byte-identical from
-     * one question to the next until the language, the tools or the profile's version change.
+     * one question to the next until the tools or the profile's version change. With memory it does not name the
+     * language either (the question's message does): a French question after an English one keeps the model server's
+     * cached prompt. Without memory it is the Python host's, which names it.
      */
     private String systemPrompt(String lang, boolean offer, ToolRegistry reg, MemoryContext.Profile profile) {
         boolean memoryTools = offer && reg != null && reg.get("remember") != null;
-        return Persona.systemPrompt(lang, offer, memoryTools, profile.text());
+        return Persona.systemPrompt(memoryContext.available() ? null : lang, offer, memoryTools, profile.text());
     }
 
     private MemoryContext.Profile profile() {
@@ -819,6 +821,8 @@ public final class VoiceService implements VoiceControl {
     /** One question and its answer. */
     private final class Turn {
         final VoiceSidecar.Heard heard;
+        /** The conversation entry of what was heard. */
+        final long said;
         final long replyId;
         final long number = turnSeq.incrementAndGet();
         /** The memory candidates for this question, searched while it was still being recognised when possible. */
@@ -831,8 +835,9 @@ public final class VoiceService implements VoiceControl {
         volatile boolean cancelled;
         volatile double cancelledAt;
 
-        Turn(VoiceSidecar.Heard heard, long replyId) {
+        Turn(VoiceSidecar.Heard heard, long said, long replyId) {
             this.heard = heard;
+            this.said = said;
             this.replyId = replyId;
         }
 
@@ -852,8 +857,8 @@ public final class VoiceService implements VoiceControl {
         if (h.raw() != null && !h.raw().isEmpty()) {
             d.put("raw", h.raw());
         }
-        entry("heard", h.wallTime() > 0 ? h.wallTime() : clocks.wallSeconds(), h.text(), d);
-        Turn turn = new Turn(h, replyIds.getAndIncrement());
+        ConversationEntry heard = entry("heard", h.wallTime() > 0 ? h.wallTime() : clocks.wallSeconds(), h.text(), d);
+        Turn turn = new Turn(h, heard.id(), replyIds.getAndIncrement());
         startRecollection(turn);
         Turn previous;
         synchronized (lock) {
@@ -967,6 +972,7 @@ public final class VoiceService implements VoiceControl {
         }
         Map<String, Object> toolContext = new LinkedHashMap<>();
         toolContext.put(MemoryTools.TURN, turn.number);
+        toolContext.put(MemoryTools.SAID, turn.said);
         toolContext.put(MemoryTools.OTHERS_PRESENT, turn.othersPresent);
 
         voice.send(new VoiceSidecar.ReplyStart(turn.replyId, lang, false, h.uid()));

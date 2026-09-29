@@ -37,6 +37,9 @@ public interface EventLog {
     /** The events with these ids, oldest first; withheld events are left out. */
     List<MemoryEvent> byIds(Collection<Long> ids);
 
+    /** The event copied from this original ({@code source} and its {@code externalRef}), if kept and not withheld. */
+    Optional<MemoryEvent> byRef(String source, String externalRef);
+
     /**
      * Newest first, only ids below {@code beforeId} (0: from the newest); {@code query} filters bodies (blank: all).
      * Withheld events are left out.

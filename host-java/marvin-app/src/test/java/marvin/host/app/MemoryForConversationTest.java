@@ -49,10 +49,10 @@ class MemoryForConversationTest {
     @Test
     void aGuestCannotConfirmAForget() {
         Fact f = m.admin.remember("The owner lives in Lyon.", "owner", Sensitivity.NORMAL);
-        MemoryContext.ToolAnswer proposed = memory.forget("Lyon", "", 1, GUEST);
+        MemoryContext.ToolAnswer proposed = memory.forget("Lyon", "", 1, -1, GUEST);
         assertThat(proposed.toString()).contains("The owner lives in Lyon.").contains("in the app").doesNotContain("confirm=");
         String code = forgetting.pending().getFirst().code();
-        MemoryContext.ToolAnswer confirmed = memory.forget("Lyon", code, 2, GUEST);
+        MemoryContext.ToolAnswer confirmed = memory.forget("Lyon", code, 2, -1, GUEST);
         assertThat(confirmed.toString()).contains("only the owner confirms");
         assertThat(m.store.facts.rows).containsKey(f.id());
         // the request waits in the app, where the owner confirms it

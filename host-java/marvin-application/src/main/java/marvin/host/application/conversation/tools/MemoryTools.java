@@ -16,6 +16,8 @@ import marvin.host.domain.conversation.tool.ToolError;
 public final class MemoryTools {
     /** Keys of the tool context the voice gives. */
     public static final String TURN = "turn";
+    /** The conversation entry of the question being answered. */
+    public static final String SAID = "said";
     public static final String OTHERS_PRESENT = "others_present";
 
     private MemoryTools() {
@@ -28,7 +30,7 @@ public final class MemoryTools {
                 new ToolRegistry.Tool(MemoryToolSpecs.recall(), (args, ctx) ->
                         value(memory.recall(str(args, "query"), str(args, "period"), audience(ctx)))),
                 new ToolRegistry.Tool(MemoryToolSpecs.forget(), (args, ctx) ->
-                        value(memory.forget(str(args, "query"), str(args, "confirm"), turn(ctx), audience(ctx)))));
+                        value(memory.forget(str(args, "query"), str(args, "confirm"), turn(ctx), said(ctx), audience(ctx)))));
     }
 
     private static Object value(MemoryContext.ToolAnswer a) {
@@ -44,6 +46,10 @@ public final class MemoryTools {
 
     private static long turn(Map<String, Object> ctx) {
         return ctx.get(TURN) instanceof Number n ? Math.max(0, n.longValue()) : 0;     // never the app's -1
+    }
+
+    private static long said(Map<String, Object> ctx) {
+        return ctx.get(SAID) instanceof Number n ? n.longValue() : -1;
     }
 
     private static MemoryContext.Audience audience(Map<String, Object> ctx) {

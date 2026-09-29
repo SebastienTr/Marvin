@@ -139,6 +139,12 @@ public final class InMemoryMemory {
         }
 
         @Override
+        public synchronized Optional<MemoryEvent> byRef(String source, String externalRef) {
+            return rows.values().stream().filter(e -> e.source().equals(source) && externalRef.equals(e.externalRef())
+                    && !withheld.contains(e.id())).findFirst();
+        }
+
+        @Override
         public synchronized List<MemoryEvent> recent(String query, long beforeId, int limit) {
             return rows.values().stream().filter(e -> (beforeId == 0 || e.id() < beforeId) && !withheld.contains(e.id()))
                     .filter(e -> query.isBlank() || e.body().toLowerCase().contains(query.strip().toLowerCase()))

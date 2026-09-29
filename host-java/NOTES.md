@@ -1626,3 +1626,109 @@ Also: a stale summary shows "Being written again" in Memory and Activity instead
 - Run test plan 9.4 and 9.5 on the Mac and write the numbers here; tune `marvin.memory.volatile-budget` from them.
 - Move `OllamaLanguageModel`'s streaming to the JDK client (see "Not done").
 - Per-line provenance in extraction would make withholding precise.
+
+## Stage: final verification
+
+Memory v1 and the new app checked end to end from a clean state (a new data folder and a new database), as the owner
+would use them, with the Python simulator as the robot, the stub Ollama (chat, tools, structured output, embeddings)
+and the voice sidecar in its test mode; three things found and fixed; the owner's test plan written.
+
+### What was run
+
+- **The live host** (`./marvin up`, a scripted week imported from a Python-host history made by
+  `e2e/week_fixture.py`, the simulator and a second simulated board): `e2e/week.py learn` (34 checks), then the app
+  walk `e2e/e2e.py live` (56), `./marvin restart` and `week.py after-restart` (5), `week.py reset` (4).
+- **The demo** (`./marvin demo --voice`, its own simulated past week): `e2e/e2e.py demo` (55).
+- All green, no console error, no `ERROR` line in the host log. Screenshots: `/mnt/user-data/outputs/final-shots/`
+  (every destination and sub-screen in Day and Night, phone 390×844 and desktop 1440×900, for both runs: `live-*`,
+  `demo-*`; the inspector listing the facts sent, `week-inspector-desktop.png`; the export, `week-export.md`).
+
+What the week checks, in order: the six days reach memory's log through the one-time import and the catch-up; the
+nightly pass finds the facts said in French and in English (a name, a home, a cat, a sister, a preference, a job, an
+allergy) and nothing from small talk; "we moved to Lille" makes "lives in Nice" past (with the day it ended) and
+"lives in Lille" current; each fact quotes its source; the allergy is `sensitive` and stays out of the profile and the
+summaries; the profile (version 1) says Lille, not Nice; one summary per day and one for the week; a second night
+changes nothing. Then today, by the voice's typed path: "remember that ..." is the owner's fact at once; a known fact
+said again is a NOOP in the idle pass; "Where do I live?" is answered "Lille" with the fact in the reply's memory
+report and in the inspector; the French question too (from the profile); `recall` finds the sister; the voice's
+system prompt has one hash over all questions (from the stub's log). A forget asked by voice proposes, waits, is
+confirmed in the app, and then the fact is gone from every filter, from the profile and its older versions, from the
+day summaries (blanked, rewritten the next night) and from the log; the next idle pass does not learn it again; a
+later recall knows nothing; the export (JSON and Markdown) has what is known and nothing forgotten. After a restart:
+the same facts, past facts, profile version and summaries, and nothing forgotten comes back with the catch-up or a
+night. Last, "forget everything" refuses a wrong phrase, empties memory, and Marvin no longer knows where the owner
+lives.
+
+### Found and fixed
+
+1. **A forget asked by voice kept its own request.** "Forget that my cat is called Pixel" stayed in the log after the
+   fact was forgotten: listed, recalled (`said`), exported, and read by the next pass, which learned the fact again
+   from it. The voice now gives the tools the conversation entry of the question (`MemoryTools.SAID`, a new argument
+   of `MemoryContext.forget`); the proposal keeps its log reference (`ConfirmForgetting.Proposal.asked`); once
+   confirmed (by voice or in the app), `ForgetMemory.forgetRequest` withholds that line and Marvin's answer to it (the
+   next conversation line when it is a reply: it may repeat the fact) and blanks their day, like a forgotten fact's
+   sources. Tests: `MemoryPrivacyAndRobustnessTest.aForgetAskedByVoiceTakesItsOwnRequestAndAnswerWithIt`, `week.py`.
+2. **The voice's system prompt changed with the question's language.** The persona line "Answer in French, the
+   language you are spoken to in." made the system prompt differ between a French and an English question: every
+   switch re-read the whole system prompt and profile (about 900 to 1400 tokens) before the first word. With memory,
+   the voice now sends a language-neutral line (`Persona.ANY_LANGUAGE`); the question's message still ends with
+   "(Answer in English.)". Without memory the prompt is the Python host's, byte for byte, as before. Tests:
+   `VoiceMemoryTest.anOwnerWhoSwitchesLanguagesKeepsTheSameSystemPrompt`,
+   `ContextAssemblerTest.withNoLanguageTheSystemPromptIsTheSameForEveryLanguage`; test plan 9.6 for the Mac.
+3. **The host hung at start once on two processors.** A thread dump showed two virtual threads pinned while loading
+   classes (one of them memory's start-up embedding, one a web request), both waiting for the application jar's lock,
+   and no carrier left for the virtual thread holding it (the scheduler has one carrier per processor; a virtual thread
+   that loads a class stays pinned). `MarvinHostApplication.main` now sets `jdk.virtualThreadScheduler.parallelism` to
+   at least 8 before any virtual thread exists (an explicit value is kept). Not reproduced in 26 more starts under
+   load, before or after; on the owner's Mac (more processors) it was already unlikely.
+
+The stub Ollama (`e2e/stub_ollama.py`) learned what the week needs: reconciliation (NOOP, INVALIDATE a home), more
+extraction patterns, forget and recall tool calls, answers from the prompt, summaries that quote the owner, a profile
+rewrite that drops what ended or was forgotten, and a log of each system prompt's hash.
+
+### Decisions and deviations
+
+- The scripted week enters through the Python host's history import, not through made-up timestamps: it is how an
+  owner's past arrives, and it exercises the import, the catch-up and the backfill.
+- The system prompt no longer names the language when memory is on: a deliberate difference from the Python host's
+  persona (docs/memory.md, "The prompt"), in line with design 5.3 ("Keeping the prompt cache").
+
+### Verified
+
+- `cd host-java && ./mvnw verify`: 338 tests, 0 failures, 1 skipped (the embedded-database test, as root). New:
+  `MemoryPrivacyAndRobustnessTest` +1, `VoiceMemoryTest` +1, `ContextAssemblerTest` +1.
+- `cd host && python3 -m pytest -q`: 305 passed, 3 skipped.
+- The runs above: 34 + 56 + 5 + 4 (live) and 55 (demo) checks, all passing.
+- Extraction evaluation on the stub (`MemoryEvaluationTest`, scripted answers: it checks the harness, not a model):
+  precision 0.90 (9/10), recall 0.90 (9/10), operations 3/3, dates 1/1, sensitivity 1/1. On a real model: test plan
+  part 11 ("How good is extraction with your model").
+
+### Latency
+
+- The voice's thread, heard to the model's request (median of 40, `VoiceMemoryTest`): 0.399 ms without memory, 0.543
+  ms with memory (+0.14 ms).
+- Retrieval with 3000 facts on pgvector (median of 30, `MemoryApiIT`): 8.5 ms (embedding 5.3 ms by the stub, search
+  and scoring 3.2 ms), started on the speculative transcript. Without pgvector (`MemoryStoresIT`): 30.5 ms, 1.8 s for
+  the first call after a restart (the vectors are read in the background at start).
+- A language switch no longer re-reads the system prompt: about 900 tokens of persona and rules plus the profile
+  (up to 500) saved at each switch, a few hundred milliseconds at the 27B model's prompt rate. To measure on the Mac:
+  test plan 9.6. The first-word cost of memory itself (the design's 100 ms target) is still to be measured there
+  (9.4); the stub's timings say nothing about it.
+
+### Known gaps
+
+- Not run with a real model, real boards or on macOS: the owner's test plan, part 11 and 9.4 to 9.6.
+- Typed questions take their language from a guess that needs two common words ("What's the weather like?" is taken
+  as French, as in the Python host): a real model then answers an English question in French. The spoken path uses
+  the recogniser's language.
+- The virtual-thread start-up hang is mitigated (more carriers), not proven gone: class loading still pins virtual
+  threads in this JDK.
+- The earlier stages' gaps stand (per-batch withholding, the voice's own streaming not cancellable, guest-safe
+  summaries).
+
+### Hints for the next stages
+
+- Run the test plan on the Mac first (part 11, 9.4 to 9.6) and write the numbers here; tune
+  `marvin.memory.volatile-budget` from 9.4.
+- Move `OllamaLanguageModel`'s streaming to the JDK client (a cancelled answer would stop Ollama at once).
+- Guess a typed question's language with the voice's recogniser model or a small detector instead of stop words.

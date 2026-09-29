@@ -116,9 +116,19 @@ public final class Persona {
         return LANGUAGE_NAMES.getOrDefault(language, language);
     }
 
-    /** The system prompt: the same for every question in a language, with or without tools. */
+    /** The language line for every language (the question's language is named at the end of its message). */
+    static final String ANY_LANGUAGE = "- Answer in the language you are spoken to in (the end of the message names it when "
+            + "it is known).";
+
+    /**
+     * The system prompt: the same for every question in a language, with or without tools; {@code language} null: the
+     * same for every language.
+     */
     public static String personaPrompt(String language, boolean tools) {
-        return PERSONA.replace("{language}", languageName(language))
+        String persona = language == null
+                ? PERSONA.replace("- Answer in {language}, the language you are spoken to in.", ANY_LANGUAGE)
+                : PERSONA;
+        return persona.replace("{language}", language == null ? "" : languageName(language))
                 .replace("{limits}", tools ? LIMITS_WITH_TOOLS : LIMITS)
                 .replace("{tools}", tools ? TOOLS : "");
     }
@@ -137,7 +147,8 @@ public final class Persona {
 
     /**
      * The system prompt with memory (docs/design.md 5.3): the persona, the memory tools' rules when they are offered,
-     * then the profile. It changes only with the language, the tools offered and the profile's version, so the model
+     * then the profile. It changes only with the tools offered and the profile's version (and the language, unless it is
+     * null: the voice with memory passes null, so that an owner who switches languages keeps the cache), so the model
      * server keeps its cached work between questions. Without memory tools and profile it is
      * {@link #personaPrompt(String, boolean)} byte for byte.
      */

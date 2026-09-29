@@ -1,10 +1,11 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-# Review guide: the Java host (migration phases 0 to 2)
+# Review guide: the Java host (migration phases 0 to 3)
 
 The change adds `host-java/` (a Spring Boot host at parity with the Python host), the `./marvin`
 launcher, the Python voice sidecar (`host/marvin_host/sidecar/voice`) and a few deliberate changes to
-the Python host. The Python host still works and its tests still pass. The work is big (about 56,000
-added lines, most of them tests, golden files and generated gRPC code), so review it in this order.
+the Python host (phases 0 to 2); then memory v1 and the new app (phase 3, [its own reading
+order](#memory-v1-and-the-new-app-design-phase-3)). The Python host still works and its tests still pass. The work
+is big (most of it tests, golden files and generated gRPC code), so review it in this order.
 
 ## 1. What was asked, and what was decided (30 min)
 
@@ -24,8 +25,8 @@ added lines, most of them tests, golden files and generated gRPC code), so revie
 | `marvin-application` | Use cases and ports per context (`port.in`, `port.out`): `VoiceService` (the conversation: turn order, answer loop, tools, memory), `AnswerLoop`, `PresenceHistoryService` + `HistoryWriter` (history written off the robot thread), `RobotAudioService`, health | `conversation/VoiceService.java`, `conversation/AnswerLoop.java` |
 | `marvin-adapter-robot` | UDP 47100 (HELLO/HOST_ACK, lidar, LD2450, vitals, face link, audio relay), `.mvrec` record/replay, datagram tap | `UdpRobotLink.java` |
 | `marvin-adapter-persistence` | PostgreSQL through JdbcClient, Flyway, one schema per context, the one-time SQLite import, `voice.json`, embedded PostgreSQL | `SqliteImporter.java`, `db/migration/*` |
-| `marvin-adapter-web` | The Python host's app, copied byte for byte (`static/`), its REST API and SSE streams, the access key, the face PNG | `AccessFilter.java`, `ApiController.java` |
-| `marvin-adapter-llm` | Ollama through Spring AI (streaming, tool calls) | `OllamaLanguageModel.java` |
+| `marvin-adapter-web` | The app (the Java host's own since phase 3, `app/`), the Python host's REST API and SSE streams, the memory API, the access key, the face PNG | `AccessFilter.java`, `ApiController.java`, `MemoryController.java` |
+| `marvin-adapter-llm` | Ollama through Spring AI (streaming, tool calls); memory's model and embeddings (JDK HTTP client) | `OllamaLanguageModel.java`, `OllamaMemoryModel.java` |
 | `marvin-adapter-sidecar` | gRPC client of the voice sidecar, the process supervisor, the Python runtime | `GrpcVoiceSidecar.java`, `SupervisedProcess.java` |
 | `marvin-app` | Spring Boot wiring (`HostWiring`, `VoiceWiring`), lifecycle, tracing, ArchUnit rules | `ArchitectureTest.java` |
 | `marvin-contracts` | Golden files made by the **Python** host (`tools/*.py`): protocol vectors, recordings with their expected events, API snapshots, face and conversation vectors; `voice.proto` | `README.md`, `golden/` |
@@ -64,19 +65,42 @@ Run everything: `cd host-java && ./mvnw verify` (Docker needed for the `*IT` tes
 - `parent.py`: a child started by the Java host exits when the host dies.
 - Contract tools under `host-java/marvin-contracts/tools` import the Python host to make the golden files.
 
-## Memory v1 (design phase 3)
+## Memory v1 and the new app (design phase 3)
 
-Built in stages, each with a section under "Memory v1" in [NOTES.md](../host-java/NOTES.md). Read
-[memory.md](memory.md) first, then the domain (`domain/memory`: `Reconciliation`, `FactCandidate`, `ProfileText`),
-the use cases (`application/memory`: `Consolidator`, `MemoryWorker`, `NightlyPass`), `memory/V1__memory.sql` and
-`MemoryStoresIT`, and `MemoryEndToEndIT`. The extraction evaluation set is `MemoryEvaluationTest`.
+Built in six stages (write path, read path, app shell, app screens, review fixes, final verification), each with a
+section under "Memory v1" in [NOTES.md](../host-java/NOTES.md). About half a day, in this order:
 
-The read path: the conversation's port `MemoryContext` and `MemoryForConversation` (the boot module's bridge to
-memory's `RecallMemory` and `ConfirmForgetting`), `ContextAssembler` and `Persona.systemPrompt`, then `VoiceService`
-(`prefetch`, `assemble`, `usage`), `MemoryRecallService`, `ForgetConfirmations`, `MemoryTools`, `MemoryController`.
-Tests: `VoiceMemoryTest` (the prompt byte-stable between questions, budgets cut by score, the 300 ms budget, the
-calibration, the cost on the voice's path), `MemoryToolsLoopTest` (the tools through the real answer loop and Ollama
-adapter), `MemoryApiIT` (every route and the retrieval time with 3000 facts).
+1. **The specification** (30 min): [design.md](design.md) section 5 (memory), then 3, 9 and 10.4, with their "as
+   built" notes where reality differs. The approved visual direction is described in [ui.md](ui.md).
+2. **How it works** (30 min): [memory.md](memory.md) (the log, facts on two clocks, the worker, the read path, the
+   tools, the API, forgetting, the evaluation set, where the code is).
+3. **What was decided and what is missing**: NOTES.md, "Memory v1", each stage's *Decisions and deviations* and
+   *Known gaps*; the last stage, *Final verification*, says what was checked end to end.
+4. **The rules**, plain Java: `domain/memory` (`Reconciliation`, `FactCandidate`, `ProfileText`, `RetrievalScoring`,
+   `DecayRules`, `Redaction`, `EventFeeds`).
+5. **The use cases**: `application/memory` (`MemoryLogService` and the catch-up, `Consolidator`, `MemoryWorker`,
+   `NightlyPass`, `MemoryGuard`, `MemoryAdminService` and forgetting, `ForgetConfirmations`, `MemoryRecallService`,
+   `MemoryExportService`) and their ports; tests: `ConsolidatorTest`, `MemoryWorkerTest`, `NightlyPassTest`,
+   `MemoryPrivacyAndRobustnessTest`.
+6. **Storage**: `db/migration/memory/V1..V3`, `JdbcEventLog`, `JdbcFactStore` (pgvector, and the exact search without
+   it), `MemoryStoresIT`.
+7. **The models**: `OllamaMemoryModel`, `OllamaEmbedder`, the prompts in `marvin/memory/prompts/v1/`,
+   `OllamaMemoryModelTest`, `MemoryEvaluationTest` (the evaluation set).
+8. **Memory in the voice**: the conversation's port `MemoryContext` and its bridge `MemoryForConversation`
+   (marvin-app), `ContextAssembler`, `Persona.systemPrompt`, `VoiceService` (`prefetch`, `assemble`, `usage`),
+   `MemoryTools`; tests: `VoiceMemoryTest` (the system prompt byte-identical between questions and languages, budgets
+   cut by score, the cost on the voice's path), `MemoryToolsLoopTest`, `MemoryForConversationTest`.
+9. **The API and the app**: `MemoryController`, `MemoryApiIT`; the app in `marvin-adapter-web/.../app/` (`theme.js`,
+   `face.js`, `home.js`, `talk.js`, `inspector.js`, `memory.js`, `memtools.js`, `worker.js`, `activity.js`,
+   `marvin.js`, `system.js`), `AppFilesTest`.
+10. **End to end**: `MemoryEndToEndIT` (the whole host), `host-java/e2e/week.py` (a scripted week in French and
+    English against the running host) and `e2e.py` (every screen, both appearances, phone and desktop); their
+    screenshots are listed in NOTES.md.
+11. **The owner's checks on the Mac**: [test-plan.md](test-plan.md), part 11 and checks 9.4 to 9.6.
+
+The boundaries: `memory` is a bounded context with its own schema and Flyway history; the conversation reaches it only
+through its own `MemoryContext` port, plugged in `marvin-app` (`ArchitectureTest`, and `ArchitectureRulesBiteTest`
+shows the rule fails on a fixture).
 
 ## 5. Known gaps and risks (details in NOTES.md)
 
@@ -89,3 +113,6 @@ adapter), `MemoryApiIT` (every route and the retrieval time with 3000 facts).
 - Four Boot lifecycle classes are known exceptions to the glue rule (`ArchitectureTest.BOOT_GLUE_KNOWN`).
 - The embedded PostgreSQL (used without Docker) has no pgvector yet, and its test is skipped as root.
 - Cosmetic: an empty day's `present_s`/`seated_s` are `0.0` in Java, `0` in Python (the same number in JSON).
+- Memory: extraction quality and the first-word cost of memory are measured on the stub only; the owner's model and
+  Mac numbers come from the test plan (part 11, 9.4 to 9.6). Forgetting a fact withholds the whole conversation batch
+  it was learned from. Details: NOTES.md, "Memory v1", each stage's known gaps.

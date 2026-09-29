@@ -58,6 +58,8 @@ import marvin.host.domain.shared.LocalDays;
  */
 public final class MemoryAdminService implements ManageFacts, ForgetMemory, BrowseMemory, MemoryHealth {
     private static final Logger log = Logger.getLogger("marvin.memory");
+    /** How far after a request to forget its answer is looked for (brain events come in between). */
+    private static final int REQUEST_WINDOW = 200;
     /** Importance of a fact the owner states. */
     static final int OWNER_IMPORTANCE = 8;
 
@@ -403,6 +405,29 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
         if (out.events() > 0) {
             changed("log");
             forgotten();
+        }
+        return out;
+    }
+
+    @Override
+    public Forgotten forgetRequest(String externalRef) {
+        Forgotten out = guard.owner(() -> {
+            Optional<MemoryEvent> asked = events.byRef(MemorySources.CONVERSATION, externalRef);
+            if (asked.isEmpty()) {
+                return new Forgotten(0, 0, 0);
+            }
+            List<MemoryEvent> lines = new ArrayList<>(List.of(asked.get()));
+            // the answer to it: the next line of the conversation, when it is Marvin's
+            events.page(asked.get().id(), REQUEST_WINDOW).stream()
+                    .filter(e -> MemorySources.CONVERSATION.equals(e.source()))
+                    .findFirst()
+                    .filter(e -> "reply".equals(e.kind()))
+                    .ifPresent(lines::add);
+            forgetSources(lines);
+            return new Forgotten(lines.size(), 0, staleDays(lines));
+        });
+        if (out.events() > 0) {
+            changed("log");
         }
         return out;
     }

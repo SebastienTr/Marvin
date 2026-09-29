@@ -98,7 +98,7 @@ class VoiceMemoryTest {
         }
 
         @Override
-        public ToolAnswer forget(String query, String confirm, long turn, Audience audience) {
+        public ToolAnswer forget(String query, String confirm, long turn, long said, Audience audience) {
             return ToolAnswer.ok(Map.of("matches", List.of()));
         }
     }
@@ -178,6 +178,25 @@ class VoiceMemoryTest {
                 .endsWith("The person says: Where does my sister live?\n\n(Answer in French.)");
         assertThat(system).doesNotContain("Claire");
         assertThat(memory.used).contains(List.of("11111111-1111-1111-1111-111111111111"));
+        v.stop();
+    }
+
+    @Test
+    void anOwnerWhoSwitchesLanguagesKeepsTheSameSystemPrompt() throws InterruptedException {
+        FakeModel model = FakeModel.of("w", "w", "Bonjour.", "Hello.");
+        VoiceService v = started(model, new Memory());
+        ask(1, "Bonjour");
+        VoiceServiceTest.waitFor(() -> replies().size() == 1);
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Hello there", "Hello there", "en", "voice", Map.of("endpoint", 0.5),
+                clock.wall));
+        VoiceServiceTest.waitFor(() -> replies().size() == 2);
+        String system = model.calls.get(2).getFirst().content();
+        assertThat(model.calls.get(3).getFirst().content()).as("byte for byte across languages").isEqualTo(system);
+        assertThat(model.calls.get(0).getFirst().content()).as("the warm-up's too").isEqualTo(system);
+        assertThat(system).doesNotContain("Answer in French").doesNotContain("Answer in English");
+        // the question's message names its language
+        assertThat(model.calls.get(2).getLast().content()).endsWith("(Answer in French.)");
+        assertThat(model.calls.get(3).getLast().content()).endsWith("(Answer in English.)");
         v.stop();
     }
 

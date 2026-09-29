@@ -98,6 +98,36 @@ class MemoryPrivacyAndRobustnessTest {
     // ------------------------------------------------------------------ forgetting
 
     @Test
+    void aForgetAskedByVoiceTakesItsOwnRequestAndAnswerWithIt() {
+        MemoryEvent said = m.say(at(10, 5, 11), "heard", "My cat is called Pixel");
+        model.extract = r -> List.of(FakeMemoryModel.raw("thing:pixel", "The owner has a cat named Pixel.", 6));
+        m.consolidator.process(m.store.log.unconsolidated(10), target, () -> false);
+        Fact pixel = m.store.facts.rows.values().iterator().next();
+        assertThat(pixel.sources()).contains(said.id());
+        // today: the request repeats the fact, and so may the answer
+        MemoryEvent asked = m.say(at(10, 6, 2), "heard", "Forget that my cat is called Pixel");
+        m.brain(at(10, 6, 2).plusSeconds(1), "person_seen", "Someone is at the desk.", Sensitivity.NORMAL);
+        m.say(at(10, 6, 2).plusSeconds(2), "reply", "Shall I forget that your cat is called Pixel?");
+        MemoryEvent later = m.say(at(10, 6, 2).plusSeconds(30), "heard", "Thanks");
+        ForgetConfirmations forgetting = new ForgetConfirmations(m.store.facts, m.admin, m.embeddings, m.clock,
+                java.util.UUID::randomUUID);
+        var p = forgetting.proposeMatching("my cat Pixel", "voice", 3, asked.externalRef(), RecallMemory.Audience.OWNER);
+        assertThat(p.facts()).extracting(Fact::statement).containsExactly("The owner has a cat named Pixel.");
+        // nothing withheld before the owner says yes
+        assertThat(m.store.log.withheld).isEmpty();
+
+        assertThat(forgetting.confirm(p.code(), 4, null).done()).isTrue();
+
+        assertThat(m.store.facts.rows).isEmpty();
+        assertThat(everything("cat Pixel")).doesNotContain("Pixel");
+        // the next pass cannot learn it again from the request: it is not there to read
+        assertThat(m.store.log.unconsolidated(50)).extracting(MemoryEvent::body).doesNotContain(
+                "Forget that my cat is called Pixel", "Shall I forget that your cat is called Pixel?")
+                .contains("Thanks", "Someone is at the desk.");
+        assertThat(m.store.log.withheld).doesNotContain(later.id());
+    }
+
+    @Test
     void forgettingAWholeDayLeavesNothingOfItInSummariesRecallOrTheExport() {
         m.say(at(10, 5, 11), "heard", "Mon code de porte est dans le tiroir et je quitte mon travail");
         assertThat(m.nightly.dayEpisodes(target, () -> false)).isEqualTo(1);
