@@ -65,7 +65,7 @@ class OllamaLanguageModelTest {
         Map<String, Object> body = stub.requests.get(0);
         assertThat(body).containsEntry("model", "qwen3:4b-instruct").containsEntry("stream", true)
                 .containsEntry("keep_alive", "30m").containsEntry("think", false)
-                .containsEntry("options", Map.of("temperature", 0.6, "num_predict", 200L, "num_ctx", 8192L));
+                .containsEntry("options", Map.of("temperature", 0.6, "num_predict", 400L, "num_ctx", 16384L));
         List<Map<String, Object>> msgs = (List<Map<String, Object>>) body.get("messages");
         assertThat(msgs).extracting(m -> m.get("role")).containsExactly("system", "user", "assistant", "tool");
         assertThat(msgs.get(2).get("tool_calls")).isEqualTo(List.of(Map.of("function",

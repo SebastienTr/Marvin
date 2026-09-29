@@ -66,7 +66,7 @@ class OllamaMemoryModelTest {
         Map<String, Object> body = stub.requests.getFirst();
         assertThat(body).containsEntry("model", "qwen3:4b-instruct").containsEntry("stream", true).containsEntry("think", false)
                 .containsEntry("keep_alive", "30m");
-        assertThat((Map<String, Object>) body.get("options")).containsEntry("num_ctx", 8192L).containsEntry("temperature", 0.0);
+        assertThat((Map<String, Object>) body.get("options")).containsEntry("num_ctx", 16384L).containsEntry("temperature", 0.0);
         Map<String, Object> format = (Map<String, Object>) body.get("format");
         assertThat(format).containsEntry("required", List.of("facts"));
         String prompt = StubOllama.prompt(body);

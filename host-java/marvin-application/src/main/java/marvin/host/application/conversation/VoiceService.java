@@ -109,7 +109,7 @@ public final class VoiceService implements VoiceControl {
      */
     static final double MEMORY_WAIT_S = 0.3;
     /** The history's token budget (docs/design.md 5.3). */
-    static final int HISTORY_TOKENS = 2500;
+    static final int HISTORY_TOKENS = 4000;
 
     private final VoiceSidecar voice;
     private final LanguageModel model;

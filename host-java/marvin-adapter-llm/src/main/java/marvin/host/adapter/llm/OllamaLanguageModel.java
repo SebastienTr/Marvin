@@ -23,8 +23,9 @@ import marvin.host.domain.shared.JsonText;
 
 /**
  * The language model through Spring AI's Ollama client ({@code POST /api/chat}, streamed; {@code GET
- * /api/tags}). Every request carries the same options as the Python host's {@code llm.py}: thinking off,
- * temperature 0.6, at most 200 tokens, a context of 8192 tokens (set explicitly: a change reloads the
+ * /api/tags}). Every request carries the same options: thinking off, temperature 0.6, at most 400 tokens
+ * (the persona keeps spoken answers short; the cap only stops runaways), a context of 16384 tokens (set
+ * explicitly: a change reloads the
  * model), and the model kept in memory for 30 minutes. The tool loop is the conversation service's, not
  * Spring AI's: tool calls are passed on as they stream.
  */
@@ -38,8 +39,8 @@ public final class OllamaLanguageModel implements LanguageModel {
     static Map<String, Object> options() {
         Map<String, Object> o = new LinkedHashMap<>();
         o.put("temperature", 0.6);
-        o.put("num_predict", 200);
-        o.put("num_ctx", 8192);
+        o.put("num_predict", 400);
+        o.put("num_ctx", 16384);
         return o;
     }
 

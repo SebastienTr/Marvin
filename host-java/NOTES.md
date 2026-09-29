@@ -1862,3 +1862,26 @@ question, Marvin answered, and what he said next was lost; "OK [pause] j'ai pas 
 - Talk now pressed while Marvin is still thinking cancels as a barge-in (as before): the empty "interrupted" reply entry
   stays, and the joined question's bubble says "going on" instead of replacing the first part.
 - The long endpoint depends on the speculative transcript; with `speculative_stt` off it never applies.
+
+## Room for a 27B model (2026-09-29)
+
+The owner now runs `qwen3.8:27b` (256K context, dense). The request options were still the ones chosen for
+`qwen3:4b-instruct`.
+
+### Changed
+
+- `num_predict` 200 → 400. The persona keeps spoken answers short; the cap only stops a runaway. At 200, a longer
+  answer the owner asked for ("explain", "list") could be cut mid-sentence.
+- `num_ctx` 8192 → 16384, for the voice and for memory's requests (they must match, or Ollama reloads the model).
+  The KV cache grows by a few GB for a 27B model; check `ollama ps` on the Mac.
+- `VoiceService.HISTORY_TOKENS` 2500 → 4000: more of the conversation is kept. The history sits in the cached prefix,
+  so it costs the first word little.
+
+### Not changed, on purpose
+
+- `marvin.memory.volatile-budget` stays 250: memory's sections go in the last message, outside the cached prefix, so
+  every extra token is paid on every question. Raise it only with test plan 9.4–9.6 numbers.
+- Thinking stays off. Reasoning on demand (low/medium effort, never the model's xhigh default) is the next step, with
+  an evaluation set to measure it.
+- The Python host (`host/marvin_host/voice/llm.py`) keeps 8192/200: `marvin-host talk` is a tool now, and running it
+  beside the Java host with another `num_ctx` would reload the model.

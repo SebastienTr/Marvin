@@ -289,7 +289,7 @@ system prompt cached; M1/M2 at the slow end, M3/M4 Pro/Max at the fast end):
 
 The first question after starting a model costs its loading time (5-20 s for 27B) and the
 processing of the system prompt (several seconds for 27B). Marvin does both at start-up by
-rehearsing a real question (same system prompt, same options: `num_ctx` 8192, `think` off,
+rehearsing a real question (same system prompt, same options: `num_ctx` 16384, `think` off,
 `keep_alive` 30 min, streamed), then checks that the next one reuses the cached prompt:
 `model ... ready (prompt cached) in X s; first token now Y s`. If Y stays high, the log says the
 server did not reuse the cache. Options that differ between requests (for instance another app
@@ -478,7 +478,7 @@ process stays, so the settings panel can list the voices, and the next start is 
 The conversation is the Python host's, ported line for line and checked against it
 (`golden/conversation/vectors.json` in marvin-contracts): the same system prompt and context block,
 the same history (halved when full, forgotten after 3 minutes), the same model request (Spring AI's
-Ollama client: thinking off, `num_ctx` 8192, kept 30 minutes, the same rehearsal at start), the same
+Ollama client: thinking off, `num_ctx` 16384, kept 30 minutes, the same rehearsal at start), the same
 tool loop and weather tool, the same handling of reasoning written into the answer and of tool calls
 written as text, the same break reminders and "welcome back". What the model streams is cut into
 sentences in Java and sent to the sidecar as it comes; the transcript, the latency breakdown and the

@@ -384,7 +384,7 @@ access rules as the rest of the API.
 - **The memory model** (`memory_model`, empty: the voice's model, already loaded) does the idle pass; the
   **night model** (`night_model`, empty: the memory model) the nightly one: a larger local model is better at
   extraction and the night has time (for example `qwen3:27b` on a 64 GB Mac).
-- **The voice comes first.** Memory's requests use the voice's context size (`num_ctx` 8192: a different one would
+- **The voice comes first.** Memory's requests use the voice's context size (`num_ctx` 16384: a different one would
   reload the model) and `temperature` 0; they are streamed, and a watcher closes the connection as soon as the voice
   becomes busy, even before the first chunk (while Ollama loads the model or reads the prompt), so Ollama stops at
   once. A request to the voice's own model evicts the voice's cached prompt, so after a pass that used it, or changed

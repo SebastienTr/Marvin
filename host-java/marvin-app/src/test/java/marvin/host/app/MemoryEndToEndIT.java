@@ -186,7 +186,7 @@ class MemoryEndToEndIT {
         // every memory request kept the voice's context size (no model reload) and asked for a structure
         for (Map<String, Object> body : OLLAMA.requests) {
             assertThat(body).containsKey("format");
-            assertThat(((Map<String, Object>) body.get("options")).get("num_ctx")).isEqualTo(8192L);
+            assertThat(((Map<String, Object>) body.get("options")).get("num_ctx")).isEqualTo(16384L);
         }
         assertThat(OLLAMA.embedRequests).isNotEmpty().allSatisfy(b -> assertThat(b).containsEntry("model", "qwen3-embedding:8b"));
 

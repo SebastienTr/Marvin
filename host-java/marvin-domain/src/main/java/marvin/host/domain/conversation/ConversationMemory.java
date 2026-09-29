@@ -13,7 +13,7 @@ import java.util.function.ToIntFunction;
  * only ever grows at the end: dropping the oldest turn every time would change its start at each question
  * and make the model read the whole conversation again. When it is full, the older half of the turns goes
  * at once. A turn is everything from a question to the next one: a tool exchange is never cut in two. After
- * {@code resetAfterS} of silence, it is forgotten. With a token budget (docs/design.md 5.3: at most 2500 tokens of
+ * {@code resetAfterS} of silence, it is forgotten. With a token budget (docs/design.md 5.3; `VoiceService.HISTORY_TOKENS` tokens of
  * history on the voice path), the older half also goes when the history grows over it, the same way. Times are
  * monotonic seconds. Not thread-safe.
  */
