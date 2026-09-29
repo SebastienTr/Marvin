@@ -19,6 +19,10 @@ There are two apps, one per host, on the same API:
 </p>
 
 <p align="center">
+  <img src="images/app_memory_night.png" alt="Memory on a computer, Night appearance: the Suggested filter with two facts Marvin learned on its own, each with its source, Source &amp; edit, Pin and Keep; Keep all shown; the profile with the owner's lines; the days in Marvin's words" width="800">
+</p>
+
+<p align="center">
   <img src="images/app_talk_night_phone.png" alt="Talk on a phone, Night appearance: Marvin's small face, the conversation with an answer and its 'Why this answer' link, the listening strip, Talk now, Mute and Stop, and the text box" width="300">
 </p>
 
@@ -67,18 +71,27 @@ tall; with reduced motion the eyes only change expression and nothing animates.
 | Here, now | Beside the conversation on a computer: presence, the facts the last answer used, the last answer's timing and model. |
 | Problems | If the voice cannot start, the panel says why and how to fix it, with **Try again**. |
 | Sounds | Short soft notes played by the browser when listening opens and closes, when Marvin did not catch you, when an answer starts; off in Marvin > Preferences. |
-| **Memory** | The facts Marvin keeps, all, pinned or suggested (learned on its own, not reviewed yet), with a search; each one opens with its sources, quoted and dated, and its earlier versions. The profile Marvin writes each night (your own lines marked), the worker's last pass, and **Export** (everything, as JSON). See [memory.md](memory.md). |
+| **Memory** | See also [memory.md](memory.md). |
+| Your memories | **All memories**, **Pinned**, **Suggested** (learned by Marvin on its own, not reviewed yet) and **Past** (no longer true, or archived), with their counts and a search. Each row: the fact, its status (Yours, Reviewed, Suggested, Pinned...), its sensitivity, where it comes from and when; **Source & edit**, **Pin** / **Unpin**, **Keep** (a suggestion becomes reviewed; **Keep all shown** for the whole list). **Add** stores your own memory at once. |
+| Source & edit | The sources quoted and dated (what you said first), each with **Open that conversation**, which opens History at that line; the correction ("What Marvin should remember", and its sensitivity: a new version, the earlier one kept in the fact's history); **Pin**, **Keep as reviewed**, **Archive** / **Bring back**; how often it was used; its other versions. **Forget this fact** is a second, explicit choice: it says what goes (the fact, its versions, its profile lines, for good) and what stays (the conversation, in History). |
+| Your profile | What Marvin reads at the start of every conversation, your own lines marked. **Read profile & versions**: every version with its differences (added, removed), **Use this version again**, and **Edit**: the lines you write or change are yours, and every nightly rewrite keeps them. |
+| Days, in Marvin's words | The summaries Marvin writes the night after: days, weeks, months, with how many moments they come from; one being rewritten says so. |
+| Memory at work | What waits to be read, the last passes and what they did ("3 new facts, 5 days written, in 1.3 s with ..."), the next night, the models, **Consolidate now** and **Run the nightly pass** (both give way to the voice). When the embedding model is missing, a notice at the top of the screen says so, with the command that fixes it and **Check again**. |
+| Memory, on your terms | What Marvin may learn from: **Your conversations**, **What Marvin notices** (switched off, nothing from it reaches memory from that moment); **Settings** (consolidating on its own, after how long away, the nightly hour, how long what Marvin noticed is kept); **The raw log** (everything memory was told, searchable, older pages); **Export** (JSON or Markdown); **Forget everything** (what goes and what stays, then the phrase "forget everything" typed; the request expires after five minutes). |
 | **Activity** | |
-| Today | Background tasks (not yet: an honest empty state), memory at work (what waits to be read, the last passes, the models, **Consolidate now**), today's moments. |
-| History | Any day's timeline and numbers with arrows back in time, the last seven days, and the conversations: that day's (read-only, answers still open their inspector) and a search over everything said. |
-| Log | The brain's events, the devices' messages, devices connecting, the voice, the host's warnings, newest first, filtered by Marvin, Devices, Voice or Warnings. |
+| Today | **Tasks & approvals**: an honest empty state that says what will appear there (each task and its steps, its budget, your approval on the exact version) and that today only a request to forget waits for you, on Home. Memory at work, today's moments (the latest twelve, **Show all**). |
+| History | Any day's timeline and numbers with arrows back in time, and that day **in Marvin's words** (its summary, or when it will be written); the last seven days with the weeks in Marvin's words; the conversations: that day's (read-only, answers still open their inspector) and a search over everything said. |
 | **Marvin** | |
-| Overview | Robot and voice (connected, simulated or missing; the voice's state and model; **System**: the host's health, component by component), Soul and Connections as honest "coming later" entries, and preferences. |
-| Robot | Each device (board, firmware, address, uptime, Wi-Fi, link, rates, loss), the robot's screen as the host draws it, the lidar's top view with the person the radar follows, the LD2450's field of view, breathing and heart rate over five minutes with their waves. Its stream runs only while this page is open. |
-| Voice | The language model, speech recognition, speech and voice, language, waiting for "Marvin", the follow-up window, spoken reminders, tools and **Internet**, the home location. **Apply** restarts the voice. |
-| Preferences | Break reminder, quiet hours, 12- or 24-hour clock, sounds, appearance, resetting the Home layout, and where your data is. |
+| Overview | Robot and voice (connected, simulated or missing; the voice's state and model), Soul and Connections as honest "coming later" entries (no action), and preferences. |
+| Robot | A notice when the robot is offline (the views keep its last data), the host does not answer, or the sensors are simulated; each device (board, firmware, address, uptime, Wi-Fi, link, rates, loss), the robot's screen as the host draws it, the lidar's top view with the person the radar follows, the LD2450's field of view, breathing and heart rate over five minutes with their waves. Its stream runs only while this page is open. |
+| Voice & models | The voice: language model, speech recognition, speech and voice, language, waiting for "Marvin", the follow-up window, spoken reminders, tools and **Internet**, the home location (**Apply** restarts the voice). Ollama: reachable or not (with its fix), its models and what each is used for. Memory's models: during the day (empty: the voice's), at night, and the embedding model, with its state. |
+| System | Each service with its state and, when it is down, why and how to fix it: the database, the robot link, memory, the voice sidecar (**Restart the voice**, the one sidecar the host restarts), Ollama; this computer (version, mode, data folder); the log, filtered by Marvin, Devices, Voice or Warnings and searchable, live. |
+| Preferences | Break reminder, quiet hours, 12- or 24-hour clock, sounds, appearance, resetting the Home layout; language, tools and internet, the home place (the voice's settings: saving restarts the voice); where your data is. |
 
-The old addresses (`#robot`, `#history`, `#settings`) still open the right place.
+When the host stops answering, every screen says so after a few seconds ("What you see may be out of date") until the
+stream is back; lists show a short placeholder while they load, and a panel that cannot be read says why, with **Try
+again** where it helps. The old addresses (`#robot`, `#history`, `#settings`, `#activity/log`) still open the right
+place.
 
 ## Open it on your phone
 
@@ -273,9 +286,10 @@ variables; `host-java/e2e/e2e.py` walks it in a browser.
 | `face.js` | Marvin's eyes: face.py's expressions, lids and blinks, the spring, in the appearance's colours; one renderer for every face |
 | `home.js`, `daycard.js` | Home and its customization; one day's timeline (Home and History) |
 | `talk.js`, `convo.js`, `inspector.js` | The live conversation and the voice's controls; conversation entries (Talk and History); the reply inspector |
-| `memory.js`, `memdata.js` | Memory; a fact's source line and its dialog |
-| `activity.js` | Background work, today's moments, History, the log |
-| `marvin.js` | The overview, the robot's page, the voice's and the app's settings |
+| `memory.js`, `memdata.js`, `memtools.js` | The Memory screen; a fact's source line and its "Source & edit" dialog (edit, pin, keep, archive, forget); the profile and its versions, export, "forget everything", the raw log, memory's settings |
+| `worker.js` | Memory's worker, shown on Memory and Activity |
+| `activity.js` | Tasks (empty state), today's moments, History with the days and weeks in Marvin's words |
+| `marvin.js`, `system.js` | The overview, the robot's page, voice and models, preferences; System (services, restart, the log) |
 
 Appearance and layout are presentation only: they never switch a sensor or a service. The Home layout lives in
 `localStorage` under `marvin.home`, the appearance under `marvin.appearance`.

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Marvin: the companion's capabilities and setup. An overview (robot and voice, Soul and connections as honest
-// "later" entries, preferences), the robot (devices, the robot's own screen, lidar top view, radar, vital
-// signs), the voice's settings, and the preferences (breaks, quiet hours, clock, sounds, appearance, Home layout).
+// "later" entries, preferences), the robot (devices with their link and firmware, the robot's own screen, lidar
+// top view, radar, vital signs; offline and stale shown as such), voice and models (the voice's settings, Ollama,
+// memory's models), and the preferences (breaks, quiet hours, clock, sounds, appearance, Home layout, language,
+// tools and home place). System is system.js.
 
-import { $, app, el, api, post, on, emit, cssVar, canvas2d, toast, openDialog } from "./core.js";
+import { $, app, el, api, post, on, emit, cssVar, canvas2d, toast } from "./core.js";
 import { earcons } from "./talk.js";
 
 let devices = [];
@@ -32,26 +34,6 @@ function renderOverview() {
   const vs = app.voiceSettings;
   $("internet-line").textContent = !vs ? "–" : vs.tools === false ? "Tools off: Marvin stays offline" : vs.internet === false ? "Off: Marvin stays fully offline" : "On: the weather asks Open-Meteo, with the place name only";
   $("break-line").textContent = `Every ${app.settings.break_interval_min || 50} minutes seated${app.settings.quiet_hours && app.settings.quiet_hours.enabled ? `, quiet ${app.settings.quiet_hours.start}–${app.settings.quiet_hours.end}` : ""}`;
-}
-
-async function openSystem() {
-  const body = openDialog("System", { label: "Marvin · this computer" });
-  body.append(el("p", null, "Loading…"));
-  try {
-    const h = await api("/api/health");
-    const ul = el("ul", "health-list");
-    for (const [name, c] of Object.entries(h.components || {})) {
-      const li = el("li");
-      const head = el("span", null, name[0].toUpperCase() + name.slice(1));
-      const txt = el("div");
-      txt.append(el("span", `state${c.state === "up" ? "" : " down"}`, c.state), document.createElement("br"), el("span", null, c.detail || ""));
-      li.append(head, txt);
-      ul.append(li);
-    }
-    body.replaceChildren(el("p", null, `Marvin’s host ${h.version}, ${h.mode === "demo" ? "demo mode: a simulated robot and a simulated past week" : "running"}. Everything below runs on this computer.`), ul);
-  } catch (e) {
-    body.replaceChildren(el("p", null, `The host’s health cannot be read: ${e.message}`));
-  }
 }
 
 // ------------------------------------------------------------------ robot: devices
@@ -120,6 +102,26 @@ function renderDevices(list) {
   const online = list.filter((d) => d.online).length;
   $("devices-summary").textContent = list.length ? `${online} of ${list.length} connected` : "";
   renderOverview();
+  renderRobotNotice();
+}
+
+function renderRobotNotice() {
+  const n = $("robot-notice");
+  const s = app.state;
+  if (app.connection === "lost") {
+    n.hidden = false;
+    $("robot-notice-title").textContent = "Marvin’s host is not answering.";
+    $("robot-notice-text").textContent = "The views below are frozen at the last data received.";
+  } else if (devices.length && !devices.some((d) => d.online)) {
+    const lastSeen = Math.min(...devices.map((d) => d.age_s || 0));
+    n.hidden = false;
+    $("robot-notice-title").textContent = "The robot is offline.";
+    $("robot-notice-text").textContent = `Last heard ${lastSeen < 90 ? `${Math.round(lastSeen)} s` : `${Math.round(lastSeen / 60)} min`} ago. The views show the last data it sent; it reconnects on its own.`;
+  } else if (s && s.simulated) {
+    n.hidden = false;
+    $("robot-notice-title").textContent = "Simulated sensors.";
+    $("robot-notice-text").textContent = "The robot says its data comes from a simulated scene: the person, the room and the vital signs are not real measurements.";
+  } else n.hidden = true;
 }
 
 // ------------------------------------------------------------------ robot: sensor views
@@ -500,11 +502,126 @@ async function loadVoiceForm() {
     const v = await api("/api/voice");
     app.voiceSettings = v.settings;
     fillVoiceForm(v.settings);
+    fillWorld(v.settings);
     if (v.settings) {
       voiceOptions = await api("/api/voice/options");
       fillVoiceForm(app.voiceSettings);
     }
-  } catch (e) { /* the form stays as it is */ }
+  } catch (e) {
+    $("voice-form-note").textContent = `The voice’s settings cannot be read: ${e.message}`;
+  }
+  renderOllama();
+}
+
+// ------------------------------------------------------------------ Ollama and memory's models
+
+function renderOllama() {
+  const pill = $("ollama-pill"), line = $("ollama-line"), list = $("ollama-models");
+  const o = voiceOptions && voiceOptions.ollama;
+  if (!o) {
+    pill.textContent = "Unknown";
+    pill.className = "pill";
+    line.textContent = app.voiceSettings === null ? "Ollama is checked when the voice can run on this host." : "Not checked yet.";
+    list.replaceChildren();
+    return;
+  }
+  pill.textContent = o.ok ? "Running" : "Not reachable";
+  pill.className = `pill${o.ok ? "" : " attention-pill"}`;
+  line.replaceChildren();
+  if (o.ok) line.append(`On ${o.host}. Everything the models read stays on that machine.`);
+  else { line.append(`${o.error}. `); if (o.fix) line.append(el("code", null, o.fix)); }
+  list.replaceChildren(...voiceOptions.llm_models.map((m) => {
+    const li = el("li");
+    li.append(el("code", null, m));
+    const roles = [];
+    if (app.voiceSettings && (m === app.voiceSettings.llm_model || m === `${app.voiceSettings.llm_model}:latest`)) roles.push("voice");
+    if (memoryModels) {
+      if (m === memoryModels.memory_model) roles.push("memory");
+      if (m === memoryModels.night_model) roles.push("night");
+      if (m === memoryModels.embed_model || m === `${memoryModels.embed_model}:latest`) roles.push("search");
+    }
+    li.append(el("span", "small muted", roles.join(", ")));
+    return li;
+  }));
+  if (!voiceOptions.llm_models.length && o.ok) list.append(el("li", "small muted", "No model installed yet."));
+}
+
+let memoryModels = null;
+
+async function loadMemoryModels() {
+  const fields = $("memory-models-fields");
+  try {
+    const r = await api("/api/memory/settings");
+    memoryModels = { memory_model: r.settings.memory_model, night_model: r.settings.night_model, embed_model: r.settings.embed_model };
+    $("m-model").value = r.settings.memory_model;
+    $("m-night").value = r.settings.night_model;
+    $("m-embed").value = r.settings.embed_model;
+    fields.disabled = false;
+    const w = await api("/api/memory/worker").catch(() => null);
+    const e = w && w.embeddings;
+    $("m-embed-hint").textContent = !e ? "The embedding model that finds related memories."
+      : e.state === "unavailable" ? `Not available: ${e.error || "missing"}. ${e.fix || ""}`
+      : `Ready · ${e.dimensions} dimensions · ${e.search}.`;
+    renderOllama();
+  } catch (e) {
+    fields.disabled = true;
+    $("memory-models-error").textContent = `Memory’s settings cannot be read: ${e.message}`;
+    $("memory-models-error").hidden = false;
+  }
+}
+
+function setupMemoryModels() {
+  $("memory-models-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const err = $("memory-models-error");
+    err.hidden = true;
+    if (!$("m-embed").reportValidity()) return;
+    try {
+      await post("/api/memory/settings", { memory_model: $("m-model").value.trim(), night_model: $("m-night").value.trim(), embed_model: $("m-embed").value.trim() });
+      flash("memory-models-saved", "Saved");
+      loadMemoryModels();
+    } catch (e) {
+      err.textContent = `Not saved: ${e.message}`;
+      err.hidden = false;
+    }
+  });
+}
+
+// ------------------------------------------------------------------ language and the outside world (voice settings)
+
+function fillWorld(s) {
+  const available = !!s;
+  $("world-fields").disabled = !available;
+  $("world-form").querySelector('button[type="submit"]').disabled = !available;
+  if (!available) { $("world-note").textContent = "These are the voice’s settings: available when the voice can run on this host."; return; }
+  $("world-form").querySelector(`input[name="w-lang"][value="${s.language || "auto"}"]`).checked = true;
+  $("w-tools").checked = s.tools !== false;
+  $("w-internet").checked = s.internet !== false;
+  $("w-internet").disabled = !$("w-tools").checked;
+  $("w-home").value = s.home_place || "";
+}
+
+function setupWorld() {
+  $("w-tools").addEventListener("change", () => { $("w-internet").disabled = !$("w-tools").checked; });
+  $("world-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const err = $("world-error");
+    err.hidden = true;
+    const lang = ev.target.querySelector('input[name="w-lang"]:checked');
+    try {
+      const r = await post("/api/voice/settings", {
+        language: lang ? lang.value : "auto", tools: $("w-tools").checked, internet: $("w-internet").checked, home_place: $("w-home").value.trim(),
+      });
+      app.voiceSettings = r.settings;
+      emit("voice", r.voice);
+      const running = r.voice.state === "on" || r.voice.state === "starting";
+      flash("world-saved", running ? "Saved. Marvin’s voice restarts." : "Saved");
+      renderOverview();
+    } catch (e) {
+      err.textContent = e.message;
+      err.hidden = false;
+    }
+  });
 }
 
 function setupVoiceForm() {
@@ -549,16 +666,20 @@ function setupVoiceForm() {
 export function setup() {
   setupSettings();
   setupVoiceForm();
-  $("open-system").addEventListener("click", openSystem);
+  setupMemoryModels();
+  setupWorld();
   on("state", renderOverview);
+  on("state", () => { if (app.view === "marvin" && app.sub === "robot") renderRobotNotice(); });
+  on("connection", () => { if (app.view === "marvin" && app.sub === "robot") renderRobotNotice(); });
   on("voice", renderOverview);
   on("settings", renderOverview);
   on("devices", (list) => { if (!robotView.es) renderDevices(list); });
   on("view", ({ view, sub }) => {
     robotView.update();
     if (view !== "marvin") return;
-    if (sub === "preferences") loadSettings();
-    if (sub === "voice") loadVoiceForm();
+    if (sub === "preferences") { loadSettings(); loadVoiceForm(); }
+    if (sub === "voice") { loadVoiceForm(); loadMemoryModels(); }
+    if (sub === "robot") renderRobotNotice();
     if (sub === "" || sub === "voice") api("/api/voice").then((v) => { app.voiceSettings = v.settings; renderOverview(); }).catch(() => {});
     if (sub === "robot") requestAnimationFrame(drawScene);
   });

@@ -11,17 +11,21 @@ import * as talk from "./talk.js";
 import * as memory from "./memory.js";
 import * as activity from "./activity.js";
 import * as marvin from "./marvin.js";
+import * as system from "./system.js";
 
 const VIEWS = ["home", "talk", "memory", "activity", "marvin"];
-const SUBS = { activity: ["", "history", "log"], marvin: ["", "robot", "voice", "preferences"] };
-// the old app's addresses, still honoured (bookmarks, the phone's home screen)
-const OLD = { robot: "marvin/robot", history: "activity/history", settings: "marvin/preferences" };
+const SUBS = { activity: ["", "history"], marvin: ["", "robot", "voice", "system", "preferences"] };
+// earlier addresses, still honoured (bookmarks, the phone's home screen)
+const OLD = { robot: "marvin/robot", history: "activity/history", settings: "marvin/preferences", "activity/log": "marvin/system" };
 
 // ------------------------------------------------------------------ navigation
 
 function route() {
   let h = (location.hash || "#home").slice(1);
-  if (OLD[h]) h = OLD[h];
+  if (OLD[h]) {
+    h = OLD[h];
+    history.replaceState(null, "", `#${h}`);
+  }
   let [view, sub = ""] = h.split("/");
   if (!VIEWS.includes(view)) view = "home";
   if (!(SUBS[view] || [""]).includes(sub)) sub = "";
@@ -89,7 +93,25 @@ function setConnection(state) {
     connecting: "Connecting", live: "Live · on this computer", lost: "Reconnecting", offline: "Robot offline",
   }[state];
   conn.title = $("conn-text").textContent;
+  // every screen: say plainly when what it shows may be out of date
+  const banner = $("conn-banner");
+  banner.hidden = state !== "lost" || !bannerDue;
+  emit("connection", state);
 }
+
+// the banner waits a few seconds: a short reconnection (the host restarting) should not flash it
+let bannerDue = false;
+let bannerTimer = 0;
+on("connection", (state) => {
+  if (state === "lost" && !bannerDue && !bannerTimer) {
+    bannerTimer = setTimeout(() => { bannerTimer = 0; bannerDue = true; if (app.connection === "lost") $("conn-banner").hidden = false; }, 4000);
+  } else if (state !== "lost") {
+    clearTimeout(bannerTimer);
+    bannerTimer = 0;
+    bannerDue = false;
+    $("conn-banner").hidden = true;
+  }
+});
 
 function setupSimBadge() {
   const b = $("sim-badge");
@@ -172,6 +194,7 @@ async function init() {
   memory.setup();
   activity.setup();
   marvin.setup();
+  system.setup();
   try {
     const r = await api("/api/state");
     app.settings = r.settings;

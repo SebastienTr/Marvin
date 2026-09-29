@@ -3,7 +3,10 @@
 """End-to-end walk through the Java host's app, the way a person would use it: every destination in both
 appearances at phone and desktop sizes (screenshots), the live robot page, History, the voice (typed questions,
 the weather tool, the remember tool and its chip, the reply inspector, Talk now, mute, stop), a decision on Home,
-the Home layout, the appearance (Auto follows the system, the geometry does not move), console errors."""
+the Home layout, the appearance (Auto follows the system, the geometry does not move), Memory (add, correct, pin,
+filters, search, forget with its second choice, the profile and its versions, export, the raw log, settings, a
+source switch, "forget everything" up to its typed phrase), Marvin > System (services, the log), the lost-connection
+banner, 320 px without sideways scrolling, console errors. The facts it adds are forgotten again at the end."""
 import json, os, sys, time, urllib.request
 from playwright.sync_api import sync_playwright
 
@@ -13,8 +16,8 @@ TAG = sys.argv[1] if len(sys.argv) > 1 else "demo"
 os.makedirs(OUT, exist_ok=True)
 errors, results = [], []
 SIZES = {"phone": ({"width": 390, "height": 844}, 2), "desktop": ({"width": 1440, "height": 900}, 1)}
-SCREENS = ["home", "talk", "memory", "activity", "activity/history", "activity/log", "marvin", "marvin/robot",
-           "marvin/voice", "marvin/preferences"]
+SCREENS = ["home", "talk", "memory", "activity", "activity/history", "marvin", "marvin/robot", "marvin/voice",
+           "marvin/system", "marvin/preferences"]
 
 
 def check(name, ok, detail=""):
@@ -97,9 +100,126 @@ def robot_and_history(browser):
     page.click("#day-prev")
     page.wait_for_timeout(1000)
     check("previous day", page.inner_text("#hday-h") == "Day", page.inner_text("#day [data-f=label]"))
-    page.goto(BASE + "/#activity/log")
+    page.goto(BASE + "/#activity/log")                 # the old address of the log
     page.wait_for_timeout(1000)
+    check("old #activity/log address opens Marvin > System", page.evaluate("location.hash") == "#marvin/system")
     check("log", page.locator("#log li").count() >= 1)
+    check("services listed", page.locator("#services .service").count() >= 4, page.inner_text("#services-summary"))
+    page.fill("#log-q", "zzzz-nothing")
+    page.wait_for_timeout(400)
+    check("log filter", page.locator("#log li").count() == 0 and page.is_visible("#log-empty"))
+    ctx.close()
+
+
+def memory(browser):
+    """Memory's screen, end to end, on the real API. What it adds, it forgets."""
+    ctx, page = context(browser, "desktop", "day")
+    page.goto(BASE + "/#memory")
+    page.wait_for_selector("#memory-count:not(:empty)")
+    page.click("#memory-add")
+    page.fill("#remember-text", "The e2e walk keeps a lemon tree on the balcony.")
+    page.click("dialog button.primary")
+    ok = wait_for(lambda: page.locator("#fact-list .fact:has-text('lemon tree')").count() == 1, 10)
+    check("memory: add", ok)
+    page.click("#fact-list .fact:has-text('lemon tree') button:has-text('Source & edit')")
+    page.wait_for_selector("#fact-text")
+    check("memory: the source is quoted", "lemon tree" in page.inner_text("dialog .source-quote"))
+    page.fill("#fact-text", "The e2e walk keeps two lemon trees on the balcony.")
+    page.click("dialog button:has-text('Save correction')")
+    check("memory: correct", wait_for(lambda: page.locator("#fact-list .fact:has-text('two lemon trees')").count() == 1, 10))
+    page.click("#fact-list .fact:has-text('two lemon trees') button:has-text('Pin')")
+    check("memory: pin", wait_for(lambda: page.locator("#fact-list .fact:has-text('two lemon trees') .pill:has-text('Pinned')").count() == 1, 10))
+    page.click("[data-memory-filter=pinned]")
+    check("memory: pinned filter", wait_for(lambda: page.locator("#fact-list .fact:has-text('two lemon trees')").count() == 1, 5))
+    page.click("[data-memory-filter=all]")
+    page.fill("#memory-search", "lemon")
+    check("memory: search", wait_for(lambda: page.locator("#fact-list .fact").count() == 1, 5))
+    page.fill("#memory-search", "")
+    page.wait_for_timeout(800)
+    page.click("#fact-list .fact:has-text('two lemon trees') button:has-text('Source & edit')")
+    page.wait_for_selector("#fact-text")
+    check("memory: the earlier version is kept in the fact's history", "one other version" in page.inner_text("#dialog-body").lower())
+    page.keyboard.press("Escape")
+    # forgetting is a second, explicit choice, and says the conversation stays
+    page.click("#fact-list .fact:has-text('two lemon trees') button:has-text('Source & edit')")
+    page.wait_for_selector("#fact-text")
+    page.click("dialog button:has-text('Forget this fact')")
+    page.wait_for_selector("dialog button:has-text('Forget fact')")
+    check("memory: forget asks a second time", "cannot be undone" in page.inner_text("#dialog-body"))
+    page.click("dialog button:has-text('Keep it')")
+    page.wait_for_selector("#fact-text")
+    page.click("dialog button:has-text('Forget this fact')")
+    page.click("dialog button:has-text('Forget fact')")
+    check("memory: forget", wait_for(lambda: page.locator("#fact-list .fact:has-text('lemon')").count() == 0
+                                     and not api("/api/memory/facts?q=lemon&filter=all")["facts"], 10))
+    # profile, versions, restore
+    before = api("/api/memory/profile")
+    page.click("#profile-open")
+    page.wait_for_selector("dialog .fact-flags button")
+    page.click("dialog .fact-flags button")
+    page.fill("#profile-text", ((before["current"] or {}).get("content", "") + "\n- Waters the lemon trees on Sundays.").strip())
+    page.click("dialog button:has-text('Save')")
+    check("memory: profile edited, the line is the owner's", wait_for(lambda: page.locator("dialog .profile-lines li.kept:has-text('lemon trees')").count() == 1, 10))
+    if before["current"]:
+        page.click(f"dialog .version:has-text('Version {before['current']['id']}') button")
+        check("memory: an older profile version restored",
+              wait_for(lambda: "lemon" not in (api("/api/memory/profile")["current"] or {}).get("content", ""), 10))
+    else:
+        api("/api/memory/profile", {"content": ""})
+    page.keyboard.press("Escape")
+    # export, raw log, settings, a source switch
+    page.click("#memory-export")
+    with page.expect_download() as d:
+        page.click("dialog a:has-text('JSON')")
+    check("memory: export", d.value.suggested_filename.endswith(".json"), d.value.suggested_filename)
+    page.keyboard.press("Escape")
+    page.click("#memory-log")
+    check("memory: raw log", wait_for(lambda: page.locator("dialog .mem-log li").count() >= 1, 10))
+    page.keyboard.press("Escape")
+    page.click("#memory-settings")
+    page.wait_for_selector("#ms-idle")
+    page.click("dialog button:has-text('Save')")
+    check("memory: settings saved", wait_for(lambda: not page.evaluate("document.getElementById('dialog').open"), 5))
+    page.uncheck("[data-source=collect_brain]")
+    off = wait_for(lambda: api("/api/memory/settings")["settings"]["collect_brain"] is False, 5)
+    page.check("[data-source=collect_brain]")
+    on = wait_for(lambda: api("/api/memory/settings")["settings"]["collect_brain"] is True, 5)
+    check("memory: a source switched off and on", off and on)
+    # forget everything: two steps, the phrase typed; cancelled here
+    page.click("#memory-forget-all")
+    page.click("dialog button:has-text('Continue')")
+    page.wait_for_selector("#forget-phrase")
+    gated = page.is_disabled("dialog button:has-text('Forget everything')")
+    page.fill("#forget-phrase", "forget everything")
+    check("memory: forget everything needs the typed phrase", gated and page.is_enabled("dialog button:has-text('Forget everything')"))
+    page.click("dialog button:has-text('Keep my memory')")
+    check("memory: forget everything cancelled", wait_for(lambda: not api("/api/memory/forget")["pending"], 5))
+    page.click("#memory-notice-retry") if page.is_visible("#memory-notice-retry") else None
+    ctx.close()
+
+
+def states(browser):
+    """The lost connection says so on every screen; nothing scrolls sideways at 320 px."""
+    ctx, page = context(browser, "desktop", "night")
+    seen = len(errors)
+    page.goto(BASE + "/#memory")
+    page.wait_for_timeout(1500)
+    page.route("**/api/stream", lambda r: r.abort())
+    page.reload()
+    check("lost connection: the banner says so", wait_for(lambda: page.is_visible("#conn-banner"), 20))
+    shot(page, "memory-offline-desktop")
+    ctx.close()
+    del errors[seen:]                                  # the aborted stream is this check's own doing
+    ctx = browser.new_context(viewport={"width": 320, "height": 700}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errors.append(f"320: pageerror {e}"))
+    wide = []
+    for s in SCREENS:
+        page.goto(f"{BASE}/#{s}")
+        page.wait_for_timeout(900)
+        if page.evaluate("document.documentElement.scrollWidth") > 320:
+            wide.append(s)
+    check("320 px: no screen scrolls sideways", not wide, ", ".join(wide))
     ctx.close()
 
 
@@ -235,8 +355,16 @@ with sync_playwright() as p:
     if os.environ.get("TALK", "1") == "1":
         talk(b)
     home(b)
+    memory(b)
+    states(b)
     gallery(b)
     b.close()
+
+# what the walk taught Marvin, forgotten again (the demo's memory stays as it was)
+for f in api("/api/memory/facts?filter=all&q=water%20the%20plants%20on%20Sundays&limit=50")["facts"]:
+    if f["statement"].lower().startswith("i water the plants on sundays"):
+        code = api("/api/memory/facts/forget", {"id": f["id"]})["confirm"]
+        api("/api/memory/facts/forget", {"confirm": code})
 
 check("no console errors", not errors, "; ".join(errors[:5]))
 print(f"{sum(r[1] for r in results)}/{len(results)} passed")

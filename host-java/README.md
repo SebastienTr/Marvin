@@ -18,8 +18,10 @@ simulator, the Rerun viewer and replays; only one host can own UDP 47100 at a ti
 Memory v1 is under way (design phase 3): the event log, facts, episodes, the profile and the memory worker (the
 write path); the profile in the system prompt, the question's memory sections within their token budgets, the
 `remember`, `recall` and `forget` tools and the memory API (the read path); the new app with its Day and Night
-appearances, Home, Talk and the reply inspector's memory report (the app shell). The full Memory screen comes next. How it
-works: [docs/memory.md](../docs/memory.md).
+appearances, Home, Talk and the reply inspector's memory report (the app shell); the Memory screen (facts with their
+sources, corrections, pins, forgetting, the profile and its versions, the days and weeks, the worker, the sources it
+learns from, export and "forget everything"), Activity and Marvin with System (the app screens). How it works:
+[docs/memory.md](../docs/memory.md).
 
 Before relying on it with real boards and a real model, run the manual
 [test plan](../docs/test-plan.md); to review the change, start with the

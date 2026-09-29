@@ -76,6 +76,9 @@
     </aside>
 
     <main class="workspace" id="main" tabindex="-1">
+      <div class="conn-banner" id="conn-banner" role="status" hidden>
+        <p><b id="conn-banner-title">Marvin’s host is not answering.</b> <span id="conn-banner-text">Reconnecting… What you see may be out of date.</span></p>
+      </div>
 
       <!-- ============================================================ home -->
       <section class="view" data-view="home" aria-labelledby="home-title">
@@ -232,29 +235,75 @@
             <h1 id="memory-title" tabindex="-1">The things that stay.</h1>
             <p class="intro">Yours to correct, keep or forget.</p>
           </div>
-          <a class="button" id="memory-export" href="/api/memory/export?format=json" download>Export</a>
+          <button type="button" id="memory-export">Export</button>
         </header>
+        <div class="notice page-notice" id="memory-notice" role="status" hidden>
+          <p class="notice-title" id="memory-notice-title"></p>
+          <p class="notice-text" id="memory-notice-text"></p>
+          <p class="notice-fix" id="memory-notice-fix" hidden><span class="muted">Fix:</span> <code id="memory-notice-code"></code></p>
+          <button type="button" class="small-button" id="memory-notice-retry">Check again</button>
+        </div>
         <div class="subnav" role="group" aria-label="Memory filter">
-          <button type="button" data-memory-filter="all" aria-pressed="true">All memories</button>
-          <button type="button" data-memory-filter="pinned" aria-pressed="false">Pinned</button>
-          <button type="button" data-memory-filter="suggested" aria-pressed="false">Suggested</button>
+          <button type="button" data-memory-filter="all" aria-pressed="true">All memories<span class="sub-count" data-memory-count="all"></span></button>
+          <button type="button" data-memory-filter="pinned" aria-pressed="false">Pinned<span class="sub-count" data-memory-count="pinned"></span></button>
+          <button type="button" data-memory-filter="suggested" aria-pressed="false">Suggested<span class="sub-count" data-memory-count="suggested"></span></button>
+          <button type="button" data-memory-filter="past" aria-pressed="false">Past<span class="sub-count" data-memory-count="past"></span></button>
         </div>
         <div class="memory-layout">
-          <section class="panel" aria-labelledby="facts-h">
-            <div class="row"><h3 id="facts-h">Your memories</h3><span class="small muted" id="memory-count"></span></div>
-            <label class="search"><span class="small muted">Find</span><input type="search" id="memory-search" maxlength="200" placeholder="Search a memory…"></label>
-            <ol class="facts" id="fact-list"></ol>
-            <div class="empty" id="memory-empty" hidden><h3>Nothing here yet.</h3><p class="small" id="memory-empty-text"></p></div>
+          <section class="panel facts-panel" aria-labelledby="facts-h">
+            <div class="row"><h3 id="facts-h">Your memories</h3><span class="small muted" id="memory-count" role="status"></span></div>
+            <p class="small muted filter-hint" id="memory-filter-hint"></p>
+            <div class="search-row">
+              <label class="search"><span class="small muted">Find</span><input type="search" id="memory-search" maxlength="200" placeholder="Search a memory…" enterkeyhint="search"></label>
+              <button type="button" id="memory-add" class="add-button"><span aria-hidden="true">+</span><span>Add</span><span class="sr"> a memory</span></button>
+            </div>
+            <div class="bulk" id="memory-bulk" hidden>
+              <p class="small" id="memory-bulk-text"></p>
+              <button type="button" class="small-button" id="memory-review-all">Keep all shown</button>
+            </div>
+            <ol class="facts" id="fact-list" aria-labelledby="facts-h"></ol>
+            <div class="loading-lines" id="memory-loading" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="empty" id="memory-empty" hidden><h3 id="memory-empty-title">Nothing here yet.</h3><p class="small" id="memory-empty-text"></p>
+              <button type="button" class="small-button" id="memory-empty-retry" hidden>Try again</button></div>
+            <div class="more-row"><button type="button" class="small-button" id="memory-more" hidden>Show more</button></div>
           </section>
           <aside class="stack profile-panel">
-            <section class="panel" aria-labelledby="profile-h">
-              <span class="label muted" id="profile-h">Your profile</span>
-              <div id="profile-body"></div>
+            <section class="panel profile-card" aria-labelledby="profile-h">
+              <div class="row"><span class="label muted" id="profile-h">Your profile</span><span class="small muted" id="profile-tokens"></span></div>
+              <div id="profile-body"><div class="loading-lines" aria-hidden="true"><i></i><i></i></div></div>
+              <button type="button" class="link-button small" id="profile-open">Read profile &amp; versions ↗</button>
             </section>
-            <section class="panel">
-              <h3>Memory, on your terms.</h3>
+            <section class="panel" aria-labelledby="episodes-h">
+              <div class="panel-head"><h3 id="episodes-h">Days, in Marvin’s words</h3></div>
+              <div class="chips" role="radiogroup" aria-label="Summaries of">
+                <label><input type="radio" name="episode-level" value="day" checked><span>Days</span></label>
+                <label><input type="radio" name="episode-level" value="week"><span>Weeks</span></label>
+                <label><input type="radio" name="episode-level" value="month"><span>Months</span></label>
+              </div>
+              <p class="small muted gap-top" id="episodes-today"></p>
+              <ol class="episodes" id="episodes"></ol>
+              <p class="empty-line muted" id="episodes-empty" hidden></p>
+              <button type="button" class="link-button small" id="episodes-more" hidden>Show all</button>
+            </section>
+            <section class="panel" aria-labelledby="mworker-h">
+              <div class="panel-head"><h3 id="mworker-h">Memory at work</h3><span class="pill" data-worker-pill>–</span></div>
+              <div data-worker-body="full"><div class="loading-lines" aria-hidden="true"><i></i><i></i><i></i></div></div>
+            </section>
+            <section class="panel terms" aria-labelledby="terms-h">
+              <h3 id="terms-h">Memory, on your terms.</h3>
               <p class="small muted gap-top">Each fact keeps its source. Forgetting a fact removes it from future context; nothing is deleted without your say. Everything stays on this computer.</p>
-              <p class="small muted gap-top" id="memory-worker-line"></p>
+              <fieldset class="field sources" id="memory-sources">
+                <legend>What Marvin may learn from</legend>
+                <label class="check"><input type="checkbox" data-source="collect_conversation"><span>Your conversations<small class="muted">What you say to Marvin and what it answers</small></span></label>
+                <label class="check"><input type="checkbox" data-source="collect_brain"><span>What Marvin notices<small class="muted">Presence, breaks and the robot’s moments</small></span></label>
+                <label class="check"><input type="checkbox" checked disabled><span>What you tell it here<small class="muted">Always: your own edits and memories</small></span></label>
+                <p class="hint" id="memory-sources-note">Switching a source off stops it from feeding memory at once. What is already remembered stays until you forget it.</p>
+              </fieldset>
+              <div class="terms-actions">
+                <button type="button" class="small-button" id="memory-settings">Settings</button>
+                <button type="button" class="small-button" id="memory-log">The raw log</button>
+                <button type="button" class="small-button danger" id="memory-forget-all">Forget everything…</button>
+              </div>
             </section>
           </aside>
         </div>
@@ -272,23 +321,31 @@
         <nav class="subnav" aria-label="Activity sections">
           <a href="#activity" data-sub="">Today</a>
           <a href="#activity/history" data-sub="history">History</a>
-          <a href="#activity/log" data-sub="log">Log</a>
         </nav>
 
         <div class="sub" data-sub="" data-of="activity">
           <div class="activity-grid">
-            <section class="panel" aria-labelledby="tasks-h">
-              <div class="panel-head"><h3 id="tasks-h">Background tasks</h3><span class="pill">Coming later</span></div>
-              <div class="empty"><h3>Nothing in motion.</h3><p class="small">Marvin cannot run tasks for you yet. When it can, each task will show its steps and budget here, and wait for your approval before anything leaves this computer.</p></div>
+            <section class="panel task-empty" aria-labelledby="tasks-h">
+              <div class="panel-head"><span class="label muted" id="tasks-h">Tasks &amp; approvals</span><span class="pill">Coming later</span></div>
+              <h2 class="panel-title">Nothing in motion.</h2>
+              <p class="small muted">Marvin cannot run tasks for you yet. When it can, this is where they will be:</p>
+              <ul class="later-list">
+                <li><b>Each task and its steps</b><span>What Marvin read, what it prepared, what is left.</span></li>
+                <li><b>Its budget</b><span>The time and the model’s work it may spend, and what it spent.</span></li>
+                <li><b>Your approval</b><span>Anything that would leave this computer waits here for your yes, on the exact version you read.</span></li>
+              </ul>
+              <p class="small muted gap-top">Today, the only thing that waits for you is a request to forget, on Home.</p>
             </section>
             <section class="panel" aria-labelledby="worker-h">
-              <div class="panel-head"><h3 id="worker-h">Memory at work</h3><span class="pill" id="worker-pill">–</span></div>
-              <div id="worker-body"><p class="small muted">Loading…</p></div>
+              <div class="panel-head"><h3 id="worker-h">Memory at work</h3><span class="pill" data-worker-pill>–</span></div>
+              <div data-worker-body="compact"><div class="loading-lines" aria-hidden="true"><i></i><i></i><i></i></div></div>
             </section>
             <section class="panel wide" aria-labelledby="today-moments-h">
               <div class="panel-head"><h3 id="today-moments-h">Today’s moments</h3><span class="small muted" id="today-moments-date"></span></div>
-              <ol class="recent" id="all-events"></ol>
+              <ol class="recent capped" id="all-events"></ol>
+              <div class="loading-lines" id="all-events-loading" aria-hidden="true"><i></i><i></i><i></i></div>
               <p class="empty-line muted" id="all-events-empty" hidden>Nothing yet today.</p>
+              <div class="more-row"><button type="button" class="small-button" id="all-events-more" hidden>Show all</button></div>
             </section>
           </div>
         </div>
@@ -321,10 +378,19 @@
                 <div><dt>Longest streak</dt><dd data-f="longest">–</dd></div>
               </dl>
               <p class="small muted" data-f="facts"></p>
+              <div class="day-summary" id="day-summary">
+                <span class="label muted">In Marvin’s words</span>
+                <p id="day-summary-text" class="muted small"></p>
+              </div>
             </section>
             <section class="panel" aria-labelledby="week-h">
               <div class="panel-head"><h3 id="week-h">Last 7 days</h3><span class="small muted" id="week-avg"></span></div>
               <ol class="week" id="week"></ol>
+              <div class="week-summaries">
+                <span class="label muted">Weeks, in Marvin’s words</span>
+                <ol class="episodes" id="week-episodes"></ol>
+                <p class="empty-line muted" id="week-episodes-empty" hidden>No week written yet. Marvin sums up a week the night after it ends.</p>
+              </div>
             </section>
             <section class="panel wide convo-card" aria-labelledby="convo-h" id="convo-card">
               <div class="panel-head"><h3 id="convo-h">Conversations</h3><span class="small muted" id="convo-day"></span></div>
@@ -340,23 +406,6 @@
             </section>
           </div>
         </div>
-
-        <div class="sub" data-sub="log" data-of="activity" hidden>
-          <section class="panel" aria-labelledby="log-h">
-            <div class="panel-head wrap">
-              <h3 id="log-h">Log</h3>
-              <div class="chips" role="radiogroup" aria-label="Show">
-                <label><input type="radio" name="log-filter" value="" checked><span>All</span></label>
-                <label><input type="radio" name="log-filter" value="brain"><span>Marvin</span></label>
-                <label><input type="radio" name="log-filter" value="device"><span>Devices</span></label>
-                <label><input type="radio" name="log-filter" value="voice"><span>Voice</span></label>
-                <label><input type="radio" name="log-filter" value="warning"><span>Warnings</span></label>
-              </div>
-            </div>
-            <ol class="log" id="log"></ol>
-            <p class="empty-line muted" id="log-empty" hidden>Nothing to show.</p>
-          </section>
-        </div>
       </section>
 
       <!-- ============================================================ marvin -->
@@ -371,7 +420,8 @@
         <nav class="subnav" aria-label="Marvin sections">
           <a href="#marvin" data-sub="">Overview</a>
           <a href="#marvin/robot" data-sub="robot">Robot</a>
-          <a href="#marvin/voice" data-sub="voice">Voice</a>
+          <a href="#marvin/voice" data-sub="voice">Voice &amp; models</a>
+          <a href="#marvin/system" data-sub="system">System</a>
           <a href="#marvin/preferences" data-sub="preferences">Preferences</a>
         </nav>
 
@@ -382,7 +432,7 @@
               <div class="device-status"><span class="pill" id="device-pill">–</span><p id="device-line">–</p></div>
               <div class="system-item"><div><h3>Room sensors</h3><p id="sensors-line">Lidar, presence and breathing</p></div><a class="button small-button" href="#marvin/robot">Inspect</a></div>
               <div class="system-item"><div><h3>Voice</h3><p id="system-voice-line">–</p></div><a class="button small-button" href="#marvin/voice">Manage</a></div>
-              <div class="system-item"><div><h3>System</h3><p id="system-line">Models, services and local storage</p></div><button type="button" class="small-button" id="open-system">Open</button></div>
+              <div class="system-item"><div><h3>System</h3><p id="system-line">Services, models, storage and the log</p></div><a class="button small-button" href="#marvin/system">Open</a></div>
             </section>
             <section class="panel" aria-labelledby="soul-h">
               <div class="row"><h3 id="soul-h">Soul</h3><span class="pill">Coming later</span></div>
@@ -404,6 +454,10 @@
         </div>
 
         <div class="sub" data-sub="robot" data-of="marvin" hidden>
+          <div class="notice page-notice" id="robot-notice" role="status" hidden>
+            <p class="notice-title" id="robot-notice-title"></p>
+            <p class="notice-text" id="robot-notice-text"></p>
+          </div>
           <section class="panel" aria-labelledby="devices-h">
             <div class="panel-head"><h3 id="devices-h">Devices</h3><span class="small muted" id="devices-summary"></span></div>
             <ul class="devices" id="devices"></ul>
@@ -444,6 +498,7 @@
         </div>
 
         <div class="sub" data-sub="voice" data-of="marvin" hidden>
+          <div class="system-grid">
           <form class="panel form" id="voice-form" aria-labelledby="voice-h">
             <h3 id="voice-h">Voice</h3>
             <p class="hint" id="voice-form-note">Saved to <code>voice.json</code>. Applying restarts Marvin’s voice.</p>
@@ -500,6 +555,67 @@
             <p class="form-error" id="voice-error" role="alert" hidden></p>
             <div class="actions"><span class="saved muted" id="voice-saved" role="status"></span><button type="submit" class="primary">Apply</button></div>
           </form>
+          <div class="stack">
+            <section class="panel" aria-labelledby="ollama-h">
+              <div class="panel-head"><h3 id="ollama-h">Ollama</h3><span class="pill" id="ollama-pill">–</span></div>
+              <p class="small muted" id="ollama-line">Checking…</p>
+              <ul class="model-list" id="ollama-models" aria-label="Models installed in Ollama"></ul>
+            </section>
+            <form class="panel form" id="memory-models-form" aria-labelledby="mmodels-h">
+              <h3 id="mmodels-h">Memory’s models</h3>
+              <p class="hint">Memory reads what happened while you are away, and rewrites your profile at night. It always gives way to the voice. Saving does not restart anything.</p>
+              <fieldset class="fields" id="memory-models-fields">
+                <legend class="sr">Memory’s models</legend>
+                <div class="field">
+                  <label for="m-model">During the day</label>
+                  <input id="m-model" type="text" list="v-llm-list" spellcheck="false" autocapitalize="off" placeholder="The voice’s model">
+                  <p class="hint">Empty: the voice’s model, already loaded, so nothing else competes for memory.</p>
+                </div>
+                <div class="field">
+                  <label for="m-night">At night</label>
+                  <input id="m-night" type="text" list="v-llm-list" spellcheck="false" autocapitalize="off" placeholder="The same as during the day">
+                  <p class="hint">A larger model can take the night, when nobody waits for an answer.</p>
+                </div>
+                <div class="field">
+                  <label for="m-embed">Search by meaning</label>
+                  <input id="m-embed" type="text" list="v-llm-list" spellcheck="false" autocapitalize="off" required>
+                  <p class="hint" id="m-embed-hint">The embedding model that finds related memories.</p>
+                </div>
+              </fieldset>
+              <p class="form-error" id="memory-models-error" role="alert" hidden></p>
+              <div class="actions"><span class="saved muted" id="memory-models-saved" role="status"></span><button type="submit" class="primary">Save</button></div>
+            </form>
+          </div>
+          </div>
+        </div>
+
+        <div class="sub" data-sub="system" data-of="marvin" hidden>
+          <div class="system-grid">
+            <section class="panel" aria-labelledby="services-h">
+              <div class="panel-head"><h3 id="services-h">Services</h3><span class="small muted" id="services-summary"></span></div>
+              <ul class="services" id="services"><li class="loading-lines" aria-hidden="true"><i></i><i></i><i></i></li></ul>
+            </section>
+            <section class="panel" aria-labelledby="host-h">
+              <div class="panel-head"><h3 id="host-h">This computer</h3><span class="pill" id="host-mode">–</span></div>
+              <ul class="worker-lines" id="host-lines"></ul>
+              <p class="small muted gap-top">Marvin’s host, its database, its memory and its models all run here. Nothing is sent elsewhere, except what an online tool needs, when you allow it.</p>
+            </section>
+            <section class="panel wide" aria-labelledby="log-h">
+              <div class="panel-head wrap">
+                <h3 id="log-h">Log</h3>
+                <div class="chips" role="radiogroup" aria-label="Show">
+                  <label><input type="radio" name="log-filter" value="" checked><span>All</span></label>
+                  <label><input type="radio" name="log-filter" value="brain"><span>Marvin</span></label>
+                  <label><input type="radio" name="log-filter" value="device"><span>Devices</span></label>
+                  <label><input type="radio" name="log-filter" value="voice"><span>Voice</span></label>
+                  <label><input type="radio" name="log-filter" value="warning"><span>Warnings</span></label>
+                </div>
+              </div>
+              <label class="search log-search"><span class="small muted">Find</span><input type="search" id="log-q" maxlength="200" placeholder="Filter the log…"></label>
+              <ol class="log log-scroll" id="log" tabindex="0" aria-label="Log entries, newest first"></ol>
+              <p class="empty-line muted" id="log-empty" hidden>Nothing to show.</p>
+            </section>
+          </div>
         </div>
 
         <div class="sub" data-sub="preferences" data-of="marvin" hidden>
@@ -544,6 +660,35 @@
                 </fieldset>
                 <div class="actions"><span class="saved muted" id="layout-saved" role="status"></span><button type="button" id="reset-layout-2">Reset the Home layout</button></div>
               </section>
+              <form class="panel form" id="world-form" aria-labelledby="world-h">
+                <h3 id="world-h">Language and the outside world</h3>
+                <fieldset class="fields" id="world-fields">
+                  <legend class="sr">Language, tools and home</legend>
+                  <fieldset class="field">
+                    <legend>Language</legend>
+                    <div class="segmented">
+                      <label><input type="radio" name="w-lang" value="auto"><span>Auto</span></label>
+                      <label><input type="radio" name="w-lang" value="fr"><span>Français</span></label>
+                      <label><input type="radio" name="w-lang" value="en"><span>English</span></label>
+                    </div>
+                    <p class="hint">Auto answers in the language you speak.</p>
+                  </fieldset>
+                  <fieldset class="field">
+                    <legend>Tools</legend>
+                    <label class="check"><input id="w-tools" type="checkbox"><span>Let Marvin use tools</span></label>
+                    <label class="check"><input id="w-internet" type="checkbox"><span>Internet, for the tools that need it</span></label>
+                    <p class="hint">Off: Marvin stays fully offline. The weather sends only the place name.</p>
+                  </fieldset>
+                  <div class="field">
+                    <label for="w-home">Home place</label>
+                    <input id="w-home" type="text" maxlength="80" autocomplete="address-level2" spellcheck="false">
+                    <p class="hint">For the weather when you don’t say where.</p>
+                  </div>
+                </fieldset>
+                <p class="form-error" id="world-error" role="alert" hidden></p>
+                <div class="actions"><span class="saved muted" id="world-saved" role="status"></span><button type="submit" class="primary">Save</button></div>
+                <p class="hint" id="world-note">These are the voice’s settings: saving restarts Marvin’s voice for a few seconds.</p>
+              </form>
               <section class="panel" aria-labelledby="data-h">
                 <h3 id="data-h">Your data</h3>
                 <p class="small muted gap-top" id="about-data">History is stored on this computer only.</p>

@@ -1357,3 +1357,114 @@ already sent). `renderVoice` and the live handlers are the old ones.
 - Listen with `on("memory", ...)` from `core.js`; `emit("badge", {view, n, label})` sets a destination's count.
 - New files must be added to `AppController.STATIC_TYPES` (AppFilesTest fails otherwise); new colours to both theme
   blocks (it fails otherwise too).
+
+## Stage: app screens
+
+The new app, part 2: Memory, Activity and Marvin built for real on the designer's direction (Day "Herbier", Night
+"Halo"), on the real API, in both appearances and both sizes. No change on the host's Java side except the three new
+files in `AppController.STATIC_TYPES`: every route the screens need already existed (read path stage).
+
+### What exists
+
+- **Memory** (`memory.js`, `memdata.js`, `memtools.js`, `worker.js`):
+  - Filters **All memories**, **Pinned**, **Suggested**, **Past** with their counts, a search (Escape clears it),
+    pages of 50 (**Show more**). Rows: status (Yours, Reviewed, Suggested, Pinned, No longer true, Replaced,
+    Archived), sensitivity, source line, **Source & edit**, **Pin**/**Unpin**, **Keep** for a suggestion, **Bring
+    back** for an archived fact; **Keep all shown** on Suggested; **Add** (the owner's memory, stored at once).
+  - "Source & edit": the sources quoted and dated, the owner's own words first, two shown and the rest folded,
+    each with **Open that conversation** (History, scrolled to the line and flashed); the correction with its
+    sensitivity (a new version, `POST facts/edit`); Pin, Keep as reviewed, Archive/Bring back; use count, learned
+    by, confidence, importance; the other versions. **Forget this fact** opens a second screen that says what goes
+    and that the conversation stays in History; only its **Forget fact** proposes and confirms (code, then
+    confirm, both in one gesture since the owner has just made the second choice).
+  - Profile card; **Read profile & versions**: the lines (the owner's marked), every version with its diff and
+    **Use this version again** (`profile/restore`), **Edit** (lines added or changed become `kept_lines`, lines the
+    owner kept stay kept, removed lines go).
+  - "Days, in Marvin's words": day, week, month episodes, the stale ones marked, today's line ("written tonight,
+    after 03:00").
+  - Memory at work (shared with Activity, one request for both): state, pending, last passes, next night, models,
+    what the last pass did in words, **Consolidate now** and **Run the nightly pass** (Memory only), the
+    embedding problem with its fix. The same problem shows as a notice at the top of Memory with **Check again**.
+  - Memory, on your terms: the per-source switches (instant, `POST /api/memory/settings`), **Settings** (worker
+    on/off, idle minutes, night hour, retention), **The raw log** (search, older pages), **Export** (JSON or
+    Markdown), **Forget everything** (what goes and what stays, **Continue** asks the host for a code, then the
+    phrase must be typed before the button enables; **Keep my memory** cancels the proposal on the host).
+- **Activity**: Today = Tasks & approvals (an honest empty state listing what will appear: steps, budget, approval
+  on the exact version; and that today only a forget request waits, on Home), Memory at work, today's moments (12,
+  then **Show all**). History = the day card plus that day "in Marvin's words" (its episode, "written tonight" for
+  today, or "not written"), the last seven days plus the weeks in Marvin's words, conversations and search.
+- **Marvin**: Overview (unchanged, System now a link); Robot with a notice for offline (last heard, views frozen),
+  host not answering, simulated sensors; **Voice & models** = the voice form, Ollama (reachable or its fix, its
+  models and their roles: voice, memory, night, search), memory's models (day, night, embedding, with the
+  embedding's state); **System** (`system.js`) = services (database, robot link, memory with the embedding fix,
+  voice sidecar with **Restart the voice**, Ollama), this computer (version, mode, data folder), the log with its
+  filters and a text filter, live, in a scrolling box; Preferences + "Language and the outside world" (language,
+  tools, internet, home place: a partial `POST /api/voice/settings`).
+- **States**: a lost stream shows a banner on every screen after 4 s ("What you see may be out of date") and hides
+  it on reconnection; lists show a pulsing placeholder while loading; every panel that cannot be read says why
+  (with **Try again** on the fact list and the worker); empty states per filter and per episode level.
+
+### Decisions and deviations
+
+1. **The log moved to Marvin > System** (the task list for this stage puts it there): diagnostics live with the
+   services, Activity keeps what happened. `#activity/log` redirects there (`history.replaceState`).
+2. **Past = the past and the archived, together** (two requests, merged by date). Replaced versions are not in it:
+   `JdbcFactStore` keeps them out of `past` on purpose, and each fact shows them in its own history. Its hint and
+   empty text say so.
+3. **Forgetting a fact from the app is one gesture after the second choice**: the dialog's "Forget fact" asks the
+   host for the code and confirms it at once. The code protects the voice path (a model must not forget on its
+   own); in the app the owner's explicit second click is the confirmation.
+4. **Voice sidecar restart = off, then on** from the app (`/api/voice/off`, `/api/voice/on`). No new endpoint: the
+   host already restarts it this way, and the other services (PostgreSQL in Docker, Ollama) are not the host's to
+   restart; their fix is shown instead.
+5. **Language, tools, internet and home place are the voice's settings**: Preferences edits them with a partial
+   update, and says that saving restarts the voice (VoiceService restarts on any change; not changed here, since
+   the sidecar's configuration is read at start).
+6. **At 320 px the Simulated badge is hidden** in the top bar (it overlapped the appearance switch); the robot page
+   and Home's breathing still say "Simulated".
+7. The fact dialog's title is the design's "Remembered, with a source." (the statement is in the editor); past
+   facts show "No longer current." and their statement read-only.
+
+### Verified
+
+- `./mvnw verify`: 307 tests, 0 failures, 1 skipped (the embedded-database test, as root); ArchUnit, `AppFilesTest`
+  (the three new files served and used, no inline code, Day and Night the same variables) and `ApiContractIT`
+  green. One run failed `MemoryEndToEndIT.theWritePath` (5 events expected, 4 seen right after `flush`); it passed
+  alone and in the next full run: a timing flake in that test, not in this stage's code (known gap below).
+- `cd host && python3 -m pytest -q`: 305 passed, 3 skipped.
+- `python3 host-java/e2e/e2e.py app` against `./marvin demo --voice` (stub Ollama, voice `--fake`): 55/55, no
+  console error. New: System (services, the log and its filter, the old `#activity/log` address), Memory (add,
+  source quoted, correct, the earlier version in the fact's history, pin, pinned filter, search, forget with its
+  second choice and "Keep it", the profile edited with the owner's line and an older version restored, export,
+  raw log, settings, a source off and on, "forget everything" gated by the typed phrase then cancelled on the host),
+  the lost-connection banner (stream aborted), every screen at 320 px without sideways scrolling. The walk forgets
+  what it taught Marvin at the end.
+- Screenshots: `/mnt/user-data/outputs/memory-shots/` (the e2e gallery, `app-*`), `app-screens/` (Memory, Activity,
+  History, Marvin's five pages at 1440x900, 390x844 and 320x700, Day and Night) with `app-screens/dialogs/`
+  (add, Source & edit, forget, profile and versions, export, raw log, settings, forget everything's two steps,
+  Past and Suggested, both appearances), `compare/` (prototype | built for Memory, Activity, Marvin, both
+  appearances, both sizes).
+
+### Latency
+
+Nothing on the voice path changed: no host code, no new work per question. The worker panel reads
+`/api/memory/worker` at most once a second when the stream says it changed.
+
+### Known gaps
+
+- `MemoryEndToEndIT.theWritePath` can fail on a slow run (the event count read right after `flush`); worth a wait
+  in the test.
+- A forget proposal's expiry still sends nothing on the stream (Home re-checks at the expiry time; the "forget
+  everything" dialog says when it expires and reports an expired code).
+- "Past" pages both lists by 50 each; with more than 50 of either, **Show more** fetches the next 50 of both.
+- Saving the language, tools or home place restarts the voice (a few seconds); a restart only when the sidecar's own
+  settings change would need VoiceService to tell them apart.
+- Importance is shown but not editable in the app (the API accepts it).
+- The prototype's `gallery.html` views were not compared one by one.
+
+### Hints for the next stages
+
+- Tasks and approvals: Activity's `task-empty` panel and Home's decision are where they go; the decision must bind
+  to the exact version the owner read (handoff.md).
+- Soul and connectors: Marvin's overview has their "coming later" panels; a connector's memory permission belongs
+  beside Memory's per-source switches (`[data-source]`).

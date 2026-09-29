@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
-// Activity: what is in motion (background tasks: not yet; memory's worker: its passes and "Consolidate now"),
-// today's moments, History (any day's timeline and numbers, the last seven days, the conversation of that day
-// and a search over everything said), and the log.
+// Activity: what is in motion (tasks and approvals: an honest empty state until they exist; memory's worker),
+// today's moments, and History: any day's timeline and numbers with the day in Marvin's words, the last seven
+// days, the weeks in Marvin's words, the conversation of that day and a search over everything said.
 
-import { $, app, el, api, post, on, emit, fmtDuration, fmtTime, timeEl, plural, isoDate, parseIso, dayLabel, longDate, whenLabel, reduceMotion, toast } from "./core.js";
+import { $, app, el, api, on, fmtDuration, fmtTime, timeEl, plural, isoDate, parseIso, dayLabel, longDate, reduceMotion } from "./core.js";
 import { DayCard } from "./daycard.js";
 import { ConvoBuilder } from "./convo.js";
+import { episodeItem } from "./memory.js";
+import * as worker from "./worker.js";
 
 const QUIET_KINDS = new Set(["vitals_acquired", "vitals_lost"]);
 const SYSTEM_KINDS = new Set(["host_started", "host_stopped", "robot_online", "robot_offline"]);
@@ -13,48 +15,6 @@ let historyDay;
 let shown = null;             // the day History shows (YYYY-MM-DD); null = today
 let history = [];
 let lastEventId = 0;
-
-// ------------------------------------------------------------------ memory's worker
-
-function renderWorker(w) {
-  const pill = $("worker-pill");
-  pill.textContent = w.state === "running" ? "Working" : w.state === "off" ? "Off" : "Waiting";
-  pill.className = `pill${w.state === "running" ? " attention-pill" : ""}`;
-  const ul = el("ul", "worker-lines");
-  const line = (a, b) => { const li = el("li"); li.append(el("span", null, a), el("span", null, b)); ul.append(li); };
-  if (w.state === "running") line("Now", `${w.pass || "a"} pass${w.step ? `: ${w.step}` : ""}`);
-  line("Waiting to be read", plural(w.pending || 0, "event", "events"));
-  line("Last pass while you were away", w.last_idle_at ? whenLabel(w.last_idle_at) : "none yet");
-  line("Last nightly pass", w.last_night_at ? whenLabel(w.last_night_at) : "none yet");
-  if (w.next_night_at) line("Next nightly pass", w.next_night_at * 1000 < Date.now() ? "due, once you are away" : whenLabel(w.next_night_at));
-  const models = w.models || {};
-  line("Model", models.uses_voice_model ? "the voice’s model" : models.memory_model);
-  if (models.night_model) line("At night", models.night_model);
-  const nodes = [ul];
-  if (w.last) {
-    const l = w.last;
-    const counts = Object.entries(l.counts || {}).map(([k, v]) => `${v} ${k.replace(/_/g, " ")}`).join(", ");
-    nodes.push(el("p", "small muted gap-top", `Last: ${l.pass} pass ${l.outcome}${l.seconds != null ? ` in ${l.seconds.toFixed(1)} s` : ""}${counts ? ` (${counts})` : ""}.${l.error ? ` ${l.error}` : ""}${l.fix ? ` ${l.fix}` : ""}`));
-  }
-  const e = w.embeddings || {};
-  if (e.state === "unavailable") nodes.push(el("p", "small gap-top notice-inline", `Search by meaning is unavailable. ${e.fix || e.error || ""}`));
-  const acts = el("div", "worker-actions");
-  const b = el("button", null, "Consolidate now");
-  b.type = "button";
-  b.disabled = w.state === "running" || w.state === "off";
-  b.title = "Read what is waiting now, without waiting for you to be away. It pauses whenever Marvin talks.";
-  b.addEventListener("click", async () => {
-    b.disabled = true;
-    try { renderWorker(await post("/api/memory/consolidate", {})); toast("Memory is reading what is waiting."); } catch (err) { toast(err.message); b.disabled = false; }
-  });
-  acts.append(b, el("span", "small muted", "It always gives way to the voice."));
-  nodes.push(acts);
-  $("worker-body").replaceChildren(...nodes);
-}
-
-async function loadWorker() {
-  try { renderWorker(await api("/api/memory/worker")); } catch (e) { $("worker-body").replaceChildren(el("p", "small muted", "Memory is not available.")); }
-}
 
 // ------------------------------------------------------------------ today's moments
 
@@ -69,13 +29,32 @@ function eventItem(e) {
 }
 
 async function loadEvents() {
-  const r = await api("/api/events?quiet=1&limit=50");
+  let r;
+  try {
+    r = await api("/api/events?quiet=1&limit=50");
+  } catch (e) {
+    $("all-events-loading").hidden = true;
+    if (!$("all-events").children.length) {
+      $("all-events-empty").hidden = false;
+      $("all-events-empty").textContent = `Today’s moments cannot be read: ${e.message}`;
+    }
+    return;
+  }
+  $("all-events-loading").hidden = true;
+  $("all-events-empty").textContent = "Nothing yet today.";
   const start = app.today ? app.today.start : 0;
   const today = r.events.filter((e) => e.ts >= start);
   $("all-events").replaceChildren(...today.map(eventItem));
   lastEventId = r.events.reduce((m, e) => Math.max(m, e.id), lastEventId);
   $("all-events-empty").hidden = today.length > 0;
   if (app.today) $("today-moments-date").textContent = longDate(app.today.date);
+  moreButton();
+}
+
+function moreButton() {
+  const list = $("all-events"), b = $("all-events-more");
+  b.hidden = !list.classList.contains("capped") || list.children.length <= 12;
+  b.textContent = `Show all ${list.children.length}`;
 }
 
 function addEvent(e) {
@@ -86,6 +65,7 @@ function addEvent(e) {
   li.classList.add("fresh");
   $("all-events").prepend(li);
   $("all-events-empty").hidden = true;
+  moreButton();
 }
 
 // ------------------------------------------------------------------ history: days and weeks
@@ -93,9 +73,45 @@ function addEvent(e) {
 async function showDay(iso) {
   shown = !app.today || iso === app.today.date ? null : iso;
   conversations.load(iso).catch(() => {});
+  daySummary(iso);
   if (!shown) { if (app.today) historyDay.render(app.today); } else historyDay.render(await api(`/api/day?date=${iso}`));
   $("day-next").disabled = !shown;
   renderWeek();
+}
+
+// the day and the weeks in Marvin's words (memory's episodes)
+let summarySeq = 0;
+async function daySummary(iso) {
+  const n = ++summarySeq;
+  const box = $("day-summary-text");
+  const next = parseIso(iso);
+  next.setDate(next.getDate() + 1);
+  let text;
+  try {
+    const r = await api(`/api/memory/episodes?level=day&from=${iso}&to=${isoDate(next)}`);
+    const e = r.episodes.find((x) => x.day === iso);
+    if (e) text = e.summary + (e.stale ? " (Rewritten tonight: something from that day was forgotten.)" : "");
+    else if (app.today && iso === app.today.date) text = "Marvin writes today tonight, from what happens until then.";
+    else text = "Not written: nothing was kept from that day, or it was before memory.";
+    box.classList.toggle("muted", !e);
+  } catch (e) {
+    text = `Cannot be read: ${e.message}`;
+  }
+  if (n === summarySeq) box.textContent = text;
+}
+
+async function loadWeeks() {
+  const list = $("week-episodes");
+  try {
+    const r = await api("/api/memory/episodes?level=week");
+    list.replaceChildren(...r.episodes.slice(0, 4).map(episodeItem));
+    $("week-episodes-empty").hidden = r.episodes.length > 0;
+    $("week-episodes-empty").textContent = "No week written yet. Marvin sums up a week the night after it ends.";
+  } catch (e) {
+    list.replaceChildren();
+    $("week-episodes-empty").hidden = false;
+    $("week-episodes-empty").textContent = `Cannot be read: ${e.message}`;
+  }
 }
 
 function shiftDay(delta) {
@@ -241,48 +257,6 @@ const conversations = {
   },
 };
 
-// ------------------------------------------------------------------ log
-
-const SOURCE_LABEL = { brain: "Marvin", device: "Device", host: "Host", voice: "Voice" };
-let log = [];
-
-function logFilter() {
-  const v = document.querySelector('input[name="log-filter"]:checked').value;
-  return (e) => !v || (v === "warning" ? (e.level === "warning" || e.level === "error")
-    : v === "brain" ? (e.source === "brain" || e.source === "host") : e.source === v);
-}
-
-function logItem(e) {
-  const li = el("li");
-  const dev = e.source === "device" && e.device;
-  const text = el("span", `text ${e.level === "attention" ? "attention" : e.level === "warning" || e.level === "error" ? e.level : ""}`, e.text);
-  li.append(timeEl(e.ts), el("span", dev ? "src dev" : "src", dev ? e.device : SOURCE_LABEL[e.source] || e.source), text);
-  return li;
-}
-
-function renderLog() {
-  const items = log.filter(logFilter()).slice(0, 200);
-  $("log").replaceChildren(...items.map(logItem));
-  $("log-empty").hidden = items.length > 0;
-}
-
-async function loadLog() {
-  log = (await api("/api/log?limit=300")).entries;
-  renderLog();
-}
-
-function addLog(e) {
-  if (log.length && log[0].id >= e.id) return;
-  log.unshift(e);
-  if (log.length > 500) log.pop();
-  if (app.view !== "activity" || app.sub !== "log" || !logFilter()(e)) return;
-  const li = logItem(e);
-  li.classList.add("fresh");
-  $("log").prepend(li);
-  while ($("log").children.length > 200) $("log").lastElementChild.remove();
-  $("log-empty").hidden = true;
-}
-
 // ------------------------------------------------------------------ setup
 
 export function setup() {
@@ -290,7 +264,6 @@ export function setup() {
   conversations.setup();
   $("day-prev").addEventListener("click", () => shiftDay(-1));
   $("day-next").addEventListener("click", () => shiftDay(1));
-  for (const r of document.querySelectorAll('input[name="log-filter"]')) r.addEventListener("change", renderLog);
   on("today", (d) => {
     const newDay = history.length && !history.some((x) => x.date === d.date);
     if (!shown) historyDay.render(d);
@@ -298,13 +271,8 @@ export function setup() {
     if (newDay) loadWeek().catch(() => {}); else renderWeek();
   });
   on("event", addEvent);
-  on("log", addLog);
+  $("all-events-more").addEventListener("click", () => { $("all-events").classList.remove("capped"); moreButton(); });
   on("transcript", ({ fresh }) => { if (fresh && app.view === "activity" && app.sub === "history") conversations.refreshToday(); });
-  let workerTimer = 0;
-  on("memory", (m) => {
-    // the stream says the state changed; the details come from the API (at most once a second)
-    if (m.kind === "worker" && !workerTimer) workerTimer = setTimeout(() => { workerTimer = 0; loadWorker(); }, 1000);
-  });
   on("settings", () => historyDay.redraw());
   on("resize", () => historyDay.redraw());
   on("goto-conversation", ({ day, entry }) => {
@@ -315,15 +283,14 @@ export function setup() {
     if (view !== "activity") return;
     if (sub === "history") {
       loadWeek().catch(() => {});
+      loadWeeks();
       if (shown) showDay(shown).catch(() => {});
-      else if (app.today) { historyDay.render(app.today); conversations.load(app.today.date).catch(() => {}); }
-    } else if (sub === "log") loadLog().catch(() => {});
-    else { loadWorker(); loadEvents().catch(() => {}); }
+      else if (app.today) { historyDay.render(app.today); conversations.load(app.today.date).catch(() => {}); daySummary(app.today.date); }
+    } else { worker.load(); loadEvents(); }
   });
-  on("reconnected", () => { loadWorker(); loadEvents().catch(() => {}); });
+  on("reconnected", () => { if (app.view === "activity") loadEvents(); });
 }
 
 export async function load() {
-  await Promise.all([loadWorker(), loadEvents(), loadLog()].map((p) => p.catch(() => {})));
-  emit("activity-loaded");
+  await Promise.all([worker.load(), loadEvents()].map((p) => p.catch(() => {})));
 }
