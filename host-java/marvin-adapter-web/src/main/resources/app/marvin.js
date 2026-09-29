@@ -555,7 +555,7 @@ async function loadMemoryModels() {
     memoryModels = { memory_model: r.settings.memory_model, night_model: r.settings.night_model, embed_model: r.settings.embed_model };
     $("m-model").value = r.settings.memory_model;
     $("m-night").value = r.settings.night_model;
-    $("m-embed").value = r.settings.embed_model;
+    setEmbedChoice(r.settings.embed_model);
     fields.disabled = false;
     const w = await api("/api/memory/worker").catch(() => null);
     const e = w && w.embeddings;
@@ -570,7 +570,22 @@ async function loadMemoryModels() {
   }
 }
 
+// the two proposed embedding models, or any other one typed by hand
+function setEmbedChoice(model) {
+  const choice = $("m-embed-choice");
+  const known = [...choice.options].some((o) => o.value && o.value === model);
+  choice.value = known ? model : "";
+  $("m-embed").value = model;
+  $("m-embed").hidden = known;
+}
+
 function setupMemoryModels() {
+  $("m-embed-choice").addEventListener("change", () => {
+    const v = $("m-embed-choice").value;
+    $("m-embed").hidden = !!v;
+    if (v) $("m-embed").value = v;
+    else { $("m-embed").value = ""; $("m-embed").focus(); }
+  });
   $("memory-models-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const err = $("memory-models-error");

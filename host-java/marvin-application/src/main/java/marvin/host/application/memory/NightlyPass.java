@@ -100,6 +100,11 @@ public final class NightlyPass {
 
     // ------------------------------------------------------------------ embeddings
 
+    /** Drops every fact's embedding, for {@link #embedMissing} to redo them with the current model; returns how many. */
+    int clearEmbeddings() {
+        return facts.clearEmbeddings();
+    }
+
     /** Embeds the facts written while the embedding model was missing; returns how many. */
     int embedMissing(BooleanSupplier cancelled) {
         int n = 0;

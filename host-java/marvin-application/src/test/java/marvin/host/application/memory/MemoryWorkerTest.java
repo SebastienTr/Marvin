@@ -152,4 +152,17 @@ class MemoryWorkerTest {
         assertThat(worker.status().state()).isEqualTo("off");
         assertThat(worker.status().pending()).isEqualTo(1);
     }
+
+    @Test
+    void anotherEmbeddingModelEmbedsEveryFactAgain() throws Exception {
+        m.admin.remember("The owner has a cat named Tofu.", "", null);
+        m.admin.remember("The owner lives in Nice.", "", null);
+        assertThat(m.store.facts.withoutEmbedding(10)).isEmpty();
+        m.settings.update(Map.of("embed_model", "qwen3-embedding:0.6b"));
+        for (int i = 0; i < 100 && !m.store.facts.withoutEmbedding(10).isEmpty(); i++) {
+            Thread.sleep(20);
+        }
+        assertThat(m.store.facts.withoutEmbedding(10)).as("embedded again with the new model").isEmpty();
+        assertThat(m.embedder.models).contains("qwen3-embedding:0.6b");
+    }
 }

@@ -17,6 +17,8 @@ public final class WordEmbedder implements Embedder {
     public volatile int dims = 1024;
     public volatile Unavailable failure;
     public volatile int calls;
+    /** The models asked for, in order. */
+    public final java.util.List<String> models = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private static final Set<String> STOP = Set.of("the", "owner", "and", "for", "with", "that", "this", "has", "have", "are",
             "was", "his", "her", "its", "they", "their", "from", "who", "les", "des", "une", "est");
@@ -52,6 +54,7 @@ public final class WordEmbedder implements Embedder {
 
     @Override
     public List<float[]> embed(String host, String model, List<String> texts) {
+        models.add(model);
         calls++;
         if (failure != null) {
             throw failure;

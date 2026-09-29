@@ -127,6 +127,9 @@ public interface FactStore {
 
     void setEmbedding(UUID id, float[] embedding);
 
+    /** Drops every fact's embedding (the embedding model changed: vectors of two models do not compare); returns how many. */
+    int clearEmbeddings();
+
     /** How the nearest facts are found: pgvector's HNSW index, or an exact scan without pgvector. */
     String searchMode();
 

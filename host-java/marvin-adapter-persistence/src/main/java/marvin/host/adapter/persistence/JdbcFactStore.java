@@ -391,6 +391,15 @@ public class JdbcFactStore implements FactStore {
     }
 
     @Override
+    public int clearEmbeddings() {
+        int n = jdbc.sql("UPDATE memory.fact SET embedding = NULL WHERE embedding IS NOT NULL").update();
+        if (cache != null) {
+            cache.clear();
+        }
+        return n;
+    }
+
+    @Override
     public String searchMode() {
         return vectors.pgvector() ? "pgvector HNSW index (cosine)" : "exact cosine scan (no pgvector)";
     }

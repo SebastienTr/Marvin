@@ -1746,3 +1746,9 @@ do not, as the model card says. Changing the model means re-embedding (the setti
 floor (0.45) was set on bge-m3: check it with `MemoryEvaluationTest` on the owner's Mac. The per-question
 embedding runs while recognition finishes; with the 8B it is expected in tens of milliseconds on an M3 Max, to be
 measured (check 9.4).
+
+The owner chooses the embedding model in Marvin > Memory's models: `qwen3-embedding:8b` (best) or `qwen3-embedding:0.6b`
+(light), or any other by name. A change drops every fact's embedding at once (vectors of two models do not compare;
+searches find facts by their words meanwhile) and embeds them again in the background with the new model, pausing
+while the voice is busy; the nightly pass finishes what is left (`MemoryWorker.reembed`). Episode embeddings are not
+searched, so they are left as they are.

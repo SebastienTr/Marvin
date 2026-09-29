@@ -344,7 +344,7 @@ worker's state (`{"kind": "worker", ...}`), and pending forget proposals (`{"kin
 
 ## Models and latency
 
-- **Embeddings**: Ollama `/api/embed`, `qwen3-embedding:8b` by default (1024 dimensions, multilingual: a French question finds an
+- **Embeddings**: Ollama `/api/embed`, `qwen3-embedding:8b` by default (the app also offers `qwen3-embedding:0.6b`, lighter; changing the model embeds every fact again in the background) (1024 dimensions, multilingual: a French question finds an
   English fact). The size is fixed when the tables are made (`marvin.memory.embedding-dimensions`); a model with
   another size is refused with a clear message. A missing model is reported in `/api/health` with its fix,
   `ollama pull qwen3-embedding:8b`; the owner's `remember` still works (the fact is embedded by the next nightly pass), while

@@ -88,6 +88,36 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
         this.clocks = clocks;
         this.config = config;
         this.last = lastReport();
+        this.embedModel = settings.settings().embedModel();
+        settings.addListener(s -> {
+            String model = s.embedModel();
+            if (!model.equals(embedModel)) {
+                embedModel = model;
+                reembed(model);
+            }
+        });
+    }
+
+    /** The embedding model the stored vectors were made with, as far as this host knows. */
+    private volatile String embedModel;
+
+    /**
+     * The owner chose another embedding model: the old vectors are dropped at once (two models' vectors do not
+     * compare, so searches find facts by their words meanwhile) and redone in the background with the new one,
+     * pausing whenever the voice is busy; the nightly pass finishes what is left.
+     */
+    private void reembed(String model) {
+        int dropped = nightly.clearEmbeddings();
+        log.info("embedding model now " + model + ": " + dropped + " facts to embed again");
+        runner.execute(() -> {
+            try {
+                int n = nightly.embedMissing(() -> closing || voice.busy());
+                log.info("embedded " + n + " facts with " + model);
+            } catch (RuntimeException e) {
+                log.warning("embedding with " + model + " stopped: " + e.getMessage() + " (the nightly pass will finish)");
+            }
+            publishStatus();
+        });
     }
 
     public void addListener(MemoryListener l) {

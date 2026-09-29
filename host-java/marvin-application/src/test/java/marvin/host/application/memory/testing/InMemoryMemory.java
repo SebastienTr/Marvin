@@ -468,6 +468,13 @@ public final class InMemoryMemory {
         }
 
         @Override
+        public synchronized int clearEmbeddings() {
+            int n = (int) vectors.values().stream().filter(java.util.Objects::nonNull).count();
+            vectors.clear();
+            return n;
+        }
+
+        @Override
         public String searchMode() {
             return "in memory";
         }

@@ -577,9 +577,15 @@
                   <p class="hint">A larger model can take the night, when nobody waits for an answer.</p>
                 </div>
                 <div class="field">
-                  <label for="m-embed">Search by meaning</label>
-                  <input id="m-embed" type="text" list="v-llm-list" spellcheck="false" autocapitalize="off" required>
+                  <label for="m-embed-choice">Search by meaning</label>
+                  <select id="m-embed-choice">
+                    <option value="qwen3-embedding:8b">Best: qwen3-embedding:8b (4.7 GB)</option>
+                    <option value="qwen3-embedding:0.6b">Light: qwen3-embedding:0.6b (640 MB)</option>
+                    <option value="">Another model…</option>
+                  </select>
+                  <input id="m-embed" type="text" list="v-llm-list" spellcheck="false" autocapitalize="off" required hidden aria-label="Embedding model">
                   <p class="hint" id="m-embed-hint">The embedding model that finds related memories.</p>
+                  <p class="hint">Changing it embeds every memory again, in the background.</p>
                 </div>
               </fieldset>
               <p class="form-error" id="memory-models-error" role="alert" hidden></p>
