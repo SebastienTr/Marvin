@@ -243,7 +243,8 @@ void connect_wifi() {
 void link_step(uint32_t ms) {
   static uint32_t next_hello = 0;
   poll_host();
-  if (linked && ms - last_ack_ms > LINK_TIMEOUT_MS) {
+  // signed: an ACK read just above is stamped with millis(), which can be later than ms
+  if (linked && (int32_t)(ms - last_ack_ms) > (int32_t)LINK_TIMEOUT_MS) {
     linked = false;
     Serial.println("host lost, searching");
   }
