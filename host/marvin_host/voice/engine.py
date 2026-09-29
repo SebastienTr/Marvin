@@ -56,7 +56,7 @@ from . import filters
 from .echo import EchoFilter, EchoGate
 from .stt import STT, Transcript
 from .text import clean_for_speech, guess_language
-from .tts import TTS
+from .tts import TTS, pronounce
 from .vad import Segment, Segmenter, SegmenterConfig, Vad, make_vad
 from .wake import TranscriptWakeWord, WakeMatch, WakeWordDetector, match_wake_word
 
@@ -782,7 +782,7 @@ class VoiceEngine:
                 # the voice follows the language actually written: a model that answers in English
                 # despite the instruction is still spoken with an English voice, not a French accent
                 voice_language = guess_language(text, self.config.languages) or job.language
-                pcm, rate = self.tts.synthesize(text, voice_language)
+                pcm, rate = self.tts.synthesize(pronounce(text, voice_language), voice_language)
             except Exception:                               # noqa: BLE001 - never kill the speaker thread
                 log.exception("speech synthesis failed for %r", text)
                 continue

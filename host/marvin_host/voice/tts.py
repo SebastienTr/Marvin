@@ -32,6 +32,21 @@ from .net import https_context as _https_context
 log = logging.getLogger("marvin.voice.tts")
 
 
+# Words a voice mispronounces, respelled for that voice's language. A French voice reads "Marvin"
+# the French way (/maʁ.vɛ̃/, "Marv-un"); the robot's name is English (/ˈmɑːr.vɪn/), which a French
+# voice gets closest to from "Marvine".
+PRONUNCIATIONS: dict[str, list[tuple[re.Pattern[str], str]]] = {
+    "fr": [(re.compile(r"\bMarvin\b", re.IGNORECASE), "Marvine")],
+}
+
+
+def pronounce(text: str, language: str) -> str:
+    """`text` as the voice for `language` should read it (see `PRONUNCIATIONS`)."""
+    for pattern, spoken in PRONUNCIATIONS.get(language, ()):
+        text = pattern.sub(spoken, text)
+    return text
+
+
 class TTS(Protocol):
     def synthesize(self, text: str, language: str = "fr") -> tuple[np.ndarray, int]:
         """-> (mono int16 PCM, sample rate)."""
