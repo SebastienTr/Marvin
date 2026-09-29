@@ -44,6 +44,12 @@ public interface VoiceControl {
     void stop();
 
     /**
+     * Fills the model server's prompt cache again, in the background, as at start: after memory used the voice's model
+     * (which evicts the cached prompt) or changed what the prompt holds. Nothing while the voice is off.
+     */
+    void rewarm();
+
+    /**
      * A typed question.
      *
      * @throws IllegalArgumentException empty or longer than 500 characters

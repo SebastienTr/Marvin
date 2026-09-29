@@ -66,6 +66,11 @@ class PresenceHistoryServiceTest {
         }
 
         @Override
+        public List<StoredEvent> after(long afterId, int limit) {
+            return events.stream().filter(e -> e.id() > afterId).limit(limit).toList();
+        }
+
+        @Override
         public void addSample(Sample s) {
             samples.add(s);
         }

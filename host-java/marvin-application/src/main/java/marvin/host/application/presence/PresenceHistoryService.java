@@ -270,6 +270,11 @@ public final class PresenceHistoryService implements PresenceHistory {
     }
 
     @Override
+    public List<StoredEvent> after(long afterId, int limit) {
+        return store.after(afterId, limit);
+    }
+
+    @Override
     public LocalDate dayOf(double ts) {
         return days.dayOf(ts);
     }

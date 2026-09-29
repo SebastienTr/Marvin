@@ -40,7 +40,8 @@ public final class AccessFilter implements Filter {
     static final String BODY = "marvin.body";
     static final int MAX_BODY = 16384;
     static final Set<String> POST_PATHS = Set.of("/api/settings", "/api/voice/settings", "/api/voice/on",
-            "/api/voice/off", "/api/voice/ask", "/api/voice/listen", "/api/voice/mute", "/api/voice/stop-speaking");
+            "/api/voice/off", "/api/voice/ask", "/api/voice/listen", "/api/voice/mute", "/api/voice/stop-speaking",
+            "/api/memory/consolidate");
     static final Set<String> PUBLIC = Set.of("/icon.png", "/favicon.ico", "/manifest.webmanifest");
 
     static final byte[] LOCKED_PAGE = """

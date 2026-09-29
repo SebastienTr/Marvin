@@ -40,6 +40,11 @@ public final class ConversationService implements ConversationHistory {
     }
 
     @Override
+    public List<ConversationEntry> after(long afterId, int limit) {
+        return store.after(afterId, limit);
+    }
+
+    @Override
     public long maxId() {
         return store.maxId();
     }

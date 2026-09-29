@@ -20,6 +20,9 @@ public interface ConversationStore {
      */
     List<ConversationEntry> search(String query, int limit);
 
+    /** Entries with {@code id > afterId}, by id, at most {@code limit} (reading the whole history in pages). */
+    List<ConversationEntry> after(long afterId, int limit);
+
     /** The largest id so far, 0 when empty. */
     long maxId();
 }

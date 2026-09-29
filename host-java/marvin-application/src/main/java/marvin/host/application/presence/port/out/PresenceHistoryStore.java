@@ -23,6 +23,9 @@ public interface PresenceHistoryStore {
     /** The latest events, newest first, only those with {@code id > sinceId}, without the given kinds. */
     List<StoredEvent> recent(int limit, long sinceId, Collection<String> excludeKinds);
 
+    /** Events with {@code id > afterId}, by id, at most {@code limit} (reading the whole history in pages). */
+    List<StoredEvent> after(long afterId, int limit);
+
     /** Stores a sample (the same minute again replaces it). */
     void addSample(Sample sample);
 

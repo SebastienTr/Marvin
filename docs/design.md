@@ -534,7 +534,9 @@ CREATE TABLE connector (id text PRIMARY KEY, type text, enabled boolean, remembe
 CREATE TABLE setting (key text PRIMARY KEY, value jsonb NOT NULL);
 ```
 
-Facts are stored in English whatever the conversation's language (one embedding space, one set of prompts); the multilingual embedding model matches French questions against English facts. The embedding model is **one model everywhere** (for instance Qwen3-Embedding 0.6B through Ollama, 1024 dimensions, multilingual); changing it means re-embedding everything, which the nightly pass can do in the background (a new column, then a swap).
+Facts are stored in English whatever the conversation's language (one embedding space, one set of prompts); the multilingual embedding model matches French questions against English facts. The embedding model is **one model everywhere** (bge-m3 through Ollama by default, 1024 dimensions, multilingual; a memory setting); changing it means re-embedding everything, which the nightly pass can do in the background (a new column, then a swap).
+
+**As built (memory v1, write path).** The tables live in the `memory` schema with these deliberate differences, explained in [host-java/NOTES.md](../host-java/NOTES.md) ("Memory v1"): `sensitivity` is never `secret` in storage (secrets are redacted or dropped before); `fact.embedding` may be `NULL` (written while the embedding model was missing, embedded by the next nightly pass) and `fact.extracted_by` records the model and prompt version; `episode` has the period's first local `day` and an `events` count; `block_version` has a `superseded` status (a version replaced by a newer active one) and `kept_lines` (the owner's lines every rewrite keeps verbatim); a `state` table holds the worker's progress, the backfills done and the owner's memory settings. Without pgvector (the embedded PostgreSQL) the embedding columns are `real[]` and similar facts are found by an exact scan. How it all works: [memory.md](memory.md).
 
 "Forget" is real: the event rows go, `fact_source` cascades, facts left with no source are deleted, and the episodes covering those days are marked `stale` and rewritten that night.
 
@@ -630,7 +632,7 @@ A `Notifier` port with channels: the app (SSE, always), the robot (an earcon, or
 | Conversation | `qwen3:4b-instruct` (as today), 8B if the Mac allows | — |
 | Background agents | The largest local model that fits (8B–32B) | A cloud model per task, with consent |
 | Memory worker, reflection | Same as agents, run at night | Never cloud by default (it reads everything) |
-| Embeddings | Qwen3-Embedding 0.6B (or similar) | — |
+| Embeddings | bge-m3 (1024 dimensions, multilingual; Qwen3-Embedding 0.6B is an alternative of the same size) | — |
 
 **Cloud consent is per task**, explicit, and shown: the app displays exactly what will be sent (the assembled context, with `sensitive` items already removed) and the budget, and the owner confirms. A setting can pre-approve a task type ("weekly brief may use the cloud model, max 0.20 € per run"), still never with `sensitive` data. The key lives in the `SecretStore`.
 

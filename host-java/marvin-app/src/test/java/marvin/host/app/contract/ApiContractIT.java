@@ -38,7 +38,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import marvin.host.adapter.sidecar.PythonRuntime;
 import marvin.host.adapter.sidecar.SidecarProperties;
-import marvin.host.app.StubOllama;
+import marvin.host.adapter.llm.StubOllama;
 import marvin.host.application.conversation.port.in.VoiceControl;
 import marvin.host.application.conversation.port.out.JsonFetcher;
 import tools.jackson.databind.JsonNode;

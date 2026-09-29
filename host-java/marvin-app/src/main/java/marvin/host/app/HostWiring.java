@@ -29,6 +29,7 @@ import marvin.host.adapter.web.Views;
 import marvin.host.application.conversation.ConversationService;
 import marvin.host.application.conversation.port.out.ConversationStore;
 import marvin.host.application.face.FaceService;
+import marvin.host.application.memory.port.in.RecordMemory;
 import marvin.host.application.presence.HistoryWriter;
 import marvin.host.application.presence.PresenceHistoryService;
 import marvin.host.application.presence.port.out.PresenceHistoryStore;
@@ -90,9 +91,11 @@ public class HostWiring {
     public PresenceHistoryService presenceHistoryService(StartupImport imported, PresenceService presence,
                                                          PresenceHistoryStore store, EventHub hub, HostLog hostLog,
                                                          Clocks clocks, LocalDays days, PresenceEventBus bus,
+                                                         ObjectProvider<RecordMemory> memory,
                                                          @Value("${marvin.history.offline-after-s:15}") double offlineAfterS) {
         PresenceHistoryService history = new PresenceHistoryService(presence, store,
-                List.of(hub, new HistoryLog(hostLog)), clocks, days, offlineAfterS, HistoryWriter.start());
+                List.of(hub, new HistoryLog(hostLog), MemoryFeeds.presence(memory::getObject)), clocks, days,
+                offlineAfterS, HistoryWriter.start());
         bus.subscribe(history::onEvent);
         return history;
     }

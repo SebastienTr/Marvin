@@ -23,10 +23,16 @@ class SchemaOwnershipTest {
     static final Path SOURCES = Path.of("src/main/java/marvin/host/adapter/persistence");
 
     /** Source file (or nested class) → the schema it owns. */
-    static final Map<String, String> OWNER = Map.of(
-            "JdbcPresenceHistoryStore.java", "presence",
-            "JdbcConversationStore.java", "conversation",
-            "JdbcSettingsStore.java", "settings");
+    static final Map<String, String> OWNER = Map.ofEntries(
+            Map.entry("JdbcPresenceHistoryStore.java", "presence"),
+            Map.entry("JdbcConversationStore.java", "conversation"),
+            Map.entry("JdbcSettingsStore.java", "settings"),
+            Map.entry("JdbcEventLog.java", "memory"),
+            Map.entry("JdbcFactStore.java", "memory"),
+            Map.entry("JdbcEpisodeStore.java", "memory"),
+            Map.entry("JdbcProfileStore.java", "memory"),
+            Map.entry("JdbcMemoryState.java", "memory"),
+            Map.entry("MemoryRows.java", "memory"));
 
     static final Pattern SCHEMA = Pattern.compile("\\b(" + String.join("|", ContextMigrations.SCHEMAS) + ")\\.[a-z_]+");
 

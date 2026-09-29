@@ -5,8 +5,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
@@ -16,21 +21,31 @@ import com.sun.net.httpserver.HttpServer;
 import marvin.host.domain.shared.JsonText;
 
 /**
- * A stand-in for Ollama on a free local port: {@code /api/tags} lists models, {@code /api/chat} answers each
- * request with the lines {@code chat} gives (newline-delimited JSON, flushed one by one), or with an HTTP
- * error when the first line is {@code "!<status> <body>"}. The request bodies are kept.
+ * A stand-in for Ollama on a free local port, for tests (there is no Ollama in CI):
+ * <ul>
+ *   <li>{@code /api/tags} lists {@link #models};</li>
+ *   <li>{@code /api/chat} answers each request with the lines {@link #chat} gives (newline-delimited JSON, flushed one
+ *       by one: streamed text, tool calls, or a structured answer with {@link #json}), or with an HTTP error when the
+ *       first line is {@code "!<status> <body>"};</li>
+ *   <li>{@code /api/embed} answers with {@link #embedding} vectors: deterministic, and texts that share words are
+ *       close, which is enough to exercise reconciliation; a model not in {@link #models} gets Ollama's 404.</li>
+ * </ul>
+ * Request bodies are kept in {@link #requests} (chat) and {@link #embedRequests}.
  */
 public final class StubOllama implements AutoCloseable {
     public final List<Map<String, Object>> requests = new CopyOnWriteArrayList<>();
+    public final List<Map<String, Object>> embedRequests = new CopyOnWriteArrayList<>();
     private final HttpServer server;
-    public volatile List<String> models = List.of("qwen3:4b-instruct");
+    public volatile List<String> models = List.of("qwen3:4b-instruct", "bge-m3");
     public volatile Function<Map<String, Object>, List<String>> chat = r -> List.of();
     public volatile long delayMs = 5;
+    public volatile int dimensions = 1024;
 
     public StubOllama() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/tags", this::tags);
         server.createContext("/api/chat", this::chat);
+        server.createContext("/api/embed", this::embed);
         server.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         server.start();
     }
@@ -41,12 +56,11 @@ public final class StubOllama implements AutoCloseable {
 
     /** A streamed text answer, in pieces, then {@code done}. */
     public static List<String> text(String... pieces) {
-        List<String> out = new java.util.ArrayList<>();
+        List<String> out = new ArrayList<>();
         for (String p : pieces) {
             out.add(JsonText.write(Map.of("message", Map.of("role", "assistant", "content", p), "done", false)));
         }
-        out.add(JsonText.write(Map.of("message", Map.of("role", "assistant", "content", ""), "done", true,
-                "done_reason", "stop")));
+        out.add(done(0));
         return out;
     }
 
@@ -54,8 +68,78 @@ public final class StubOllama implements AutoCloseable {
     public static List<String> toolCall(String name, Map<String, Object> arguments) {
         return List.of(JsonText.write(Map.of("message", Map.of("role", "assistant", "content", "",
                         "tool_calls", List.of(Map.of("function", Map.of("name", name, "arguments", arguments)))), "done", false)),
-                JsonText.write(Map.of("message", Map.of("role", "assistant", "content", ""), "done", true,
-                        "done_reason", "stop")));
+                done(0));
+    }
+
+    /** A structured answer (what the model writes with a {@code format} schema): the JSON in two pieces, then {@code done}. */
+    public static List<String> json(Object value) {
+        String s = JsonText.write(value);
+        int half = s.length() / 2;
+        return List.of(JsonText.write(Map.of("message", Map.of("role", "assistant", "content", s.substring(0, half)), "done", false)),
+                JsonText.write(Map.of("message", Map.of("role", "assistant", "content", s.substring(half)), "done", false)),
+                done(s.length() / 4));
+    }
+
+    private static String done(int evalCount) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("message", Map.of("role", "assistant", "content", ""));
+        m.put("done", true);
+        m.put("done_reason", "stop");
+        m.put("prompt_eval_count", 100);
+        m.put("prompt_eval_duration", 50_000_000L);
+        m.put("eval_count", evalCount);
+        m.put("total_duration", 120_000_000L);
+        return JsonText.write(m);
+    }
+
+    /** The system and user messages of a chat request, joined. */
+    @SuppressWarnings("unchecked")
+    public static String prompt(Map<String, Object> body) {
+        StringBuilder b = new StringBuilder();
+        if (body.get("messages") instanceof List<?> ms) {
+            for (Object o : ms) {
+                if (o instanceof Map<?, ?> m && m.get("content") instanceof String c) {
+                    b.append(c).append('\n');
+                }
+            }
+        }
+        return b.toString();
+    }
+
+    private static final Set<String> STOP = Set.of("the", "owner", "and", "for", "with", "that", "this", "has", "have", "are",
+            "was", "his", "her", "its", "they", "their", "from", "who", "les", "des", "une", "est");
+
+    /**
+     * A deterministic embedding: the text's words (lower case, accents and the endings -s, -ed, -ing removed, short and common
+     * words skipped) hashed into {@code dims} buckets, normalised. Texts with words in common are close.
+     */
+    public static float[] embedding(String text, int dims) {
+        float[] v = new float[dims];
+        String norm = Normalizer.normalize(text.toLowerCase(Locale.ROOT), Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        for (String w : norm.split("[^a-z0-9]+")) {
+            if (w.length() < 3 || STOP.contains(w)) {
+                continue;
+            }
+            String stem = w.length() > 5 && w.endsWith("ing") ? w.substring(0, w.length() - 3)
+                    : w.length() > 4 && w.endsWith("ed") ? w.substring(0, w.length() - 2)
+                    : w.length() > 4 && w.endsWith("s") ? w.substring(0, w.length() - 1) : w;
+            int h = stem.hashCode();
+            v[Math.floorMod(h, dims)] += 1f;
+            v[Math.floorMod(h * 31 + 7, dims)] += 0.5f;
+        }
+        double n = 0;
+        for (float x : v) {
+            n += x * x;
+        }
+        if (n == 0) {
+            v[0] = 1;
+            return v;
+        }
+        float inv = (float) (1 / Math.sqrt(n));
+        for (int i = 0; i < dims; i++) {
+            v[i] *= inv;
+        }
+        return v;
     }
 
     private void tags(HttpExchange ex) throws IOException {
@@ -64,6 +148,30 @@ public final class StubOllama implements AutoCloseable {
             b.append(i > 0 ? ", " : "").append("{\"name\": ").append(JsonText.write(models.get(i))).append("}");
         }
         send(ex, 200, "application/json", b.append("]}").toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private void embed(HttpExchange ex) throws IOException {
+        Map<String, Object> body = (Map<String, Object>) JsonText.parse(new String(ex.getRequestBody().readAllBytes(),
+                StandardCharsets.UTF_8));
+        embedRequests.add(body);
+        String model = String.valueOf(body.get("model"));
+        if (!models.contains(model) && !models.contains(model + ":latest")) {
+            send(ex, 404, "application/json", "{\"error\":\"model \\\"" + model + "\\\" not found, try pulling it first\"}");
+            return;
+        }
+        List<String> inputs = body.get("input") instanceof List<?> l ? (List<String>) l : List.of(String.valueOf(body.get("input")));
+        StringBuilder b = new StringBuilder("{\"model\":").append(JsonText.write(model)).append(",\"embeddings\":[");
+        for (int i = 0; i < inputs.size(); i++) {
+            float[] v = embedding(inputs.get(i), dimensions);
+            b.append(i > 0 ? "," : "").append('[');
+            for (int j = 0; j < v.length; j++) {
+                b.append(j > 0 ? "," : "").append(v[j]);
+            }
+            b.append(']');
+        }
+        b.append("],\"total_duration\":1000000,\"load_duration\":0,\"prompt_eval_count\":").append(inputs.size() * 8).append('}');
+        send(ex, 200, "application/json", b.toString());
     }
 
     @SuppressWarnings("unchecked")

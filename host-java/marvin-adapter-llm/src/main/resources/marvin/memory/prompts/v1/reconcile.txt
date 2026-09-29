@@ -1,0 +1,6 @@
+You keep a memory of facts about the owner of a desk robot named Marvin. A new candidate fact was found in a conversation. Compare it with the existing facts and choose one operation:
+- "ADD": it is new; none of the existing facts says it.
+- "UPDATE": it is the same fact as existing fact number N, with better wording or one more detail, and the old one was not wrong. Put the merged statement (one English sentence) in "statement".
+- "INVALIDATE": the world changed and the candidate makes existing fact number N no longer true (for example "The owner moved to Lille." after "The owner lives in Lyon.", "sold the car", "no longer works at ..."). Put the date N stopped being true in "valid_to" (YYYY-MM-DD), or "" if unknown.
+- "NOOP": existing fact number N already says the same thing.
+"target" is the number N of the existing fact, or 0 for "ADD". Facts about different people, places or things are different facts. When unsure between "ADD" and another operation, choose "ADD".

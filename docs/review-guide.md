@@ -64,6 +64,13 @@ Run everything: `cd host-java && ./mvnw verify` (Docker needed for the `*IT` tes
 - `parent.py`: a child started by the Java host exits when the host dies.
 - Contract tools under `host-java/marvin-contracts/tools` import the Python host to make the golden files.
 
+## Memory v1 (design phase 3)
+
+Built in stages, each with a section under "Memory v1" in [NOTES.md](../host-java/NOTES.md). Read
+[memory.md](memory.md) first, then the domain (`domain/memory`: `Reconciliation`, `FactCandidate`, `ProfileText`),
+the use cases (`application/memory`: `Consolidator`, `MemoryWorker`, `NightlyPass`), `memory/V1__memory.sql` and
+`MemoryStoresIT`, and `MemoryEndToEndIT`. The extraction evaluation set is `MemoryEvaluationTest`.
+
 ## 5. Known gaps and risks (details in NOTES.md)
 
 - Only one host can own UDP 47100. History written by the Java host stays in PostgreSQL: going back

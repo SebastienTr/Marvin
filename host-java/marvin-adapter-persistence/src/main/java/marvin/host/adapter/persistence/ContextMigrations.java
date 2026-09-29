@@ -26,14 +26,29 @@ public class ContextMigrations implements InitializingBean {
     private static final Logger log = LoggerFactory.getLogger(ContextMigrations.class);
 
     /** The schemas, in migration order. */
-    public static final List<String> SCHEMAS = List.of("platform", "robot", "presence", "conversation", "settings");
+    public static final List<String> SCHEMAS = List.of("platform", "robot", "presence", "conversation", "settings", "memory");
 
     private final DataSource dataSource;
     private final boolean demo;
+    private final int embeddingDimensions;
+    private final boolean vectorAllowed;
 
-    public ContextMigrations(DataSource dataSource, @Value("${marvin.mode:live}") String mode) {
+    public ContextMigrations(DataSource dataSource, String mode) {
+        this(dataSource, mode, 1024, "auto");
+    }
+
+    /**
+     * @param embeddingDimensions the embedding size memory's tables are made for (the embedding model's: bge-m3 1024)
+     * @param vector              {@code auto}: pgvector when installed; {@code off}: exact search on {@code real[]}
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public ContextMigrations(DataSource dataSource, @Value("${marvin.mode:live}") String mode,
+                             @Value("${marvin.memory.embedding-dimensions:1024}") int embeddingDimensions,
+                             @Value("${marvin.memory.vector:auto}") String vector) {
         this.dataSource = dataSource;
         this.demo = "demo".equals(mode);
+        this.embeddingDimensions = embeddingDimensions;
+        this.vectorAllowed = !"off".equalsIgnoreCase(vector);
     }
 
     @Override
@@ -42,8 +57,12 @@ public class ContextMigrations implements InitializingBean {
             emptyDemoDatabase();
         }
         for (String schema : SCHEMAS) {
+            // decided after platform's migration, which installs pgvector when it is available
+            String embeddingType = "memory".equals(schema) && vectorAllowed && hasPgvector()
+                    ? "public.vector(" + embeddingDimensions + ")" : "real[]";
             var result = Flyway.configure()
                     .dataSource(dataSource)
+                    .placeholders(java.util.Map.of("embedding_type", embeddingType))
                     .schemas(schema)
                     .createSchemas(true)
                     .locations("classpath:db/migration/" + schema)
@@ -53,6 +72,13 @@ public class ContextMigrations implements InitializingBean {
             if (result.migrationsExecuted > 0) {
                 log.info("database schema {}: {} migration(s) applied", schema, result.migrationsExecuted);
             }
+        }
+    }
+
+    private boolean hasPgvector() throws SQLException {
+        try (Connection c = dataSource.getConnection(); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery("SELECT 1 FROM pg_extension WHERE extname = 'vector'")) {
+            return rs.next();
         }
     }
 

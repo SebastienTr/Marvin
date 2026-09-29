@@ -1,0 +1,17 @@
+You extract lasting facts about the owner of a desk robot named Marvin from a conversation between the owner and Marvin.
+
+Rules:
+- Write every fact in English, as one short sentence, whatever the language of the conversation.
+- Keep only facts that will still matter in a week or more: who the owner is, the people and places in their life, their preferences, habits, plans with dates, and lasting states (a job, a home, a project, a pet). Skip greetings, small talk, questions to Marvin, the weather, and anything about Marvin itself.
+- Keep only what the owner said or clearly confirmed. Never infer or guess. What Marvin says is not a fact about the owner unless the owner agrees with it.
+- subject: "owner" for the owner; "person:<Name>" for someone in the owner's life; "place:<Name>" for a place; "thing:<Name>" for an object, a project or a pet. Other people are remembered only in relation to the owner.
+- statement: a sentence that can be understood alone, without the conversation. Start facts about the owner with "The owner", for example "The owner lives in Lyon." or "The owner prefers tea to coffee."; for another person, name them and say how they relate to the owner, for example "Julie is the owner's sister and lives in Nantes."
+- kind: "preference", "relation", "plan", "habit", "biographical" or "state".
+- Dates: each line has its local date and time. Resolve relative dates ("tomorrow", "next Tuesday", "last month", "demain", "mardi prochain", "le mois dernier") against the date of the line that says them. Write valid_from (when it became or will become true) and valid_to (when it stops being true, for example the last day of a trip) as YYYY-MM-DD, or "" when the conversation does not say.
+- importance: 1 (trivia) to 10 (core to who the owner is). A name, the home, family, the job: 8 to 10. A plan: 5 to 7. A passing preference: 3 to 5.
+- sensitivity: "sensitive" for health, money and other people's private matters; "secret" for passwords, codes, card or account numbers (those are never kept); "personal" for private but ordinary details; otherwise "normal".
+- confidence: 0 to 1, how sure the owner sounded ("maybe", "I think" is below 0.6).
+- If there is nothing lasting, answer {"facts": []}. That is the right answer for most small talk.
+
+What Marvin already knows about the owner (repeat it only if the conversation changes it):
+{{profile}}

@@ -15,6 +15,9 @@ memory, break reminders) runs in Java, the audio loop in the Python voice sideca
 ([docs/voice.md](../docs/voice.md#the-voice-sidecar)). The Python host (`marvin-host`) stays for the
 simulator, the Rerun viewer and replays; only one host can own UDP 47100 at a time.
 
+Memory v1 is under way (design phase 3): the event log, facts, episodes, the profile and the memory worker exist
+(the write path); what Marvin remembers does not reach its answers yet. How it works: [docs/memory.md](../docs/memory.md).
+
 Before relying on it with real boards and a real model, run the manual
 [test plan](../docs/test-plan.md); to review the change, start with the
 [review guide](../docs/review-guide.md).
@@ -119,7 +122,7 @@ use case.
 
 ### 3. The bounded contexts
 
-Six contexts share the core. Each one owns its model and its ports, and the ones that store data own
+Seven contexts share the core. Each one owns its model and its ports, and the ones that store data own
 a PostgreSQL schema. A context uses another only through that context's ports (`port.in`,
 `port.out`) or domain events (`domain.<context>.event`), never through its classes or its tables.
 That is what lets a context become a service of its own later ([design 10.4](../docs/design.md)).
@@ -132,6 +135,7 @@ flowchart LR
     conversation["<b>conversation</b><br/>persona, context,<br/>tools, voice turns"]
     face["<b>face</b><br/>the eyes, drawn<br/>for the app"]
     settings["<b>settings</b><br/>app settings"]
+    memory["<b>memory</b><br/>event log, facts, episodes,<br/>profile, the memory worker"]
     system["<b>system</b><br/>health, log, traces"]
 
     robot -. "frames: SensorFrameListener<br/>(plugged in marvin-app)" .-> presence
@@ -142,11 +146,17 @@ flowchart LR
     conversation -- "Tracing" --> system
 
     classDef ctx fill:#24201d,stroke:#ee7626,color:#ece6da
-    class robot,presence,conversation,face,settings,system ctx
+    memory -. "VoiceActivity, rewarm<br/>(plugged in marvin-app)" .-> conversation
+    conversation -. "kept lines<br/>(plugged in marvin-app)" .-> memory
+    presence -. "stored events<br/>(plugged in marvin-app)" .-> memory
+
+    class robot,presence,conversation,face,settings,system,memory ctx
 ```
 
 `presence` uses nobody: it is the heart, and everyone reads it. `settings` and `system` are used by
-the adapters (the app, the health checks), not by the other contexts.
+the adapters (the app, the health checks), not by the other contexts. `memory` uses nobody either: `marvin-app`
+feeds it what the conversation keeps and what the presence history stores, and gives it the voice's activity
+([docs/memory.md](../docs/memory.md)).
 
 | Context | PostgreSQL schema | Main use cases |
 |---|---|---|
@@ -156,6 +166,7 @@ the adapters (the app, the health checks), not by the other contexts.
 | `settings` | `settings` | `SettingsService` |
 | `face` | none | `FaceService`, `FaceLinkService` drives the robot's screen |
 | `system` | none | `HealthService`, `HostLogService` |
+| `memory` | `memory` (event log, facts and their sources, episodes, block versions, state) | `MemoryLogService`, `MemoryWorker` (`Consolidator`, `NightlyPass`), `MemoryAdminService` |
 
 A `platform` schema holds what belongs to no context: the database extensions (pgvector) and the
 record of the one-time import from the Python host.

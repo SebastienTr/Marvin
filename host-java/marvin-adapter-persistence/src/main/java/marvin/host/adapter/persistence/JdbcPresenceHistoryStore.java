@@ -39,6 +39,12 @@ public class JdbcPresenceHistoryStore implements PresenceHistoryStore {
     }
 
     @Override
+    public List<StoredEvent> after(long afterId, int limit) {
+        return jdbc.sql("SELECT id, ts, kind, detail, data::text AS data FROM presence.event WHERE id > ? ORDER BY id LIMIT ?")
+                .params(afterId, limit).query(JdbcPresenceHistoryStore::event).list();
+    }
+
+    @Override
     public List<StoredEvent> recent(int limit, long sinceId, Collection<String> excludeKinds) {
         List<Object> args = new ArrayList<>();
         StringBuilder sql = new StringBuilder("SELECT id, ts, kind, detail, data::text AS data FROM presence.event WHERE id > ?");

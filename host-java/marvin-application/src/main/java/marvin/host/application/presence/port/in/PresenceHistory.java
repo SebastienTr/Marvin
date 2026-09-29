@@ -22,6 +22,9 @@ public interface PresenceHistory {
     /** The latest events, newest first; {@code quiet}: without the vital sign events. */
     List<StoredEvent> recent(int limit, long sinceId, boolean quiet);
 
+    /** Stored events with {@code id > afterId}, oldest id first, at most {@code limit}: the whole history in pages (memory's backfill). */
+    List<StoredEvent> after(long afterId, int limit);
+
     /** The local day of a wall-clock time. */
     LocalDate dayOf(double ts);
 

@@ -30,8 +30,16 @@ import com.tngtech.archunit.lang.SimpleConditionEvent;
  * The architecture rules of docs/design.md 3.4, plus the bounded-context rules of 3.3 and 10.4.
  * The Maven module split already makes most violations impossible to compile; these catch the rest.
  */
-@AnalyzeClasses(packages = "marvin.host", importOptions = ImportOption.DoNotIncludeTests.class)
+@AnalyzeClasses(packages = "marvin.host", importOptions = {ImportOption.DoNotIncludeTests.class, ArchitectureTest.NoTestJars.class})
 class ArchitectureTest {
+
+    /** Test helpers shared as test jars (the stub Ollama, the in-memory stores) are not production code. */
+    static final class NoTestJars implements ImportOption {
+        @Override
+        public boolean includes(com.tngtech.archunit.core.importer.Location location) {
+            return !location.contains("-tests.jar");
+        }
+    }
 
     /** Generated code (the sidecar contract) is not ours to shape. */
     private static final String CONTRACTS = "marvin.host.contracts..";

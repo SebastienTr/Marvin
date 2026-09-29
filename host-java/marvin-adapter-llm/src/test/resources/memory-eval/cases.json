@@ -1,0 +1,68 @@
+{
+  "_about": "Memory's extraction evaluation set (docs/memory.md): short conversations in French and English, the facts a good extraction finds, and the operation expected against facts already known. A fact matches when the statement has every word of 'all' and one word of each group of 'any' (case and accents ignored). 'date' is the expected valid_from (the day relative dates resolve to). Times are Europe/Paris; 2026-09-28 is a Monday.",
+  "zone": "Europe/Paris",
+  "cases": [
+    {"id": "fr-home", "lines": [
+        {"t": "2026-09-28T09:12", "who": "Owner", "text": "J'habite à Lyon depuis 2019, dans le quartier de la Croix-Rousse."},
+        {"t": "2026-09-28T09:12", "who": "Marvin", "text": "La Croix-Rousse, c'est joli, avec ses pentes."}],
+     "expected": [{"subject": "owner", "all": ["lyon"], "any": [["live", "lives", "living", "resides"]]}]},
+
+    {"id": "fr-move", "existing": [{"subject": "owner", "statement": "The owner lives in Lyon."}],
+     "lines": [
+        {"t": "2026-09-28T18:40", "who": "Owner", "text": "Ça y est, j'ai déménagé à Lille le mois dernier !"},
+        {"t": "2026-09-28T18:40", "who": "Marvin", "text": "Bienvenue dans le Nord alors."}],
+     "expected": [{"subject": "owner", "all": ["lille"], "op": "INVALIDATE", "target": 1}]},
+
+    {"id": "en-sister", "lines": [
+        {"t": "2026-09-28T20:05", "who": "Owner", "text": "My sister Julie just moved to Nantes with her boyfriend Tom."},
+        {"t": "2026-09-28T20:05", "who": "Marvin", "text": "Nantes is a lovely city."}],
+     "expected": [{"subject": "person:Julie", "all": ["julie", "nantes"], "any": [["sister"]]}]},
+
+    {"id": "fr-smalltalk", "lines": [
+        {"t": "2026-09-28T10:00", "who": "Owner", "text": "Salut Marvin, ça va ?"},
+        {"t": "2026-09-28T10:00", "who": "Marvin", "text": "Très bien, merci. Et toi ?"},
+        {"t": "2026-09-28T10:01", "who": "Owner", "text": "Il fait beau aujourd'hui, non ?"}],
+     "expected": []},
+
+    {"id": "fr-plan-tomorrow", "lines": [
+        {"t": "2026-09-28T21:30", "who": "Owner", "text": "Demain je prends le train pour Paris, j'ai un entretien d'embauche chez Doctolib."},
+        {"t": "2026-09-28T21:30", "who": "Marvin", "text": "Bonne chance pour demain !"}],
+     "expected": [{"subject": "owner", "all": ["paris"], "any": [["interview", "train", "travel", "travels", "goes", "going"]], "date": "2026-09-29"}]},
+
+    {"id": "en-tea", "lines": [
+        {"t": "2026-09-29T08:15", "who": "Owner", "text": "I really can't stand coffee, I only drink green tea."}],
+     "expected": [{"subject": "owner", "all": ["tea"], "any": [["prefers", "drinks", "likes", "only"]]}]},
+
+    {"id": "fr-cat", "lines": [
+        {"t": "2026-09-29T19:00", "who": "Owner", "text": "Mon chat s'appelle Tofu, il a trois ans."},
+        {"t": "2026-09-29T19:00", "who": "Marvin", "text": "Salut Tofu !"}],
+     "expected": [{"subject": "*", "all": ["tofu"], "any": [["cat"]]}]},
+
+    {"id": "en-secret", "lines": [
+        {"t": "2026-09-29T12:00", "who": "Owner", "text": "My bank PIN is 4821, actually no, forget I said that."}],
+     "expected": []},
+
+    {"id": "fr-asthma", "lines": [
+        {"t": "2026-09-29T22:10", "who": "Owner", "text": "Je dois prendre mon traitement pour l'asthme tous les soirs."}],
+     "expected": [{"subject": "owner", "all": ["asthma"], "sensitivity": "sensitive"}]},
+
+    {"id": "en-guitar-update", "existing": [{"subject": "owner", "statement": "The owner plays guitar."}],
+     "lines": [
+        {"t": "2026-09-30T20:00", "who": "Owner", "text": "I've been playing guitar for ten years now, mostly jazz."}],
+     "expected": [{"subject": "owner", "all": ["guitar"], "any": [["jazz", "ten", "10"]], "op": "UPDATE", "target": 1}]},
+
+    {"id": "fr-job-noop", "existing": [{"subject": "owner", "statement": "The owner works as a software developer."}],
+     "lines": [
+        {"t": "2026-09-30T09:00", "who": "Owner", "text": "Oui, comme je te disais, je suis développeur logiciel."}],
+     "expected": [{"subject": "owner", "all": ["developer"], "op": "NOOP", "target": 1}]},
+
+    {"id": "en-football", "lines": [
+        {"t": "2026-09-30T17:45", "who": "Owner", "text": "Every Wednesday evening I play football with my colleagues."}],
+     "expected": [{"subject": "owner", "all": ["football"], "any": [["wednesday", "wednesdays"]]}]},
+
+    {"id": "fr-marvin-advice", "lines": [
+        {"t": "2026-09-30T15:00", "who": "Marvin", "text": "Tu devrais boire plus d'eau, tu es assis depuis deux heures."},
+        {"t": "2026-09-30T15:00", "who": "Owner", "text": "Mouais."}],
+     "expected": []}
+  ]
+}

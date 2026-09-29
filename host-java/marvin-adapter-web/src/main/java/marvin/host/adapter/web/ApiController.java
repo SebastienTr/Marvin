@@ -285,7 +285,7 @@ public class ApiController {
 
     // ------------------------------------------------------------------ helpers
 
-    private static Object body(HttpServletRequest rq) {
+    static Object body(HttpServletRequest rq) {
         byte[] raw = (byte[]) rq.getAttribute(AccessFilter.BODY);
         if (raw == null || raw.length == 0) {
             return new LinkedHashMap<>();

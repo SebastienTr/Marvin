@@ -17,6 +17,9 @@ public interface ConversationHistory {
     /** Keeps an entry (the voice calls it for each line of the Talk panel). */
     void add(ConversationEntry entry);
 
+    /** Entries with {@code id > afterId}, oldest id first, at most {@code limit}: the whole history in pages (memory's backfill). */
+    List<ConversationEntry> after(long afterId, int limit);
+
     /** The largest id kept so far, 0 when there is none. */
     long maxId();
 }

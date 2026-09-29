@@ -26,6 +26,9 @@
 # .mvrec[.gz] file), MARVIN_REPLAY (play a .mvrec recording instead of listening for robots).
 # Voice: MARVIN_CONFIG_DIR (where voice.json is, shared with the Python host), MARVIN_VOICE_SIDECAR
 # (false: no voice sidecar), MARVIN_PYTHON (the Python that runs it; default host/.venv).
+# Memory: MARVIN_MEMORY_WORKER (false: nothing is consolidated), MARVIN_EMBEDDING_DIMENSIONS (1024, the
+# embedding model's size, fixed when memory's tables are made), MARVIN_EMBED_MODEL (what doctor checks; the
+# model itself is a memory setting in the app, bge-m3 by default).
 
 set -eu
 
@@ -653,7 +656,7 @@ cmd_doctor() {
             embedded_as_root
         fi
     else
-        note "no Docker: PostgreSQL will run inside the host (no pgvector there yet: memory features need Docker)"
+        note "no Docker: PostgreSQL will run inside the host, without pgvector: memory finds similar facts by an exact scan (fine for thousands of facts)"
         fix "install Docker Desktop (macOS) or Docker Engine (Linux) for the full database"
         embedded_as_root
     fi
@@ -713,6 +716,12 @@ cmd_doctor() {
         case "$tags" in
             *"\"$model\""*) ok "model $model pulled" ;;
             *) note "model $model is not pulled"; fix "ollama pull $model" ;;
+        esac
+        # memory's embedding model (the owner's memory setting embed_model; bge-m3 unless changed in the app)
+        embed=${MARVIN_EMBED_MODEL:-bge-m3}
+        case "$tags" in
+            *"\"$embed\""* | *"\"$embed:latest\""*) ok "embedding model $embed pulled (memory)" ;;
+            *) note "embedding model $embed is not pulled: Marvin talks, but remembers nothing new"; fix "ollama pull $embed" ;;
         esac
     else
         note "Ollama is not running at $OLLAMA_URL: Marvin can't talk without it"

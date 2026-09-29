@@ -1,0 +1,303 @@
+// SPDX-License-Identifier: MIT
+package marvin.host.adapter.persistence;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import marvin.host.application.memory.port.out.FactStore;
+import marvin.host.domain.memory.Fact;
+import marvin.host.domain.memory.FactKind;
+import marvin.host.domain.memory.FactOrigin;
+import marvin.host.domain.memory.Reconciliation;
+import marvin.host.domain.memory.Sensitivity;
+import marvin.host.domain.memory.Vectors;
+
+/**
+ * Facts in {@code memory.fact} and {@code memory.fact_source}. With pgvector the nearest facts come from the HNSW
+ * index (cosine distance); without it (the embedded PostgreSQL) the candidates are scanned and compared in Java,
+ * exact and fast enough for the thousands of facts one home gathers.
+ */
+@Component
+public class JdbcFactStore implements FactStore {
+    static final String COLUMNS = "f.id, f.subject, f.statement, f.kind, f.importance, f.confidence, f.sensitivity, "
+            + "f.valid_from, f.valid_to, f.learned_at, f.expired_at, f.superseded_by, f.last_used_at, f.use_count, f.archived, "
+            + "f.pinned, f.origin, f.extracted_by, "
+            + "ARRAY(SELECT s.event_id FROM memory.fact_source s WHERE s.fact_id = f.id ORDER BY s.event_id) AS sources";
+
+    private final JdbcClient jdbc;
+    private final TransactionTemplate tx;
+    private final MemoryRows.Vectors vectors;
+
+    public JdbcFactStore(JdbcClient jdbc, TransactionTemplate tx, ContextMigrations migrated,
+                         @Value("${marvin.memory.embedding-dimensions:1024}") int dimensions) {
+        this.jdbc = jdbc;
+        this.tx = tx;
+        this.vectors = MemoryRows.Vectors.of(jdbc, "fact", dimensions);
+    }
+
+    @Override
+    public void apply(Reconciliation.Plan plan, Map<UUID, float[]> embeddings) {
+        tx.executeWithoutResult(status -> {
+            for (Fact f : plan.added()) {
+                jdbc.sql("INSERT INTO memory.fact (id, subject, statement, kind, importance, confidence, sensitivity, valid_from, "
+                                + "valid_to, learned_at, expired_at, superseded_by, last_used_at, use_count, archived, pinned, origin, "
+                                + "extracted_by, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS "
+                                + vectors.type() + "))")
+                        .params(f.id(), f.subject(), f.statement(), f.kind().wire(), f.importance(), (float) f.confidence(),
+                                stored(f.sensitivity()), MemoryRows.at(f.validFrom()), MemoryRows.at(f.validTo()),
+                                MemoryRows.at(f.learnedAt()), MemoryRows.at(f.expiredAt()), f.supersededBy(),
+                                MemoryRows.at(f.lastUsedAt()), f.useCount(), f.archived(), f.pinned(), f.origin().wire(),
+                                f.extractedBy(), vectors.literal(embeddings.get(f.id())))
+                        .update();
+                link(f.id(), f.sources());
+            }
+            for (Reconciliation.Expiry x : plan.expired()) {
+                jdbc.sql("UPDATE memory.fact SET expired_at = ?, valid_to = ?, superseded_by = ? WHERE id = ?")
+                        .params(MemoryRows.at(x.expiredAt()), MemoryRows.at(x.validTo()), x.supersededBy(), x.id()).update();
+            }
+            plan.moreSources().forEach(this::link);
+        });
+    }
+
+    /** Links a fact to events that still exist (one may have been forgotten meanwhile). */
+    private void link(UUID fact, List<Long> events) {
+        if (!events.isEmpty()) {
+            jdbc.sql("INSERT INTO memory.fact_source (fact_id, event_id) SELECT ?, e.id FROM memory.event_log e "
+                            + "WHERE e.id = ANY(?) ON CONFLICT DO NOTHING")
+                    .params(fact, events.toArray(Long[]::new)).update();
+        }
+    }
+
+    private static String stored(Sensitivity s) {
+        return (s == Sensitivity.SECRET ? Sensitivity.SENSITIVE : s).wire();
+    }
+
+    private static final class Where {
+        final StringBuilder sql = new StringBuilder(" WHERE true");
+        final List<Object> params = new ArrayList<>();
+
+        Where and(String clause, Object... ps) {
+            sql.append(" AND ").append(clause);
+            params.addAll(List.of(ps));
+            return this;
+        }
+    }
+
+    private static Where filter(Filter f) {
+        Where w = new Where();
+        if (f.currentOnly()) {
+            w.and("f.expired_at IS NULL AND (f.valid_to IS NULL OR f.valid_to > ?)", MemoryRows.at(f.now()));
+        }
+        if (!f.includeArchived()) {
+            w.and("NOT f.archived");
+        }
+        List<String> allowed = new ArrayList<>();
+        for (Sensitivity s : Sensitivity.values()) {
+            if (s.ordinal() <= f.maxSensitivity().ordinal() && s != Sensitivity.SECRET) {
+                allowed.add(s.wire());
+            }
+        }
+        w.and("f.sensitivity = ANY(?)", (Object) allowed.toArray(String[]::new));
+        return w;
+    }
+
+    @Override
+    public List<Scored> nearest(float[] embedding, int k, Filter filter) {
+        Where w = filter(filter).and("f.embedding IS NOT NULL");
+        if (vectors.pgvector()) {
+            String q = "CAST(? AS public.vector)";
+            List<Object> ps = new ArrayList<>();
+            ps.add(vectors.literal(embedding));
+            ps.addAll(w.params);
+            ps.add(vectors.literal(embedding));
+            ps.add(k);
+            return jdbc.sql("SELECT " + COLUMNS + ", 1 - (f.embedding OPERATOR(public.<=>) " + q + ") AS similarity FROM memory.fact f"
+                            + w.sql + " ORDER BY f.embedding OPERATOR(public.<=>) " + q + " LIMIT ?")
+                    .params(ps).query((rs, n) -> new Scored(fact(rs, n), rs.getDouble("similarity"))).list();
+        }
+        List<Scored> all = jdbc.sql("SELECT " + COLUMNS + ", f.embedding::text AS emb FROM memory.fact f" + w.sql)
+                .params(w.params)
+                .query((rs, n) -> new Scored(fact(rs, n), Vectors.cosine(embedding, MemoryRows.Vectors.parse(rs.getString("emb")))))
+                .list();
+        return all.stream().sorted(Comparator.comparingDouble(Scored::similarity).reversed()).limit(k).toList();
+    }
+
+    @Override
+    public Optional<Fact> get(UUID id) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.fact f WHERE f.id = ?").param(id).query(JdbcFactStore::fact).optional();
+    }
+
+    private static Where where(Query q) {
+        Where w = new Where();
+        if (q.text() != null && !q.text().isBlank()) {
+            String like = "%" + q.text().strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+            w.and("(f.statement ILIKE ? ESCAPE '\\' OR f.subject ILIKE ? ESCAPE '\\')", like, like);
+        }
+        if (q.subject() != null && !q.subject().isBlank()) {
+            w.and("f.subject = ?", q.subject());
+        }
+        if (q.kind() != null && !q.kind().isBlank()) {
+            w.and("f.kind = ?", q.kind());
+        }
+        String validity = q.validity() == null ? "current" : q.validity();
+        if ("current".equals(validity)) {
+            w.and("f.expired_at IS NULL AND (f.valid_to IS NULL OR f.valid_to > ?)", MemoryRows.at(q.now()));
+        } else if ("past".equals(validity)) {
+            w.and("(f.expired_at IS NOT NULL OR f.valid_to <= ?) AND f.superseded_by IS NULL", MemoryRows.at(q.now()));
+        }
+        if (q.sensitivity() != null) {
+            w.and("f.sensitivity = ?", stored(q.sensitivity()));
+        }
+        if (q.archived() != null) {
+            w.and("f.archived = ?", q.archived());
+        }
+        if (q.pinned() != null) {
+            w.and("f.pinned = ?", q.pinned());
+        }
+        return w;
+    }
+
+    @Override
+    public List<Fact> list(Query q) {
+        Where w = where(q);
+        List<Object> ps = new ArrayList<>(w.params);
+        ps.add(q.limit());
+        ps.add(q.offset());
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.fact f" + w.sql + " ORDER BY f.learned_at DESC, f.id LIMIT ? OFFSET ?")
+                .params(ps).query(JdbcFactStore::fact).list();
+    }
+
+    @Override
+    public long count(Query q) {
+        Where w = where(q);
+        return jdbc.sql("SELECT count(*) FROM memory.fact f" + w.sql).params(w.params).query(Long.class).single();
+    }
+
+    @Override
+    public List<Fact> asOf(Instant world, Instant known, int limit) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.fact f WHERE f.learned_at <= ? "
+                        + "AND (f.expired_at IS NULL OR f.expired_at > ? OR f.superseded_by IS NULL) "
+                        + "AND (f.valid_from IS NULL OR f.valid_from <= ?) "
+                        // an end the world gave the fact after `known` was not known then
+                        + "AND (f.valid_to IS NULL OR f.valid_to > ? OR (f.superseded_by IS NULL AND f.expired_at > ?)) "
+                        + "ORDER BY f.learned_at DESC LIMIT ?")
+                .params(MemoryRows.at(known), MemoryRows.at(known), MemoryRows.at(world), MemoryRows.at(world),
+                        MemoryRows.at(known), limit)
+                .query(JdbcFactStore::fact).list();
+    }
+
+    @Override
+    public List<Fact> versions(UUID id) {
+        return jdbc.sql("WITH RECURSIVE older(id) AS (SELECT id FROM memory.fact WHERE id = ? "
+                        + "UNION SELECT f.id FROM memory.fact f JOIN older o ON f.superseded_by = o.id), "
+                        + "newer(id, next) AS (SELECT id, superseded_by FROM memory.fact WHERE id = ? "
+                        + "UNION SELECT f.id, f.superseded_by FROM memory.fact f JOIN newer n ON f.id = n.next) "
+                        + "SELECT " + COLUMNS + " FROM memory.fact f WHERE f.id IN (SELECT id FROM older UNION SELECT id FROM newer) "
+                        + "ORDER BY f.learned_at, f.id")
+                .params(id, id).query(JdbcFactStore::fact).list();
+    }
+
+    @Override
+    public List<Fact> learnedSince(Instant since) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.fact f WHERE f.learned_at >= ? AND f.expired_at IS NULL ORDER BY f.learned_at")
+                .param(MemoryRows.at(since)).query(JdbcFactStore::fact).list();
+    }
+
+    @Override
+    public List<Fact> endedSince(Instant since) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.fact f WHERE f.expired_at >= ? AND f.superseded_by IS NULL "
+                        + "ORDER BY f.expired_at")
+                .param(MemoryRows.at(since)).query(JdbcFactStore::fact).list();
+    }
+
+    @Override
+    public List<Fact> decayable(Instant now) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.fact f WHERE f.expired_at IS NULL AND NOT f.archived AND NOT f.pinned "
+                        + "AND (f.valid_to IS NULL OR f.valid_to > ?)")
+                .param(MemoryRows.at(now)).query(JdbcFactStore::fact).list();
+    }
+
+    @Override
+    public void setArchived(Collection<UUID> ids, boolean archived) {
+        if (!ids.isEmpty()) {
+            jdbc.sql("UPDATE memory.fact SET archived = ? WHERE id = ANY(?)").params(archived, ids.toArray(UUID[]::new)).update();
+        }
+    }
+
+    @Override
+    public void setPinned(UUID id, boolean pinned) {
+        jdbc.sql("UPDATE memory.fact SET pinned = ? WHERE id = ?").params(pinned, id).update();
+    }
+
+    @Override
+    public void touch(Collection<UUID> ids, Instant at) {
+        if (!ids.isEmpty()) {
+            jdbc.sql("UPDATE memory.fact SET last_used_at = ?, use_count = use_count + 1 WHERE id = ANY(?)")
+                    .params(MemoryRows.at(at), ids.toArray(UUID[]::new)).update();
+        }
+    }
+
+    @Override
+    public int delete(Collection<UUID> ids) {
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        return jdbc.sql("DELETE FROM memory.fact WHERE id = ANY(?)").param(ids.toArray(UUID[]::new)).update();
+    }
+
+    @Override
+    public int deleteOrphans() {
+        return jdbc.sql("DELETE FROM memory.fact f WHERE NOT EXISTS (SELECT 1 FROM memory.fact_source s WHERE s.fact_id = f.id)")
+                .update();
+    }
+
+    @Override
+    public List<Fact> withoutEmbedding(int limit) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.fact f WHERE f.embedding IS NULL ORDER BY f.learned_at LIMIT ?")
+                .param(limit).query(JdbcFactStore::fact).list();
+    }
+
+    @Override
+    public void setEmbedding(UUID id, float[] embedding) {
+        jdbc.sql("UPDATE memory.fact SET embedding = CAST(? AS " + vectors.type() + ") WHERE id = ?")
+                .params(vectors.literal(embedding), id).update();
+    }
+
+    @Override
+    public String searchMode() {
+        return vectors.pgvector() ? "pgvector HNSW index (cosine)" : "exact cosine scan (no pgvector)";
+    }
+
+    @Override
+    public int dimensions() {
+        return vectors.dimensions();
+    }
+
+    @Override
+    public void deleteAll() {
+        jdbc.sql("DELETE FROM memory.fact").update();
+    }
+
+    static Fact fact(ResultSet rs, int n) throws SQLException {
+        return new Fact(rs.getObject("id", UUID.class), rs.getString("subject"), rs.getString("statement"),
+                FactKind.parse(rs.getString("kind")), rs.getInt("importance"), rs.getFloat("confidence"),
+                Sensitivity.parse(rs.getString("sensitivity"), Sensitivity.NORMAL), MemoryRows.instant(rs, "valid_from"),
+                MemoryRows.instant(rs, "valid_to"), MemoryRows.instant(rs, "learned_at"), MemoryRows.instant(rs, "expired_at"),
+                rs.getObject("superseded_by", UUID.class), MemoryRows.instant(rs, "last_used_at"), rs.getInt("use_count"),
+                rs.getBoolean("archived"), rs.getBoolean("pinned"), FactOrigin.parse(rs.getString("origin")),
+                rs.getString("extracted_by"), MemoryRows.longs(rs, "sources"));
+    }
+}

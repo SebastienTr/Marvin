@@ -24,6 +24,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import marvin.host.adapter.llm.StubOllama;
 import marvin.host.app.contract.RawHttp;
 import marvin.host.app.contract.Sse;
 import tools.jackson.databind.JsonNode;

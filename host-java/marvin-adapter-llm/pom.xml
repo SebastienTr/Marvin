@@ -24,5 +24,29 @@
       <groupId>org.springframework.ai</groupId>
       <artifactId>spring-ai-ollama</artifactId>
     </dependency>
+    <dependency>
+      <groupId>marvin.host</groupId>
+      <artifactId>marvin-application</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <!-- StubOllama for the boot module's end-to-end tests -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>

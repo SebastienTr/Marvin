@@ -1,0 +1,23 @@
+{
+  "_about": "What the stub Ollama answers for each case of cases.json. It checks the evaluation harness (prompts, parsing, reconciliation, scoring), not a model: two answers are wrong on purpose (en-football misses its fact, fr-marvin-advice takes Marvin's advice for a fact) so the scores are below 1. To measure a real model, run the test with MARVIN_EVAL_OLLAMA (docs/memory.md).",
+  "extract": {
+    "fr-home": [{"subject": "owner", "statement": "The owner lives in Lyon, in the Croix-Rousse district, since 2019.", "kind": "biographical", "valid_from": "2019-01-01", "valid_to": "", "importance": 9, "sensitivity": "personal", "confidence": 0.95}],
+    "fr-move": [{"subject": "owner", "statement": "The owner lives in Lille.", "kind": "biographical", "valid_from": "2026-08-01", "valid_to": "", "importance": 9, "sensitivity": "personal", "confidence": 0.95}],
+    "en-sister": [{"subject": "person:Julie", "statement": "Julie is the owner's sister and lives in Nantes with her boyfriend Tom.", "kind": "relation", "valid_from": "", "valid_to": "", "importance": 7, "sensitivity": "personal", "confidence": 0.9}],
+    "fr-smalltalk": [],
+    "fr-plan-tomorrow": [{"subject": "owner", "statement": "The owner takes the train to Paris for a job interview at Doctolib.", "kind": "plan", "valid_from": "2026-09-29", "valid_to": "2026-09-29", "importance": 6, "sensitivity": "personal", "confidence": 0.9}],
+    "en-tea": [{"subject": "owner", "statement": "The owner only drinks green tea and cannot stand coffee.", "kind": "preference", "valid_from": "", "valid_to": "", "importance": 4, "sensitivity": "normal", "confidence": 0.95}],
+    "fr-cat": [{"subject": "thing:Tofu", "statement": "Tofu is the owner's cat, three years old.", "kind": "relation", "valid_from": "", "valid_to": "", "importance": 6, "sensitivity": "normal", "confidence": 0.95}],
+    "en-secret": [{"subject": "owner", "statement": "The owner's bank PIN is 4821.", "kind": "state", "valid_from": "", "valid_to": "", "importance": 8, "sensitivity": "secret", "confidence": 0.5}],
+    "fr-asthma": [{"subject": "owner", "statement": "The owner takes asthma treatment every evening.", "kind": "habit", "valid_from": "", "valid_to": "", "importance": 7, "sensitivity": "sensitive", "confidence": 0.95}],
+    "en-guitar-update": [{"subject": "owner", "statement": "The owner has played guitar for ten years, mostly jazz.", "kind": "habit", "valid_from": "2016-09-30", "valid_to": "", "importance": 6, "sensitivity": "normal", "confidence": 0.9}],
+    "fr-job-noop": [{"subject": "owner", "statement": "The owner is a software developer.", "kind": "biographical", "valid_from": "", "valid_to": "", "importance": 8, "sensitivity": "normal", "confidence": 0.95}],
+    "en-football": [],
+    "fr-marvin-advice": [{"subject": "owner", "statement": "The owner should drink more water.", "kind": "habit", "valid_from": "", "valid_to": "", "importance": 3, "sensitivity": "normal", "confidence": 0.4}]
+  },
+  "reconcile": {
+    "The owner lives in Lille.": {"operation": "INVALIDATE", "target": 1, "statement": "", "valid_to": "2026-08-01"},
+    "The owner has played guitar for ten years, mostly jazz.": {"operation": "UPDATE", "target": 1, "statement": "The owner has played guitar for ten years, mostly jazz.", "valid_to": ""},
+    "The owner is a software developer.": {"operation": "NOOP", "target": 1, "statement": "", "valid_to": ""}
+  }
+}

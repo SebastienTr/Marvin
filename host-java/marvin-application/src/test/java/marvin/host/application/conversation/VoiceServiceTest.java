@@ -121,6 +121,12 @@ class VoiceServiceTest {
         }
 
         @Override
+        public List<ConversationEntry> after(long afterId, int limit) {
+            return entries.stream().filter(e -> e.id() > afterId).sorted(Comparator.comparingLong(ConversationEntry::id))
+                    .limit(limit).toList();
+        }
+
+        @Override
         public List<ConversationEntry> between(double start, double end, int limit) {
             return entries.stream().filter(e -> e.t() >= start && e.t() < end)
                     .sorted(Comparator.comparingDouble(ConversationEntry::t)).toList();

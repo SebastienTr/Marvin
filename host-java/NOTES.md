@@ -914,3 +914,197 @@ changed in this stage.
 - `host-java/e2e/e2e.py` can become a CI job (demo mode, stub Ollama, fake sidecar) once Playwright
   is in the CI image.
 - An export of the PostgreSQL history back to SQLite would make going back to the Python host lossless.
+
+# Memory v1
+
+Design phase 3 ([docs/design.md](../docs/design.md) section 5), built in stages. How memory works, for a reader:
+[docs/memory.md](../docs/memory.md). One section per stage.
+
+## Stage: write path
+
+### What exists
+
+- **A `memory` bounded context.** Domain (`marvin.host.domain.memory`, plain Java): `MemoryEvent`, `Sensitivity`,
+  `MemorySources`, `EventFeeds` (conversation lines and brain events as log events, labelled at the source),
+  `Redaction` (cards with Luhn, IBANs, values said after password/PIN/code words; `redactLikelyCodes` when the model
+  flags a secret the rules missed), `Fact` (bi-temporal, `current`/`validAt`/`believedAt`), `FactCandidate` (checks:
+  secrets dropped, subjects normalised, dates parsed in the owner's zone, health and money `sensitive` by rule),
+  `Operation` (ADD/UPDATE/INVALIDATE/NOOP, read safely from the model), `Reconciliation` (a plan of new facts, ends
+  and more sources; the owner's word wins), `Batches`, `Episode`/`EpisodeLevel`, `Block`/`BlockVersion`,
+  `ProfileText` (kept lines, the size limit, diffs, removing a forgotten fact's lines), `TokenEstimator`,
+  `DecayRules`, `MemorySettings`, `Vectors`.
+- **Use cases** (`marvin.host.application.memory`): `MemoryLogService` (`RecordMemory`: redaction, per-source switches,
+  a writer thread with batches and retries, the one-time backfill per source), `Consolidator` (one batch: extraction,
+  checks, embeddings, similar facts, the model's operation, all-or-nothing writes), `NightlyPass` (missing embeddings,
+  day episodes, week and month roll-ups, the profile rewrite, decay, retention, orphans), `MemoryWorker`
+  (`ConsolidateMemory`: idle and nightly scheduling, yielding to the voice, backoff after failures, warm-up, state
+  and reports), `MemoryAdminService` (`ManageFacts`, `ForgetMemory`, `BrowseMemory`, `MemoryHealth`),
+  `MemoryExportService` (`ExportMemory`: JSON tables and Markdown), `MemorySettingsService` (`ConfigureMemory`, the
+  models), `Embeddings` (the embedder's state and a size check). Out-ports: `EventLog`, `FactStore` (with a
+  bi-temporal `asOf`), `EpisodeStore`, `ProfileStore`, `MemoryStateStore`, `Embedder`, `MemoryModel`,
+  `VoiceActivity`, `VoiceModel`, `ModelWarmUp`, `MemoryListener`, `BackfillSource`.
+- **Persistence**: schema `memory` (Flyway `memory/V1__memory.sql`): `event_log`, `fact`, `fact_source`, `episode`,
+  `block_version`, `state`; HNSW indexes on the embeddings with pgvector; `real[]` and an exact scan without it
+  (`ContextMigrations` chooses with a placeholder, `marvin.memory.vector=off` forces it). `JdbcEventLog`,
+  `JdbcFactStore`, `JdbcEpisodeStore`, `JdbcProfileStore`, `JdbcMemoryState`, `MemoryRows`.
+- **Ollama**: `OllamaMemoryModel` (streamed `/api/chat` with a JSON schema in `format`, cancelled by closing the
+  stream; prompts `marvin/memory/prompts/v1/*.txt`, version `memory-prompts/1`) and `OllamaEmbedder` (`/api/embed`,
+  batches of 32, a missing model says `ollama pull <model>`), both through Spring AI's `OllamaApi`.
+- **Feeding the log** (`marvin-app`, `MemoryFeeds`): the conversation store every user gets is a decorator that also
+  records each kept line; the presence history has one more listener; at start the conversation and presence
+  histories are backfilled once through their contexts' new `after(afterId, limit)` paging (`ConversationHistory`,
+  `PresenceHistory`, their stores). `VoiceActivityTracker` tells the worker when the voice is busy; the worker warms
+  the voice up again through `VoiceControl.rewarm()` (new).
+- **Web** (the first two routes of the memory API): `GET /api/memory/worker` (state, last report, embeddings, counts)
+  and `POST /api/memory/consolidate` (`{"pass": "idle" | "nightly"}`, 202), allowed by `AccessFilter.POST_PATHS`.
+- **Health**: a `memory` component (`up` with counts, the search mode and the embedding model; `disabled` with the
+  fix when the embedding model is missing). `./marvin doctor` checks `bge-m3` (`MARVIN_EMBED_MODEL`).
+- **Test support**: `marvin-application`'s test jar has in-memory stores with the SQL semantics
+  (`memory.testing.InMemoryMemory`), a scripted `FakeMemoryModel`, `WordEmbedder`, `MemoryFixture`;
+  `marvin-adapter-llm`'s test jar has `StubOllama` (chat streaming, tool calls, structured answers, deterministic
+  `/api/embed`), now also used by `marvin-app`'s tests (its own copy is gone). `host-java/e2e/stub_ollama.py` learned
+  `/api/embed` (the same embeddings), structured answers for memory's jobs, and chunked request bodies.
+- **The evaluation set**: `marvin-adapter-llm/src/test/resources/memory-eval/` (13 conversations, French and English,
+  expected facts, operations, a date and a sensitivity) and `MemoryEvaluationTest`, against the stub by default, a real
+  Ollama with `MARVIN_EVAL_OLLAMA` (docs/memory.md says how).
+- Docs: [docs/memory.md](../docs/memory.md) (new), design.md 5.4 "As built" and the embedding model, README (the
+  context), this section.
+
+### Decisions and deviations from docs/design.md
+
+1. **Contexts meet in `marvin-app`, not in memory.** Memory's domain knows the other contexts' kinds by name only
+   (`EventFeeds`); the glue passes plain values. Memory could have consumed `domain.conversation.event` and
+   `domain.presence.event` (the context rule allows it), but the stored presence event is a `domain.presence.history`
+   type and the conversation publishes no event: a decorator and a listener in the boot module keep both contexts
+   unchanged and memory independent of both. The backfill goes through the contexts' in-ports, never their tables.
+2. **The conversation is fed from what is kept**, not from `Heard`/`ReplySpoken` directly: the stored entries already
+   carry the language, the tool calls and the errors, and the Talk panel and memory then agree by construction. The
+   voice's thread pays mapping, redaction and a queue offer: **20.6 µs per line** measured
+   (`MemoryLogServiceTest.recordingCostsTheVoiceMicrosecondsNotADatabaseRoundTrip`, with the writer stuck on a down
+   database); the database write is on the writer thread.
+3. **Times are `timestamptz`** in `memory` (design 5.4), unlike the older contexts' Unix seconds; `EventFeeds.instant`
+   converts to the microsecond.
+4. **Schema differences** (design 5.4 "As built"): `sensitivity` has no `secret` (never stored); `fact.embedding` may be
+   `NULL` (the owner's `remember` works while the embedding model is missing; the nightly pass embeds later);
+   `fact.extracted_by`; `episode.day` and `events`; `block_version` status `superseded` and `kept_lines`; a `state`
+   table (worker progress, backfill markers, the owner's memory settings: the settings context's `setting` table
+   belongs to another schema).
+5. **Owner lines of the profile** are explicit (`kept_lines`): the lines the owner added or changed in an edit, plus
+   the ones pinned; every rewrite keeps them verbatim and first. The design said "lines the owner wrote or pinned";
+   without a column there is no way to know them after the next rewrite.
+6. **The owner's word wins over extraction**: a pinned fact is never updated or invalidated by the model (the candidate
+   is added beside it, for the owner to see); an owner-written fact is never reworded (an update becomes a NOOP with
+   more sources), but the world may still end it (INVALIDATE). Owner-written and pinned facts never decay.
+7. **A batch is all or nothing.** Plans are decided in memory first (later candidates see the earlier ones, and facts
+   ended earlier in the batch are hidden), then written in order, then the events are marked read. A pass cut by the
+   voice writes nothing of the batch in progress. The writes are not one transaction across the plans (each plan is);
+   a crash between two plans can leave a half-written batch that the next pass reprocesses (then mostly NOOPs).
+8. **Yielding to the voice cancels the model call in flight**: memory's requests are streamed and the stream is closed
+   as soon as the voice is busy (listening, thinking, speaking, or a sign of conversation in the last 15 s); Ollama
+   stops generating when the client goes. A question can still wait for the prompt evaluation Ollama already started.
+9. **Same `num_ctx` as the voice (8192)**: a different context size would reload the voice's model. Memory's own
+   budget follows: at most 40 lines per batch, about 3500 tokens of a day's events per summary.
+10. **The warm-up** runs after a pass that used the voice's own model (its cached prompt is gone: Ollama keeps one
+    prompt cache per loaded model) or changed the profile. Today nothing reads the profile into the prompt; the read
+    path stage makes the profile part of the system prompt and relies on this hook.
+11. **Skipping the model when nothing is similar**: a candidate with no current fact at cosine ≥ 0.3 among its 10
+    nearest is added without a reconciliation call (most candidates, most of the time). bge-m3 gives unrelated
+    sentences about 0.3 to 0.45, so the model still sees anything plausibly related.
+12. **Unreadable model output** is retried once, then the batch is skipped (marked read, logged): a model that always
+    fails would otherwise block every later event.
+13. **Failures back off**: a failed scheduled pass waits 1 minute, doubling to 30 minutes, before the next scheduled
+    try ("Consolidate now" is not held back); the log says it once per streak.
+14. **Idle counts from the host's start**: the first pass after a start waits `idle_minutes`, and a new install's first
+    nightly pass runs at the first idle moment after that (the most recent night hour counts as due).
+15. **Sensitive data**: vital-sign events are `sensitive` at the source; sensitive events are left out of day
+    summaries; sensitive facts never enter the profile (it will be in every prompt, whoever is in the room);
+    health/money words make a fact `sensitive` by rule.
+16. **Forgetting a fact also rewrites the profile at once** (a new version without the lines that state it), and the
+    owner event it leaves has no content. The source conversation lines stay in the log (they may hold other facts):
+    forgetting them is `forgetEvents`.
+17. **Retention** deletes only brain events (older than `retention_days`, their day summarised, no fact from them);
+    the per-minute samples live in the presence context, which memory cannot touch (see gaps).
+18. **Settings**: memory's own (`MemorySettings`, in `memory.state`): per-source switches, `memory_model` (empty: the
+    voice's), `night_model` (empty: the memory model), `embed_model` (bge-m3), `night_hour` (3), `idle_minutes` (10),
+    `retention_days` (365), `worker`. The embedding size is a host property fixed at schema creation
+    (`marvin.memory.embedding-dimensions`, 1024); a model with another size is refused with a clear message.
+19. **ArchUnit ignores test jars** (`ArchitectureTest.NoTestJars`): the shared test helpers are on `marvin-app`'s test
+    class path as jars, which `DoNotIncludeTests` does not recognise.
+
+### Verified
+
+- `cd host-java && ./mvnw verify`: 263 tests, 0 failures, 1 skipped (the embedded database as root). New: domain
+  `FactCandidateTest`, `ReconciliationTest`, `ProfileTextTest`, `RulesTest` (redaction, feeds, batches, decay,
+  periods, settings, tokens); application `ConsolidatorTest`, `MemoryWorkerTest` (idle wait, busy voice, night hour,
+  first night, yield and resume, failure with fix and backoff, off), `NightlyPassTest` (days without sensitive events,
+  roll-ups, stale episodes rewritten after a forget, profile with kept lines and the size limit, decay, retention),
+  `MemoryLogServiceTest` (switches, redaction, outage retried, backfill once and without duplicates, the voice's cost),
+  `MemoryAdminServiceTest` (remember, edit as a version, pin, forget a fact and its profile line, forget events with
+  cascade, forget everything, profile edit/restore/limit, export, health); persistence `MemoryStoresIT` (pgvector:
+  schema and HNSW index used by the planner, idempotent log, filters, invalidation on both clocks with `asOf`,
+  version chains, NOOP sources, forgetting cascade and orphans, retention keeps fact sources, episodes, profile
+  versions and the single active one, state; without pgvector: `real[]`, exact search, no index);
+  `OllamaMemoryModelTest` (request body: schema, `num_ctx` 8192, temperature 0, `think` false; prompts; parsing;
+  bad output; missing model; refused connection; cancellation within 2 s; embeddings in batches and missing model);
+  `MemoryEvaluationTest` (stub: precision 0.90, recall 0.90, operations 3/3, dates 1/1, sensitivity 1/1, the two
+  misses on purpose); `MemoryEndToEndIT` (the whole host: backfill of conversation and presence with labels and
+  without notes or host markers, a new line fed live, idle pass with facts and sources, nightly pass with a day and a
+  profile, every memory request with `format` and `num_ctx` 8192, embeddings bge-m3, `/api/health` memory component,
+  the two web routes, forgetting a fact and its profile line); ArchUnit green with the new context.
+- `cd host && python3 -m pytest -q`: 305 passed, 3 skipped (the Python host is unchanged).
+- `./marvin demo` with `host-java/e2e/stub_ollama.py` on 11434: `/api/health` memory "247 events (247 not
+  consolidated yet), pgvector HNSW index (cosine), embeddings bge-m3", the demo week backfilled; `POST
+  /api/memory/consolidate {"pass":"nightly"}`: done in 1.4 s, 249 events, 12 batches, 5 day episodes, 1 week.
+  (The voice could not be turned on here: no voice extra in this container.)
+- The embedding-model-missing path was seen for real: the first demo start met a stub that could not read chunked
+  request bodies; health said `embeddings bge-m3 unavailable: ... Run ollama pull bge-m3`.
+
+### Latency
+
+- The voice path gains 20.6 µs per kept line on the voice's threads (above) and nothing else: no memory in the
+  prompt yet, so the system prompt, the history and the request body are byte-identical to before (the
+  `VoiceEndToEndIT` and `ApiContractIT` checks of the rehearsal and question bodies are unchanged and green).
+- What the owner may feel is the model being shared: a memory pass only starts after `idle_minutes` of quiet, its
+  call in flight is abandoned when the voice wakes, and the voice's prompt cache is refilled after a pass that used
+  the voice's model. Worst case, the first question after a pass waits for the prompt evaluation Ollama had already
+  started plus the refill if it was not finished: to be measured on the Mac (`docs/test-plan.md` has no step for it
+  yet; hint below).
+
+### Known gaps
+
+- **No real model here**: extraction quality is unmeasured (the stub checks the harness). Run the evaluation set on
+  the Mac with `qwen3:4b-instruct` and with the night model before trusting the defaults; tune the prompts with it.
+- **Nothing reads memory yet**: no context assembler, no `recall`/`remember`/`forget` tools, no Memory screen; the
+  profile is written but not in the prompt (next stages).
+- Retention does not reduce the presence context's per-minute samples (another context's table); the presence
+  context needs its own retention rule, or a port for it.
+- A database first made without pgvector keeps `real[]` columns after pgvector appears (no migration to `vector`), and
+  changing the embedding model's size needs a new database (the design's "new column, then swap" is not built).
+- Forgotten facts can be learned again if the owner says them again (by design) and, until the nightly rewrite, a
+  summary can still mention a forgotten event's content only if its day was not marked stale (days are; weeks and
+  months overlapping them are too).
+- The HNSW search filters after the index scan (pgvector's default); with many archived or ended facts near a
+  question, fewer than `k` current facts may come back. `hnsw.iterative_scan` (pgvector 0.8) would fix it.
+- `Consolidator`'s plans are written one transaction each (decision 7).
+- The golden recordings (`marvin-contracts/golden/recordings/`) are ignored by the repository's `.gitignore`
+  (`recordings/`): a fresh clone must run `python3 marvin-contracts/tools/recordings.py` before `./mvnw verify`
+  (found here after a restore; not changed in this stage).
+- The worker's reports and state are not pushed over SSE yet (`MemoryListener` exists; the app stage decides the
+  message, the contract test's SSE shapes must allow it).
+
+### Hints for the next stages
+
+- **Read path**: implement the conversation's memory port in `marvin-app` over memory's in-ports (a new
+  `RecallMemory`-style in-port: `FactStore.nearest` with `Filter` for the path, `touch` for used facts, `asOf` for
+  "when" questions, episodes by day). Put the profile in the system prompt (it changes only when
+  `BlockVersion` changes: nightly or owner edits; `MemoryWorker` already calls `rewarm` after a profile change, and
+  owner edits in `MemoryAdminService` should trigger it too). Volatile memory goes in the last user message. Compute
+  the question embedding from the speculative transcript (`Partial`) where possible. Calibrate `TokenEstimator`
+  from `prompt_eval_count` (the chat responses carry it; `OllamaLanguageModel` does not surface it yet).
+- **Tools**: `remember` → `ManageFacts.remember` (owner origin, confidence 1); `forget` → propose with
+  `ManageFacts.list`/nearest, confirm, then `ForgetMemory.forgetFact`; `recall` → facts (including archived and past,
+  `asOf`), episodes, `BrowseMemory.log`.
+- **API and app**: extend `MemoryController`; add every POST route to `AccessFilter.POST_PATHS`; export is
+  `ExportMemory.export()` (zip it in the adapter); publish `MemoryListener` events on SSE once the app knows them.
+- Measure on the Mac: the first-word latency of a question asked right after a pass (forced with
+  `POST /api/memory/consolidate`), with the memory model equal to the voice model and with a separate night model.

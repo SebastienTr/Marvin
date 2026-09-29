@@ -45,6 +45,12 @@ public class JdbcConversationStore implements ConversationStore {
     }
 
     @Override
+    public List<ConversationEntry> after(long afterId, int limit) {
+        return jdbc.sql("SELECT id, ts, kind, text, data::text AS data FROM conversation.entry WHERE id > ? ORDER BY id LIMIT ?")
+                .params(afterId, limit).query(JdbcConversationStore::entry).list();
+    }
+
+    @Override
     public long maxId() {
         return jdbc.sql("SELECT COALESCE(MAX(id), 0) FROM conversation.entry").query(Long.class).single();
     }

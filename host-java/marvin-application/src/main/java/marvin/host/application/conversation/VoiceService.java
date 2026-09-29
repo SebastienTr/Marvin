@@ -272,6 +272,19 @@ public final class VoiceService implements VoiceControl {
         });
     }
 
+    @Override
+    public void rewarm() {
+        VoiceConfig c = config;
+        if (closed || c == null || !ON.equals(state)) {
+            return;
+        }
+        answers.execute(() -> {
+            if (ON.equals(state)) {
+                warmUp(c);
+            }
+        });
+    }
+
     /** Stops the voice for good (the host is quitting). */
     public void close() {
         closed = true;
