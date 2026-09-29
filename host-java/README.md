@@ -9,7 +9,7 @@ migration phase) is in [NOTES.md](NOTES.md).
 Status: **phase 2b, parity with the Python host**, and the default way to run Marvin (`./marvin up`).
 The host owns the robot's UDP port (protocol v1, byte for byte as the Python host), runs the presence
 brain on it, feeds the robot's face, records, replays and taps the datagrams, keeps the history in
-PostgreSQL, serves the app unchanged with the Python host's API, event streams and access key, and
+PostgreSQL, serves its app (the current design) with the Python host's API, event streams and access key, and
 talks: the conversation (persona, context, Ollama through Spring AI, the tool loop and the weather,
 memory, break reminders) runs in Java, the audio loop in the Python voice sidecar it supervises
 ([docs/voice.md](../docs/voice.md#the-voice-sidecar)). The Python host (`marvin-host`) stays for the
@@ -17,7 +17,8 @@ simulator, the Rerun viewer and replays; only one host can own UDP 47100 at a ti
 
 Memory v1 is under way (design phase 3): the event log, facts, episodes, the profile and the memory worker (the
 write path); the profile in the system prompt, the question's memory sections within their token budgets, the
-`remember`, `recall` and `forget` tools and the memory API (the read path). The app's Memory screen comes next. How it
+`remember`, `recall` and `forget` tools and the memory API (the read path); the new app with its Day and Night
+appearances, Home, Talk and the reply inspector's memory report (the app shell). The full Memory screen comes next. How it
 works: [docs/memory.md](../docs/memory.md).
 
 Before relying on it with real boards and a real model, run the manual
@@ -308,9 +309,10 @@ curl http://localhost:8765/api/health
 
 ### The app
 
-The app is the Python host's (`host/marvin_host/ui/static`, copied byte for byte, checked by
-`AppFilesTest`): same pages, same API, same event streams (`/api/stream`, `/api/robot/stream`), same
-rules. From this computer nothing is needed; other devices need the access key, which `./marvin up`
+The app is the Java host's own (`marvin-adapter-web/src/main/resources/app`, plain ES modules, no build step; the
+Python host keeps its older app): Day, Night or Auto, five destinations (Home, Talk, Memory, Activity, Marvin), the
+same API and event streams (`/api/stream`, `/api/robot/stream`) as the Python host, the same rules
+([docs/ui.md](../docs/ui.md)). `AppFilesTest` keeps it self-contained; `e2e/e2e.py` walks it in a browser. From this computer nothing is needed; other devices need the access key, which `./marvin up`
 prints in the phone address (`http://<LAN address>:8765/?token=...`); the browser keeps it in a
 cookie. `ApiContractIT` replays every request recorded from the Python host (marvin-contracts
 `golden/api`) against the Java host and compares status, headers and shapes.

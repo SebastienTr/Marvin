@@ -126,12 +126,16 @@ public final class ForgetConfirmations implements ConfirmForgetting {
     @Override
     public Proposal proposeFact(UUID id) {
         Fact f = facts.get(id).orElseThrow(() -> new IllegalArgumentException("no such fact"));
-        return add(f.statement(), List.of(f), false, "app", -1);
+        Proposal p = add(f.statement(), List.of(f), false, "app", -1);
+        changed();          // every open app shows it (the phone as well as the page that asked)
+        return p;
     }
 
     @Override
     public Proposal proposeEverything() {
-        return add("", List.of(), true, "app", -1);
+        Proposal p = add("", List.of(), true, "app", -1);
+        changed();
+        return p;
     }
 
     @Override

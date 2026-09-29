@@ -17,17 +17,24 @@ import org.springframework.web.bind.annotation.RestController;
 import marvin.host.application.face.port.in.FaceImage;
 
 /**
- * The app itself: the page, its script, style and manifest (the Python host's {@code ui/static}, served
- * unchanged), the face drawn on the host ({@code /face.png}) and the icon.
+ * The app itself: the page, its style, its scripts and manifest (the Java host's own app, see docs/ui.md; the
+ * Python host keeps its older one), the face drawn on the host ({@code /face.png}) and the icon.
  */
 @RestController
 public class AppController {
     private static final Logger log = LoggerFactory.getLogger(AppController.class);
-    static final Map<String, String> STATIC_TYPES = Map.of(
-            "index.html", "text/html; charset=utf-8",
-            "app.js", "text/javascript; charset=utf-8",
-            "style.css", "text/css; charset=utf-8",
-            "manifest.webmanifest", "application/manifest+json");
+    /** The app's files: the page, its style, its scripts (ES modules) and the manifest. Nothing else is served. */
+    static final Map<String, String> STATIC_TYPES = Map.ofEntries(
+            Map.entry("index.html", "text/html; charset=utf-8"),
+            Map.entry("style.css", "text/css; charset=utf-8"),
+            Map.entry("manifest.webmanifest", "application/manifest+json"),
+            script("theme.js"), script("app.js"), script("core.js"), script("face.js"), script("daycard.js"),
+            script("memdata.js"), script("inspector.js"), script("convo.js"), script("home.js"), script("talk.js"),
+            script("memory.js"), script("activity.js"), script("marvin.js"));
+
+    private static Map.Entry<String, String> script(String name) {
+        return Map.entry(name, "text/javascript; charset=utf-8");
+    }
 
     private final FaceImage face;
     private final Map<String, byte[]> files = new ConcurrentHashMap<>();

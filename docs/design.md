@@ -708,6 +708,8 @@ The current app stays: same design language, same tabs, plain HTML/CSS/JavaScrip
 
 The face on the Home tab is drawn in the browser, as the Talk panel already does, instead of the server rendering PNGs with `face.py`. `face.py` stays as the reference renderer and the source of golden images for the firmware.
 
+**As built (memory v1, app shell).** The owner approved a new visual direction, so the Java host's app no longer keeps the old design language: one interface with a Day and a Night appearance (and Auto), identical markup and geometry, five destinations (Home, Talk, Memory, Activity, Marvin) in a bottom bar on a phone and a rail on a computer. The sections above find their place there: Robot and Settings under Marvin, History and the log under Activity (with tasks, as an empty state until they exist), Soul and Connectors as "coming later" entries under Marvin, approvals as "your decision" on Home (today: forgetting a memory). The URLs, the API and the access key rules are unchanged; the contract tests check the app's files by status and headers only, since the Python host keeps its older app. Every face in the app is drawn in the browser with face.py's geometry; `/face.png` remains, shown as "the robot's screen". Details in [ui.md](ui.md) and [host-java/NOTES.md](../host-java/NOTES.md) ("Stage: app shell").
+
 ## 10. Deployment
 
 ### 10.1 Native on the Mac (first)

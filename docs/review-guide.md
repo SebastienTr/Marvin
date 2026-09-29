@@ -46,7 +46,7 @@ context's storage names only its own schema).
 | The brain's events and states | `GoldenRecordingsTest`: Python recordings replayed through the Java brain, compared with the Python events and states |
 | `.mvrec` files | `MvrecCompatibilityTest`, `PythonReadsJavaRecordingTest` (both directions) |
 | API JSON, headers, access rules | `ApiContractIT` replays every request recorded from the Python host (`golden/api`) and compares status, headers and shapes; `PyJsonTest` (Python's number and escaping format) |
-| The app itself | `AppFilesTest`: `static/` equals `host/marvin_host/ui/static` byte for byte |
+| The app itself | `AppFilesTest`: every file served, nothing from the network, no inline script or style, Day and Night define the same variables (the Java app is its own since the app shell stage); `e2e/e2e.py` in a browser |
 | Face | `FaceVectorsTest` (the Python renderer's pixels) |
 | Conversation text handling and tools | `ConversationVectorsTest`, `ToolVectorsTest` (Python-made vectors: speech text, `</think>`, splitter, weather) |
 | Voice behaviour end to end | `VoiceEndToEndIT` (the real sidecar in its test mode, a stub model, a spoken question through wake word, answer and latency), `GrpcVoiceSidecarIT`, `VoiceServiceTest` (turn order, interruption, errors) |

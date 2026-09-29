@@ -48,7 +48,8 @@ import tools.jackson.databind.ObjectMapper;
  * The app's API contract: every request recorded from the Python host in demo mode
  * (marvin-contracts golden/api) is replayed against the Java host in demo mode, with the same access
  * key, and must get the same status, the same headers, and a body of the same shape (the same values
- * where they are not volatile: error messages, settings, the access rules, the app's files). The voice
+ * where they are not volatile: error messages, settings, the access rules; the app's files only by status and
+ * headers, the Java host's app being its own). The voice
  * is the real one: the Python voice sidecar in its test mode (a scripted microphone, a fake Whisper and
  * voice) and a stand-in for Ollama; the weather tool gets canned Open-Meteo answers. Both event streams
  * are checked the same way, including the voice's live messages.
@@ -115,6 +116,8 @@ class ApiContractIT {
     }
     /** Python's json error text; the Java host says "invalid JSON: ..." (same status). */
     static final Set<String> OWN_MESSAGE = Set.of("bad_json");
+    /** The app's own files: the Java host's app differs from the Python host's on purpose (docs/ui.md). */
+    static final Set<String> JAVA_APP = Set.of("app_index", "app_script", "app_style", "app_manifest", "no_key_static_is_public");
 
     /**
      * Not a JUnit-managed {@code @Container}: it must outlive the Spring context, which writes the host's
@@ -221,6 +224,12 @@ class ApiContractIT {
         } else if (snap.has("body_text")) {
             if (!snap.get("body_text").asString().equals(r.text())) {
                 problems.add(name + ": page differs");
+            }
+        } else if (JAVA_APP.contains(name)) {
+            // the Java host has its own app since the new visual direction: same status and headers, its own
+            // bytes (AppFilesTest checks the files, host-java/e2e/e2e.py the app itself)
+            if (r.body().length == 0) {
+                problems.add(name + ": empty");
             }
         } else if (snap.has("body_bytes") && snap.get("headers").get("content-type").asString().startsWith("text/")
                 || name.equals("app_manifest")) {

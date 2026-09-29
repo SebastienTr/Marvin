@@ -93,6 +93,15 @@ def answer(req):
     has_tool = bool(msgs) and msgs[-1].get("role") == "tool"
     if ("weather" in last_user or "météo" in last_user) and not has_tool and req.get("tools"):
         return [chunk(tool_calls=[{"function": {"name": "get_weather", "arguments": {"place": "Nice"}}}]), chunk(done=True)]
+    offered = {t.get("function", {}).get("name") for t in req.get("tools") or []}
+    # the question, not the memory section's heading ("What you remember that may matter here ...")
+    said = next((m for m in reversed(list(re.finditer(r"remember that ([^\n.?!]+)", last_user)))
+                 if not m.group(1).startswith("may matter")), None)
+    if said and "remember" in offered and not has_tool:
+        return [chunk(tool_calls=[{"function": {"name": "remember", "arguments": {"statement": said.group(1).strip()}}}]),
+                chunk(done=True)]
+    if has_tool and msgs[-2].get("tool_calls") and msgs[-2]["tool_calls"][0]["function"]["name"] == "remember":
+        return [chunk("Noted, "), chunk("I will remember it."), chunk(done=True)]
     if has_tool:
         tool = next(m.get("content", "") for m in reversed(msgs) if m.get("role") == "tool")
         LOG.write("TOOL RESULT " + tool[:300] + "\n"); LOG.flush()

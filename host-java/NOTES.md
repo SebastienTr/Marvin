@@ -1251,3 +1251,109 @@ Design phase 3 ([docs/design.md](../docs/design.md) section 5), built in stages.
   are two-step (code, then confirm); pending voice proposals come from `GET /api/memory/forget`.
 - **On the Mac**: run `MemoryEvaluationTest` with the real models; look at the `prompt:` log lines for the first
   question after a pass and after a profile edit (the warm-up should keep `prompt_eval_count` small).
+
+## Stage: app shell
+
+The new app, part 1: the approved visual direction (docs/design.md 10.4; the designer's prototype, Day "Herbier" /
+Night "Halo") built for real on the Java host's static app, wired to the real API. The Python host keeps its own,
+older app unchanged (it stays a tool); the two apps now differ on purpose (docs/ui.md).
+
+### What exists
+
+- **Files** (`marvin-adapter-web/src/main/resources/app/`, plain ES modules, no build step, no CDN, no web fonts):
+  `index.html` (the shell and every screen's markup), `style.css` (the Day block, the Night block, then rules shared
+  by both), `theme.js` (a classic script in the head: the appearance before the first paint), `app.js` (shell,
+  navigation `#view/sub`, the one event stream, badges), `core.js` (helpers, a small event bus between modules),
+  `face.js`, `daycard.js`, `home.js`, `talk.js`, `convo.js`, `inspector.js`, `memory.js`, `memdata.js`,
+  `activity.js`, `marvin.js`. `AppController.STATIC_TYPES` serves exactly these.
+- **Appearance**: Day, Night, Auto (`prefers-color-scheme`, live), kept in `localStorage` (`marvin.appearance`);
+  identical markup and geometry (e2e measures the Home boxes, top bar and rail in both: equal). Skip link, visible
+  focus, 44 px targets (a few compact text buttons enlarge their hit area with a pseudo-element), reduced motion.
+- **Shell**: five destinations (Home, Talk, Memory, Activity, Marvin), a bottom bar on a phone and a rail on a
+  computer, a count on Home when a decision waits, a dot on Talk while Marvin listens or speaks; the top bar with the
+  wordmark and eyes, the connection, the Simulated badge, the appearance switch. The old `#robot`, `#history`,
+  `#settings` addresses still land in the right place.
+- **Eyes**: `face.js` draws face.py's geometry (the robot's nine expressions from `FaceParams`, the voice's seven from
+  the old mini face, lids, blinks, the spring) in the theme's colours, lids cut out so the orb shows through. One
+  shared state (the robot's `expression` from `/api/state`, the voice's status) drives every face: Home's orb,
+  Talk's mini face, the wordmark (still). Marvin > Robot also shows the robot's screen as the host draws it
+  (`/face.png`), polled only while that page is open.
+- **Home**: presence (status sentence, Talk, Mute), your decision (pending forget proposals with Keep / Forget,
+  otherwise an honest "Nothing needs you"; never hideable, always second), your day (stats and the real timeline),
+  a small thing remembered (latest fact with its source line, the next two, the fact's dialog with quoted sources),
+  breaks and breathing (breathing sampled from the live state every 5 s for ten minutes; "Simulated reading",
+  "no longer live" after 10 s without state), recent moments. Customize: show/hide and up/down buttons (keyboard
+  and touch), persisted per browser (`marvin.home`), reset (dialog, Marvin > Preferences, Marvin overview).
+- **Talk**: the old live conversation ported as is (bubbles forming from partials, shimmer while understood, dots
+  while thinking, words appearing as said, listening strip with the time left, earcons, the "now" line, ignored
+  utterances folded), voice on/off, Talk now, Mute, Stop, typed questions; `who` lines above bubbles as in the
+  design; memory chips under answers that used `remember` / `recall` / `forget`; the reply inspector in a dialog
+  with the memory report (profile version, sections with budget and tokens, every candidate with its score, kept or
+  left out, timings, Ollama's counts, the problem when memory was late); "Here, now" beside it (presence, the facts
+  the last answer used, its timing and model).
+- **Also ported, so nothing is lost** (to be refined by the next stage): Memory (facts with filters, search, the
+  fact dialog, profile, export link), Activity (background tasks: honest empty state; memory at work with
+  Consolidate now; today's moments; History with days, week and conversation search; the log), Marvin (overview
+  with Soul and Connections as "coming later"; Robot with devices, lidar, radar, vitals, recoloured per theme;
+  Voice settings; Preferences; System = `/api/health`).
+- **Host change**: `ForgetConfirmations.proposeFact` / `proposeEverything` now notify listeners (a `memory` /
+  `forget` message), so a proposal made on one device shows on every open app (`MemoryRecallServiceTest`). Home
+  also reloads decisions when the first one expires (expiry sends nothing).
+- **Tests and tools**: `AppFilesTest` rewritten (every file served and every served file exists; the page and module
+  imports load only served files and every script is used; no network URL, no inline script, style or handler;
+  SPDX headers; Day and Night define the same variables). `ApiContractIT` checks the app's files (`app_index`,
+  `app_script`, `app_style`, `app_manifest`, the public stylesheet) by status and headers only. `e2e/e2e.py`
+  rewritten for the new app (34 checks, and the screenshots); `e2e/stub_ollama.py` answers "remember that ..." with
+  a `remember` tool call.
+
+### Decisions and deviations
+
+1. **The prototype's page titles are kept as product copy** ("A little room to breathe.", "Things in motion."),
+   dates are real; Talk's title follows the voice ("I'm listening.", "Let me think.", "Resting."). Everything else
+   shown is real data; the prototype's sample content (drafts, recipients, Soul proposal, task budgets) has no
+   counterpart and is replaced by honest empty states.
+2. **Your decision = pending forget proposals** until tasks and approvals exist: the only real thing that waits for
+   the owner's yes today.
+3. **The inspector is a dialog** (design), not the old inline expansion; "Why this answer" under each answer.
+4. **Robot, History, Settings and the log were ported now**, restyled, into Marvin and Activity sub-pages, rather
+   than keeping the old app reachable: the new app replaces the old one at `/` from this stage.
+5. **ES modules** (not one file): the CSP (`script-src 'self'`) allows them, and each screen stays readable.
+6. **The brand eyes are drawn by the same renderer** (still), not CSS pills.
+7. **Manifest colours** follow Day (`#f2f0e7`/`#faf9f3`); the page's `theme-color` has one per scheme.
+
+### Verified
+
+- `./mvnw verify`: 307 tests, 0 failures, 1 skipped (the embedded-database test, as root); `ApiContractIT` 7/7 with the Java app exempt from
+  byte counts; `AppFilesTest` 4/4; `MemoryRecallServiceTest` 13/13; ArchUnit green. `cd host && python3 -m pytest -q`:
+  305 passed, 3 skipped (the Python host and its app unchanged).
+- `python3 host-java/e2e/e2e.py app` against `./marvin demo` (stub Ollama, the voice sidecar with `--fake`):
+  34/34, no console error: robot page live, History search and previous day, log, voice on, typed question, weather
+  tool with the think leak removed, remember tool with its chip and the fact in memory, inspector with timings and
+  memory, Talk now, mute/unmute, stop, voice settings applied, Auto following the system live, same geometry in both
+  appearances, appearance and layout kept after a reload, layout reset, a decision appearing on Home (made through
+  the API, as another device would) and Keep dropping it.
+- At 320 px no screen scrolls sideways.
+- Screenshots of every screen in both appearances at 1440x900 and 390x844 (DPR 2) and the prototype comparisons:
+  `/mnt/user-data/outputs/memory-shots/` (`compare/` holds prototype | implemented side by side).
+
+### Latency
+
+The app changes nothing on the voice path: no new server work per question (the inspector reads the reply entry
+already sent). `renderVoice` and the live handlers are the old ones.
+
+### Known gaps
+
+- Memory's screen is the read side only: edit, pin, archive, review, forget from a fact, forget everything, profile
+  versions and restore, episodes, the raw log, memory settings (per-source switches, models) are the next stage's.
+- A proposal's expiry sends nothing on the stream (Home re-checks at the expiry time).
+- The e2e walk leaves its test facts in the demo's memory ("I water the plants on Sundays").
+- The prototype's `gallery.html` views and 320 px captures were not compared one by one; only the five destinations'
+  PNGs.
+
+### Hints for the next stage (the app, part 2)
+
+- `memory.js` is where the Memory screen grows; `memdata.js` has the fact dialog (add the actions there: edit, pin,
+  archive, forget with its code). The Home decision already confirms/cancels proposals (`home.js loadDecisions`).
+- Listen with `on("memory", ...)` from `core.js`; `emit("badge", {view, n, label})` sets a destination's count.
+- New files must be added to `AppController.STATIC_TYPES` (AppFilesTest fails otherwise); new colours to both theme
+  blocks (it fails otherwise too).

@@ -1,13 +1,170 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Marvin's app
 
-Marvin comes with a small web app that runs on your computer, next to `marvin-host`. You open
-it in a browser, on the computer or on your phone. The Rerun viewer is the developer's view of
-the sensors. The app is the owner's view and Marvin's control center: how Marvin is doing, how
-long you have been sitting, your day and week, the conversation with Marvin (the voice is turned
-on, set up and used from here), the robot's devices and sensors, and a log of what happened.
-The terminal stays quiet: it only prints the app's address, devices connecting and disconnecting,
-the voice turning on and off, and warnings.
+Marvin comes with a small web app that runs on your computer, next to its host. You open it in a browser, on the
+computer or on your phone. It is the owner's view and Marvin's control center: how Marvin is doing, how long you have
+been sitting, your day, the conversation with Marvin (the voice is turned on, set up and used from here), what Marvin
+remembers and where each memory comes from, the robot's devices and sensors, and a log of what happened.
+
+There are two apps, one per host, on the same API:
+
+- **The Java host's app** (`./marvin up`, `./marvin demo`), described below: the current design, with a Day and a
+  Night appearance and five destinations. Its files are in
+  [`host-java/marvin-adapter-web/src/main/resources/app/`](../host-java/marvin-adapter-web/src/main/resources/app).
+- **The Python host's app** (`marvin-host run`, `marvin-host ui`), unchanged: the Python host stays a tool (the
+  simulator, the viewer, replays) and keeps its older app, see [The Python host's app](#the-python-hosts-app).
+
+<p align="center">
+  <img src="images/app_home_day.png" alt="The app on a computer, Day appearance: Marvin's face in a pale green orb with 'You're here, up and about', your decision with nothing pending, your day, a small thing remembered with its source" width="800">
+</p>
+
+<p align="center">
+  <img src="images/app_talk_night_phone.png" alt="Talk on a phone, Night appearance: Marvin's small face, the conversation with an answer and its 'Why this answer' link, the listening strip, Talk now, Mute and Stop, and the text box" width="300">
+</p>
+
+## Try it
+
+```bash
+./marvin demo          # a simulated robot and a simulated past week
+```
+
+Then open http://localhost:8765/. The demo keeps its own copy of the voice's settings and does not touch yours. With
+Ollama running, the voice can be turned on from Talk.
+
+## Layout and appearance
+
+Five destinations: **Home**, **Talk**, **Memory**, **Activity**, **Marvin**. On a phone they are a bar at the bottom,
+on a computer a rail on the left; a small count on a destination says something waits for you (on Home: a decision),
+a dot on Talk that Marvin is listening or speaking. The top bar has the wordmark with Marvin's eyes, the connection
+("Live · on this computer", "Reconnecting", "Robot offline"), a **Simulated** badge when the robot says its sensor
+data is simulated (hover, focus or tap it to read what that means), and the appearance.
+
+**Appearance**: **Day** (ivory, olive, matte), **Night** (indigo, lavender) or **Auto**, which follows the device's
+light or dark setting, also when it changes while the page is open. Both appearances share the same markup, geometry,
+type and behaviour: only colours change. The choice is kept in this browser only (`localStorage`), like the Home
+layout; nothing on the host changes.
+
+Every control is reachable with the keyboard (a "Skip to content" link, visible focus rings) and is at least 44 pixels
+tall; with reduced motion the eyes only change expression and nothing animates.
+
+## What it shows
+
+| Part | Content |
+|---|---|
+| **Home** | |
+| Here with you | Marvin's eyes, live, in an orb: the robot's own eye geometry (the same expressions as its screen, face.py's table) drawn in the appearance's colours, driven by the robot's expression and, while the voice runs, by the voice (attentive while it listens, glancing up while it thinks, moving with its voice while it speaks). Under them the status sentence ("You've been at your desk for 42 min", "Marvin is offline"), **Talk to Marvin** and **Mute**. |
+| Your decision | What waits for your yes, always on Home, whatever you hide. Today: forgetting a memory you asked to forget (by voice or in the app), with **Keep** or **Forget**. When nothing waits: "Nothing needs you." Background tasks and their approvals come later and will wait here too. |
+| Your day | Time seated, breaks taken, first hello, and the day's timeline: when you were around, when you were seated, break reminders. |
+| A small thing remembered | The latest fact Marvin keeps, with where it comes from and when ("You told Marvin · Today, 11:16"), and the next two; **Read the source & correct** opens it with its sources quoted. |
+| Breaks and breathing | The time left before the next break (the bar turns warm when it is time), and breathing per minute with its last ten minutes, marked **Simulated reading** when the sensors are simulated and "no longer live" when the stream stopped. |
+| Recent moments | What happened, in plain words. |
+| Customize | Show, hide and reorder the modules (buttons, no dragging); kept in this browser; **Reset** restores the suggested layout. It changes only the screen: Marvin keeps sensing and remembering. |
+| **Talk** | |
+| Conversation | Live: while you speak, your bubble forms with a small wave and the words understood so far, then shimmers while they are understood; Marvin's shows three dots while he thinks, then writes itself word by word as he says it. Typed questions say so; what Marvin said on his own is marked; what it heard but did not answer folds into one discreet line ("3 sounds ignored") that opens to show each one and why, with its loudness. |
+| Memory chips | When an answer used a memory tool, a chip under it: "Remembered: …", "Looked in memory", "Waiting for your yes to forget" (which waits on Home). |
+| Why this answer | Under each answer, with the time to its first word: the inspector, in a dialog. What Marvin heard (and the raw transcript), what it answered, where the time went (end of speech, recognition, model, tools, first sentence, synthesis), the tools with their arguments and results, the memory that went into the question (the profile's version, each section with its budget and tokens, each candidate with its score, kept or left out, the timings, Ollama's counts), the model and language, and the exact message sent to the model. |
+| Controls | **Voice on/off** (remembered for the next start), **Talk now** (a listening window without saying "Marvin"; a line shows the time left), **Mute**, **Stop**, and the text box. Above them the listening strip (the microphone's or Marvin's voice as a scrolling wave, with a word on what is going on) and a line with what Marvin knows right now, which opens the robot's sensors. |
+| Here, now | Beside the conversation on a computer: presence, the facts the last answer used, the last answer's timing and model. |
+| Problems | If the voice cannot start, the panel says why and how to fix it, with **Try again**. |
+| Sounds | Short soft notes played by the browser when listening opens and closes, when Marvin did not catch you, when an answer starts; off in Marvin > Preferences. |
+| **Memory** | The facts Marvin keeps, all, pinned or suggested (learned on its own, not reviewed yet), with a search; each one opens with its sources, quoted and dated, and its earlier versions. The profile Marvin writes each night (your own lines marked), the worker's last pass, and **Export** (everything, as JSON). See [memory.md](memory.md). |
+| **Activity** | |
+| Today | Background tasks (not yet: an honest empty state), memory at work (what waits to be read, the last passes, the models, **Consolidate now**), today's moments. |
+| History | Any day's timeline and numbers with arrows back in time, the last seven days, and the conversations: that day's (read-only, answers still open their inspector) and a search over everything said. |
+| Log | The brain's events, the devices' messages, devices connecting, the voice, the host's warnings, newest first, filtered by Marvin, Devices, Voice or Warnings. |
+| **Marvin** | |
+| Overview | Robot and voice (connected, simulated or missing; the voice's state and model; **System**: the host's health, component by component), Soul and Connections as honest "coming later" entries, and preferences. |
+| Robot | Each device (board, firmware, address, uptime, Wi-Fi, link, rates, loss), the robot's screen as the host draws it, the lidar's top view with the person the radar follows, the LD2450's field of view, breathing and heart rate over five minutes with their waves. Its stream runs only while this page is open. |
+| Voice | The language model, speech recognition, speech and voice, language, waiting for "Marvin", the follow-up window, spoken reminders, tools and **Internet**, the home location. **Apply** restarts the voice. |
+| Preferences | Break reminder, quiet hours, 12- or 24-hour clock, sounds, appearance, resetting the Home layout, and where your data is. |
+
+The old addresses (`#robot`, `#history`, `#settings`) still open the right place.
+
+## Open it on your phone
+
+When it starts, the host (`./marvin up`, or `marvin-host` for the Python host) prints two addresses:
+
+```
+Marvin's app: http://localhost:8765/
+  on a phone on the same Wi-Fi: http://192.168.1.23:8765/?token=q1w2e3r4t5y6u7i8
+```
+
+Open the second one on a phone connected to the same Wi-Fi. The browser remembers the access
+key (a cookie), so after the first visit `http://192.168.1.23:8765/` is enough. You can add it to
+the home screen; it opens full screen like an app.
+
+If the phone cannot reach it, check that both are on the same network (not a guest Wi-Fi) and
+that the computer's firewall lets the host accept incoming connections (macOS asks the first time).
+
+## The terminal
+
+The Java host writes its log to a file (`./marvin logs`). The Python host's `marvin-host run` prints only what you need to know; the app shows the rest:
+
+```
+Marvin's app: http://localhost:8765/
+  on a phone on the same Wi-Fi: http://192.168.1.23:8765/?token=q1w2e3r4t5y6u7i8
+listening for the robot on UDP 47100
++ marvin-a1b2c3 connected (Wemos D1 mini (ESP8266), firmware 0.4.1, simulated sensors) at 192.168.1.40
+voice: starting (qwen3:4b-instruct)...
+voice: on, say “Marvin, …”
+- marvin-a1b2c3 disconnected (nothing received for 6 s)
+```
+
+Warnings and errors are printed too (`warning: ...`). `-v` adds the brain's events, the devices'
+messages, the conversation (`you: ...`, `marvin: ...` with the time to the first word) and a
+sensor summary every second (`--stats`: the summary alone); `-vv` adds debug logs. With `--no-ui`
+the terminal is all there is, so it shows the events, the conversation and a summary every 5 s.
+
+## Access key
+
+The app listens on your local network so your phone can reach it. Anyone on the same network
+could reach it too, so other devices need the **access key**:
+
+- It is a random key, created on first start and kept in `ui_token` next to the database. Delete
+  that file to get a new one (phones will need the new link).
+- Your own computer (`localhost`) never needs it.
+- `--ui-token off` turns the key off: anyone on the network can then open the app. Only do this
+  on a network you trust.
+- `--ui-token my-own-key` sets your own.
+- `--ui-host 127.0.0.1` makes the app reachable from this computer only.
+- `--ui-port 8765` changes the port.
+
+These are the Python host's options; the Java host reads `MARVIN_UI_TOKEN` (`auto`, `off` or your own key),
+`MARVIN_BIND` and `MARVIN_PORT` (see the top of [`marvin`](../marvin)).
+
+The app also ignores requests addressed to unknown host names (a protection against web pages
+that try to reach services on your computer), and only accepts changes sent by the app itself
+(JSON from the same origin): settings, the voice's settings, turning the voice on and off,
+questions, Talk now, Mute and Stop. All of these need the access key from another device, like
+everything else. Anyone with the key can make Marvin listen and speak: keep it to yourself.
+
+The app has no HTTPS: the key and the data travel unencrypted on your local network, like most
+home devices. Do not expose the port to the internet.
+
+## Privacy: your data stays on your computer
+
+- The Java host keeps everything in PostgreSQL on this computer (Docker, or inside the host), memory included:
+  what Marvin remembers, with the source of every fact. Marvin > Preferences says where; Memory exports it and
+  can forget any of it. The app's appearance and Home layout stay in the browser.
+- The Python host keeps everything in one SQLite file on the computer running `marvin-host`:
+  `~/.local/share/marvin/marvin.db` (or `$XDG_DATA_HOME/marvin/`, or the folder in
+  `MARVIN_DATA_DIR` if you set it). The settings dialog shows where.
+- It holds Marvin's events (arrived, sat down, stood up...), one summary per minute (whether
+  someone was there, and the average breathing and heart rate when they were measured), the
+  conversation with Marvin (what it heard, what it answered, with the context it was given and
+  the timings, what it did not answer and why), and your settings. No images, no sound, no raw
+  radar data. The log is kept in memory only, for as long as `marvin-host` runs.
+- Nothing is sent anywhere. The app loads nothing from the internet (no fonts, no scripts, no
+  analytics) and works without an internet connection. The one exception is Marvin's online tools:
+  asking about the weather sends the place name to Open-Meteo. Turn **Internet** off in
+  Marvin > Voice (Settings > Voice in the Python host's app) to keep Marvin fully offline ([voice.md](voice.md#tools)).
+- To erase the history, stop `marvin-host` and delete the folder:
+  `rm -r ~/.local/share/marvin`.
+
+## The Python host's app
+
+The Python host (`marvin-host run`, `marvin-host ui`) keeps the older app, on the same API. It has five tabs
+(Home, Talk, Robot, History, Settings) and one dark appearance.
 
 <p align="center">
   <img src="images/ui_phone.png" alt="Marvin's app on a phone: the live face, 'You've been at your desk for 38 min', breathing and heart rate, the break timer at 38 of 50 minutes, and the start of today's timeline" width="300">
@@ -25,7 +182,7 @@ the voice turning on and off, and warnings.
   <img src="images/ui_robot.png" alt="The Robot panel: the robot and the vital signs radar with board, firmware, Wi-Fi signal, link and rates; a lidar top view of the room; the LD2450 radar's field of view with the person; breathing and heart rate charts" width="800">
 </p>
 
-## Try it
+### Try it
 
 ```bash
 marvin-host ui --demo --open        # a simulated robot and a simulated past week, time 10x faster
@@ -45,13 +202,13 @@ With the real robot, the app starts with `marvin-host run` (turn it off with `--
 `marvin-host ui` runs the brain and the app without the Rerun viewer, which is lighter for
 everyday use.
 
-## Layout
+### Layout
 
 On a phone, a tab bar at the bottom: **Home**, **Talk**, **Robot**, **History**, **Settings**. On a
 computer the tabs move to the top; on a wide screen (1200 px and more) Home shows the conversation
 beside the face and the day, so the Talk tab disappears.
 
-## What it shows
+### What it shows
 
 | Part | Content |
 |---|---|
@@ -96,82 +253,34 @@ A few definitions:
 - When Marvin loses contact with the robot, or `marvin-host` stops, the timeline has a hole
   rather than a made-up block. After a crash, the time is counted up to the last sign of life.
 
-## Open it on your phone
-
-When it starts, `marvin-host` prints two addresses:
-
-```
-Marvin's app: http://localhost:8765/
-  on a phone on the same Wi-Fi: http://192.168.1.23:8765/?token=q1w2e3r4t5y6u7i8
-```
-
-Open the second one on a phone connected to the same Wi-Fi. The browser remembers the access
-key (a cookie), so after the first visit `http://192.168.1.23:8765/` is enough. You can add it to
-the home screen; it opens full screen like an app.
-
-If the phone cannot reach it, check that both are on the same network (not a guest Wi-Fi) and
-that the computer's firewall lets Python accept incoming connections (macOS asks the first time).
-
-## The terminal
-
-`marvin-host run` prints only what you need to know; the app shows the rest:
-
-```
-Marvin's app: http://localhost:8765/
-  on a phone on the same Wi-Fi: http://192.168.1.23:8765/?token=q1w2e3r4t5y6u7i8
-listening for the robot on UDP 47100
-+ marvin-a1b2c3 connected (Wemos D1 mini (ESP8266), firmware 0.4.1, simulated sensors) at 192.168.1.40
-voice: starting (qwen3:4b-instruct)...
-voice: on, say “Marvin, …”
-- marvin-a1b2c3 disconnected (nothing received for 6 s)
-```
-
-Warnings and errors are printed too (`warning: ...`). `-v` adds the brain's events, the devices'
-messages, the conversation (`you: ...`, `marvin: ...` with the time to the first word) and a
-sensor summary every second (`--stats`: the summary alone); `-vv` adds debug logs. With `--no-ui`
-the terminal is all there is, so it shows the events, the conversation and a summary every 5 s.
-
-## Access key
-
-The app listens on your local network so your phone can reach it. Anyone on the same network
-could reach it too, so other devices need the **access key**:
-
-- It is a random key, created on first start and kept in `ui_token` next to the database. Delete
-  that file to get a new one (phones will need the new link).
-- Your own computer (`localhost`) never needs it.
-- `--ui-token off` turns the key off: anyone on the network can then open the app. Only do this
-  on a network you trust.
-- `--ui-token my-own-key` sets your own.
-- `--ui-host 127.0.0.1` makes the app reachable from this computer only.
-- `--ui-port 8765` changes the port.
-
-The app also ignores requests addressed to unknown host names (a protection against web pages
-that try to reach services on your computer), and only accepts changes sent by the app itself
-(JSON from the same origin): settings, the voice's settings, turning the voice on and off,
-questions, Talk now, Mute and Stop. All of these need the access key from another device, like
-everything else. Anyone with the key can make Marvin listen and speak: keep it to yourself.
-
-The app has no HTTPS: the key and the data travel unencrypted on your local network, like most
-home devices. Do not expose the port to the internet.
-
-## Privacy: your data stays on your computer
-
-- Everything is kept in one SQLite file on the computer running `marvin-host`:
-  `~/.local/share/marvin/marvin.db` (or `$XDG_DATA_HOME/marvin/`, or the folder in
-  `MARVIN_DATA_DIR` if you set it). The settings dialog shows where.
-- It holds Marvin's events (arrived, sat down, stood up...), one summary per minute (whether
-  someone was there, and the average breathing and heart rate when they were measured), the
-  conversation with Marvin (what it heard, what it answered, with the context it was given and
-  the timings, what it did not answer and why), and your settings. No images, no sound, no raw
-  radar data. The log is kept in memory only, for as long as `marvin-host` runs.
-- Nothing is sent anywhere. The app loads nothing from the internet (no fonts, no scripts, no
-  analytics) and works without an internet connection. The one exception is Marvin's online tools:
-  asking about the weather sends the place name to Open-Meteo. Turn **Internet** off in
-  Settings > Voice to keep Marvin fully offline ([voice.md](voice.md#tools)).
-- To erase the history, stop `marvin-host` and delete the folder:
-  `rm -r ~/.local/share/marvin`.
-
 ## For developers
+
+### The Java host's app
+
+Plain HTML, CSS and JavaScript, no framework, no build step, nothing loaded from elsewhere (no fonts, no CDN): ES
+modules served by `AppController` from
+[`resources/app/`](../host-java/marvin-adapter-web/src/main/resources/app), under the page's Content Security Policy
+(no inline script or style). `AppFilesTest` keeps it that way, and checks that Day and Night define the same
+variables; `host-java/e2e/e2e.py` walks it in a browser.
+
+| File | Role |
+|---|---|
+| `index.html` | The shell and every screen's markup, shared by both appearances |
+| `style.css` | The tokens (the Day block, the Night block, nothing else differs), components, screens, the phone and computer layouts, reduced motion |
+| `theme.js` | Applies Day, Night or Auto before the page is drawn; Auto follows `prefers-color-scheme` live |
+| `app.js` | The shell: navigation (`#view/sub`), the appearance switch, the connection, the one event stream, badges |
+| `core.js` | Helpers (DOM, API, formatting, dialog, `localStorage` that may be missing) and the small event bus between modules |
+| `face.js` | Marvin's eyes: face.py's expressions, lids and blinks, the spring, in the appearance's colours; one renderer for every face |
+| `home.js`, `daycard.js` | Home and its customization; one day's timeline (Home and History) |
+| `talk.js`, `convo.js`, `inspector.js` | The live conversation and the voice's controls; conversation entries (Talk and History); the reply inspector |
+| `memory.js`, `memdata.js` | Memory; a fact's source line and its dialog |
+| `activity.js` | Background work, today's moments, History, the log |
+| `marvin.js` | The overview, the robot's page, the voice's and the app's settings |
+
+Appearance and layout are presentation only: they never switch a sensor or a service. The Home layout lives in
+`localStorage` under `marvin.home`, the appearance under `marvin.appearance`.
+
+### The Python host's app
 
 The app is in [`host/marvin_host/ui/`](../host/marvin_host/ui): Python standard library only
 (`http.server`, Server-Sent Events, `sqlite3`), and plain HTML, CSS and JavaScript with no build
@@ -198,7 +307,7 @@ server.stop()
 
 | Endpoint | |
 |---|---|
-| `GET /` | the app |
+| `GET /` | the app (each host serves its own) |
 | `GET /api/state` | `{state, today, settings}`: presence, status sentence, break progress (`state.simulated`: the robot's sensor data is simulated), today's stats |
 | `GET /api/day?date=YYYY-MM-DD` | one day's stats and timeline (default: today) |
 | `GET /api/history?days=7` | time seated per day, oldest first |
@@ -213,6 +322,7 @@ server.stop()
 | `GET /api/conversation?day=YYYY-MM-DD` | `{day, entries}`: that day's conversation, oldest first (default: today) |
 | `GET /api/conversation?q=text` | `{q, results}`: what was heard or answered containing `text` (case-insensitive, plain text), newest first, at most 100 (`limit`) |
 | `GET /api/voice/options` | what the voice settings offer: Ollama's models (or why Ollama cannot be reached), speech recognition backends and models, speech backends (installed or not), Piper and macOS voices, and `tools` (`[{name, description, online}]`) |
+| `/api/memory/...` | the Java host's memory: facts, sources, profile, episodes, export, forgetting, the worker ([memory.md](memory.md#the-memory-api)); changes arrive as `memory` messages on the stream |
 | `POST /api/voice/on`, `/off` | start or stop the voice (in the background: follow `voice` on the stream) |
 | `POST /api/voice/ask` | `{"text": "..."}`: a typed question (at most 500 characters), answered aloud; `409` while the voice is off |
 | `POST /api/voice/listen`, `/stop-speaking` | Talk now; Stop |

@@ -252,4 +252,16 @@ class MemoryRecallServiceTest {
         assertThat(admin.list(suggested).facts()).isEmpty();
         assertThat(m.store.facts.get(extracted.id()).orElseThrow().reviewedAt()).isEqualTo(T);
     }
+
+    @Test
+    void everyOpenAppHearsOfAProposalMadeInTheApp() {
+        List<Object> heard = new java.util.ArrayList<>();
+        forgetting.addListener((kind, payload) -> heard.add(kind + " " + payload.get("pending")));
+        Fact g = admin.remember("The owner likes jazz.", "owner", null);
+        ConfirmForgetting.Proposal p = forgetting.proposeFact(g.id());
+        assertThat(heard).containsExactly("forget 1");
+        forgetting.cancel(p.code());
+        forgetting.proposeEverything();
+        assertThat(heard).containsExactly("forget 1", "forget 0", "forget 1");
+    }
 }

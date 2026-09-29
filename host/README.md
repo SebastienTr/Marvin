@@ -28,7 +28,7 @@ marvin-host calibrate lidar --save # find the lidar's yaw (person moving in fron
 marvin-host sim --model d800       # pretend to be the robot, for another machine running `run`
 ```
 
-Voice needs the `voice` extra and Ollama: see [docs/voice.md](../docs/voice.md). The app: [docs/ui.md](../docs/ui.md). Recording, replay, calibration and wireless firmware updates: [docs/tools.md](../docs/tools.md).
+Voice needs the `voice` extra and Ollama: see [docs/voice.md](../docs/voice.md). The app (this host keeps its older one; the Java host has the current design): [docs/ui.md](../docs/ui.md). Recording, replay, calibration and wireless firmware updates: [docs/tools.md](../docs/tools.md).
 
 The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md). On macOS, allow incoming connections for Python the first time the firewall asks.
 
