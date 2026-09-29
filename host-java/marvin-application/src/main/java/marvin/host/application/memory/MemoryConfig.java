@@ -4,7 +4,7 @@ package marvin.host.application.memory;
 import java.time.Duration;
 
 import marvin.host.domain.memory.DecayRules;
-import marvin.host.domain.memory.TokenEstimator;
+import marvin.host.domain.shared.TokenEstimator;
 
 /**
  * The memory worker's tuning (the owner's choices are {@code MemorySettings}).

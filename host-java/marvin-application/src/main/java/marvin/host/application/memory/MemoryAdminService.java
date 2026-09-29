@@ -192,6 +192,20 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
         changed("facts");
     }
 
+    @Override
+    public void review(java.util.Collection<UUID> ids, boolean reviewed) {
+        List<UUID> known = ids.stream().distinct().filter(id -> facts.get(id).isPresent()).toList();
+        if (known.isEmpty()) {
+            throw new IllegalArgumentException("no such fact");
+        }
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("facts", known.stream().map(UUID::toString).toList());
+        d.put("reviewed", reviewed);
+        owner(MemorySources.REVIEW, "", d, Sensitivity.NORMAL);
+        facts.setReviewed(known, reviewed ? now() : null);
+        changed("facts");
+    }
+
     // ------------------------------------------------------------------ forgetting
 
     @Override

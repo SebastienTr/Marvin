@@ -39,9 +39,16 @@ public interface FactStore {
      * @param text     words in the statement or subject (blank: any)
      * @param subject  exact subject (blank: any)
      * @param validity {@code current}, {@code past} (expired or ended) or {@code all}
+     * @param reviewed {@code false}: suggestions the owner has not reviewed yet (extracted, never looked at); {@code
+     *                 true}: reviewed or written by the owner; {@code null}: either
      */
     record Query(String text, String subject, String kind, String validity, Sensitivity sensitivity, Boolean archived,
-                 Boolean pinned, Instant now, int limit, int offset) {
+                 Boolean pinned, Boolean reviewed, Instant now, int limit, int offset) {
+
+        public Query(String text, String subject, String kind, String validity, Sensitivity sensitivity, Boolean archived,
+                     Boolean pinned, Instant now, int limit, int offset) {
+            this(text, subject, kind, validity, sensitivity, archived, pinned, null, now, limit, offset);
+        }
     }
 
     /**
@@ -83,6 +90,9 @@ public interface FactStore {
     void setArchived(Collection<UUID> ids, boolean archived);
 
     void setPinned(UUID id, boolean pinned);
+
+    /** The owner reviewed these facts ({@code at} {@code null}: back to unreviewed). */
+    void setReviewed(Collection<UUID> ids, Instant at);
 
     /** The facts were used in a prompt or a recall. */
     void touch(Collection<UUID> ids, Instant at);

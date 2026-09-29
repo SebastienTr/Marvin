@@ -21,6 +21,10 @@ final class FakeModel implements LanguageModel {
     boolean down;
     boolean noTools;
     List<String> models = List.of("qwen3:4b-instruct");
+    /** What the model server reports at the end of each answer ({@code null}: nothing, as before). */
+    volatile Function<List<ChatMessage>, Usage> usage;
+    /** When each request came (System.nanoTime). */
+    final List<Long> callNanos = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     FakeModel(Function<List<ChatMessage>, List<Object>> replies) {
         this.replies = replies;
@@ -43,6 +47,7 @@ final class FakeModel implements LanguageModel {
         if (noTools && t != null) {
             throw new ToolsUnsupported(model + " cannot use tools: " + model + " does not support tools");
         }
+        callNanos.add(System.nanoTime());
         calls.add(List.copyOf(messages));
         tools.add(t);
         for (Object part : replies.apply(messages)) {
@@ -61,6 +66,10 @@ final class FakeModel implements LanguageModel {
                     stream.text(s.substring(i, Math.min(s.length(), i + 7)));
                 }
             }
+        }
+        Function<List<ChatMessage>, Usage> u = usage;
+        if (u != null) {
+            stream.usage(u.apply(messages));
         }
     }
 

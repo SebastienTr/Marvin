@@ -36,6 +36,19 @@ public interface LanguageModel {
 
         /** Stop reading the answer. */
         boolean cancelled();
+
+        /** What the model server reports at the end of an answer (not every server does). */
+        default void usage(Usage usage) {
+        }
+    }
+
+    /**
+     * The model server's counts for one request (Ollama's {@code prompt_eval_count} and friends). With a cached
+     * prompt prefix, {@code promptEvalCount} counts only the tokens evaluated again, not the whole prompt.
+     *
+     * @param loadSeconds loading the model (0 when it was loaded)
+     */
+    record Usage(int promptEvalCount, double promptEvalSeconds, int evalCount, double evalSeconds, double loadSeconds) {
     }
 
     /** The model cannot be used; {@code hint} says how to fix it. */

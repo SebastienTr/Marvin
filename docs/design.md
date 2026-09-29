@@ -450,6 +450,8 @@ importance = importance / 10
 
 Candidates: the 30 nearest facts by vector (pgvector HNSW), filtered to currently valid (`expired_at IS NULL AND (valid_to IS NULL OR valid_to > now())`), not archived, and allowed by the path (no `sensitive` facts when a guest is detected, none at all for a cloud model). Then scored, cut to the budget. A relevance floor keeps irrelevant facts out: an empty section is better than noise. The question's embedding is computed on the speculative transcript as soon as it exists, so retrieval (tens of milliseconds) overlaps the end of recognition.
 
+**As built (memory v1, read path).** As above, with these deliberate differences, explained in [host-java/NOTES.md](../host-java/NOTES.md) ("Memory v1, read path"): the "now" section's budget is 200 tokens, not 120 (the brain's context is up to about 230 real tokens, and the line saying the sensors are simulated, which must never be cut, is about 100 of them); the history is held to its 2500 tokens by dropping its older half at once, as the turn limit already does; the question waits at most 300 ms for its memory, then goes without; "today so far" is today's and yesterday's day summaries, sentence by sentence (a day is summarised the night after); the relevance floor is 0.45 (bge-m3). `forget` answers a six-character code and forgets only when it comes back in a later turn, or when the owner confirms in the app. The retrieval, the tools and the memory API are described in [memory.md](memory.md).
+
 **Tools for deep dives**, offered to the model like `get_weather`:
 
 | Tool | Does |

@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import marvin.host.domain.shared.TokenEstimator;
+
 /**
  * The profile block's rules (docs/design.md 5.2, step 5): one statement per line, a hard size limit, and the
  * owner's lines kept verbatim by every rewrite.

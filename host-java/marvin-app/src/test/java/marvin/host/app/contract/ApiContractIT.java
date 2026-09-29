@@ -360,6 +360,9 @@ class ApiContractIT {
         Set<String> seen = new java.util.TreeSet<>();
         for (String[] e : events) {
             seen.add(e[0]);
+            if (e[0].equals("memory")) {
+                continue;                               // memory's changes: the Java host's own (docs/memory.md)
+            }
             JsonNode g = gold.get("events").get(e[0]);
             if (g == null) {
                 problems.add("/api/stream: event " + e[0] + " is not in the Python stream");
@@ -368,6 +371,7 @@ class ApiContractIT {
             JsonNode payload = JSON.readTree(e[1]);
             if (e[0].equals("transcript")) {
                 ((tools.jackson.databind.node.ObjectNode) payload).remove("tools");     // see withoutToolCalls
+                ((tools.jackson.databind.node.ObjectNode) payload).remove("memory");
             }
             problems.addAll(matchesOne(Shapes.of(payload), g.get("shapes"), "/api/stream " + e[0]));
         }
@@ -378,13 +382,14 @@ class ApiContractIT {
     /**
      * The entries without {@code tools}: the Python recording's typed question got a scripted answer (its demo
      * voice) with no tool call, the Java host's calls the weather tool, and its reply carries the calls, as
-     * the Python host's real voice's replies do.
+     * the Python host's real voice's replies do. And without {@code memory}: the report of what memory put in the
+     * prompt, which only the Java host has (docs/memory.md, the reply inspector).
      */
     static RawHttp.Response withoutToolCalls(RawHttp.Response r) {
         JsonNode body = JSON.readTree(r.body());
         for (String list : List.of("transcript", "entries", "results")) {
             if (body.has(list)) {
-                body.get(list).forEach(e -> ((tools.jackson.databind.node.ObjectNode) e).remove("tools"));
+                body.get(list).forEach(e -> ((tools.jackson.databind.node.ObjectNode) e).remove(List.of("tools", "memory")));
             }
         }
         return new RawHttp.Response(r.status(), r.headers(), JSON.writeValueAsBytes(body));

@@ -44,4 +44,7 @@ public interface ManageFacts {
     void pin(UUID id, boolean pinned);
 
     void archive(UUID id, boolean archived);
+
+    /** The owner looked at suggested facts and keeps them ({@code reviewed} false: back to suggestions). */
+    void review(java.util.Collection<UUID> ids, boolean reviewed);
 }

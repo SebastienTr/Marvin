@@ -9,6 +9,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArraySet;
 
 import marvin.host.application.conversation.port.out.VoiceListener;
+import marvin.host.application.memory.port.out.MemoryListener;
 import marvin.host.application.presence.port.out.PresenceHistoryListener;
 import marvin.host.application.settings.port.out.SettingsListener;
 import marvin.host.application.system.port.out.HostLogListener;
@@ -20,7 +21,8 @@ import marvin.host.domain.system.LogEntry;
  * Fans out messages to the app's connected event streams (the Python {@code _Hub}). Each client has a
  * bounded queue: a stuck client misses messages, it never blocks the brain.
  */
-public final class EventHub implements PresenceHistoryListener, HostLogListener, SettingsListener, VoiceListener {
+public final class EventHub implements PresenceHistoryListener, HostLogListener, SettingsListener, VoiceListener,
+        MemoryListener {
     static final int QUEUE = 256;
 
     /** One message: an SSE event name and its payload (serialized when sent). */
@@ -70,6 +72,19 @@ public final class EventHub implements PresenceHistoryListener, HostLogListener,
     @Override
     public void onVoice(String kind, Map<String, Object> payload) {
         publish(kind, payload);
+    }
+
+    /**
+     * Memory changed ({@code memory} messages): {@code {"kind": "changed", "what": "facts" | "profile" | "log" | "all"}},
+     * {@code {"kind": "worker", ...the worker's state}}, {@code {"kind": "forget", "pending": n}}. The app reloads
+     * what it shows.
+     */
+    @Override
+    public void onMemory(String kind, Map<String, Object> payload) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("kind", kind);
+        m.putAll(payload);
+        publish("memory", m);
     }
 
     public void devicesChanged(List<Map<String, Object>> devices) {

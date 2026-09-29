@@ -34,7 +34,7 @@ import marvin.host.domain.memory.Vectors;
 public class JdbcFactStore implements FactStore {
     static final String COLUMNS = "f.id, f.subject, f.statement, f.kind, f.importance, f.confidence, f.sensitivity, "
             + "f.valid_from, f.valid_to, f.learned_at, f.expired_at, f.superseded_by, f.last_used_at, f.use_count, f.archived, "
-            + "f.pinned, f.origin, f.extracted_by, "
+            + "f.pinned, f.origin, f.extracted_by, f.reviewed_at, "
             + "ARRAY(SELECT s.event_id FROM memory.fact_source s WHERE s.fact_id = f.id ORDER BY s.event_id) AS sources";
 
     private final JdbcClient jdbc;
@@ -54,13 +54,13 @@ public class JdbcFactStore implements FactStore {
             for (Fact f : plan.added()) {
                 jdbc.sql("INSERT INTO memory.fact (id, subject, statement, kind, importance, confidence, sensitivity, valid_from, "
                                 + "valid_to, learned_at, expired_at, superseded_by, last_used_at, use_count, archived, pinned, origin, "
-                                + "extracted_by, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS "
+                                + "extracted_by, reviewed_at, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS "
                                 + vectors.type() + "))")
                         .params(f.id(), f.subject(), f.statement(), f.kind().wire(), f.importance(), (float) f.confidence(),
                                 stored(f.sensitivity()), MemoryRows.at(f.validFrom()), MemoryRows.at(f.validTo()),
                                 MemoryRows.at(f.learnedAt()), MemoryRows.at(f.expiredAt()), f.supersededBy(),
                                 MemoryRows.at(f.lastUsedAt()), f.useCount(), f.archived(), f.pinned(), f.origin().wire(),
-                                f.extractedBy(), vectors.literal(embeddings.get(f.id())))
+                                f.extractedBy(), MemoryRows.at(f.reviewedAt()), vectors.literal(embeddings.get(f.id())))
                         .update();
                 link(f.id(), f.sources());
             }
@@ -114,9 +114,14 @@ public class JdbcFactStore implements FactStore {
         return w;
     }
 
+    /**
+     * The nearest facts: the index (or the exact scan) finds the {@code k} ids first; only those rows are then read
+     * whole, so the sources of thousands of candidates are never gathered.
+     */
     @Override
     public List<Scored> nearest(float[] embedding, int k, Filter filter) {
         Where w = filter(filter).and("f.embedding IS NOT NULL");
+        Map<UUID, Double> found = new java.util.LinkedHashMap<>();
         if (vectors.pgvector()) {
             String q = "CAST(? AS public.vector)";
             List<Object> ps = new ArrayList<>();
@@ -124,15 +129,30 @@ public class JdbcFactStore implements FactStore {
             ps.addAll(w.params);
             ps.add(vectors.literal(embedding));
             ps.add(k);
-            return jdbc.sql("SELECT " + COLUMNS + ", 1 - (f.embedding OPERATOR(public.<=>) " + q + ") AS similarity FROM memory.fact f"
-                            + w.sql + " ORDER BY f.embedding OPERATOR(public.<=>) " + q + " LIMIT ?")
-                    .params(ps).query((rs, n) -> new Scored(fact(rs, n), rs.getDouble("similarity"))).list();
+            // pgvector 0.8 filters after the index scan; the iterative scan keeps scanning until k rows pass the filter
+            // (older versions take the setting as an unknown placeholder and ignore it). Relaxed order: sorted here.
+            tx.executeWithoutResult(status -> {
+                jdbc.sql("SET LOCAL hnsw.iterative_scan = relaxed_order").update();
+                jdbc.sql("SELECT f.id, 1 - (f.embedding OPERATOR(public.<=>) " + q + ") AS similarity FROM memory.fact f"
+                                + w.sql + " ORDER BY f.embedding OPERATOR(public.<=>) " + q + " LIMIT ?")
+                        .params(ps).query((rs, n) -> found.put(rs.getObject("id", UUID.class), rs.getDouble("similarity"))).list();
+            });
+        } else {
+            List<Map.Entry<UUID, Double>> all = jdbc.sql("SELECT f.id, f.embedding::text AS emb FROM memory.fact f" + w.sql)
+                    .params(w.params)
+                    .query((rs, n) -> Map.entry(rs.getObject("id", UUID.class),
+                            Vectors.cosine(embedding, MemoryRows.Vectors.parse(rs.getString("emb")))))
+                    .list();
+            all.stream().sorted(Map.Entry.<UUID, Double>comparingByValue().reversed()).limit(k)
+                    .forEach(e -> found.put(e.getKey(), e.getValue()));
         }
-        List<Scored> all = jdbc.sql("SELECT " + COLUMNS + ", f.embedding::text AS emb FROM memory.fact f" + w.sql)
-                .params(w.params)
-                .query((rs, n) -> new Scored(fact(rs, n), Vectors.cosine(embedding, MemoryRows.Vectors.parse(rs.getString("emb")))))
-                .list();
-        return all.stream().sorted(Comparator.comparingDouble(Scored::similarity).reversed()).limit(k).toList();
+        if (found.isEmpty()) {
+            return List.of();
+        }
+        List<Fact> rows = jdbc.sql("SELECT " + COLUMNS + " FROM memory.fact f WHERE f.id = ANY(?)")
+                .param(found.keySet().toArray(UUID[]::new)).query(JdbcFactStore::fact).list();
+        return rows.stream().map(f -> new Scored(f, found.get(f.id())))
+                .sorted(Comparator.comparingDouble(Scored::similarity).reversed()).toList();
     }
 
     @Override
@@ -166,6 +186,11 @@ public class JdbcFactStore implements FactStore {
         }
         if (q.pinned() != null) {
             w.and("f.pinned = ?", q.pinned());
+        }
+        if (Boolean.TRUE.equals(q.reviewed())) {
+            w.and("(f.reviewed_at IS NOT NULL OR f.origin = 'owner')");
+        } else if (Boolean.FALSE.equals(q.reviewed())) {
+            w.and("f.reviewed_at IS NULL AND f.origin <> 'owner'");
         }
         return w;
     }
@@ -243,6 +268,14 @@ public class JdbcFactStore implements FactStore {
     }
 
     @Override
+    public void setReviewed(Collection<UUID> ids, Instant at) {
+        if (!ids.isEmpty()) {
+            jdbc.sql("UPDATE memory.fact SET reviewed_at = ? WHERE id = ANY(?)").params(MemoryRows.at(at), ids.toArray(UUID[]::new))
+                    .update();
+        }
+    }
+
+    @Override
     public void touch(Collection<UUID> ids, Instant at) {
         if (!ids.isEmpty()) {
             jdbc.sql("UPDATE memory.fact SET last_used_at = ?, use_count = use_count + 1 WHERE id = ANY(?)")
@@ -298,6 +331,6 @@ public class JdbcFactStore implements FactStore {
                 MemoryRows.instant(rs, "valid_to"), MemoryRows.instant(rs, "learned_at"), MemoryRows.instant(rs, "expired_at"),
                 rs.getObject("superseded_by", UUID.class), MemoryRows.instant(rs, "last_used_at"), rs.getInt("use_count"),
                 rs.getBoolean("archived"), rs.getBoolean("pinned"), FactOrigin.parse(rs.getString("origin")),
-                rs.getString("extracted_by"), MemoryRows.longs(rs, "sources"));
+                rs.getString("extracted_by"), MemoryRows.longs(rs, "sources"), MemoryRows.instant(rs, "reviewed_at"));
     }
 }

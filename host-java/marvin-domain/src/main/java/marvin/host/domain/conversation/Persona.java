@@ -123,6 +123,45 @@ public final class Persona {
                 .replace("{tools}", tools ? TOOLS : "");
     }
 
+    /** How the model is told about its memory tools, after the other tools' rules. */
+    static final String MEMORY_TOOLS = """
+            - Your memory: call remember when the person asks you to remember something (one short sentence in \
+            English); call recall when they ask about something from the past that your context does not give; call \
+            forget when they ask you to forget something: it lists what matches, so ask them to confirm, and call forget \
+            again with its confirmation code only after they said yes. Never say a confirmation code aloud.
+            """;
+
+    /** The heading of the profile in the system prompt. */
+    static final String PROFILE_HEADING = "What you know about your owner (from your memory; they can correct it in the app; "
+            + "use it when it helps, never recite it):";
+
+    /**
+     * The system prompt with memory (docs/design.md 5.3): the persona, the memory tools' rules when they are offered,
+     * then the profile. It changes only with the language, the tools offered and the profile's version, so the model
+     * server keeps its cached work between questions. Without memory tools and profile it is
+     * {@link #personaPrompt(String, boolean)} byte for byte.
+     */
+    public static String systemPrompt(String language, boolean tools, boolean memoryTools, String profile) {
+        String p = personaPrompt(language, tools);
+        if (tools && memoryTools) {
+            p += MEMORY_TOOLS;
+        }
+        if (profile != null && !profile.isBlank()) {
+            p = p.stripTrailing() + "\n\n" + PROFILE_HEADING + "\n" + profile.strip();
+        }
+        return p;
+    }
+
+    /** The headings of the memory sections of the question's context. */
+    public static final String GIST_HEADING = "Earlier (summaries from your memory):";
+    public static final String FACTS_HEADING = "What you remember that may matter here (from your memory; use it only if it "
+            + "helps, never recite it):";
+
+    /** The question's context: the "now" section, then the memory sections that kept something. */
+    public static String context(List<String> sections) {
+        return String.join("\n\n", sections.stream().filter(s -> s != null && !s.isEmpty()).toList());
+    }
+
     static String ago(double seconds) {
         if (seconds < 90) {
             return PyNumbers.fixed(seconds, 0) + " seconds ago";
@@ -145,42 +184,51 @@ public final class Persona {
 
     /** Plain English facts from the brain, only the reliable ones; none without a state. */
     public static List<String> contextFacts(PresenceState state, List<PresenceEvent> events) {
+        return scoredFacts(state, events).stream().map(ContextAssembler.Item::text).toList();
+    }
+
+    /**
+     * The same facts, each with how much it matters when the "now" section is over its budget (docs/design.md 5.3):
+     * what the sensors are (or are not) comes first, then whether someone is there, vital signs, how long they sat,
+     * and last the recent events.
+     */
+    static List<ContextAssembler.Item> scoredFacts(PresenceState state, List<PresenceEvent> events) {
         if (state == null) {
             return List.of();
         }
-        List<String> facts = new ArrayList<>();
+        List<ContextAssembler.Item> facts = new ArrayList<>();
         if (state.simulated()) {
-            facts.add("Your sensors are simulated for testing (no real radar or lidar yet): the person below is "
+            facts.add(ContextAssembler.Item.of("simulated", "Your sensors are simulated for testing (no real radar or lidar yet): the person below is "
                     + "a simulated one walking in a simulated room on a loop, not the one talking to you. If "
                     + "asked about the room, the person or their vital signs, give the simulated values and "
-                    + "say they are simulated.");
+                    + "say they are simulated.", 0.95));
         }
         if (state.present()) {
             String where = state.distanceM() != null
                     ? ", about " + PyNumbers.fixed(state.distanceM(), 1) + " metres from you" : "";
-            facts.add("Someone is in front of you" + where + ".");
+            facts.add(ContextAssembler.Item.of("present", "Someone is in front of you" + where + ".", 0.85));
             if (state.seated() && state.seatedS() >= 60) {
-                facts.add("They have been seated for " + duration(state.seatedS()) + ".");
+                facts.add(ContextAssembler.Item.of("seated", "They have been seated for " + duration(state.seatedS()) + ".", 0.6));
             }
             if (state.breathRate() != null || state.heartRate() != null) {
                 if (state.breathRate() != null) {
-                    facts.add("Your 60 GHz radar measures their breathing at " + PyNumbers.fixed(state.breathRate(), 0)
-                            + " per minute, right now.");
+                    facts.add(ContextAssembler.Item.of("breathing", "Your 60 GHz radar measures their breathing at "
+                            + PyNumbers.fixed(state.breathRate(), 0) + " per minute, right now.", 0.75));
                 }
                 if (state.heartRate() != null) {
-                    facts.add("Your 60 GHz radar measures their heart rate at " + PyNumbers.fixed(state.heartRate(), 0)
-                            + " beats per minute, right now.");
+                    facts.add(ContextAssembler.Item.of("heart_rate", "Your 60 GHz radar measures their heart rate at "
+                            + PyNumbers.fixed(state.heartRate(), 0) + " beats per minute, right now.", 0.75));
                 }
             } else if (state.vitalsSensor()) {
-                facts.add("Your 60 GHz vital-signs radar has no reliable reading right now: it needs the person "
-                        + "seated and still, within about one and a half metres of you, for a few seconds.");
+                facts.add(ContextAssembler.Item.of("vitals_waiting", "Your 60 GHz vital-signs radar has no reliable reading right now: it needs the person "
+                        + "seated and still, within about one and a half metres of you, for a few seconds.", 0.5));
             }
         } else {
-            facts.add("Your radar sees nobody right now (you may still be hearing someone out of view).");
+            facts.add(ContextAssembler.Item.of("nobody", "Your radar sees nobody right now (you may still be hearing someone out of view).", 0.85));
         }
         if (!state.vitalsSensor() && state.breathRate() == null && state.heartRate() == null) {
-            facts.add("Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or "
-                    + "heart rate at all for now, wherever the person sits.");
+            facts.add(ContextAssembler.Item.of("no_vitals", "Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or "
+                    + "heart rate at all for now, wherever the person sits.", 0.45));
         }
         List<String> recent = new ArrayList<>();
         for (PresenceEvent ev : events) {
@@ -191,10 +239,33 @@ public final class Persona {
             }
         }
         if (!recent.isEmpty()) {
-            facts.add("Recent events: " + String.join("; ", recent.subList(Math.max(0, recent.size() - 5), recent.size()))
-                    + ".");
+            facts.add(ContextAssembler.Item.of("recent", "Recent events: "
+                    + String.join("; ", recent.subList(Math.max(0, recent.size() - 5), recent.size())) + ".", 0.3));
         }
         return facts;
+    }
+
+    /** The heading of the "now" section. */
+    public static final String NOW_HEADING = "Context:";
+
+    /**
+     * The "now" section's lines, each scored (docs/design.md 5.3): the clock first, then the sensors; the home place
+     * matters only for the weather tool.
+     */
+    public static List<ContextAssembler.Item> contextItems(PresenceState state, List<PresenceEvent> events, LocalDateTime now,
+                                                           String home) {
+        List<ContextAssembler.Item> lines = new ArrayList<>();
+        lines.add(ContextAssembler.Item.of("time", "It is " + NOW.format(now) + " (local time).", 1.0));
+        if (home != null && !home.isEmpty()) {
+            lines.add(ContextAssembler.Item.of("home", "Your owner lives in " + home
+                    + ": that is where the weather tool looks when no place is named.", 0.35));
+        }
+        if (state == null) {
+            lines.add(ContextAssembler.Item.of("no_sensors", "Your sensors are not connected right now (voice-only mode): you know nothing "
+                    + "about the room or the person beyond what they tell you.", 0.9));
+        }
+        lines.addAll(scoredFacts(state, events));
+        return lines;
     }
 
     /**
@@ -203,17 +274,9 @@ public final class Persona {
      */
     public static String contextBlock(PresenceState state, List<PresenceEvent> events, LocalDateTime now, String home) {
         List<String> lines = new ArrayList<>();
-        lines.add("Context:");
-        lines.add("- It is " + NOW.format(now) + " (local time).");
-        if (home != null && !home.isEmpty()) {
-            lines.add("- Your owner lives in " + home + ": that is where the weather tool looks when no place is named.");
-        }
-        if (state == null) {
-            lines.add("- Your sensors are not connected right now (voice-only mode): you know nothing "
-                    + "about the room or the person beyond what they tell you.");
-        }
-        for (String f : contextFacts(state, events)) {
-            lines.add("- " + f);
+        lines.add(NOW_HEADING);
+        for (ContextAssembler.Item i : contextItems(state, events, now, home)) {
+            lines.add("- " + i.text());
         }
         return String.join("\n", lines);
     }

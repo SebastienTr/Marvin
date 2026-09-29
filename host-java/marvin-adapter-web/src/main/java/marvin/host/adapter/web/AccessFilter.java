@@ -41,7 +41,10 @@ public final class AccessFilter implements Filter {
     static final int MAX_BODY = 16384;
     static final Set<String> POST_PATHS = Set.of("/api/settings", "/api/voice/settings", "/api/voice/on",
             "/api/voice/off", "/api/voice/ask", "/api/voice/listen", "/api/voice/mute", "/api/voice/stop-speaking",
-            "/api/memory/consolidate");
+            "/api/memory/consolidate", "/api/memory/facts/remember", "/api/memory/facts/edit", "/api/memory/facts/pin",
+            "/api/memory/facts/archive", "/api/memory/facts/review", "/api/memory/facts/forget", "/api/memory/forget/confirm",
+            "/api/memory/forget/cancel", "/api/memory/forget-everything", "/api/memory/profile", "/api/memory/profile/restore",
+            "/api/memory/settings");
     static final Set<String> PUBLIC = Set.of("/icon.png", "/favicon.ico", "/manifest.webmanifest");
 
     static final byte[] LOCKED_PAGE = """

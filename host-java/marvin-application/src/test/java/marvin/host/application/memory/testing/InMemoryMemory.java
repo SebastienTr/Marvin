@@ -284,6 +284,9 @@ public final class InMemoryMemory {
             if (q.archived() != null && q.archived() != f.archived()) {
                 return false;
             }
+            if (q.reviewed() != null && q.reviewed() != f.reviewed()) {
+                return false;
+            }
             return q.pinned() == null || q.pinned() == f.pinned();
         }
 
@@ -353,6 +356,11 @@ public final class InMemoryMemory {
         @Override
         public synchronized void setPinned(UUID id, boolean pinned) {
             rows.computeIfPresent(id, (k, f) -> f.withPinned(pinned));
+        }
+
+        @Override
+        public synchronized void setReviewed(Collection<UUID> ids, Instant at) {
+            ids.forEach(id -> rows.computeIfPresent(id, (k, f) -> f.withReviewed(at)));
         }
 
         @Override

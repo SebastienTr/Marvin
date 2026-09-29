@@ -137,6 +137,11 @@ class VoiceEndToEndIT {
         assertThat(question.get(0)).isEqualTo(rehearsal.get(0));
         assertThat(requests.get(0).get("options")).isEqualTo(requests.get(requests.size() - 1).get("options"));
         assertThat(requests.get(0).get("keep_alive")).isEqualTo("30m");
+        // memory: its tools' rules in the cached system prompt, the question searched, the report for the inspector
+        assertThat((String) question.get(0).get("content")).contains("Your memory: call remember");
+        assertThat(OLLAMA.embedRequests).isNotEmpty();
+        assertThat(reply.get("memory").get("sections").get(0).get("name").asString()).isEqualTo("now");
+        assertThat(reply.get("memory").get("problem").asString()).isEmpty();
         // kept in the conversation
         JsonNode today = get("/api/conversation");
         List<String> kinds = new ArrayList<>();

@@ -30,7 +30,9 @@ import marvin.host.domain.shared.JsonText;
  *   <li>{@code /api/embed} answers with {@link #embedding} vectors: deterministic, and texts that share words are
  *       close, which is enough to exercise reconciliation; a model not in {@link #models} gets Ollama's 404.</li>
  * </ul>
- * Request bodies are kept in {@link #requests} (chat) and {@link #embedRequests}.
+ * Request bodies are kept in {@link #requests} (chat) and {@link #embedRequests}. The {@code done} line of a chat
+ * reports a {@code prompt_eval_count} as Ollama does with its prompt cache: only the messages after those the previous
+ * request shared, at {@link #CHARS_PER_TOKEN} characters per token, plus the chat template's tokens.
  */
 public final class StubOllama implements AutoCloseable {
     public final List<Map<String, Object>> requests = new CopyOnWriteArrayList<>();
@@ -40,6 +42,9 @@ public final class StubOllama implements AutoCloseable {
     public volatile Function<Map<String, Object>, List<String>> chat = r -> List.of();
     public volatile long delayMs = 5;
     public volatile int dimensions = 1024;
+    /** The stub's "tokenizer". */
+    public static final double CHARS_PER_TOKEN = 4.0;
+    private volatile List<Object> cached = List.of();
 
     public StubOllama() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -179,6 +184,7 @@ public final class StubOllama implements AutoCloseable {
         Map<String, Object> body = (Map<String, Object>) JsonText.parse(new String(ex.getRequestBody().readAllBytes(),
                 StandardCharsets.UTF_8));
         requests.add(body);
+        int promptTokens = promptEvalCount(body);
         List<String> lines = chat.apply(body);
         if (!lines.isEmpty() && lines.get(0).startsWith("!")) {
             String[] parts = lines.get(0).substring(1).split(" ", 2);
@@ -189,6 +195,12 @@ public final class StubOllama implements AutoCloseable {
         ex.sendResponseHeaders(200, 0);
         try (OutputStream out = ex.getResponseBody()) {
             for (String line : lines) {
+                if (line.contains("\"done\": true") && JsonText.parse(line) instanceof Map<?, ?> m) {
+                    Map<String, Object> d = new LinkedHashMap<>();
+                    m.forEach((k, v) -> d.put(String.valueOf(k), v));
+                    d.put("prompt_eval_count", promptTokens);
+                    line = JsonText.write(d);
+                }
                 out.write((line + "\n").getBytes(StandardCharsets.UTF_8));
                 out.flush();
                 try {
@@ -201,6 +213,23 @@ public final class StubOllama implements AutoCloseable {
         } catch (IOException e) {
             // the client stopped reading
         }
+    }
+
+    /** What Ollama would evaluate again: the messages after the prefix this request shares with the previous one. */
+    private synchronized int promptEvalCount(Map<String, Object> body) {
+        List<?> messages = body.get("messages") instanceof List<?> l ? l : List.of();
+        int shared = 0;
+        while (shared < cached.size() && shared < messages.size() - 1 && cached.get(shared).equals(messages.get(shared))) {
+            shared++;
+        }
+        cached = new ArrayList<>(messages);
+        int chars = 0;
+        for (int i = shared; i < messages.size(); i++) {
+            if (messages.get(i) instanceof Map<?, ?> m && m.get("content") instanceof String c) {
+                chars += c.length();
+            }
+        }
+        return (int) Math.ceil(chars / CHARS_PER_TOKEN) + 5 * (messages.size() - shared) + 3;
     }
 
     private static void send(HttpExchange ex, int status, String type, String body) throws IOException {

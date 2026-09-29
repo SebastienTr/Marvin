@@ -104,6 +104,7 @@ public final class MemoryExportService implements ExportMemory {
         m.put("pinned", f.pinned());
         m.put("origin", f.origin().wire());
         m.put("extracted_by", f.extractedBy());
+        m.put("reviewed_at", str(f.reviewedAt()));
         m.put("sources", f.sources());
         return m;
     }

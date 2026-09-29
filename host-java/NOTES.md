@@ -1108,3 +1108,146 @@ Design phase 3 ([docs/design.md](../docs/design.md) section 5), built in stages.
   `ExportMemory.export()` (zip it in the adapter); publish `MemoryListener` events on SSE once the app knows them.
 - Measure on the Mac: the first-word latency of a question asked right after a pass (forced with
   `POST /api/memory/consolidate`), with the memory model equal to the voice model and with a separate night model.
+
+## Stage: read path
+
+### What exists
+
+- **The conversation's memory port**: `application.conversation.port.out.MemoryContext` (profile, a question's
+  candidates as prompt lines, `used`, the three tools, `NONE`). The conversation never sees memory's types;
+  `marvin-app`'s `MemoryForConversation` translates to memory's in-ports and holds no behaviour.
+- **Memory's read in-ports**: `RecallMemory` (the cached profile, `recollect`, `used`, `recall`) and
+  `ConfirmForgetting` (proposals with a code, confirmation by a later voice turn or the app, everything with a typed
+  phrase, pending list, cancel), implemented by `MemoryRecallService` and `ForgetConfirmations`. `ManageFacts.review`
+  (new) marks suggested facts reviewed. `CachedProfiles` keeps the active profile in memory (every memory service
+  shares it, so its cache is dropped exactly when a version is written).
+- **Domain**: `RetrievalScoring` (1.0 relevance + 0.5 recency + 0.7 importance, min-max relevance, floor 0.45),
+  `MemoryText` (context lines with validity, dates in words, sentences, word overlap, search terms), `RecallWindow`
+  (periods as local days); in the conversation, `ContextAssembler` (sections with hard budgets, cut by score, report)
+  and `Persona.systemPrompt`/`contextItems`/`context` (the persona text itself unchanged); `ConversationMemory` got
+  an optional token budget; `TokenEstimator` moved to the shared kernel with `LanguageTokens` (per-language
+  calibration); `Fact.reviewedAt` (and `memory/V2__review.sql`); `MemoryToolSpecs`.
+- **The voice** (`VoiceService`): the profile and the memory tools' rules in the system prompt (warm-up included);
+  the memory search started on the speculative transcript (`Partial`) and reused by the final one when the words are
+  the same; at most 300 ms of waiting; the sections cut to 200/150/300 tokens; the facts sent marked used; the tool
+  context (turn, others present); Ollama's counts (`LanguageModel.Usage`, new) logged at info, traced, shown and used
+  for calibration; a `memory` report in each reply entry (profile version, sections with every candidate, scores,
+  kept or not, tokens, timings, problem, usage).
+- **The tools** (`MemoryTools`, same registry as `get_weather`, local, no filler): `remember`, `recall`, `forget`.
+- **The memory API** (`MemoryController`, docs/memory.md has the table): overview, facts (filters with counts,
+  detail with quoted sources and the conversation they were said in, remember, edit, pin, archive, review, forget with
+  a code), pending forget proposals (confirm, cancel), forget everything (code and phrase), profile (current, versions
+  with diffs, edit, restore), episodes, raw log, export (JSON or Markdown file), settings (the per-source switches),
+  worker (now with the models), consolidate. Every POST in `AccessFilter.POST_PATHS`. `EventHub` is a
+  `MemoryListener`: `memory` messages on `/api/stream`.
+- **Adapters**: `OllamaLanguageModel` reports `prompt_eval_count`/durations; `JdbcFactStore.nearest` finds the k ids
+  first (HNSW with `hnsw.iterative_scan = relaxed_order`, or the exact scan) and reads only those rows; the reviewed
+  filter. The Java `StubOllama` counts prompt tokens as a cache would (only the messages after the shared prefix).
+
+### Decisions and deviations from docs/design.md
+
+1. **"Now" budget 200 tokens, not 120.** Measured: the brain's longest context (simulated sensors, seated, vital
+   signs, recent events, home place) is 282 estimated tokens before calibration (about 230 after). The line saying
+   the sensors are simulated is about 100 alone; with 120 it was cut and Marvin would have given simulated readings as
+   real. The lines are scored (clock 1.0, simulated 0.95, no sensors 0.9, presence 0.85, vitals 0.75, seated 0.6 ...
+   home 0.35, recent events 0.3), so the budget takes the recent events and the home place first.
+2. **Without memory the voice is byte for byte what it was** (`MemoryContext.NONE`, or `marvin.memory.read=false`):
+   the persona prompt, the unbudgeted context block, the tool list, no `memory` key in replies. The parity tests with
+   the Python host keep holding; `ApiContractIT` ignores the Java-only `memory` report and `memory` stream messages,
+   as it already ignored `tools`.
+3. **The history budget** (2500 tokens, design 5.3) is kept like the turn limit: the older half of the turns goes at
+   once, so the cached prefix changes rarely. The past context blocks stay in the history (the design's rule).
+4. **The profile is read from a cache**, never from the database on the voice's path. A profile version written by
+   the owner (edit, restore, a forgotten fact's line removed, forget everything) triggers `rewarm` through the admin's
+   `changed` event; the nightly rewrite already did.
+5. **"Today so far" is today's and yesterday's day summaries**, sentence by sentence (scored by words in common with
+   the question, then today before yesterday, then place in the summary). A day is summarised the night after, so on
+   most days only yesterday's exists. No calendar yet.
+6. **Token calibration** uses the messages after those the previous request shared (Ollama's `prompt_eval_count`
+   covers only what it evaluated again), minus 5 template tokens per message and 3 for the reply; only when at least
+   one message was shared and the new text is 200 characters or more; a ratio outside 1.5 to 8 characters per token is
+   ignored. Per conversation language, starting at 3.5 with a 10 % margin. With a model that reloads, or a cache that
+   is not reused, the measurements are ignored rather than learned wrongly.
+7. **A 300 ms hard budget** for memory on the voice's path, then the question goes without it (logged, and shown in
+   the reply inspector). The search normally runs during recognition and costs nothing.
+8. **Forget by voice**: the first call lists matches and a six-character code (never to be said aloud); a call with
+   the code in the same turn is refused ("the person has not confirmed yet"); in a later turn it forgets. Codes expire
+   after 5 minutes and work once; every pending proposal is listed in the app (`GET /api/memory/forget`), where the
+   owner can confirm or cancel it. A tool call without a turn number counts as turn 0, never as the app.
+9. **Forgetting everything** is confirmed twice: a code, then the code with the typed phrase "forget everything".
+10. **`recall`** searches by meaning (the 20 nearest facts, past and archived included, cosine ≥ 0.35) and by words
+    (the three longest words of the query, accents kept, in statements and in what was said), keeps to the period,
+    and returns at most 8 facts (status, validity in words, where they came from), 3 summaries, 5 lines said. Current
+    facts it returns are marked used.
+11. **Sensitive facts**: never retrieved or recalled while the brain sees more than one person (`targets > 1`), nor
+    for a cloud model (the audience has the flag; no cloud model exists yet). Day summaries have no sensitive events.
+12. **API style**: GET and POST only, fixed POST paths with the id in the JSON body (the access filter checks every
+    POST path exactly and handles no other method), times in Unix seconds, `409` for a refused confirmation, `404` for
+    an unknown fact.
+13. **The nearest-facts query** first finds the k ids, then reads those rows. Reading the full rows in the ordered scan
+    made PostgreSQL gather the sources of every candidate: 110 ms with 3000 facts before, 4 ms after.
+
+### Verified
+
+- `cd host-java && ./mvnw verify`: 303 tests, 0 failures, 1 skipped (the embedded database as root). New tests: domain `ContextAssemblerTest` (cut by
+  score not position, a long line does not push out short ones, heading cost, report, the "now" section equals the
+  old context block, the "now" budget keeps the clock and the simulated line, the system prompt without memory is the
+  persona byte for byte, calibration per language and implausible counts ignored, the history budget), `ReadPathTest`
+  (the score's terms and weights, sum not product, the floor, periods, validity texts, sentences and words);
+  application `MemoryRecallServiceTest` (current relevant facts best first without past, archived or unrelated ones;
+  sensitive facts only alone; used marks; missing embedding model; gist; profile cache and warm-up on owner edits;
+  recall with validity, sources, days and lines said, and the period; forgetting by voice needs a later turn, the app
+  confirms, codes expire and cancel, everything needs the phrase; review), `VoiceMemoryTest` (system prompt with the
+  profile byte-identical across two questions and the warm-up, history grows only at the end, memory only in the last
+  message, facts marked used; a new profile version changes the system prompt once; without memory the prompt is the
+  persona; 30 candidates cut to 300 tokens by score with the inspector's report; the search reused from the
+  speculative transcript; the 300 ms budget; the audience with a guest; calibration converging to the model server's
+  4.5 characters per token); `MemoryToolsLoopTest` (the real `AnswerLoop` and `OllamaLanguageModel` against the stub:
+  remember, recall, forget refused in the same turn and done in the next); `MemoryApiIT` (every route, its errors,
+  the access rules, the stream's `memory` messages, forgetting a fact and everything, the profile cache following
+  the API); `VoiceEndToEndIT` now also checks memory on the real voice path (memory tools' rules in the system
+  prompt, the question embedded, the reply's memory report); `ApiContractIT`, `MemoryEndToEndIT` and the rest green.
+- `cd host && python3 -m pytest -q`: 305 passed, 3 skipped (the Python host is unchanged).
+
+### Latency
+
+- **The voice's thread**: heard to the model's request, median of 40 questions (`VoiceMemoryTest`, fake sidecar and
+  model, a memory answering at once with 30 facts and 2 summary sentences): **0.439 ms without memory, 0.511 ms with
+  memory: +72 µs** (the assembly: scoring the "now" lines, cutting three sections, rendering); the final `verify`
+  run measured 0.404 and 0.492 ms (+88 µs).
+- **Retrieval**, on PostgreSQL 18 with pgvector (HNSW), 3000 facts, question embedded by the stub over HTTP
+  (`MemoryApiIT`, median of 30): **12.2 ms in all: embedding 6.8 ms, search and scoring 4.0 ms** (8.8, 4.8 and 2.7 ms
+  in the final `verify` run). It runs while the
+  question is still being recognised (on the speculative transcript), so the question usually does not wait for it.
+  On the Mac the embedding is bge-m3 on Ollama (expect tens of milliseconds, in parallel with the voice's model if
+  Ollama keeps both loaded: `OLLAMA_MAX_LOADED_MODELS` ≥ 2).
+- **Prompt tokens**: the system prompt grows by the memory tools' rules (about 100 tokens) and the profile (at most
+  500); both are cached and re-warmed only when they change. The volatile part grows by at most 450 tokens (150 +
+  300) plus the tool schemas' three entries in the cached part. What that costs is Ollama's `prompt_eval_duration`,
+  now logged for each question (`marvin.voice`: "prompt: N tokens evaluated in S s ...") and shown in each reply's
+  memory report: measure it on the Mac.
+
+### Known gaps
+
+- **No real model or bge-m3 here**: the relevance floor (0.45), the scoring weights and the calibration were checked
+  with the stub's word embeddings and counts. On the Mac: read a few replies' memory reports, check which facts pass
+  the floor, adjust `RetrievalScoring.DEFAULT` if needed.
+- Only the first request of a question calibrates (a tool round's second request is not used).
+- The profile goes into the system prompt as it is; the soul (design 5.1) does not exist yet.
+- `recall`'s search in what was said matches words as written (`ILIKE`): a French question without accents does not
+  find accented words, and the reverse.
+- The per-question embedding and the voice's model share Ollama; if Ollama keeps only one model loaded, bge-m3 can
+  evict the voice's model. To check on the Mac (`ollama ps` while talking).
+- The app does not show any of this yet (the Memory screen and the reply inspector's memory sections are the next
+  stage's).
+- Carried over: the golden recordings are ignored by `.gitignore` (run `marvin-contracts/tools/recordings.py` after a
+  fresh clone); retention does not reduce the presence context's samples.
+
+### Hints for the next stages
+
+- **The app**: the reply entry's `memory` object is the inspector's data (sections → items with `kept`, `score`,
+  `similarity`, `relevance`, `recency`, `importance`; `timings`; `usage`); the Memory screen's routes are in
+  docs/memory.md; listen to `memory` messages on `/api/stream` and reload what is shown; forget and forget everything
+  are two-step (code, then confirm); pending voice proposals come from `GET /api/memory/forget`.
+- **On the Mac**: run `MemoryEvaluationTest` with the real models; look at the `prompt:` log lines for the first
+  question after a pass and after a profile edit (the warm-up should keep `prompt_eval_count` small).

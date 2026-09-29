@@ -186,6 +186,132 @@ facts and the owner's own never fade.
 **Retention** (step 7): brain events older than `retention_days` (365) are deleted once their day is summarised,
 unless a fact came from them. The conversation is kept until the owner forgets it.
 
+## The read path: memory in the prompt
+
+Memory reaches the conversation through one port, `MemoryContext` (in the conversation's
+`application/conversation/port/out`), implemented in the boot module over memory's in-ports `RecallMemory` (the
+profile, a question's candidates, `recall`) and `ConfirmForgetting` (forgetting after a yes). The conversation never
+sees memory's types, memory never sees the conversation's.
+
+```mermaid
+sequenceDiagram
+  participant V as Voice sidecar
+  participant C as Conversation (VoiceService)
+  participant M as Memory (MemoryRecallService)
+  participant O as Ollama
+  V->>C: Partial "où habite ma sœur" (speculative transcript)
+  C->>M: recollect(text, audience) (on an answer thread)
+  M->>O: /api/embed (bge-m3)
+  M->>M: 30 nearest current facts (HNSW), score, floor
+  V->>C: Heard "où habite ma sœur ?" (same words: the search is reused)
+  C->>C: wait at most 300 ms for the candidates
+  C->>C: assemble: now 200 / today 150 / facts 300 tokens, cut by score
+  C->>O: /api/chat (system prompt unchanged, memory in the last message)
+  O-->>C: answer, prompt_eval_count
+  C->>M: used(facts sent) (off the voice's thread)
+  C->>C: calibrate the token estimate, keep the report for the reply inspector
+```
+
+**The prompt.** The system prompt is the persona, the memory tools' rules (when they are offered) and the profile.
+It changes only with the language, the tools and the profile's version, so from one question to the next it is
+byte-identical and Ollama reuses its cached work; a new profile version (the nightly rewrite, an edit in the app, a
+forgotten fact's line removed) warms the voice up again with the new system prompt. Everything that changes at each
+question goes into the last user message:
+
+```
+Context:                                            ← "now", 200 tokens: clock, sensors, presence
+- It is Tuesday 29 September 2026, 14:03 (local time).
+- ...
+
+Earlier (summaries from your memory):               ← "today", 150 tokens: today's and yesterday's day summaries
+- Yesterday: The owner worked from home.
+
+What you remember that may matter here (...):       ← "facts", 300 tokens: the best retrieved facts
+- The owner's sister Claire lives in Lyon.
+- The owner flies to Oslo. (from 12 October 2026)
+
+The person says: où habite ma sœur ?
+
+(Answer in French.)
+```
+
+A section that keeps nothing is left out; without memory the message is exactly what it was before memory existed.
+The history keeps its past context blocks (they are part of the cached prefix) within a 2500-token budget: when it
+grows over it, the older half of the turns goes at once, so the prefix changes rarely.
+
+**Budgets.** Each section has a hard budget in estimated tokens (`ContextAssembler`). When a section's candidates do
+not fit, the lowest-scored go first, whatever their position; what is kept is shown in its own order. The "now"
+lines are scored by what matters most: the clock, then whether the sensors are simulated or missing, whether someone
+is there, vital signs, how long they sat, and last the home place and the recent events.
+
+**Token counts.** Java has no Qwen tokenizer: a characters-per-token ratio per language, with a 10 % margin
+(`LanguageTokens`). It starts at a cautious 3.5 and is calibrated from each answer's `prompt_eval_count`: with the
+prompt cache, Ollama counts only what it evaluated again, which is the messages after those the previous request
+shared (the new question and the previous answer), plus the chat template's few tokens per message. A measurement
+that gives an implausible ratio (outside 1.5 to 8 characters per token) is ignored.
+
+**Retrieval scoring** (`RetrievalScoring`, after Generative Agents): over the 30 nearest facts that are current, not
+archived and allowed for the audience,
+
+```
+score = 1.0 · relevance + 0.5 · recency + 0.7 · importance
+relevance  = cosine, min-max normalised over the candidates
+recency    = 0.995 ^ hours since last used (or learned)
+importance = importance / 10
+```
+
+and a relevance floor on the raw cosine (0.45 for bge-m3, where unrelated sentences score about 0.3 to 0.45): an
+empty section is better than noise. The facts that go into a prompt are marked used (`last_used_at`, `use_count`),
+which keeps them from decaying.
+
+**Who may hear it.** `sensitive` facts are never retrieved while the brain sees more than one person, and never for a
+cloud model. The day summaries are written without sensitive events, so they are safe for any audience.
+
+**Latency.** The question's embedding is computed on the speculative transcript, while recognition finishes; the
+final transcript reuses it when the words are the same. The question waits at most 300 ms for its candidates, then
+goes without them (the reply inspector says so). The memory report of each reply (`memory` in the conversation entry)
+shows the profile version, every section with its budget, tokens, and each candidate with its score, kept or not,
+the timings, and Ollama's counts (`prompt_eval_count`, `prompt_eval_s`).
+
+## The memory tools
+
+Offered with `get_weather` in the same registry (switched off with the other tools), always the same short list, so
+the tool block stays cached. They are local: offered without the internet.
+
+| Tool | Does |
+|---|---|
+| `remember(statement)` | The owner said "remember that ...": written at once as the owner's fact, confidence 1, with an owner event as its source |
+| `recall(query, period?)` | Facts (past and archived ones too, with their validity and where they came from), day summaries and what was said, as a short dated list; `period`: `today`, `yesterday`, `this_week`, `last_week`, `this_month`, `last_month`, `this_year` |
+| `forget(query, confirm?)` | Lists the matching facts and gives a six-character code; nothing is forgotten until the owner says yes in a later turn (the model then calls it again with the code) or confirms in the app, where every pending proposal is listed |
+
+A confirmation in the same turn as the proposal is refused ("the person has not confirmed yet"): the model cannot
+forget on its own. Codes expire after five minutes and work once.
+
+## The memory API
+
+Same access rules as the rest of the API (the key, or a local client with a known Host; every `POST` is JSON from the
+same origin, and listed in `AccessFilter.POST_PATHS`). Times are Unix seconds. Changes are pushed on the app's event
+stream (`/api/stream`) as `memory` messages: `{"kind": "changed", "what": "facts" | "profile" | "log" | "all"}`, the
+worker's state (`{"kind": "worker", ...}`), and pending forget proposals (`{"kind": "forget", "pending": n}`).
+
+| Route | Does |
+|---|---|
+| `GET /api/memory` | Counts per filter, the active profile, the worker, the settings, pending forget proposals |
+| `GET /api/memory/facts?filter=&q=&subject=&kind=&sensitivity=&limit=&offset=` | Facts: `all` (current, not archived), `pinned`, `suggested` (extracted, not reviewed), `archived`, `past`; with counts per filter |
+| `GET /api/memory/facts/{id}` | A fact, its sources (quoted text, date, the conversation day and entry it was said in), its versions |
+| `POST /api/memory/facts/remember` | `{"statement", "subject"?, "sensitivity"?}` |
+| `POST /api/memory/facts/edit` | `{"id", "statement"?, "subject"?, "kind"?, "importance"?, "sensitivity"?}`: a new version by the owner |
+| `POST /api/memory/facts/pin`, `.../archive`, `.../review` | `{"id", "pinned"}`, `{"id", "archived"}`, `{"ids" or "id", "reviewed"}` |
+| `POST /api/memory/facts/forget` | `{"id"}` answers a code; `{"confirm": code}` forgets the fact and all its versions |
+| `GET /api/memory/forget`, `POST .../forget/confirm`, `.../forget/cancel` | Pending proposals (by voice or in the app); confirm or drop one |
+| `POST /api/memory/forget-everything` | `{}` answers a code and the phrase; `{"confirm", "phrase": "forget everything"}` empties memory |
+| `GET /api/memory/profile`, `POST /api/memory/profile`, `POST .../profile/restore` | The profile and its versions with diffs; the owner's version (`content`, `kept_lines`); an older version made active again |
+| `GET /api/memory/episodes?level=day\|week\|month&from=&to=` | Summaries, newest first |
+| `GET /api/memory/log?q=&before=&limit=` | The raw log, newest first |
+| `GET /api/memory/export?format=json\|markdown` | Everything, as a file |
+| `GET /api/memory/settings`, `POST /api/memory/settings` | The settings, the per-source switches (`collect_conversation`, `collect_brain`) among them: a source switched off stops feeding the log at once |
+| `GET /api/memory/worker`, `POST /api/memory/consolidate` | The worker (state, last passes, next night, models, embedding model), "Consolidate now" |
+
 ## Models and latency
 
 - **Embeddings**: Ollama `/api/embed`, `bge-m3` by default (1024 dimensions, multilingual: a French question finds an
@@ -212,7 +338,8 @@ columns if pgvector appears later.
 
 ## The owner's control
 
-`ManageFacts` (list, sources, versions, remember, edit, pin, archive), `ForgetMemory`, `BrowseMemory` (profile,
+`ManageFacts` (list, sources, versions, remember, edit, pin, archive, review), `ForgetMemory`, `ConfirmForgetting`
+(forgetting only after a confirmation, see the tools above), `BrowseMemory` (profile,
 versions with diffs, episodes, the raw log), `ExportMemory` (every table as JSON and a readable Markdown),
 `ConfigureMemory` (the settings above) and `MemoryHealth`. Every change is an owner event in the log first, so the
 worker never undoes it.
@@ -255,4 +382,6 @@ only with a report before and after.
 | Stores | `JdbcEventLog`, `JdbcFactStore`, `JdbcEpisodeStore`, `JdbcProfileStore`, `JdbcMemoryState` |
 | Ollama | `OllamaMemoryModel`, `OllamaEmbedder`, prompts in `marvin/memory/prompts/v1/` |
 | Wiring, feeds, voice activity | `marvin-app/.../MemoryWiring`, `MemoryFeeds`, `VoiceActivityTracker` |
-| Tests | domain `*Test`; application `memory/*Test` with in-memory stores (`memory/testing`, shared as a test jar); `MemoryStoresIT` (SQL, with and without pgvector); `OllamaMemoryModelTest`, `MemoryEvaluationTest`; `MemoryEndToEndIT` (the whole host) |
+| Read path | `MemoryRecallService`, `ForgetConfirmations`, `CachedProfiles` (application); `RetrievalScoring`, `MemoryText`, `RecallWindow` (domain); the conversation's `MemoryContext` port, `ContextAssembler`, `MemoryTools`, `VoiceService`; `MemoryForConversation` (boot module) |
+| Memory API | `marvin-adapter-web/.../MemoryController` |
+| Tests | domain `*Test`; application `memory/*Test` with in-memory stores (`memory/testing`, shared as a test jar); `MemoryStoresIT` (SQL, with and without pgvector); `OllamaMemoryModelTest`, `MemoryEvaluationTest`; `MemoryEndToEndIT` (the whole host); read path: `ReadPathTest`, `ContextAssemblerTest`, `MemoryRecallServiceTest`, `VoiceMemoryTest` (prompt stability, budgets, latency), `MemoryToolsLoopTest` (the tools through the answer loop and the stub Ollama), `MemoryApiIT` (every route, retrieval with 3000 facts) |

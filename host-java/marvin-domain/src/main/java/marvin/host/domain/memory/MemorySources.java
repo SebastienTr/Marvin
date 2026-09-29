@@ -20,6 +20,7 @@ public final class MemorySources {
     public static final String REMEMBER = "remember";
     public static final String FORGET = "forget";
     public static final String PIN = "pin";
+    public static final String REVIEW = "review";
     public static final String PROFILE_EDIT = "profile_edit";
 
     private MemorySources() {

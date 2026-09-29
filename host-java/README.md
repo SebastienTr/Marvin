@@ -15,8 +15,10 @@ memory, break reminders) runs in Java, the audio loop in the Python voice sideca
 ([docs/voice.md](../docs/voice.md#the-voice-sidecar)). The Python host (`marvin-host`) stays for the
 simulator, the Rerun viewer and replays; only one host can own UDP 47100 at a time.
 
-Memory v1 is under way (design phase 3): the event log, facts, episodes, the profile and the memory worker exist
-(the write path); what Marvin remembers does not reach its answers yet. How it works: [docs/memory.md](../docs/memory.md).
+Memory v1 is under way (design phase 3): the event log, facts, episodes, the profile and the memory worker (the
+write path); the profile in the system prompt, the question's memory sections within their token budgets, the
+`remember`, `recall` and `forget` tools and the memory API (the read path). The app's Memory screen comes next. How it
+works: [docs/memory.md](../docs/memory.md).
 
 Before relying on it with real boards and a real model, run the manual
 [test plan](../docs/test-plan.md); to review the change, start with the
@@ -149,13 +151,15 @@ flowchart LR
     memory -. "VoiceActivity, rewarm<br/>(plugged in marvin-app)" .-> conversation
     conversation -. "kept lines<br/>(plugged in marvin-app)" .-> memory
     presence -. "stored events<br/>(plugged in marvin-app)" .-> memory
+    conversation -. "MemoryContext: profile, sections, tools<br/>(plugged in marvin-app)" .-> memory
 
     class robot,presence,conversation,face,settings,system,memory ctx
 ```
 
 `presence` uses nobody: it is the heart, and everyone reads it. `settings` and `system` are used by
 the adapters (the app, the health checks), not by the other contexts. `memory` uses nobody either: `marvin-app`
-feeds it what the conversation keeps and what the presence history stores, and gives it the voice's activity
+feeds it what the conversation keeps and what the presence history stores, and gives it the voice's activity; the
+conversation reads memory through its own port, `MemoryContext`, which `marvin-app` plugs into memory's in-ports
 ([docs/memory.md](../docs/memory.md)).
 
 | Context | PostgreSQL schema | Main use cases |
@@ -166,7 +170,7 @@ feeds it what the conversation keeps and what the presence history stores, and g
 | `settings` | `settings` | `SettingsService` |
 | `face` | none | `FaceService`, `FaceLinkService` drives the robot's screen |
 | `system` | none | `HealthService`, `HostLogService` |
-| `memory` | `memory` (event log, facts and their sources, episodes, block versions, state) | `MemoryLogService`, `MemoryWorker` (`Consolidator`, `NightlyPass`), `MemoryAdminService` |
+| `memory` | `memory` (event log, facts and their sources, episodes, block versions, state) | `MemoryLogService`, `MemoryWorker` (`Consolidator`, `NightlyPass`), `MemoryAdminService`, `MemoryRecallService`, `ForgetConfirmations` |
 
 A `platform` schema holds what belongs to no context: the database extensions (pgvector) and the
 record of the one-time import from the Python host.

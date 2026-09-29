@@ -13,6 +13,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
+import marvin.host.domain.shared.TokenEstimator;
+
 /** Redaction, event feeds, batches, decay, periods, settings and token estimates. */
 class RulesTest {
     static final Instant T0 = Instant.parse("2026-09-28T08:00:00Z");

@@ -115,6 +115,10 @@ public final class OllamaLanguageModel implements LanguageModel {
                     }
                 }
                 if (Boolean.TRUE.equals(r.done())) {
+                    if (r.promptEvalCount() != null) {
+                        stream.usage(new Usage(r.promptEvalCount(), seconds(r.promptEvalDuration()),
+                                r.evalCount() == null ? 0 : r.evalCount(), seconds(r.evalDuration()), seconds(r.loadDuration())));
+                    }
                     break;
                 }
             }
@@ -125,6 +129,10 @@ public final class OllamaLanguageModel implements LanguageModel {
             }
             throw t;
         }
+    }
+
+    private static double seconds(Long nanos) {
+        return nanos == null ? 0 : nanos / 1e9;
     }
 
     private static ToolCall toolCall(OllamaApi.Message.ToolCall tc) {

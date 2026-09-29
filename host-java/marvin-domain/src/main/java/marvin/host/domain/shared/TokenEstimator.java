@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-package marvin.host.domain.memory;
+package marvin.host.domain.shared;
 
 /**
  * Token counts without the model's tokenizer (docs/design.md 5.3): characters per token, calibrated from the

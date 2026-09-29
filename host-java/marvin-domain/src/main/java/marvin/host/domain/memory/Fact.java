@@ -18,11 +18,22 @@ import java.util.UUID;
  * @param confidence  0 to 1; stated by the owner: 1
  * @param extractedBy the model and prompt version that wrote it (empty for the owner's)
  * @param sources     the ids of the log events it came from (provenance), oldest first
+ * @param reviewedAt  when the owner looked at it in the app and kept it ({@code null}: a suggestion not reviewed yet;
+ *                    the owner's own facts count as reviewed)
  */
 public record Fact(UUID id, String subject, String statement, FactKind kind, int importance, double confidence,
                    Sensitivity sensitivity, Instant validFrom, Instant validTo, Instant learnedAt, Instant expiredAt,
                    UUID supersededBy, Instant lastUsedAt, int useCount, boolean archived, boolean pinned,
-                   FactOrigin origin, String extractedBy, List<Long> sources) {
+                   FactOrigin origin, String extractedBy, List<Long> sources, Instant reviewedAt) {
+
+    /** A fact not reviewed yet. */
+    public Fact(UUID id, String subject, String statement, FactKind kind, int importance, double confidence,
+                Sensitivity sensitivity, Instant validFrom, Instant validTo, Instant learnedAt, Instant expiredAt,
+                UUID supersededBy, Instant lastUsedAt, int useCount, boolean archived, boolean pinned,
+                FactOrigin origin, String extractedBy, List<Long> sources) {
+        this(id, subject, statement, kind, importance, confidence, sensitivity, validFrom, validTo, learnedAt, expiredAt,
+                supersededBy, lastUsedAt, useCount, archived, pinned, origin, extractedBy, sources, null);
+    }
 
     public Fact {
         Objects.requireNonNull(id, "id");
@@ -55,27 +66,37 @@ public record Fact(UUID id, String subject, String statement, FactKind kind, int
 
     public Fact withSources(List<Long> s) {
         return new Fact(id, subject, statement, kind, importance, confidence, sensitivity, validFrom, validTo, learnedAt,
-                expiredAt, supersededBy, lastUsedAt, useCount, archived, pinned, origin, extractedBy, s);
+                expiredAt, supersededBy, lastUsedAt, useCount, archived, pinned, origin, extractedBy, s, reviewedAt);
     }
 
     public Fact withArchived(boolean a) {
         return new Fact(id, subject, statement, kind, importance, confidence, sensitivity, validFrom, validTo, learnedAt,
-                expiredAt, supersededBy, lastUsedAt, useCount, a, pinned, origin, extractedBy, sources);
+                expiredAt, supersededBy, lastUsedAt, useCount, a, pinned, origin, extractedBy, sources, reviewedAt);
     }
 
     public Fact withPinned(boolean p) {
         return new Fact(id, subject, statement, kind, importance, confidence, sensitivity, validFrom, validTo, learnedAt,
-                expiredAt, supersededBy, lastUsedAt, useCount, archived, p, origin, extractedBy, sources);
+                expiredAt, supersededBy, lastUsedAt, useCount, archived, p, origin, extractedBy, sources, reviewedAt);
     }
 
     public Fact withExpiry(Instant expired, Instant validUntil, UUID supersededByFact) {
         return new Fact(id, subject, statement, kind, importance, confidence, sensitivity, validFrom, validUntil, learnedAt,
-                expired, supersededByFact, lastUsedAt, useCount, archived, pinned, origin, extractedBy, sources);
+                expired, supersededByFact, lastUsedAt, useCount, archived, pinned, origin, extractedBy, sources, reviewedAt);
     }
 
     public Fact withUse(Instant usedAt, int count) {
         return new Fact(id, subject, statement, kind, importance, confidence, sensitivity, validFrom, validTo, learnedAt,
-                expiredAt, supersededBy, usedAt, count, archived, pinned, origin, extractedBy, sources);
+                expiredAt, supersededBy, usedAt, count, archived, pinned, origin, extractedBy, sources, reviewedAt);
+    }
+
+    public Fact withReviewed(Instant at) {
+        return new Fact(id, subject, statement, kind, importance, confidence, sensitivity, validFrom, validTo, learnedAt,
+                expiredAt, supersededBy, lastUsedAt, useCount, archived, pinned, origin, extractedBy, sources, at);
+    }
+
+    /** Reviewed by the owner, or written by them. */
+    public boolean reviewed() {
+        return reviewedAt != null || origin == FactOrigin.OWNER;
     }
 
     /** The text that is embedded: the subject gives the statement its context. */

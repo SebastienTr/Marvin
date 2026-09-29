@@ -7,6 +7,8 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import marvin.host.domain.shared.TokenEstimator;
+
 class ProfileTextTest {
     final TokenEstimator est = new TokenEstimator(4, 0);
 

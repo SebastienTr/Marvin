@@ -51,6 +51,14 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <!-- memory's use cases on in-memory stores (memory.testing), for the memory tools through the answer loop -->
+      <groupId>marvin.host</groupId>
+      <artifactId>marvin-application</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <!-- StubOllama: chat, tool calls, structured output, embeddings -->
       <groupId>marvin.host</groupId>
       <artifactId>marvin-adapter-llm</artifactId>

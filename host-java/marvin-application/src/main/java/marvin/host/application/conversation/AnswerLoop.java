@@ -54,9 +54,15 @@ public final class AnswerLoop {
      * @param failure  {@code llm_down}, {@code error}, or {@code null}
      * @param hint     how to fix a failure
      * @param latency  llm_first_token, first_chunk, tools, llm_first_token_2 (seconds)
+     * @param usage    what the model server reported for each request, in order (may be empty)
      */
     public record Outcome(List<String> answer, List<ChatMessage> exchange, List<Map<String, Object>> calls,
-                          String failure, String hint, Map<String, Double> latency) {
+                          String failure, String hint, Map<String, Double> latency, List<LanguageModel.Usage> usage) {
+
+        public Outcome(List<String> answer, List<ChatMessage> exchange, List<Map<String, Object>> calls,
+                       String failure, String hint, Map<String, Double> latency) {
+            this(answer, exchange, calls, failure, hint, latency, List.of());
+        }
 
         /** What was said of the answer, cleaned for speech. */
         public String saidAnswer() {
@@ -79,6 +85,21 @@ public final class AnswerLoop {
     public Outcome answer(String host, String modelName, List<ChatMessage> messages, ToolRegistry tools,
                           boolean offerTools, String language, int maxToolRounds, double timeoutS,
                           BooleanSupplier cancelled, Speaker speaker, Runnable toolsUnsupported) {
+        return answer(host, modelName, messages, tools, offerTools, language, maxToolRounds, timeoutS, cancelled, speaker,
+                toolsUnsupported, Map.of());
+    }
+
+    /**
+     * The same, with more for the tools' context than the language ({@code toolContext}: the conversation turn, who
+     * is in the room ...).
+     */
+    public Outcome answer(String host, String modelName, List<ChatMessage> messages, ToolRegistry tools,
+                          boolean offerTools, String language, int maxToolRounds, double timeoutS,
+                          BooleanSupplier cancelled, Speaker speaker, Runnable toolsUnsupported,
+                          Map<String, Object> toolContext) {
+        Map<String, Object> ctx = new LinkedHashMap<>(toolContext);
+        ctx.put("language", language);
+        List<LanguageModel.Usage> usage = new ArrayList<>();
         double t = clock.getAsDouble();
         Map<String, Double> lat = new LinkedHashMap<>();
         List<String> answer = new ArrayList<>();
@@ -91,7 +112,7 @@ public final class AnswerLoop {
         int rounds = 0;
         try {
             while (true) {
-                Round r = new Round(t, rounds, lat, answer, speaker, cancelled);
+                Round r = new Round(t, rounds, lat, answer, speaker, cancelled, usage);
                 List<ChatMessage> request = new ArrayList<>(messages);
                 request.addAll(exchange);
                 try {
@@ -100,7 +121,7 @@ public final class AnswerLoop {
                     log.warning(e.getMessage() + ": answering without tools");
                     schemas = null;
                     toolsUnsupported.run();
-                    r = new Round(t, rounds, lat, answer, speaker, cancelled);
+                    r = new Round(t, rounds, lat, answer, speaker, cancelled, usage);
                     model.streamChat(host, modelName, request, null, timeoutS, r);
                 }
                 if (cancelled.getAsBoolean()) {
@@ -131,9 +152,9 @@ public final class AnswerLoop {
                     double tTools = clock.getAsDouble();
                     List<ToolResult> results = new ArrayList<>();
                     for (ToolCall c : toolCalls) {
-                        results.add(tools.call(c.name(), c.arguments(), Map.of("language", language)));
+                        results.add(tools.call(c.name(), c.arguments(), ctx));
                         if (cancelled.getAsBoolean()) {
-                            return new Outcome(answer, exchange, calls, null, "", lat);
+                            return new Outcome(answer, exchange, calls, null, "", lat, usage);
                         }
                     }
                     lat.merge("tools", clock.getAsDouble() - tTools, Double::sum);
@@ -175,7 +196,7 @@ public final class AnswerLoop {
             log.log(Level.SEVERE, "the language model failed", e);
             failure = "error";
         }
-        return new Outcome(answer, exchange, calls, failure, hint, lat);
+        return new Outcome(answer, exchange, calls, failure, hint, lat, usage);
     }
 
     /** One request to the model and what came back. */
@@ -196,9 +217,11 @@ public final class AnswerLoop {
         int scan;
         boolean cut;
         final int saidBefore;
+        final List<LanguageModel.Usage> usage;
 
         Round(double t, int rounds, Map<String, Double> lat, List<String> answer, Speaker speaker,
-              BooleanSupplier cancelled) {
+              BooleanSupplier cancelled, List<LanguageModel.Usage> usage) {
+            this.usage = usage;
             this.t = t;
             this.rounds = rounds;
             this.lat = lat;
@@ -280,6 +303,11 @@ public final class AnswerLoop {
         @Override
         public boolean cancelled() {
             return cancelled.getAsBoolean();
+        }
+
+        @Override
+        public void usage(LanguageModel.Usage u) {
+            usage.add(u);
         }
     }
 }

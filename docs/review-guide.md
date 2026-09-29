@@ -71,6 +71,13 @@ Built in stages, each with a section under "Memory v1" in [NOTES.md](../host-jav
 the use cases (`application/memory`: `Consolidator`, `MemoryWorker`, `NightlyPass`), `memory/V1__memory.sql` and
 `MemoryStoresIT`, and `MemoryEndToEndIT`. The extraction evaluation set is `MemoryEvaluationTest`.
 
+The read path: the conversation's port `MemoryContext` and `MemoryForConversation` (the boot module's bridge to
+memory's `RecallMemory` and `ConfirmForgetting`), `ContextAssembler` and `Persona.systemPrompt`, then `VoiceService`
+(`prefetch`, `assemble`, `usage`), `MemoryRecallService`, `ForgetConfirmations`, `MemoryTools`, `MemoryController`.
+Tests: `VoiceMemoryTest` (the prompt byte-stable between questions, budgets cut by score, the 300 ms budget, the
+calibration, the cost on the voice's path), `MemoryToolsLoopTest` (the tools through the real answer loop and Ollama
+adapter), `MemoryApiIT` (every route and the retrieval time with 3000 facts).
+
 ## 5. Known gaps and risks (details in NOTES.md)
 
 - Only one host can own UDP 47100. History written by the Java host stays in PostgreSQL: going back

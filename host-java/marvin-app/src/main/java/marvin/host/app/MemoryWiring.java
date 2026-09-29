@@ -21,15 +21,19 @@ import marvin.host.adapter.persistence.JdbcFactStore;
 import marvin.host.adapter.persistence.JdbcMemoryState;
 import marvin.host.adapter.persistence.JdbcProfileStore;
 import marvin.host.adapter.persistence.VoiceSettingsFile;
+import marvin.host.adapter.web.EventHub;
 import marvin.host.application.conversation.ConversationService;
 import marvin.host.application.conversation.VoiceService;
 import marvin.host.application.conversation.port.out.ConversationStore;
+import marvin.host.application.memory.CachedProfiles;
 import marvin.host.application.memory.Consolidator;
 import marvin.host.application.memory.Embeddings;
+import marvin.host.application.memory.ForgetConfirmations;
 import marvin.host.application.memory.MemoryAdminService;
 import marvin.host.application.memory.MemoryConfig;
 import marvin.host.application.memory.MemoryExportService;
 import marvin.host.application.memory.MemoryLogService;
+import marvin.host.application.memory.MemoryRecallService;
 import marvin.host.application.memory.MemorySettingsService;
 import marvin.host.application.memory.MemoryWorker;
 import marvin.host.application.memory.NightlyPass;
@@ -39,6 +43,7 @@ import marvin.host.application.memory.port.out.VoiceModel;
 import marvin.host.application.presence.PresenceHistoryService;
 import marvin.host.application.system.port.out.ComponentProbe;
 import marvin.host.domain.conversation.VoiceSettings;
+import marvin.host.domain.memory.RetrievalScoring;
 import marvin.host.domain.shared.Clocks;
 import marvin.host.domain.shared.LocalDays;
 import marvin.host.domain.system.ComponentHealth;
@@ -67,6 +72,12 @@ public class MemoryWiring {
         });
     }
 
+    /** The profile versions, with the active one cached for the voice (every memory service shares this one). */
+    @Bean
+    public CachedProfiles memoryProfiles(JdbcProfileStore profiles) {
+        return new CachedProfiles(profiles);
+    }
+
     @Bean
     public Embeddings memoryEmbeddings(OllamaEmbedder embedder, MemorySettingsService settings, JdbcFactStore facts) {
         return new Embeddings(embedder, settings, facts.dimensions());
@@ -86,14 +97,14 @@ public class MemoryWiring {
 
     @Bean
     public MemoryAdminService memoryAdmin(JdbcEventLog events, JdbcFactStore facts, JdbcEpisodeStore episodes,
-                                          JdbcProfileStore profiles, Embeddings embeddings, LocalDays days, Clocks clocks) {
+                                          CachedProfiles profiles, Embeddings embeddings, LocalDays days, Clocks clocks) {
         return new MemoryAdminService(events, facts, episodes, profiles, embeddings, MemoryConfig.DEFAULTS, days, clocks,
                 UUID::randomUUID);
     }
 
     @Bean
     public MemoryExportService memoryExport(JdbcEventLog events, JdbcFactStore facts, JdbcEpisodeStore episodes,
-                                            JdbcProfileStore profiles, MemorySettingsService settings, Clocks clocks) {
+                                            CachedProfiles profiles, MemorySettingsService settings, Clocks clocks) {
         return new MemoryExportService(events, facts, episodes, profiles, settings, clocks);
     }
 
@@ -106,7 +117,7 @@ public class MemoryWiring {
 
     @Bean(destroyMethod = "")
     public MemoryWorker memoryWorker(JdbcEventLog events, JdbcFactStore facts, JdbcEpisodeStore episodes,
-                                     JdbcProfileStore profiles, Embeddings embeddings, OllamaMemoryModel model,
+                                     CachedProfiles profiles, Embeddings embeddings, OllamaMemoryModel model,
                                      MemorySettingsService settings, VoiceActivityTracker activity, VoiceService voice,
                                      JdbcMemoryState state, LocalDays days, Clocks clocks,
                                      @Value("${marvin.memory.tick-s:30}") double tickS) {
@@ -119,6 +130,55 @@ public class MemoryWiring {
         MemoryWorker worker = new MemoryWorker(consolidator, nightly, events, settings, activity, voice::rewarm, state, days,
                 clocks, config);
         return worker;
+    }
+
+    /** The read path: the profile, the question's memory sections, the recall tool; a profile edit warms the voice up. */
+    @Bean(destroyMethod = "close")
+    public MemoryRecallService memoryRecall(JdbcFactStore facts, JdbcEventLog events, JdbcEpisodeStore episodes,
+                                            CachedProfiles profiles, Embeddings embeddings, LocalDays days, Clocks clocks,
+                                            VoiceService voice, MemoryAdminService admin) {
+        MemoryRecallService recall = new MemoryRecallService(facts, events, episodes, profiles, embeddings, days, clocks,
+                RetrievalScoring.DEFAULT, voice::rewarm);
+        admin.addListener(recall);
+        return recall;
+    }
+
+    @Bean
+    public ForgetConfirmations memoryForgetting(JdbcFactStore facts, MemoryAdminService admin, Embeddings embeddings,
+                                                Clocks clocks) {
+        return new ForgetConfirmations(facts, admin, embeddings, clocks, UUID::randomUUID);
+    }
+
+    /**
+     * Memory for the conversation, through its port: the voice gets the profile, the memory sections and the memory
+     * tools ({@code marvin.memory.read=false}: none of them, the voice as before memory).
+     */
+    @Bean
+    public MemoryContextBinding memoryForConversation(MemoryRecallService recall, MemoryAdminService admin,
+                                                      ForgetConfirmations forgetting, VoiceService voice,
+                                                      @Value("${marvin.memory.read:true}") boolean read) {
+        if (read) {
+            voice.setMemory(new MemoryForConversation(recall, admin, forgetting));
+        }
+        return new MemoryContextBinding(read);
+    }
+
+    /** Whether the voice was given memory (for the log and tests). */
+    public record MemoryContextBinding(boolean read) {
+    }
+
+    /** Memory's changes reach the app live, on the event stream ({@code memory} messages). */
+    @Bean
+    public MemoryStreamBinding memoryStream(EventHub hub, MemoryAdminService admin, MemoryWorker worker,
+                                            ForgetConfirmations forgetting) {
+        admin.addListener(hub);
+        worker.addListener(hub);
+        forgetting.addListener(hub);
+        return new MemoryStreamBinding();
+    }
+
+    /** Marks that the event stream carries memory's changes. */
+    public record MemoryStreamBinding() {
     }
 
     /**
