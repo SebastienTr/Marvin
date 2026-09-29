@@ -153,9 +153,9 @@ export class ConvoBuilder {
   reset() { this.lastHeard = null; this.group = null; this.lastReply = null; }
   item(e) {
     if (e.kind === "ignored") {
-      if (this.group) { this.group.add(e); return { li: this.group.li, grouped: true }; }
+      if (this.group) { this.group.add(e); return { li: this.group.li, grouped: true, replaces: [] }; }
       this.group = new IgnoredGroup(e);
-      return { li: this.group.li, grouped: false };
+      return { li: this.group.li, grouped: false, replaces: [] };
     }
     this.group = null;
     if (e.kind === "heard") this.lastHeard = e;

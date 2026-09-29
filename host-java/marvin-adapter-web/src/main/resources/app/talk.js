@@ -67,7 +67,7 @@ function addTranscript(e, { fresh = false } = {}) {
   if (e.kind === "ignored" && live.you) { dissolve(live.you.li); live.you = null; }
   const { li, grouped, replaces } = chat.item(e);
   // one thought said in several breaths: the question that goes on takes the place of its first part
-  for (const id of replaces) dissolve(ol.querySelector(`:scope > li[data-id="${id}"]`));
+  for (const id of replaces || []) dissolve(ol.querySelector(`:scope > li[data-id="${id}"]`));
   $("transcript-empty").hidden = true;
   if (!grouped) {
     const pending = e.kind === "heard" && e.source !== "typed" ? live.you : e.kind === "reply" ? live.marvin : null;
@@ -613,7 +613,9 @@ export function setup() {
 export async function load() {
   const r = await api("/api/voice");
   app.voiceSettings = r.settings;
-  for (const e of r.transcript) addTranscript(e);
+  for (const e of r.transcript) {
+    try { addTranscript(e); } catch (err) { console.error("transcript entry not shown", e.id, err); }  // one bad entry never hides the rest
+  }
   emit("voice", r.voice);
   scrollTranscript(true, false);
   if (!r.voice) toast("The voice is not reachable.");
