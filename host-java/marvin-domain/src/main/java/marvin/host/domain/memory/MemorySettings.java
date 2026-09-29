@@ -22,7 +22,7 @@ import java.util.Map;
 public record MemorySettings(boolean collectConversation, boolean collectBrain, boolean worker, String memoryModel,
                              String nightModel, String embedModel, int nightHour, int idleMinutes, int retentionDays) {
 
-    public static final MemorySettings DEFAULTS = new MemorySettings(true, true, true, "", "", "qwen3-embedding:0.6b", 3, 10, 365);
+    public static final MemorySettings DEFAULTS = new MemorySettings(true, true, true, "", "", "qwen3-embedding:8b", 3, 10, 365);
 
     /** The keys, as the app and the store name them. */
     public static final List<String> KEYS = List.of("collect_conversation", "collect_brain", "worker", "memory_model",
@@ -38,7 +38,7 @@ public record MemorySettings(boolean collectConversation, boolean collectBrain, 
     public MemorySettings {
         memoryModel = memoryModel == null ? "" : memoryModel.strip();
         nightModel = nightModel == null ? "" : nightModel.strip();
-        embedModel = embedModel == null || embedModel.isBlank() ? "qwen3-embedding:0.6b" : embedModel.strip();
+        embedModel = embedModel == null || embedModel.isBlank() ? "qwen3-embedding:8b" : embedModel.strip();
     }
 
     /** Whether events of this source are kept (the owner's own are always). */

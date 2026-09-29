@@ -33,7 +33,7 @@ public final class Embeddings {
         }
         String model = settings.settings().embedModel();
         try {
-            List<float[]> out = embedder.embed(settings.host(), model, texts);
+            List<float[]> out = embedder.embed(settings.host(), model, texts, dimensions);
             if (out.size() != texts.size()) {
                 throw new Embedder.Unavailable("the embedding model " + model + " returned " + out.size()
                         + " vectors for " + texts.size() + " texts", "");
@@ -42,7 +42,7 @@ public final class Embeddings {
                 if (v.length != dimensions) {
                     throw new Embedder.Unavailable("the embedding model " + model + " gives " + v.length
                             + " numbers per text, memory was set up for " + dimensions,
-                            "Choose an embedding model with " + dimensions + " dimensions (qwen3-embedding:0.6b has 1024), or start "
+                            "Choose an embedding model with " + dimensions + " dimensions (Qwen3-Embedding models give any size up to their own), or start "
                                     + "memory on a new database with marvin.memory.embedding-dimensions=" + v.length + ".");
                 }
             }
@@ -66,6 +66,20 @@ public final class Embeddings {
 
     public float[] embed(String text) {
         return embed(List.of(text)).getFirst();
+    }
+
+    /**
+     * The vector of a search (a question, a recall, a forget request), as opposed to a stored fact or
+     * summary. Qwen3-Embedding retrieves better when a search carries its task; stored texts never do.
+     */
+    public float[] embedQuery(String text) {
+        return embed(queryText(settings.settings().embedModel(), text));
+    }
+
+    static String queryText(String model, String text) {
+        return model.startsWith("qwen3-embedding")
+                ? "Instruct: Given a question or a remark, retrieve facts about the person that help answer it\nQuery: " + text
+                : text;
     }
 
     public String state() {

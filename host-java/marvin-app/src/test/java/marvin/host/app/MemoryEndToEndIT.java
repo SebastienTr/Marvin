@@ -188,7 +188,7 @@ class MemoryEndToEndIT {
             assertThat(body).containsKey("format");
             assertThat(((Map<String, Object>) body.get("options")).get("num_ctx")).isEqualTo(8192L);
         }
-        assertThat(OLLAMA.embedRequests).isNotEmpty().allSatisfy(b -> assertThat(b).containsEntry("model", "qwen3-embedding:0.6b"));
+        assertThat(OLLAMA.embedRequests).isNotEmpty().allSatisfy(b -> assertThat(b).containsEntry("model", "qwen3-embedding:8b"));
 
         MemoryHealth.Report h = health.health();
         assertThat(h.searchMode()).contains("pgvector HNSW");
@@ -198,7 +198,7 @@ class MemoryEndToEndIT {
         Map<String, Object> components = (Map<String, Object>) ((Map<String, Object>) JsonText.parse(r.body())).get("components");
         assertThat((Map<String, Object>) components.get("memory")).containsEntry("state", "up");
         assertThat((String) ((Map<String, Object>) components.get("memory")).get("detail"))
-                .contains("2 facts").contains("pgvector HNSW index").contains("embeddings qwen3-embedding:0.6b ready");
+                .contains("2 facts").contains("pgvector HNSW index").contains("embeddings qwen3-embedding:8b ready");
 
         // "Consolidate now" from the app, and the worker's state
         HttpResponse<String> post = HttpClient.newHttpClient().send(HttpRequest.newBuilder(

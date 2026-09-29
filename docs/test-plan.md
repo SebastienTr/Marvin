@@ -149,18 +149,18 @@ away for a while.
 
 **Before you start (once)**
 
-1. `ollama pull qwen3-embedding:0.6b` (the embedding model memory searches with: about 640 MB, French and English).
+1. `ollama pull qwen3-embedding:8b` (the embedding model memory searches with: about 4.7 GB, French and English).
 2. Choose the night model. Memory uses the voice's model by default. If the voice runs a small model (for example
    `qwen3:4b-instruct`, for a quick first word), set a larger one for the night in **Marvin > Voice & models**,
    *Memory's models*, *At night*: `qwen3.8:27b-mlx` (the night has time, and a larger model extracts better). If the
    voice already runs the 27B model, leave both empty.
-3. `./marvin doctor`: an `ok` line for the embedding model `qwen3-embedding:0.6b`.
+3. `./marvin doctor`: an `ok` line for the embedding model `qwen3-embedding:8b`.
 
 **Step by step**
 
 | # | Do | Expected |
 |---|---|---|
-| 11.1 | Open **Memory**, then **Marvin > System** | Memory: empty lists that say so, no notice at the top (a notice with `ollama pull qwen3-embedding:0.6b` means the model is missing). System: *Memory* is up and says how it searches (`pgvector HNSW index` with Docker). |
+| 11.1 | Open **Memory**, then **Marvin > System** | Memory: empty lists that say so, no notice at the top (a notice with `ollama pull qwen3-embedding:8b` means the model is missing). System: *Memory* is up and says how it searches (`pgvector HNSW index` with Docker). |
 | 11.2 | Say "Marvin, j'habite à Nice." then "My sister Julie lives in Nantes." then "Je préfère le thé au café." | Marvin answers each; nothing new in Memory yet (it learns later). |
 | 11.3 | Memory > *Memory at work* > **Consolidate now**, wait until it says *done* | **Suggested** shows the facts in English ("The owner lives in Nice.", "Julie is the owner's sister and lives in Nantes.", ...), each with where it comes from ("From a conversation · Today, ..."). Nothing about the weather or small talk. |
 | 11.4 | **Source & edit** on "The owner lives in Nice." | The sentence you said, quoted and dated; **Open that conversation** opens Activity > History at that line. This is how you see *why* Marvin remembers something. |
@@ -199,7 +199,7 @@ curl -s -X POST localhost:8765/api/memory/forget-everything -H 'Content-Type: ap
 
 ```bash
 cd host-java
-MARVIN_EVAL_OLLAMA=http://localhost:11434 MARVIN_EVAL_MODEL=qwen3.8:27b-mlx MARVIN_EVAL_EMBED=qwen3-embedding:0.6b \
+MARVIN_EVAL_OLLAMA=http://localhost:11434 MARVIN_EVAL_MODEL=qwen3.8:27b-mlx MARVIN_EVAL_EMBED=qwen3-embedding:8b \
   ./mvnw -q -pl marvin-adapter-llm -am test -Dtest=MemoryEvaluationTest -Dsurefire.failIfNoSpecifiedTests=false
 cat marvin-adapter-llm/target/memory-eval-report.txt
 ```

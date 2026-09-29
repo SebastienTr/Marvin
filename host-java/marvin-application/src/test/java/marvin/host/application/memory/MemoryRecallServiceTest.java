@@ -31,7 +31,7 @@ import marvin.host.domain.memory.Sensitivity;
  */
 class MemoryRecallServiceTest {
     static final Instant T = Instant.parse("2026-09-29T10:00:00Z");
-    /** Word embeddings are coarser than qwen3-embedding:0.6b: a lower floor. */
+    /** Word embeddings are coarser than qwen3-embedding:8b: a lower floor. */
     static final RetrievalScoring SCORING = new RetrievalScoring(1.0, 0.5, 0.7, 0.995, 0.3);
     final MemoryFixture m = new MemoryFixture(T, new FakeMemoryModel());
     final CachedProfiles profiles = new CachedProfiles(m.store.profiles);
@@ -102,10 +102,10 @@ class MemoryRecallServiceTest {
     @Test
     void withoutTheEmbeddingModelTheQuestionGoesOnWithoutFacts() {
         admin.remember("The owner plays the cello.", "owner", null);
-        m.embedder.failure = new Embedder.Unavailable("model \"qwen3-embedding:0.6b\" not found", "ollama pull qwen3-embedding:0.6b");
+        m.embedder.failure = new Embedder.Unavailable("model \"qwen3-embedding:8b\" not found", "ollama pull qwen3-embedding:8b");
         RecallMemory.Recollection r = recall.recollect("cello", RecallMemory.Audience.OWNER);
         assertThat(r.facts()).isEmpty();
-        assertThat(r.problem()).contains("qwen3-embedding:0.6b");
+        assertThat(r.problem()).contains("qwen3-embedding:8b");
     }
 
     @Test

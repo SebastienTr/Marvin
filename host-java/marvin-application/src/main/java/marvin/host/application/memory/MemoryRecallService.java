@@ -147,7 +147,7 @@ public final class MemoryRecallService implements RecallMemory, MemoryListener {
         double t0 = clocks.monotonicSeconds();
         float[] q;
         try {
-            q = embeddings.embed(question);
+            q = embeddings.embedQuery(question);
         } catch (Embedder.Unavailable e) {
             return new Recollection(List.of(), gist, clocks.monotonicSeconds() - t0, 0, e.getMessage());
         } catch (RuntimeException e) {
@@ -264,7 +264,7 @@ public final class MemoryRecallService implements RecallMemory, MemoryListener {
         String problem = "";
         if (!qtext.isEmpty()) {
             try {
-                float[] v = embeddings.embed(qtext);
+                float[] v = embeddings.embedQuery(qtext);
                 for (FactStore.Scored s : facts.nearest(v, 20, new FactStore.Filter(now, false, true, max))) {
                     if (s.similarity() >= RECALL_FLOOR) {
                         found.put(s.fact().id(), s.similarity());

@@ -99,7 +99,7 @@ public final class ForgetConfirmations implements ConfirmForgetting {
         Map<UUID, Double> found = new LinkedHashMap<>();
         if (!q.isEmpty()) {
             try {
-                for (FactStore.Scored s : facts.nearest(embeddings.embed(q), 10, new FactStore.Filter(now, true, true, max))) {
+                for (FactStore.Scored s : facts.nearest(embeddings.embedQuery(q), 10, new FactStore.Filter(now, true, true, max))) {
                     if (s.similarity() >= MATCH_FLOOR) {
                         found.put(s.fact().id(), s.similarity());
                     }

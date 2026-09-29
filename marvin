@@ -28,7 +28,7 @@
 # (false: no voice sidecar), MARVIN_PYTHON (the Python that runs it; default host/.venv).
 # Memory: MARVIN_MEMORY_WORKER (false: nothing is consolidated), MARVIN_EMBEDDING_DIMENSIONS (1024, the
 # embedding model's size, fixed when memory's tables are made), MARVIN_EMBED_MODEL (what doctor checks; the
-# model itself is a memory setting in the app, qwen3-embedding:0.6b by default).
+# model itself is a memory setting in the app, qwen3-embedding:8b by default).
 
 set -eu
 
@@ -717,8 +717,8 @@ cmd_doctor() {
             *"\"$model\""*) ok "model $model pulled" ;;
             *) note "model $model is not pulled"; fix "ollama pull $model" ;;
         esac
-        # memory's embedding model (the owner's memory setting embed_model; qwen3-embedding:0.6b unless changed in the app)
-        embed=${MARVIN_EMBED_MODEL:-qwen3-embedding:0.6b}
+        # memory's embedding model (the owner's memory setting embed_model; qwen3-embedding:8b unless changed in the app)
+        embed=${MARVIN_EMBED_MODEL:-qwen3-embedding:8b}
         case "$tags" in
             *"\"$embed\""* | *"\"$embed:latest\""*) ok "embedding model $embed pulled (memory)" ;;
             *) note "embedding model $embed is not pulled: Marvin talks, but remembers nothing new"; fix "ollama pull $embed" ;;

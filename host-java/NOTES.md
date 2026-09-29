@@ -1733,12 +1733,16 @@ rewrite that drops what ended or was forgotten, and a log of each system prompt'
 - Move `OllamaLanguageModel`'s streaming to the JDK client (a cancelled answer would stop Ollama at once).
 - Guess a typed question's language with the voice's recogniser model or a small detector instead of stop words.
 
-## Default embedding model: qwen3-embedding:0.6b
+## Default embedding model: qwen3-embedding:8b at 1024 dimensions
 
-The default embedding model is now `qwen3-embedding:0.6b` instead of `bge-m3`: same size (1024 dimensions, so memory's
-tables and the pgvector HNSW index are unchanged), multilingual, and clearly ahead on the MTEB multilingual benchmark
-(64.3). The 4B (2560) and 8B (4096) variants score higher but exceed pgvector's HNSW limit for `vector` (2000
-dimensions) unless truncated. An existing install that already embedded facts with another model keeps its setting
-(`embed_model` in the app's memory settings); changing it means re-embedding. The relevance floor (0.45) was set on
-bge-m3's distribution: check it with `MemoryEvaluationTest` on the owner's Mac. Qwen3-Embedding also accepts a task
-instruction before queries, which usually helps retrieval a little; not used yet.
+The default embedding model is `qwen3-embedding:8b` (it replaced `bge-m3`): multilingual, first on the MTEB
+multilingual leaderboard at release (70.6, against 64.3 for the 0.6B and about 59 for bge-m3). Its native vectors
+have 4096 numbers, more than pgvector's HNSW index takes for `vector` (2000), so the host asks Ollama for the first
+1024 (`dimensions` in `/api/embed`; Qwen3-Embedding is trained so that its first components stand on their own).
+The tables and the index are unchanged, and any embedding model with at least 1024 dimensions and the same
+training works; `qwen3-embedding:0.6b` (1024 natively, 640 MB) is the choice for small machines. Searches (the
+question, `recall`, `forget`) carry Qwen3's task instruction (`Embeddings.embedQuery`); stored facts and summaries
+do not, as the model card says. Changing the model means re-embedding (the setting `embed_model`). The relevance
+floor (0.45) was set on bge-m3: check it with `MemoryEvaluationTest` on the owner's Mac. The per-question
+embedding runs while recognition finishes; with the 8B it is expected in tens of milliseconds on an M3 Max, to be
+measured (check 9.4).

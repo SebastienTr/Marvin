@@ -12,7 +12,7 @@ import marvin.host.application.memory.port.out.Embedder;
 
 /**
  * Embeddings through Ollama's {@code POST /api/embed}, in batches. A missing model says how to get it
- * ({@code ollama pull qwen3-embedding:0.6b}).
+ * ({@code ollama pull qwen3-embedding:8b}).
  */
 public final class OllamaEmbedder implements Embedder {
     static final int BATCH = 32;
@@ -25,12 +25,19 @@ public final class OllamaEmbedder implements Embedder {
 
     @Override
     public List<float[]> embed(String host, String model, List<String> texts) {
+        return embed(host, model, texts, 0);
+    }
+
+    /** {@code dimensions} 0: the model's own size. */
+    @Override
+    public List<float[]> embed(String host, String model, List<String> texts, int dimensions) {
+        Integer dims = dimensions > 0 ? dimensions : null;
         List<float[]> out = new ArrayList<>(texts.size());
         for (int i = 0; i < texts.size(); i += BATCH) {
             List<String> part = texts.subList(i, Math.min(texts.size(), i + BATCH));
             OllamaApi.EmbeddingsResponse r;
             try {
-                r = api(host).embed(new OllamaApi.EmbeddingsRequest(model, part, OllamaLanguageModel.KEEP_ALIVE, null, true, null));
+                r = api(host).embed(new OllamaApi.EmbeddingsRequest(model, part, OllamaLanguageModel.KEEP_ALIVE, null, true, dims));
             } catch (RuntimeException e) {
                 OllamaErrors.Failure f = OllamaErrors.of(e);
                 if (f.status() == 404 || f.message().contains("not found")) {
@@ -45,7 +52,7 @@ public final class OllamaEmbedder implements Embedder {
             }
             if (r == null || r.embeddings() == null || r.embeddings().size() != part.size()) {
                 throw new Unavailable("Ollama returned no embeddings from '" + model + "'",
-                        "Check that '" + model + "' is an embedding model (qwen3-embedding:0.6b is the default).");
+                        "Check that '" + model + "' is an embedding model (qwen3-embedding:8b is the default).");
             }
             out.addAll(r.embeddings());
         }

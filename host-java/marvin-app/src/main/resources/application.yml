@@ -57,7 +57,7 @@ marvin:
     # more arguments for it, e.g. its test mode: --fake,--say,2:Marvin bonjour
     voice-args: ${MARVIN_VOICE_ARGS:}
   memory:
-    # the embedding size memory's tables are made with (the embedding model's: qwen3-embedding:0.6b 1024); fixed once created
+    # the embedding size memory's tables are made with (1024: qwen3-embedding:8b is asked for its first 1024 components); fixed once created
     embedding-dimensions: ${MARVIN_EMBEDDING_DIMENSIONS:1024}
     # auto: pgvector's HNSW index when installed; off: exact search (what the embedded PostgreSQL does anyway)
     vector: ${MARVIN_MEMORY_VECTOR:auto}

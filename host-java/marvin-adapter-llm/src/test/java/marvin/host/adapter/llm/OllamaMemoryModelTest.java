@@ -160,15 +160,18 @@ class OllamaMemoryModelTest {
         for (int i = 0; i < 40; i++) {
             texts.add("fact number " + i);
         }
-        List<float[]> v = embedder.embed(stub.url(), "qwen3-embedding:0.6b", texts);
+        List<float[]> v = embedder.embed(stub.url(), "qwen3-embedding:8b", texts);
         assertThat(v).hasSize(40).allSatisfy(x -> assertThat(x).hasSize(1024));
         assertThat(stub.embedRequests).hasSize(2);
-        assertThat(stub.embedRequests.getFirst()).containsEntry("model", "qwen3-embedding:0.6b").containsEntry("keep_alive", "30m");
+        assertThat(stub.embedRequests.getFirst()).containsEntry("model", "qwen3-embedding:8b").containsEntry("keep_alive", "30m");
         assertThat(v.get(3)).isEqualTo(StubOllama.embedding("fact number 3", 1024));
+        assertThat(stub.embedRequests.getFirst()).doesNotContainKey("dimensions");
+        embedder.embed(stub.url(), "qwen3-embedding:8b", List.of("x"), 1024);
+        assertThat(stub.embedRequests.getLast()).containsEntry("dimensions", 1024L);
         assertThatThrownBy(() -> embedder.embed(stub.url(), "qwen3-embedding", List.of("x")))
                 .isInstanceOf(Embedder.Unavailable.class).hasMessage("Ollama has no embedding model 'qwen3-embedding'")
                 .satisfies(e -> assertThat(((Embedder.Unavailable) e).fix()).isEqualTo("Run `ollama pull qwen3-embedding`."));
-        assertThatThrownBy(() -> embedder.embed("http://127.0.0.1:9", "qwen3-embedding:0.6b", List.of("x")))
+        assertThatThrownBy(() -> embedder.embed("http://127.0.0.1:9", "qwen3-embedding:8b", List.of("x")))
                 .isInstanceOf(Embedder.Unavailable.class).hasMessageContaining("cannot reach Ollama");
     }
 }

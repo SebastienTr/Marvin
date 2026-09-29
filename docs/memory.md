@@ -221,7 +221,7 @@ sequenceDiagram
   participant O as Ollama
   V->>C: Partial "où habite ma sœur" (speculative transcript)
   C->>M: recollect(text, audience) (on an answer thread)
-  M->>O: /api/embed (qwen3-embedding:0.6b)
+  M->>O: /api/embed (qwen3-embedding:8b)
   M->>M: 30 nearest current facts (HNSW), score, floor
   V->>C: Heard "où habite ma sœur ?" (same words: the search is reused)
   C->>C: wait at most 300 ms for the candidates
@@ -284,7 +284,7 @@ recency    = 0.995 ^ hours since last used (or learned)
 importance = importance / 10
 ```
 
-and a relevance floor on the raw cosine (0.45, first set on bge-m3, where unrelated sentences scored about 0.3 to 0.45; to be checked on qwen3-embedding:0.6b with the evaluation below): an
+and a relevance floor on the raw cosine (0.45, first set on bge-m3, where unrelated sentences scored about 0.3 to 0.45; to be checked on qwen3-embedding:8b with the evaluation below): an
 empty section is better than noise. The facts that go into a prompt are marked used (`last_used_at`, `use_count`),
 which keeps them from decaying.
 
@@ -344,10 +344,10 @@ worker's state (`{"kind": "worker", ...}`), and pending forget proposals (`{"kin
 
 ## Models and latency
 
-- **Embeddings**: Ollama `/api/embed`, `qwen3-embedding:0.6b` by default (1024 dimensions, multilingual: a French question finds an
+- **Embeddings**: Ollama `/api/embed`, `qwen3-embedding:8b` by default (1024 dimensions, multilingual: a French question finds an
   English fact). The size is fixed when the tables are made (`marvin.memory.embedding-dimensions`); a model with
   another size is refused with a clear message. A missing model is reported in `/api/health` with its fix,
-  `ollama pull qwen3-embedding:0.6b`; the owner's `remember` still works (the fact is embedded by the next nightly pass), while
+  `ollama pull qwen3-embedding:8b`; the owner's `remember` still works (the fact is embedded by the next nightly pass), while
   extraction waits for the model to be back.
 - **The memory model** (`memory_model`, empty: the voice's model, already loaded) does the idle pass; the
   **night model** (`night_model`, empty: the memory model) the nightly one: a larger local model is better at
@@ -409,7 +409,7 @@ model, on the machine that runs Ollama:
 
 ```bash
 cd host-java
-MARVIN_EVAL_OLLAMA=http://localhost:11434 MARVIN_EVAL_MODEL=qwen3:4b-instruct MARVIN_EVAL_EMBED=qwen3-embedding:0.6b \
+MARVIN_EVAL_OLLAMA=http://localhost:11434 MARVIN_EVAL_MODEL=qwen3:4b-instruct MARVIN_EVAL_EMBED=qwen3-embedding:8b \
   ./mvnw -q -pl marvin-adapter-llm -am test -Dtest=MemoryEvaluationTest -Dsurefire.failIfNoSpecifiedTests=false
 cat marvin-adapter-llm/target/memory-eval-report.txt
 ```

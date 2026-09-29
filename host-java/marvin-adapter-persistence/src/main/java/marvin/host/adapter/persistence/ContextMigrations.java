@@ -38,7 +38,7 @@ public class ContextMigrations implements InitializingBean {
     }
 
     /**
-     * @param embeddingDimensions the embedding size memory's tables are made for (the embedding model's: qwen3-embedding:0.6b 1024)
+     * @param embeddingDimensions the embedding size memory's tables are made for (the embedding model's: qwen3-embedding:8b 1024)
      * @param vector              {@code auto}: pgvector when installed; {@code off}: exact search on {@code real[]}
      */
     @org.springframework.beans.factory.annotation.Autowired
