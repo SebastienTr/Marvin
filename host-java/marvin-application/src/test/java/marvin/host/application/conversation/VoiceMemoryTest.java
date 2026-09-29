@@ -88,7 +88,7 @@ class VoiceMemoryTest {
         }
 
         @Override
-        public ToolAnswer remember(String statement) {
+        public ToolAnswer remember(String statement, Audience audience) {
             return ToolAnswer.ok(Map.of("remembered", statement));
         }
 
@@ -236,7 +236,8 @@ class VoiceMemoryTest {
 
         String last = model.calls.get(2).getLast().content();
         assertThat(last).contains("Fact number 29 ").contains("Fact number 28 ").doesNotContain("Fact number 0 ");
-        assertThat(last).contains(Persona.GIST_HEADING).contains("- Yesterday: The owner worked late");
+        // the memory sections share one budget: the day's line scored below the facts, and the budget was full
+        assertThat(last).doesNotContain(Persona.GIST_HEADING).doesNotContain("Yesterday: The owner worked late");
         @SuppressWarnings("unchecked")
         Map<String, Object> report = (Map<String, Object>) replies().getFirst().get("memory");
         @SuppressWarnings("unchecked")
@@ -244,6 +245,7 @@ class VoiceMemoryTest {
         assertThat(sections).extracting(s -> s.get("name")).containsExactly("now", "today", "facts");
         Map<String, Object> facts = sections.get(2);
         assertThat((int) facts.get("tokens")).isLessThanOrEqualTo(ContextAssembler.FACTS_BUDGET).isGreaterThan(200);
+        assertThat((int) facts.get("tokens") + (int) sections.get(1).get("tokens")).isLessThanOrEqualTo(ContextAssembler.MEMORY_BUDGET);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) facts.get("items");
         List<String> kept = items.stream().filter(i -> Boolean.TRUE.equals(i.get("kept"))).map(i -> (String) i.get("key")).toList();
@@ -272,6 +274,7 @@ class VoiceMemoryTest {
         assertThat(memory.questions).containsExactly("Where is my sister");
 
         sidecar.signals.signal(new VoiceSidecar.Partial(2, "What time"));
+        VoiceServiceTest.waitFor(() -> memory.questions.size() == 2);
         ask(2, "What time is it?");                         // the final words differ: searched again
         VoiceServiceTest.waitFor(() -> replies().size() == 2);
         assertThat(memory.questions).containsExactly("Where is my sister", "What time", "What time is it?");
@@ -294,6 +297,56 @@ class VoiceMemoryTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> report = (Map<String, Object>) replies().getFirst().get("memory");
         assertThat((String) report.get("problem")).startsWith("memory took longer than 300 ms");
+    }
+
+    @Test
+    void aGuestComingInDropsTheHistoryWhichMayHoldPrivateFacts() throws InterruptedException {
+        Memory memory = new Memory();
+        memory.facts = List.of(fact("f", "Sam's doctor changed his treatment.", 2.0));
+        FakeModel model = FakeModel.of("w", "w", "a", "b", "c");
+        started(model, memory);
+        ask(1, "alone");
+        VoiceServiceTest.waitFor(() -> replies().size() == 1);
+        state = new PresenceState(3_600_000_000L, true, true, null, null, 0.85, 0, 0, 720, null, null, false, false, 2);
+        memory.facts = List.of();
+        ask(2, "with a guest");
+        VoiceServiceTest.waitFor(() -> replies().size() == 2);
+        assertThat(model.calls.get(3)).hasSize(2);          // the system prompt and this question only
+        assertThat(model.calls.get(3).toString()).doesNotContain("doctor");
+        ask(3, "still with the guest");
+        VoiceServiceTest.waitFor(() -> replies().size() == 3);
+        assertThat(model.calls.get(4)).hasSize(4);          // the history grows again from there
+    }
+
+    @Test
+    void forgettingDropsTheHistoryEvenOfTheTurnInProgress() throws InterruptedException {
+        Memory memory = new Memory();
+        memory.facts = List.of(fact("f", "Julie lives in Oslo.", 2.0));
+        FakeModel model = FakeModel.of("w", "w", "a", "b", "c");
+        VoiceService v = started(model, memory);
+        ask(1, "Where does Julie live?");
+        VoiceServiceTest.waitFor(() -> replies().size() == 1);
+        v.clearHistory();                                   // the owner forgot it in the app
+        memory.facts = List.of();
+        ask(2, "Hello");
+        VoiceServiceTest.waitFor(() -> replies().size() == 2);
+        assertThat(model.calls.get(3)).hasSize(2);
+        assertThat(model.calls.get(3).toString()).doesNotContain("Oslo");
+    }
+
+    @Test
+    void aWarmUpAskedForDuringAQuestionWaitsUntilTheVoiceIsIdle() throws InterruptedException {
+        Memory memory = new Memory();
+        memory.delayMs = 200;                               // the question is still being prepared
+        FakeModel model = FakeModel.of("w", "w", "Answer.", "w", "w");
+        VoiceService v = started(model, memory);
+        ask(1, "Anything?");
+        v.rewarm();                                         // a memory pass ended, or the owner edited the profile
+        VoiceServiceTest.waitFor(() -> replies().size() == 1);
+        VoiceServiceTest.waitFor(() -> model.calls.size() == 5);
+        assertThat(model.calls.get(2).getLast().content()).contains("Anything?");
+        assertThat(model.calls.get(3).getLast().content()).contains("Bonjour.");
+        assertThat(model.calls.get(4).getLast().content()).contains("Bonjour.");
     }
 
     @Test

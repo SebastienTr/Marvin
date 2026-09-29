@@ -62,8 +62,13 @@ public class JdbcEpisodeStore implements EpisodeStore {
 
     @Override
     public int markStale(Instant from, Instant to) {
-        return jdbc.sql("UPDATE memory.episode SET stale = true WHERE period_start < ? AND period_end > ?")
+        return jdbc.sql("UPDATE memory.episode SET stale = true, summary = '', embedding = NULL WHERE period_start < ? AND period_end > ?")
                 .params(MemoryRows.at(to), MemoryRows.at(from)).update();
+    }
+
+    @Override
+    public void delete(EpisodeLevel level, LocalDate day) {
+        jdbc.sql("DELETE FROM memory.episode WHERE level = ? AND day = ?").params(level.wire(), day).update();
     }
 
     @Override

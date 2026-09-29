@@ -62,6 +62,12 @@ public class JdbcProfileStore implements ProfileStore {
     }
 
     @Override
+    public void redact(long id, String content, int tokens, List<String> keptLines) {
+        jdbc.sql("UPDATE memory.block_version SET content = ?, tokens = ?, kept_lines = ? WHERE id = ?")
+                .params(content, tokens, keptLines.toArray(String[]::new), id).update();
+    }
+
+    @Override
     public void deleteAll() {
         jdbc.sql("DELETE FROM memory.block_version").update();
     }

@@ -27,6 +27,7 @@ import marvin.host.application.memory.port.out.MemoryModel;
 import marvin.host.application.memory.port.out.MemoryStateStore;
 import marvin.host.application.memory.port.out.ModelWarmUp;
 import marvin.host.application.memory.port.out.VoiceActivity;
+import marvin.host.application.system.port.out.Tracing;
 import marvin.host.domain.memory.Batches;
 import marvin.host.domain.memory.EventFeeds;
 import marvin.host.domain.memory.MemoryEvent;
@@ -55,7 +56,10 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
     private final LocalDays days;
     private final Clocks clocks;
     private final MemoryConfig config;
+    private final MemoryGuard guard;
+    private final Embeddings embeddings;
     private final List<MemoryListener> listeners = new CopyOnWriteArrayList<>();
+    private volatile Tracing tracing = Tracing.NONE;
     private final ExecutorService runner = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("memory-worker").factory());
     private final ScheduledExecutorService ticker = Executors.newSingleThreadScheduledExecutor(
             Thread.ofVirtual().name("memory-worker-tick").factory());
@@ -70,7 +74,9 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
 
     public MemoryWorker(Consolidator consolidator, NightlyPass nightly, EventLog events, MemorySettingsService settings,
                         VoiceActivity voice, ModelWarmUp warmUp, MemoryStateStore state, LocalDays days, Clocks clocks,
-                        MemoryConfig config) {
+                        MemoryConfig config, MemoryGuard guard, Embeddings embeddings) {
+        this.guard = guard;
+        this.embeddings = embeddings;
         this.consolidator = consolidator;
         this.nightly = nightly;
         this.events = events;
@@ -86,6 +92,11 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
 
     public void addListener(MemoryListener l) {
         listeners.add(l);
+    }
+
+    /** A span per pass ({@code marvin.memory.pass}) and per step, so that a slow first word can be seen beside it. */
+    public void setTracing(Tracing t) {
+        tracing = t == null ? Tracing.NONE : t;
     }
 
     /** Checks every {@code tickSeconds} whether a pass is due. */
@@ -179,7 +190,13 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
         final double started = clocks.wallSeconds();
         final Map<String, Integer> counts = new LinkedHashMap<>();
         final List<Map<String, Object>> steps = new ArrayList<>();
-        final BooleanSupplier cancelled = () -> closing || voice.busy();
+        final long resets = guard.resets();
+        /** The voice needs the model, the host stops, or the owner forgot everything. */
+        final BooleanSupplier cancelled = () -> closing || voice.busy() || guard.resets() != resets;
+        final List<String> errors = new ArrayList<>();
+        String fix = "";
+        int failed;
+        int ran;
         boolean usedModel;
         boolean profileChanged;
         double stepStart;
@@ -202,74 +219,84 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
     }
 
     Report run(Pass p) {
-        Run r = new Run();
         MemoryModel.Target target = p == Pass.NIGHTLY ? settings.nightModel() : settings.idleModel();
-        String outcome = "done";
-        String error = "";
-        String fix = "";
-        try {
-            extract(r, target);
-            if (p == Pass.NIGHTLY) {
-                r.begin("embeddings");
-                r.counts.put("embedded", nightly.embedMissing(r.cancelled));
-                r.end("embeddings");
-                r.begin("days");
-                int d = nightly.dayEpisodes(target, r.cancelled);
-                r.usedModel |= d > 0;
-                r.counts.put("days", d);
-                r.end("days");
-                r.begin("roll-ups");
-                int w = nightly.rollUps(target, r.cancelled);
-                r.usedModel |= w > 0;
-                r.counts.put("roll_ups", w);
-                r.end("roll-ups");
-                r.begin("profile");
-                r.profileChanged = nightly.profile(target, r.cancelled);
-                r.usedModel |= r.profileChanged;
-                r.counts.put("profile", r.profileChanged ? 1 : 0);
-                r.end("profile");
-                r.begin("decay");
-                r.counts.put("archived", nightly.decay());
-                r.end("decay");
-                r.begin("retention");
-                r.counts.put("retention_deleted", nightly.retention());
-                r.counts.put("orphans_deleted", nightly.orphans());
-                r.end("retention");
+        Map<String, String> attributes = new LinkedHashMap<>();
+        attributes.put("pass", p.name().toLowerCase(java.util.Locale.ROOT));
+        attributes.put("model", target.model());
+        try (Tracing.Span span = tracing.start("marvin.memory.pass", attributes)) {
+            Report report = run(p, target);
+            span.attribute("marvin.memory.outcome", report.outcome());
+            report.counts().forEach((k, v) -> span.attribute("marvin.memory." + k, v));
+            if (!report.error().isEmpty()) {
+                span.error(report.error());
             }
+            return report;
+        }
+    }
+
+    private Report run(Pass p, MemoryModel.Target target) {
+        Run r = new Run();
+        String outcome;
+        try {
+            // each step on its own: one that fails (the embedding model missing, a model that cannot answer) does not
+            // keep the others from running; the pass then says "partial"
+            step(r, "extract", () -> extract(r, target));
+            if (p == Pass.NIGHTLY) {
+                step(r, "embeddings", () -> r.counts.put("embedded", nightly.embedMissing(r.cancelled)));
+                step(r, "days", () -> {
+                    int d = nightly.dayEpisodes(target, r.cancelled);
+                    r.usedModel |= d > 0;
+                    r.counts.put("days", d);
+                });
+                step(r, "roll-ups", () -> {
+                    int w = nightly.rollUps(target, r.cancelled);
+                    r.usedModel |= w > 0;
+                    r.counts.put("roll_ups", w);
+                });
+            }
+            if (p == Pass.NIGHTLY || nightly.profilePending()) {
+                // the idle pass rewrites the profile too when the owner forgot something it may still say
+                step(r, "profile", () -> {
+                    r.profileChanged = nightly.profile(target, r.cancelled);
+                    r.usedModel |= r.profileChanged;
+                    r.counts.put("profile", r.profileChanged ? 1 : 0);
+                });
+            }
+            if (p == Pass.NIGHTLY) {
+                step(r, "decay", () -> r.counts.put("archived", nightly.decay()));
+                step(r, "retention", () -> {
+                    r.counts.put("retention_deleted", nightly.retention());
+                    r.counts.put("orphans_deleted", nightly.orphans());
+                });
+            }
+            outcome = r.failed == 0 ? "done" : r.failed < r.ran ? "partial" : "failed";
         } catch (MemoryModel.Cancelled e) {
             outcome = "yielded";
-        } catch (MemoryModel.Unavailable e) {
-            outcome = "failed";
-            error = e.getMessage();
-            fix = e.fix();
-        } catch (Embedder.Unavailable e) {
-            outcome = "failed";
-            error = e.getMessage();
-            fix = e.fix();
-        } catch (RuntimeException e) {
-            log.log(Level.WARNING, "memory pass failed", e);
-            outcome = "failed";
-            error = e.getMessage() == null ? e.toString() : e.getMessage();
         }
+        String error = String.join("; ", r.errors);
+        String fix = r.fix;
         double now = clocks.wallSeconds();
         Report report = new Report(p, outcome, r.started, Math.round((now - r.started) * 1000) / 1000.0, target.model(),
                 r.counts, r.steps, error, fix);
         save(report);
         last = report;
-        if ("failed".equals(outcome)) {
+        boolean bad = "failed".equals(outcome) || "partial".equals(outcome);
+        if (bad) {
             failures++;
             retryAt = now + Math.min(1800, 60 * Math.pow(2, failures - 1));
         } else {
             failures = 0;
             retryAt = 0;
         }
-        if ("failed".equals(outcome) && failures > 1) {
-            log.fine("memory pass failed again: " + error);
+        if (bad && failures > 1) {
+            log.fine("memory pass " + outcome + " again: " + error);
         } else if (!r.counts.isEmpty() || !"done".equals(outcome)) {
             log.info("memory: " + p.name().toLowerCase(java.util.Locale.ROOT) + " pass " + outcome + " in " + report.seconds()
                     + " s " + r.counts + (error.isEmpty() ? "" : ": " + error + (fix.isEmpty() ? "" : ". " + fix)));
         }
-        if ((r.usedModel && settings.isVoiceModel(target)) || r.profileChanged) {
+        // a pass that yielded did so because the owner is talking: the question's own request refills the cache, and a
+        // warm-up now would compete with it (the voice also defers any warm-up until it is idle)
+        if (!"yielded".equals(outcome) && ((r.usedModel && settings.isVoiceModel(target)) || r.profileChanged)) {
             try {
                 warmUp.rewarm();
             } catch (RuntimeException e) {
@@ -286,9 +313,50 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
         return report;
     }
 
+    /** Runs one step: a failure is recorded and the pass goes on; yielding to the voice ends the pass. */
+    private void step(Run r, String name, Runnable body) {
+        r.begin(name);
+        r.ran++;
+        try (Tracing.Span span = tracing.start("marvin.memory.step", Map.of("step", name))) {
+            try {
+                body.run();
+                r.end(name);
+            } catch (MemoryModel.Cancelled e) {
+                span.attribute("marvin.memory.cancelled", "true");
+                throw e;
+            } catch (MemoryModel.Unavailable e) {
+                span.error(e.getMessage());
+                fail(r, name, e.getMessage(), e.fix());
+            } catch (Embedder.Unavailable e) {
+                span.error(e.getMessage());
+                fail(r, name, e.getMessage(), e.fix());
+            } catch (RuntimeException e) {
+                log.log(Level.WARNING, "memory step " + name + " failed", e);
+                span.error(String.valueOf(e.getMessage()));
+                fail(r, name, e.getMessage() == null ? e.toString() : e.getMessage(), "");
+            }
+        }
+    }
+
+    private void fail(Run r, String name, String error, String fix) {
+        r.failed++;
+        r.errors.add(name + ": " + error);
+        if (r.fix.isEmpty() && fix != null) {
+            r.fix = fix;
+        }
+        Map<String, Object> s = new LinkedHashMap<>();
+        s.put("step", name);
+        s.put("seconds", Math.round((clocks.wallSeconds() - r.stepStart) * 1000) / 1000.0);
+        s.put("error", error);
+        r.steps.add(s);
+    }
+
     /** Extraction and reconciliation of every new event, batch by batch (docs/design.md 5.2, steps 1 to 3). */
     private void extract(Run r, MemoryModel.Target target) {
-        r.begin("extract");
+        if (events.unconsolidatedCount() > 0) {
+            embeddings.embed("ready");      // the embedding model missing: no extraction at all (throws), nothing lost
+        }
+        int redone = 0;
         while (true) {
             List<MemoryEvent> page = events.unconsolidated(config.pageSize());
             if (page.isEmpty()) {
@@ -311,12 +379,18 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
                 Consolidator.Result res = consolidator.process(batch, target, r.cancelled);
                 res.into(r.counts);
                 r.counts.merge("model_calls", res.modelCalls(), Integer::sum);
+                if (res.redo()) {
+                    redone++;
+                    break;                  // the owner changed memory: read the page again, decide from fresh facts
+                }
+            }
+            if (redone >= 3) {
+                break;                      // the owner is busy with memory right now: the next pass goes on
             }
             if (batches.isEmpty() && plain.isEmpty()) {
                 break;
             }
         }
-        r.end("extract");
     }
 
     // ------------------------------------------------------------------ state
@@ -324,10 +398,10 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
     private void save(Report report) {
         Map<String, Object> w = new LinkedHashMap<>(state.get("worker"));
         double at = report.startedAt();
-        if (report.pass() == Pass.IDLE || "done".equals(report.outcome())) {
+        if (report.pass() == Pass.IDLE || !"yielded".equals(report.outcome())) {
             w.put("last_idle_at", at);
         }
-        if (report.pass() == Pass.NIGHTLY && "done".equals(report.outcome())) {
+        if (report.pass() == Pass.NIGHTLY && ("done".equals(report.outcome()) || "partial".equals(report.outcome()))) {
             w.put("last_night_at", at);
         }
         w.put("last", toMap(report));

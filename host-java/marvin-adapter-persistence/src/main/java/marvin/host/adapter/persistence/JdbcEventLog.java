@@ -4,6 +4,8 @@ package marvin.host.adapter.persistence;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -62,13 +64,13 @@ public class JdbcEventLog implements EventLog {
 
     @Override
     public List<MemoryEvent> unconsolidated(int limit) {
-        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE consolidated_at IS NULL ORDER BY id LIMIT ?")
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE consolidated_at IS NULL AND NOT withheld ORDER BY id LIMIT ?")
                 .param(limit).query(JdbcEventLog::event).list();
     }
 
     @Override
     public long unconsolidatedCount() {
-        return jdbc.sql("SELECT count(*) FROM memory.event_log WHERE consolidated_at IS NULL").query(Long.class).single();
+        return jdbc.sql("SELECT count(*) FROM memory.event_log WHERE consolidated_at IS NULL AND NOT withheld").query(Long.class).single();
     }
 
     @Override
@@ -81,7 +83,7 @@ public class JdbcEventLog implements EventLog {
 
     @Override
     public List<MemoryEvent> between(Instant from, Instant to, int limit) {
-        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE ts >= ? AND ts < ? ORDER BY ts, id LIMIT ?")
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE ts >= ? AND ts < ? AND NOT withheld ORDER BY ts, id LIMIT ?")
                 .params(MemoryRows.at(from), MemoryRows.at(to), limit).query(JdbcEventLog::event).list();
     }
 
@@ -90,14 +92,14 @@ public class JdbcEventLog implements EventLog {
         if (ids.isEmpty()) {
             return List.of();
         }
-        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE id = ANY(?) ORDER BY ts, id")
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE id = ANY(?) AND NOT withheld ORDER BY ts, id")
                 .param(ids.toArray(Long[]::new)).query(JdbcEventLog::event).list();
     }
 
     @Override
     public List<MemoryEvent> recent(String query, long beforeId, int limit) {
         String like = "%" + query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
-        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE (? = 0 OR id < ?) "
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE NOT withheld AND (? = 0 OR id < ?) "
                         + "AND (? = '' OR body ILIKE ? ESCAPE '\\') ORDER BY id DESC LIMIT ?")
                 .params(beforeId, beforeId, query.strip(), like, limit).query(JdbcEventLog::event).list();
     }
@@ -112,6 +114,35 @@ public class JdbcEventLog implements EventLog {
     @Override
     public void redact(long id, String body) {
         jdbc.sql("UPDATE memory.event_log SET body = ? WHERE id = ?").params(body, id).update();
+    }
+
+    @Override
+    public void relabel(Collection<Long> ids, Sensitivity s) {
+        if (ids.isEmpty() || s == Sensitivity.NORMAL) {
+            return;
+        }
+        String to = (s == Sensitivity.SECRET ? Sensitivity.SENSITIVE : s).wire();
+        // only ever raised: sensitive > personal > normal
+        String lower = to.equals("sensitive") ? "('normal', 'personal')" : "('normal')";
+        jdbc.sql("UPDATE memory.event_log SET sensitivity = ? WHERE id = ANY(?) AND sensitivity IN " + lower)
+                .params(to, ids.toArray(Long[]::new)).update();
+    }
+
+    @Override
+    public int withhold(Collection<Long> ids) {
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        return jdbc.sql("UPDATE memory.event_log SET withheld = true, consolidated_at = coalesce(consolidated_at, now()) "
+                        + "WHERE id = ANY(?) AND NOT withheld")
+                .param(ids.toArray(Long[]::new)).update();
+    }
+
+    @Override
+    public List<LocalDate> days(Instant from, ZoneId zone, int limit) {
+        return jdbc.sql("SELECT DISTINCT (ts AT TIME ZONE ?)::date AS d FROM memory.event_log WHERE ts >= ? ORDER BY d LIMIT ?")
+                .params(zone.getId(), MemoryRows.at(from), limit)
+                .query((rs, n) -> rs.getObject("d", LocalDate.class)).list();
     }
 
     @Override
@@ -142,7 +173,7 @@ public class JdbcEventLog implements EventLog {
 
     @Override
     public List<MemoryEvent> page(long afterId, int limit) {
-        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE id > ? ORDER BY id LIMIT ?")
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE id > ? AND NOT withheld ORDER BY id LIMIT ?")
                 .params(afterId, limit).query(JdbcEventLog::event).list();
     }
 

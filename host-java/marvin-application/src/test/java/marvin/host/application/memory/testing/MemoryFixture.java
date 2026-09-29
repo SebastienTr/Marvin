@@ -10,6 +10,7 @@ import marvin.host.application.memory.Consolidator;
 import marvin.host.application.memory.Embeddings;
 import marvin.host.application.memory.MemoryAdminService;
 import marvin.host.application.memory.MemoryConfig;
+import marvin.host.application.memory.MemoryGuard;
 import marvin.host.application.memory.MemorySettingsService;
 import marvin.host.application.memory.NightlyPass;
 import marvin.host.application.memory.port.out.MemoryModel;
@@ -32,6 +33,7 @@ public final class MemoryFixture {
     public final MemoryAdminService admin;
     public final LocalDays days = new LocalDays(ZONE);
     public final MemoryConfig config = MemoryConfig.DEFAULTS;
+    public final MemoryGuard guard = new MemoryGuard();
     public volatile String voiceModel = "qwen3:4b-instruct";
 
     public MemoryFixture(Instant now, MemoryModel model, marvin.host.application.memory.port.out.Embedder embedder, String host) {
@@ -50,11 +52,11 @@ public final class MemoryFixture {
         });
         this.embeddings = new Embeddings(embedder == null ? this.embedder : embedder, settings, 1024);
         this.consolidator = new Consolidator(store.log, store.facts, store.profiles, embeddings, model, ZONE, config, clock,
-                UUID::randomUUID);
+                UUID::randomUUID, store.episodes, guard);
         this.nightly = new NightlyPass(store.log, store.facts, store.episodes, store.profiles, embeddings, model, days, config,
-                settings, clock);
+                settings, clock, guard, store.state);
         this.admin = new MemoryAdminService(store.log, store.facts, store.episodes, store.profiles, embeddings, config, days,
-                clock, UUID::randomUUID);
+                clock, UUID::randomUUID, guard, store.state);
     }
 
     public MemoryFixture(Instant now, MemoryModel model) {

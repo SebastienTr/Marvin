@@ -41,6 +41,10 @@ public final class StubOllama implements AutoCloseable {
     public volatile List<String> models = List.of("qwen3:4b-instruct", "bge-m3");
     public volatile Function<Map<String, Object>, List<String>> chat = r -> List.of();
     public volatile long delayMs = 5;
+    /** Silence before the first chunk (Ollama loading a model and reading the prompt). */
+    public volatile long firstChunkDelayMs = 0;
+    /** Streamed answers the client abandoned (the connection closed while the stub still had lines to send). */
+    public final java.util.concurrent.atomic.AtomicInteger abandoned = new java.util.concurrent.atomic.AtomicInteger();
     public volatile int dimensions = 1024;
     /** The stub's "tokenizer". */
     public static final double CHARS_PER_TOKEN = 4.0;
@@ -194,6 +198,22 @@ public final class StubOllama implements AutoCloseable {
         ex.getResponseHeaders().set("Content-Type", "application/x-ndjson");
         ex.sendResponseHeaders(200, 0);
         try (OutputStream out = ex.getResponseBody()) {
+            if (firstChunkDelayMs > 0) {
+                // silent, like Ollama while it loads the model and reads the prompt; then empty chunks (harmless to a
+                // client still there) until a write fails if the client closed the connection meanwhile
+                try {
+                    Thread.sleep(firstChunkDelayMs);
+                    for (int i = 0; i < 20; i++) {
+                        out.write("{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":false}\n"
+                                .getBytes(StandardCharsets.UTF_8));
+                        out.flush();
+                        Thread.sleep(10);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
             for (String line : lines) {
                 if (line.contains("\"done\": true") && JsonText.parse(line) instanceof Map<?, ?> m) {
                     Map<String, Object> d = new LinkedHashMap<>();
@@ -211,7 +231,7 @@ public final class StubOllama implements AutoCloseable {
                 }
             }
         } catch (IOException e) {
-            // the client stopped reading
+            abandoned.incrementAndGet();     // the client stopped reading
         }
     }
 

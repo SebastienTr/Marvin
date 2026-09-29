@@ -30,7 +30,8 @@ public final class HistoryWriter implements AutoCloseable {
     private final AtomicLong dropped = new AtomicLong();
     private final Object idle = new Object();
     private volatile boolean closing;
-    private volatile boolean busy;
+    /** Writes accepted and not yet done or given up: counted from the offer, not from the queue's contents. */
+    private final AtomicLong outstanding = new AtomicLong();
 
     private HistoryWriter(int capacity, boolean start) {
         queue = new ArrayBlockingQueue<>(capacity);
@@ -57,7 +58,9 @@ public final class HistoryWriter implements AutoCloseable {
             w.run();
             return;
         }
+        outstanding.incrementAndGet();
         if (!queue.offer(w)) {
+            outstanding.decrementAndGet();
             long n = dropped.incrementAndGet();
             if (n == 1 || n % 1000 == 0) {
                 log.warning("the history store is behind: " + n + " writes dropped so far");
@@ -67,7 +70,7 @@ public final class HistoryWriter implements AutoCloseable {
 
     /** Writes waiting (and the one being retried). */
     public int pending() {
-        return queue.size() + (busy ? 1 : 0);
+        return (int) outstanding.get();
     }
 
     public long dropped() {
@@ -101,7 +104,6 @@ public final class HistoryWriter implements AutoCloseable {
                 }
                 continue;
             }
-            busy = true;
             double backoff = FIRST_BACKOFF_S;
             int failures = 0;
             while (true) {
@@ -123,13 +125,13 @@ public final class HistoryWriter implements AutoCloseable {
                     try {
                         Thread.sleep((long) (backoff * 1000));
                     } catch (InterruptedException ie) {
-                        busy = false;
+                        outstanding.decrementAndGet();
                         return;
                     }
                     backoff = Math.min(MAX_BACKOFF_S, backoff * 2);
                 }
             }
-            busy = false;
+            outstanding.decrementAndGet();
             synchronized (idle) {
                 idle.notifyAll();
             }
@@ -147,7 +149,14 @@ public final class HistoryWriter implements AutoCloseable {
             Thread.currentThread().interrupt();
         }
         closing = true;
-        thread.interrupt();
+        try {
+            thread.join(1000);              // not interrupted in the middle of a write
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (thread.isAlive()) {
+            thread.interrupt();
+        }
     }
 
     @Override

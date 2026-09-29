@@ -48,7 +48,7 @@ is written and versioned, but no prompt reads it yet.
 Everything memory knows comes from one append-only table, `memory.event_log`: when it happened (`ts`), where it comes
 from (`source`: `conversation`, `brain`, `owner`), what it is (`kind`), a sensitivity label, a human-readable `body`,
 structured `data`, and `external_ref`, the original's id (`conversation:<entry id>`, `presence:<event id>`).
-`(source, external_ref)` is unique: the same record fed twice is kept once, which is what makes the backfill safe to
+`(source, external_ref)` is unique: the same record fed twice is kept once, which is what makes the catch-up safe to
 run beside the live feed.
 
 ```mermaid
@@ -68,10 +68,15 @@ sequenceDiagram
 - **Feeds.** `marvin-app` plugs the conversation store (a decorator around it) and the presence history (a listener)
   into memory's `RecordMemory` port; `EventFeeds` (domain) turns their plain values into events. The voice's thread
   only queues: it never waits for the database.
+- **Catch-up** (the in-process equivalent of an outbox): at every start and every ten minutes, each source is read
+  after its high-water mark (`feed:<name>` in `memory.state`), so what the live feed missed (a full queue, a crash) still
+  arrives; the first time, that is the whole past. What the owner forgot from the log is recorded as time ranges and
+  references only (`forgotten_feed`), and a catch-up never brings it back.
 - **What is kept.** Heard and reply lines (with language, source, tool calls, errors; not the context and prompt the
   conversation keeps for its inspector). Brain events except the host's own markers (`host_started` ...). Owner
   actions. Notes and ignored utterances are not kept.
-- **Labels at the source** (design 5.7): vital signs are `sensitive` by rule; conversation lines start `normal`.
+- **Labels at the source** (design 5.7): vital signs are `sensitive` by rule; conversation lines start `normal`, and
+  become `sensitive` when a sensitive fact is learned from their conversation (the whole batch: the fact's sources).
 - **Secrets are never stored**: card numbers (Luhn-checked), IBANs, and values said after "password", "PIN", "code",
   "mot de passe", "digicode" ... are replaced by `[redacted]` before an event is written (`Redaction`). When the
   extraction model labels a fact `secret` that the rules missed, the fact is dropped and the owner's line is redacted
@@ -165,19 +170,34 @@ conversation is a run of lines with no silence longer than 10 minutes, at most 4
    more sources of the known fact).
 4. The owner's word wins (`Reconciliation`): a pinned fact is never changed by extraction (the candidate is added
    beside it), an owner-written fact is never reworded.
-5. The plans are written in order and the batch's events marked read. A batch is all or nothing: a pass cut short by
-   the voice writes nothing of the batch in progress; the next pass does it again.
+5. The plans are written in one transaction and the batch's events marked read. A batch is all or nothing: a pass cut
+   short by the voice writes nothing of the batch in progress; the next pass does it again.
+6. **The owner meanwhile.** The model calls take seconds; the owner may forget, correct or pin in the meantime. Every
+   owner change runs under `MemoryGuard` and moves its generation on; the batch is written only if the generation is
+   the one read before the model calls, and only if every fact a plan ends is still current (`FactStore.Conflict`)
+   and every new fact keeps a source. Otherwise nothing is written and the batch is decided again from fresh facts.
+   Episodes and profile versions are written the same way. Forgetting everything also stops the pass at once.
+7. A sensitive fact makes the batch's lines `sensitive` (and blanks a day already summarised with them).
+8. Without the embedding model, extraction does not start (nothing is lost: the events wait) and the rest of the
+   nightly pass goes on; the report says `partial` with the fix.
 
-**Episodes**: a day's summary from its events (sensitive ones left out, at most about 3500 tokens of input, 200
-words out); a week's from its days; a month's from the weeks that start in it. Forgetting events marks the episodes
-that covered them `stale`; the next night rewrites them.
+**Episodes**: a day's summary from its events (sensitive and withheld ones left out, at most about 3500 tokens of
+input, 200 words out); a week's from its days; a month's from the weeks that start in it. The days to write come from
+the log (the days that have events after the last one done, `days_through` in the state), so a long gap does not stall
+them. Forgetting events, or a fact, marks the episodes that covered them `stale` **and blanks their summary at once**:
+nothing reads a stale summary; the next night rewrites it, or deletes it when nothing is left of its day. A summary the
+model cannot write (unreadable output) is skipped and tried again one, two, then three nights later; the other days
+and steps go on. Each nightly step runs on its own: one that fails does not keep decay or retention from running.
 
 **Profile** (design 5.2, step 5): rewritten, not appended, from the previous version, the facts learned and ended
 since, and the owner's kept lines, which every rewrite keeps verbatim (`ProfileText.enforce`: kept lines first, then
 the model's, cut from the end to fit 500 estimated tokens). Sensitive facts never enter the profile: it will be in
 every prompt, whoever is in the room. Every rewrite is a new version in `memory.block_version` with its evidence (the
 events behind the facts); the owner can edit it (their changed lines become kept lines), pin lines, or restore any
-version. Nothing is rewritten when nothing changed, so the voice's cached prompt survives quiet nights.
+version. Nothing is rewritten when nothing changed, so the voice's cached prompt survives quiet nights. Statements
+the owner forgot, corrected, archived or made sensitive wait in the state (`profile_removals`) for the next rewrite,
+run by the next pass (idle or nightly), which is told to remove every line stating them, even reworded; the lines it
+took out for them leave the older versions too.
 
 **Decay** (step 6): a fact's strength is its importance halved every `14 × importance` days since it was last used
 (or learned); below 0.05 it is archived (out of automatic retrieval, still found by `recall`, never deleted). Pinned
@@ -240,7 +260,10 @@ The history keeps its past context blocks (they are part of the cached prefix) w
 grows over it, the older half of the turns goes at once, so the prefix changes rarely.
 
 **Budgets.** Each section has a hard budget in estimated tokens (`ContextAssembler`). When a section's candidates do
-not fit, the lowest-scored go first, whatever their position; what is kept is shown in its own order. The "now"
+not fit, the lowest-scored go first, whatever their position; what is kept is shown in its own order. The memory
+sections ("today so far" and the facts) also share one budget, `marvin.memory.volatile-budget` (250 tokens by
+default), filled by score across both: it bounds what memory adds to every question's prompt evaluation, which is what
+memory costs the first word. The "now"
 lines are scored by what matters most: the clock, then whether the sensors are simulated or missing, whether someone
 is there, vital signs, how long they sat, and last the home place and the recent events.
 
@@ -265,13 +288,19 @@ empty section is better than noise. The facts that go into a prompt are marked u
 which keeps them from decaying.
 
 **Who may hear it.** `sensitive` facts are never retrieved while the brain sees more than one person, and never for a
-cloud model. The day summaries are written without sensitive events, so they are safe for any audience.
+cloud model. The day summaries are written without sensitive events, and with a guest in the room a day that had
+sensitive lines is left out entirely; `recall` returns neither sensitive facts, nor sensitive lines said, nor those days.
+When a guest comes in, the conversation's history is dropped (it may hold memory sections retrieved while the owner was
+alone), and so it is after anything is forgotten. With a guest, `remember` only makes a suggestion for the owner to
+review, and a forget is confirmed only in the app.
 
 **Latency.** The question's embedding is computed on the speculative transcript, while recognition finishes; the
 final transcript reuses it when the words are the same. The question waits at most 300 ms for its candidates, then
 goes without them (the reply inspector says so). The memory report of each reply (`memory` in the conversation entry)
 shows the profile version, every section with its budget, tokens, and each candidate with its score, kept or not,
-the timings, and Ollama's counts (`prompt_eval_count`, `prompt_eval_s`).
+the timings, and Ollama's counts (`prompt_eval_count`, `prompt_eval_s`). The question's trace carries
+`marvin.memory.embed_s`, `search_s`, `waited_s`, `timed_out` and `tokens`; each worker pass is a `marvin.memory.pass`
+span with a `marvin.memory.step` per step.
 
 ## The memory tools
 
@@ -317,22 +346,26 @@ worker's state (`{"kind": "worker", ...}`), and pending forget proposals (`{"kin
 - **Embeddings**: Ollama `/api/embed`, `bge-m3` by default (1024 dimensions, multilingual: a French question finds an
   English fact). The size is fixed when the tables are made (`marvin.memory.embedding-dimensions`); a model with
   another size is refused with a clear message. A missing model is reported in `/api/health` with its fix,
-  `ollama pull bge-m3`; the owner's `remember` still works (the fact is embedded by the next nightly pass).
+  `ollama pull bge-m3`; the owner's `remember` still works (the fact is embedded by the next nightly pass), while
+  extraction waits for the model to be back.
 - **The memory model** (`memory_model`, empty: the voice's model, already loaded) does the idle pass; the
   **night model** (`night_model`, empty: the memory model) the nightly one: a larger local model is better at
   extraction and the night has time (for example `qwen3:27b` on a 64 GB Mac).
 - **The voice comes first.** Memory's requests use the voice's context size (`num_ctx` 8192: a different one would
-  reload the model) and `temperature` 0; they are streamed so that the call in flight is abandoned (and Ollama stops)
-  as soon as the voice becomes busy. A request to the voice's own model evicts the voice's cached prompt, so after a
-  pass that used it, or changed the profile, the voice rehearses its first question again (`VoiceControl.rewarm`).
+  reload the model) and `temperature` 0; they are streamed, and a watcher closes the connection as soon as the voice
+  becomes busy, even before the first chunk (while Ollama loads the model or reads the prompt), so Ollama stops at
+  once. A request to the voice's own model evicts the voice's cached prompt, so after a pass that used it, or changed
+  the profile, the voice rehearses its first question again (`VoiceControl.rewarm`), but never while someone talks
+  with Marvin: the warm-up waits until the voice is idle, and a question abandons it.
 - Prompts are resources, versioned: `marvin-adapter-llm/src/main/resources/marvin/memory/prompts/v1/`. Each fact
   records the prompt version and the model that wrote it (`extracted_by`).
 
 ## Storage without pgvector
 
 With Docker, PostgreSQL has pgvector: embeddings are `vector(1024)` with an HNSW index (cosine). The embedded
-PostgreSQL (no Docker) has no pgvector: the same migration makes `real[]` columns, and the nearest facts are found by
-comparing every candidate in Java, exact and fast enough for the thousands of facts one home gathers. `/api/health`
+PostgreSQL (no Docker) has no pgvector: the same migration makes `real[]` columns; the filter picks the candidate ids
+and their vectors, read once into memory in the background at start, are compared in Java (exact). Measured with
+3000 facts of 1024 numbers: about 28 ms a search (`MemoryStoresIT`). `/api/health`
 says which (`memory: ... exact cosine scan (no pgvector)`). A database made without pgvector keeps its `real[]`
 columns if pgvector appears later.
 
@@ -344,10 +377,21 @@ versions with diffs, episodes, the raw log), `ExportMemory` (every table as JSON
 `ConfigureMemory` (the settings above) and `MemoryHealth`. Every change is an owner event in the log first, so the
 worker never undoes it.
 
-**Forgetting is real** (design 2.2). Forgetting a fact deletes it with all its versions and removes the profile lines
-that state it (a new profile version, at once, not only at the next rewrite); the owner event it leaves has no
-content. Forgetting events deletes them; the facts that came only from them go too, and the episodes that covered
-them are rewritten the next night. "Forget everything" empties memory's schema (the conversation's own history is the
+**Forgetting is real** (design 2.2), and it reaches every future context at once:
+
+```mermaid
+flowchart LR
+  F["forget a fact"] --> V["its versions deleted"]
+  F --> W["the lines it was learned from withheld:<br/>never summarised, recalled, listed or exported"]
+  F --> E["their days, weeks, months blanked,<br/>written again without them"]
+  F --> P["profile lines stating it removed,<br/>from every version"]
+  F --> R["statement waits for the next rewrite<br/>(reworded lines), then dropped"]
+  F --> H["the voice drops its history"]
+```
+
+The conversation itself stays in History (it is the conversation's). The owner event it leaves has no content, and
+an owner's own `remember` line is emptied. Forgetting events deletes them; the facts that came only from them go too
+(and their profile lines), and the episodes that covered them are blanked and rewritten the next night. "Forget everything" empties memory's schema (the conversation's own history is the
 conversation's).
 
 ## The evaluation set
@@ -376,7 +420,7 @@ only with a report before and after.
 | What | Where |
 |---|---|
 | Rules (candidates, reconciliation, profile, decay, redaction, feeds, settings) | `marvin-domain/.../domain/memory/` |
-| Use cases: log feed, consolidator, worker, nightly pass, owner control, export | `marvin-application/.../application/memory/` |
+| Use cases: log feed and catch-up, consolidator, worker, nightly pass, owner control, export; `MemoryGuard` (owner changes vs worker writes), `ProfileRemovals`, `ForgottenFeed` | `marvin-application/.../application/memory/` |
 | Ports | `application/memory/port/in`, `application/memory/port/out` |
 | Schema | `marvin-adapter-persistence/src/main/resources/db/migration/memory/` |
 | Stores | `JdbcEventLog`, `JdbcFactStore`, `JdbcEpisodeStore`, `JdbcProfileStore`, `JdbcMemoryState` |
@@ -384,4 +428,4 @@ only with a report before and after.
 | Wiring, feeds, voice activity | `marvin-app/.../MemoryWiring`, `MemoryFeeds`, `VoiceActivityTracker` |
 | Read path | `MemoryRecallService`, `ForgetConfirmations`, `CachedProfiles` (application); `RetrievalScoring`, `MemoryText`, `RecallWindow` (domain); the conversation's `MemoryContext` port, `ContextAssembler`, `MemoryTools`, `VoiceService`; `MemoryForConversation` (boot module) |
 | Memory API | `marvin-adapter-web/.../MemoryController` |
-| Tests | domain `*Test`; application `memory/*Test` with in-memory stores (`memory/testing`, shared as a test jar); `MemoryStoresIT` (SQL, with and without pgvector); `OllamaMemoryModelTest`, `MemoryEvaluationTest`; `MemoryEndToEndIT` (the whole host); read path: `ReadPathTest`, `ContextAssemblerTest`, `MemoryRecallServiceTest`, `VoiceMemoryTest` (prompt stability, budgets, latency), `MemoryToolsLoopTest` (the tools through the answer loop and the stub Ollama), `MemoryApiIT` (every route, retrieval with 3000 facts) |
+| Tests | domain `*Test`; application `memory/*Test` with in-memory stores (`memory/testing`, shared as a test jar); `MemoryStoresIT` (SQL, with and without pgvector); `OllamaMemoryModelTest`, `MemoryEvaluationTest`; `MemoryEndToEndIT` (the whole host); read path: `ReadPathTest`, `ContextAssemblerTest`, `MemoryRecallServiceTest`, `VoiceMemoryTest` (prompt stability, budgets, latency), `MemoryToolsLoopTest` (the tools through the answer loop and the stub Ollama), `MemoryApiIT` (every route, retrieval with 3000 facts); `MemoryPrivacyAndRobustnessTest` (forgetting end to end, guests, failing steps, the owner during a pass), `MemoryForConversationTest` (guests and the tools), `LogWriterTest` |

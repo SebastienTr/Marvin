@@ -16,7 +16,8 @@ import marvin.host.domain.shared.Clocks;
 
 /**
  * Feeds the event log (docs/design.md 5.2): events from the other contexts, redacted and filtered by the owner's
- * switches, written off the caller's thread; and the one-time backfill of what the other contexts kept before.
+ * switches, written off the caller's thread; and the catch-up of what the other contexts kept (their past at the
+ * first start, then what the live feed missed).
  */
 public final class MemoryLogService implements RecordMemory, AutoCloseable {
     private static final Logger log = Logger.getLogger("marvin.memory");
@@ -45,35 +46,64 @@ public final class MemoryLogService implements RecordMemory, AutoCloseable {
         writer.submit(draft.withBody(Redaction.redact(draft.body())));
     }
 
+    /**
+     * The in-process equivalent of an outbox: each source's high-water mark ({@code feed:<name>} in the state) moves
+     * on page by page, so a catch-up can run at every start and every few minutes at no cost when nothing was missed.
+     */
     @Override
-    public int backfill(BackfillSource source) {
-        String key = "backfill:" + source.name();
-        if (!state.get(key).isEmpty()) {
-            return 0;
+    public synchronized int catchUp(BackfillSource source) {
+        String key = "feed:" + source.name();
+        Map<String, Object> feed = state.get(key);
+        long after;
+        if (feed.get("after") instanceof Number n) {
+            after = n.longValue();
+        } else if (!state.get("backfill:" + source.name()).isEmpty()) {
+            // backfilled by an earlier version, which kept no mark: start from the source's end (reading its past
+            // again could bring back what the owner forgot since)
+            after = end(source);
+        } else {
+            after = 0;
         }
-        long after = 0;
+        ForgottenFeed forgotten = ForgottenFeed.read(state);
         int added = 0;
         int read = 0;
         while (true) {
             BackfillSource.Page page = source.next(after, BACKFILL_PAGE);
             List<MemoryEvent> kept = page.events().stream()
                     .filter(e -> settings.settings().collects(e.source()))
+                    .filter(e -> !forgotten.covers(e))
                     .map(e -> e.withBody(Redaction.redact(e.body())))
                     .toList();
             added += events.append(kept);
             read += page.events().size();
-            if (page.done() || page.lastId() <= after) {
+            boolean last = page.done() || page.lastId() <= after;
+            if (page.lastId() > after) {
+                after = page.lastId();
+            }
+            Map<String, Object> mark = new LinkedHashMap<>();
+            mark.put("after", after);
+            mark.put("at", clocks.wallSeconds());
+            state.put(key, mark);
+            if (last) {
                 break;
+            }
+        }
+        if (added > 0) {
+            log.info("memory: " + source.name() + " caught up, " + added + " events added (" + read + " read)");
+        }
+        return added;
+    }
+
+    /** The last id of a source (read through, nothing appended). */
+    private static long end(BackfillSource source) {
+        long after = 0;
+        while (true) {
+            BackfillSource.Page page = source.next(after, BACKFILL_PAGE);
+            if (page.done() || page.lastId() <= after) {
+                return Math.max(after, page.lastId());
             }
             after = page.lastId();
         }
-        Map<String, Object> done = new LinkedHashMap<>();
-        done.put("at", clocks.wallSeconds());
-        done.put("read", read);
-        done.put("added", added);
-        state.put(key, done);
-        log.info("memory: " + source.name() + " backfilled, " + added + " events added (" + read + " read)");
-        return added;
     }
 
     @Override

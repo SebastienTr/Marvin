@@ -145,6 +145,8 @@ public final class VoiceService implements VoiceControl {
     private volatile ProactiveSpeech proactive;
     private volatile Tracing tracing = Tracing.NONE;
     private volatile MemoryContext memoryContext = MemoryContext.NONE;
+    /** The memory sections' shared budget (tokens), {@link ContextAssembler#MEMORY_BUDGET} unless the host sets it. */
+    private volatile int memoryBudget = ContextAssembler.MEMORY_BUDGET;
     /** Characters per token by language, calibrated from the model server's counts. */
     private volatile LanguageTokens tokenEstimates = LanguageTokens.initial();
     /** The messages of the last request that filled the model server's cache (to know what it evaluated again). */
@@ -152,6 +154,15 @@ public final class VoiceService implements VoiceControl {
     private List<ChatMessage> lastPrompt = List.of();
     /** Questions heard so far (a {@code forget} is confirmed in a later turn than the one that proposed it). */
     private final AtomicLong turnSeq = new AtomicLong();
+    /** A warm-up asked for while the owner was talking: it runs once the voice is idle again. */
+    private final java.util.concurrent.atomic.AtomicBoolean rewarmPending = new java.util.concurrent.atomic.AtomicBoolean();
+    /**
+     * Moves on when the history must go (a guest came in, something was forgotten): a turn that began before does not
+     * add its messages, which may hold what must not be sent again.
+     */
+    private final AtomicLong historyEpoch = new AtomicLong();
+    /** Whether the last question was asked with someone else in the room. */
+    private volatile boolean othersBefore;
     /** Memory searches started on a speculative transcript, by utterance. */
     private final Map<Long, Prefetch> prefetches = new ConcurrentHashMap<>();
     private volatile CompletableFuture<VoiceSidecar.Status> ready;
@@ -210,6 +221,11 @@ public final class VoiceService implements VoiceControl {
      */
     public void setMemory(MemoryContext m) {
         memoryContext = Objects.requireNonNull(m, "memory");
+    }
+
+    /** The memory sections' shared budget in tokens (what memory may add to each question's prompt). */
+    public void setMemoryBudget(int tokens) {
+        memoryBudget = Math.max(0, tokens);
     }
 
     /** Characters per token by language, as calibrated so far. */
@@ -309,17 +325,49 @@ public final class VoiceService implements VoiceControl {
         });
     }
 
+    /**
+     * Never while the owner is talking: the warm-up would compete with the answer for the model and replace the
+     * cached prompt with a rehearsal. It waits until the voice is idle; a question asked meanwhile abandons it.
+     */
     @Override
     public void rewarm() {
         VoiceConfig c = config;
         if (closed || c == null || !ON.equals(state)) {
             return;
         }
+        rewarmPending.set(true);
+        maybeRewarm();
+    }
+
+    /** Someone is talking with Marvin: a turn in progress, or the voice listening, thinking or speaking. */
+    private boolean conversing() {
+        VoiceSidecar.Status s = status;
+        return !turns.isEmpty() || s != null && ("listening".equals(s.state()) || "thinking".equals(s.state())
+                || "speaking".equals(s.state()));
+    }
+
+    private void maybeRewarm() {
+        VoiceConfig c = config;
+        if (!rewarmPending.get() || conversing() || closed || c == null || !ON.equals(state)) {
+            return;
+        }
         answers.execute(() -> {
-            if (ON.equals(state)) {
+            if (ON.equals(state) && !conversing() && rewarmPending.compareAndSet(true, false)) {
                 warmUp(c);
             }
         });
+    }
+
+    /**
+     * Drops the conversation's history (the next question costs one full prompt evaluation). Used when something was
+     * forgotten: the earlier questions' memory sections and tool results may state it.
+     */
+    @Override
+    public void clearHistory() {
+        historyEpoch.incrementAndGet();
+        synchronized (memory) {
+            memory.clear();
+        }
     }
 
     /** Stops the voice for good (the host is quitting). */
@@ -504,17 +552,22 @@ public final class VoiceService implements VoiceControl {
         boolean offer = reg != null && reg.ollamaTools() != null && toolSupport.getOrDefault(key, true);
         LocalDateTime now = LocalDateTime.ofInstant(Instant.ofEpochMilli((long) (clocks.wallSeconds() * 1000)), days.zone());
         String user = Persona.userMessage("Bonjour.", Persona.contextBlock(null, List.of(), now, ""), null);
+        long asked = turnSeq.get();
+        java.util.function.BooleanSupplier question = () -> turnSeq.get() != asked;     // a question came: give way
         for (int attempt = 0; attempt < 2; attempt++) {
             List<ChatMessage> messages = List.of(ChatMessage.system(systemPrompt(c.defaultLanguage(), offer, reg, profile())),
                     ChatMessage.user(user));
             List<Map<String, Object>> schemas = offer ? reg.ollamaTools() : null;
             try {
                 double t = clocks.monotonicSeconds();
-                firstToken(c, messages, schemas);
+                firstToken(c, messages, schemas, question);
                 double loaded = clocks.monotonicSeconds() - t;
                 double t2 = clocks.monotonicSeconds();
-                firstToken(c, messages, schemas);
+                firstToken(c, messages, schemas, question);
                 double again = clocks.monotonicSeconds() - t2;
+                if (question.getAsBoolean()) {
+                    return;                 // the question's own request fills the cache; its prompt stays the last one
+                }
                 synchronized (promptLock) {
                     lastPrompt = messages;
                 }
@@ -536,7 +589,11 @@ public final class VoiceService implements VoiceControl {
         }
     }
 
-    private void firstToken(VoiceConfig c, List<ChatMessage> messages, List<Map<String, Object>> schemas) {
+    private void firstToken(VoiceConfig c, List<ChatMessage> messages, List<Map<String, Object>> schemas,
+                            java.util.function.BooleanSupplier abandon) {
+        if (abandon.getAsBoolean()) {
+            return;
+        }
         boolean[] got = {false};
         model.streamChat(c.ollamaHost(), c.llmModel(), messages, schemas, READY_TIMEOUT_S, new LanguageModel.Stream() {
             @Override
@@ -551,7 +608,7 @@ public final class VoiceService implements VoiceControl {
 
             @Override
             public boolean cancelled() {
-                return got[0];
+                return got[0] || abandon.getAsBoolean();
             }
         });
     }
@@ -754,6 +811,7 @@ public final class VoiceService implements VoiceControl {
         if (before == null || !before.equals(s)) {
             publish("voice", snapshot().toMap());
         }
+        maybeRewarm();
     }
 
     // ------------------------------------------------------------------ turns
@@ -827,6 +885,7 @@ public final class VoiceService implements VoiceControl {
             } finally {
                 turns.remove(h.uid());
                 turn.done.complete(null);
+                maybeRewarm();
             }
         });
     }
@@ -872,6 +931,12 @@ public final class VoiceService implements VoiceControl {
         boolean offer = reg != null && reg.ollamaTools() != null && toolSupport.getOrDefault(key, true);
         String lang = h.language() == null || h.language().isEmpty() ? language : h.language();
         double now = clocks.monotonicSeconds();
+        if (turn.othersPresent && !othersBefore) {
+            // a guest came in: the earlier questions' memory sections may hold what the guest must not hear
+            clearHistory();
+        }
+        othersBefore = turn.othersPresent;
+        long epoch = historyEpoch.get();
         List<ChatMessage> history;
         synchronized (memory) {
             history = memory.messages(now);
@@ -879,6 +944,13 @@ public final class VoiceService implements VoiceControl {
         LocalDateTime local = LocalDateTime.ofInstant(Instant.ofEpochMilli((long) (clocks.wallSeconds() * 1000)), days.zone());
         MemoryContext.Profile profile = profile();
         Assembled asm = assemble(turn, lang, local, offer ? c.homePlace() : "");
+        if (asm.recollection() != null) {
+            // what memory cost this question, on its trace (docs/design.md 10.4)
+            asm.recollection().timings().forEach((k, v) -> span.attribute("marvin.memory." + k + "_s", v));
+            span.attribute("marvin.memory.waited_s", asm.waitedS());
+            span.attribute("marvin.memory.timed_out", Boolean.toString(asm.timedOut()));
+            span.attribute("marvin.memory.tokens", asm.estimatedTokens());
+        }
         String context = asm.context();
         String user = Persona.userMessage(h.text(), context, lang);
         List<ChatMessage> messages = new ArrayList<>();
@@ -931,11 +1003,13 @@ public final class VoiceService implements VoiceControl {
             return;
         }
         synchronized (memory) {
-            if (interrupted) {
+            // cleared during this turn (something was forgotten, maybe by this very turn): its messages stay out
+            boolean keep = historyEpoch.get() == epoch;
+            if (keep && interrupted) {
                 if (!said.isEmpty() || !out.exchange().isEmpty()) {
                     memory.remember(user, (said + " …").strip(), out.exchange(), clocks.monotonicSeconds());
                 }
-            } else {
+            } else if (keep) {
                 memory.remember(user, said, out.exchange(), clocks.monotonicSeconds());
             }
         }
@@ -1128,10 +1202,13 @@ public final class VoiceService implements VoiceControl {
         List<ContextAssembler.Item> nowItems = Persona.contextItems(presence.state(), presence.recentEvents(), local, home);
         ContextAssembler.Cut now = ContextAssembler.cut(new ContextAssembler.Section("now", Persona.NOW_HEADING,
                 ContextAssembler.NOW_BUDGET, nowItems), est);
-        ContextAssembler.Cut gist = ContextAssembler.cut(new ContextAssembler.Section("today", Persona.GIST_HEADING,
-                ContextAssembler.GIST_BUDGET, r.gist()), est);
-        ContextAssembler.Cut facts = ContextAssembler.cut(new ContextAssembler.Section("facts", Persona.FACTS_HEADING,
-                ContextAssembler.FACTS_BUDGET, r.facts()), est);
+        // the memory sections share one budget: it bounds what memory adds to every question's prompt evaluation
+        List<ContextAssembler.Cut> mem = ContextAssembler.cutTogether(List.of(
+                new ContextAssembler.Section("today", Persona.GIST_HEADING, ContextAssembler.GIST_BUDGET, r.gist()),
+                new ContextAssembler.Section("facts", Persona.FACTS_HEADING, ContextAssembler.FACTS_BUDGET, r.facts())),
+                memoryBudget, est);
+        ContextAssembler.Cut gist = mem.get(0);
+        ContextAssembler.Cut facts = mem.get(1);
         String context = Persona.context(List.of(ContextAssembler.render(now), ContextAssembler.render(gist),
                 ContextAssembler.render(facts)));
         List<String> used = facts.kept().stream().map(ContextAssembler.Item::key).toList();

@@ -3,6 +3,7 @@ package marvin.host.application.memory.testing;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -75,6 +76,7 @@ public final class InMemoryMemory {
     public final class Log implements EventLog {
         public final Map<Long, MemoryEvent> rows = new LinkedHashMap<>();
         private final AtomicLong ids = new AtomicLong();
+        public final Set<Long> withheld = new HashSet<>();
         public volatile RuntimeException failure;
 
         @Override
@@ -106,12 +108,12 @@ public final class InMemoryMemory {
 
         @Override
         public synchronized List<MemoryEvent> unconsolidated(int limit) {
-            return rows.values().stream().filter(e -> e.consolidatedAt() == null).limit(limit).toList();
+            return rows.values().stream().filter(e -> e.consolidatedAt() == null && !withheld.contains(e.id())).limit(limit).toList();
         }
 
         @Override
         public synchronized long unconsolidatedCount() {
-            return rows.values().stream().filter(e -> e.consolidatedAt() == null).count();
+            return rows.values().stream().filter(e -> e.consolidatedAt() == null && !withheld.contains(e.id())).count();
         }
 
         @Override
@@ -127,18 +129,18 @@ public final class InMemoryMemory {
 
         @Override
         public synchronized List<MemoryEvent> between(Instant from, Instant to, int limit) {
-            return rows.values().stream().filter(e -> !e.ts().isBefore(from) && e.ts().isBefore(to))
+            return rows.values().stream().filter(e -> !e.ts().isBefore(from) && e.ts().isBefore(to) && !withheld.contains(e.id()))
                     .sorted(Comparator.comparing(MemoryEvent::ts).thenComparing(MemoryEvent::id)).limit(limit).toList();
         }
 
         @Override
         public synchronized List<MemoryEvent> byIds(Collection<Long> ids) {
-            return rows.values().stream().filter(e -> ids.contains(e.id())).toList();
+            return rows.values().stream().filter(e -> ids.contains(e.id()) && !withheld.contains(e.id())).toList();
         }
 
         @Override
         public synchronized List<MemoryEvent> recent(String query, long beforeId, int limit) {
-            return rows.values().stream().filter(e -> beforeId == 0 || e.id() < beforeId)
+            return rows.values().stream().filter(e -> (beforeId == 0 || e.id() < beforeId) && !withheld.contains(e.id()))
                     .filter(e -> query.isBlank() || e.body().toLowerCase().contains(query.strip().toLowerCase()))
                     .sorted(Comparator.comparingLong(MemoryEvent::id).reversed()).limit(limit).toList();
         }
@@ -157,9 +159,39 @@ public final class InMemoryMemory {
         }
 
         @Override
+        public synchronized void relabel(Collection<Long> ids, Sensitivity s) {
+            Sensitivity to = s == Sensitivity.SECRET ? Sensitivity.SENSITIVE : s;
+            for (Long id : ids) {
+                MemoryEvent e = rows.get(id);
+                if (e != null && e.sensitivity().ordinal() < to.ordinal()) {
+                    rows.put(id, new MemoryEvent(e.id(), e.ts(), e.recordedAt(), e.source(), e.kind(), to, e.externalRef(),
+                            e.body(), e.data(), e.consolidatedAt()));
+                }
+            }
+        }
+
+        @Override
+        public synchronized int withhold(Collection<Long> ids) {
+            int n = 0;
+            for (Long id : ids) {
+                if (rows.containsKey(id) && withheld.add(id)) {
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        @Override
+        public synchronized List<LocalDate> days(Instant from, ZoneId zone, int limit) {
+            return rows.values().stream().filter(e -> !e.ts().isBefore(from)).map(e -> e.ts().atZone(zone).toLocalDate())
+                    .distinct().sorted().limit(limit).toList();
+        }
+
+        @Override
         public synchronized int delete(Collection<Long> ids) {
             int n = 0;
             for (Long id : ids) {
+                withheld.remove(id);
                 if (rows.remove(id) != null) {
                     n++;
                     facts.unlink(id);
@@ -187,7 +219,7 @@ public final class InMemoryMemory {
 
         @Override
         public synchronized List<MemoryEvent> page(long afterId, int limit) {
-            return rows.values().stream().filter(e -> e.id() > afterId).limit(limit).toList();
+            return rows.values().stream().filter(e -> e.id() > afterId && !withheld.contains(e.id())).limit(limit).toList();
         }
 
         @Override
@@ -216,17 +248,44 @@ public final class InMemoryMemory {
             return ids.stream().filter(log.rows::containsKey).toList();
         }
 
+        /** Runs before each apply (a test can forget or edit a fact here, as the owner would meanwhile). */
+        public volatile Runnable beforeApply = () -> { };
+
         @Override
-        public synchronized void apply(Reconciliation.Plan plan, Map<UUID, float[]> embeddings) {
-            for (Fact f : plan.added()) {
-                rows.put(f.id(), f.withSources(existing(f.sources())));
-                vectors.put(f.id(), embeddings.get(f.id()));
+        public void apply(List<Reconciliation.Plan> plans, Map<UUID, float[]> embeddings) {
+            beforeApply.run();
+            synchronized (this) {
+                Map<UUID, Fact> before = new LinkedHashMap<>(rows);
+                Map<UUID, float[]> vbefore = new LinkedHashMap<>(vectors);
+                try {
+                    for (Reconciliation.Plan plan : plans) {
+                        applyOne(plan, embeddings);
+                    }
+                } catch (Conflict e) {
+                    rows.clear();
+                    rows.putAll(before);
+                    vectors.clear();
+                    vectors.putAll(vbefore);
+                    throw e;
+                }
             }
+        }
+
+        private void applyOne(Reconciliation.Plan plan, Map<UUID, float[]> embeddings) {
             for (Reconciliation.Expiry x : plan.expired()) {
                 Fact f = rows.get(x.id());
-                if (f != null) {
-                    rows.put(x.id(), f.withExpiry(x.expiredAt(), x.validTo(), x.supersededBy()));
+                if (f == null || f.expiredAt() != null) {
+                    throw new Conflict("fact " + x.id() + " was changed or forgotten meanwhile");
                 }
+                rows.put(x.id(), f.withExpiry(x.expiredAt(), x.validTo(), x.supersededBy()));
+            }
+            for (Fact f : plan.added()) {
+                List<Long> src = existing(f.sources());
+                if (!f.sources().isEmpty() && src.isEmpty()) {
+                    throw new Conflict("the sources of a new fact were forgotten meanwhile");
+                }
+                rows.put(f.id(), f.withSources(src));
+                vectors.put(f.id(), embeddings.get(f.id()));
             }
             plan.moreSources().forEach((id, s) -> {
                 Fact f = rows.get(id);
@@ -388,6 +447,11 @@ public final class InMemoryMemory {
         }
 
         @Override
+        public synchronized List<Fact> orphans() {
+            return rows.values().stream().filter(f -> f.sources().isEmpty()).toList();
+        }
+
+        @Override
         public synchronized List<Fact> withoutEmbedding(int limit) {
             return rows.values().stream().filter(f -> vectors.get(f.id()) == null).limit(limit).toList();
         }
@@ -458,12 +522,17 @@ public final class InMemoryMemory {
             for (var en : rows.entrySet()) {
                 Episode e = en.getValue();
                 if (e.periodStart().isBefore(to) && e.periodEnd().isAfter(from)) {
-                    en.setValue(new Episode(e.id(), e.level(), e.day(), e.periodStart(), e.periodEnd(), e.summary(), true,
+                    en.setValue(new Episode(e.id(), e.level(), e.day(), e.periodStart(), e.periodEnd(), "", true,
                             e.createdAt(), e.events()));
                     n++;
                 }
             }
             return n;
+        }
+
+        @Override
+        public synchronized void delete(EpisodeLevel level, LocalDate day) {
+            rows.remove(key(level, day));
         }
 
         @Override
@@ -501,6 +570,12 @@ public final class InMemoryMemory {
         @Override
         public synchronized Optional<BlockVersion> get(long id) {
             return rows.stream().filter(v -> v.id() == id).findFirst();
+        }
+
+        @Override
+        public synchronized void redact(long id, String content, int tokens, List<String> keptLines) {
+            rows.replaceAll(o -> o.id() == id ? new BlockVersion(o.id(), o.block(), content, tokens, o.status(), o.rationale(),
+                    o.evidence(), o.author(), o.createdAt(), o.decidedAt(), keptLines) : o);
         }
 
         @Override

@@ -14,10 +14,12 @@ public interface RecordMemory {
     void record(MemoryEvent draft);
 
     /**
-     * Reads a source's past records into the log, once per source name (idempotent: a second call does nothing, and
-     * records already fed live are not added twice). Returns how many events were added.
+     * Reads a source's records after the last one read before (its high-water mark, kept per source name) into the
+     * log: at the first start its whole past, then what the live feed may have missed (a full queue, a crash).
+     * Idempotent: records already fed live are not added twice, and records the owner forgot are never read again.
+     * Returns how many events were added.
      */
-    int backfill(BackfillSource source);
+    int catchUp(BackfillSource source);
 
     /** Waits until what is queued is written, at most {@code timeoutMs}; true if it was. */
     boolean flush(long timeoutMs);

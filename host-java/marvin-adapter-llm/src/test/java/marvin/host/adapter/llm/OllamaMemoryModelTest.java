@@ -139,6 +139,21 @@ class OllamaMemoryModelTest {
     }
 
     @Test
+    void aCallIsAbandonedEvenBeforeTheFirstChunk() throws InterruptedException {
+        stub.chat = body -> StubOllama.json(Map.of("facts", List.of()));
+        model.extract(target, request(), () -> false);  // the client is ready (not timed)
+        stub.firstChunkDelayMs = 2000;                  // loading a large night model, reading a long prompt
+        long start = System.nanoTime();
+        assertThatThrownBy(() -> model.extract(target, request(), () -> (System.nanoTime() - start) / 1e6 > 100))
+                .isInstanceOf(MemoryModel.Cancelled.class);
+        assertThat((System.nanoTime() - start) / 1e6).isLessThan(300);
+        for (int i = 0; i < 60 && stub.abandoned.get() == 0; i++) {
+            Thread.sleep(50);
+        }
+        assertThat(stub.abandoned.get()).as("the connection was closed").isEqualTo(1);
+    }
+
+    @Test
     void embeddingsComeInBatchesAndAMissingModelSaysHowToGetIt() {
         OllamaEmbedder embedder = new OllamaEmbedder();
         List<String> texts = new ArrayList<>();

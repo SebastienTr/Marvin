@@ -16,6 +16,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
+import marvin.host.application.memory.port.out.EpisodeStore;
 import marvin.host.application.memory.port.out.EventLog;
 import marvin.host.application.memory.port.out.FactStore;
 import marvin.host.application.memory.port.out.MemoryModel;
@@ -39,6 +40,11 @@ import marvin.host.domain.shared.Clocks;
  * <p>A batch is all or nothing: its plans are decided first (each candidate sees the facts of the candidates
  * before it, still in memory), then written in order and the events marked read. A pass that yields to the voice
  * in the middle of a batch writes nothing of it; the next pass does it again.
+ *
+ * <p>The writes are one transaction, done only if the owner changed nothing meanwhile ({@link MemoryGuard}) and the
+ * facts the plans end are still current ({@link FactStore.Conflict}); otherwise nothing is written and the batch
+ * stays unread, to be decided again from fresh facts. A sensitive fact learned from a conversation makes its lines
+ * sensitive too: they leave the day summaries and what a guest may hear recalled.
  */
 public final class Consolidator {
     private static final Logger log = Logger.getLogger("marvin.memory");
@@ -52,9 +58,14 @@ public final class Consolidator {
     private final MemoryConfig config;
     private final Clocks clocks;
     private final Supplier<UUID> ids;
+    private final EpisodeStore episodes;
+    private final MemoryGuard guard;
 
     public Consolidator(EventLog events, FactStore facts, ProfileStore profiles, Embeddings embeddings, MemoryModel model,
-                        ZoneId zone, MemoryConfig config, Clocks clocks, Supplier<UUID> ids) {
+                        ZoneId zone, MemoryConfig config, Clocks clocks, Supplier<UUID> ids, EpisodeStore episodes,
+                        MemoryGuard guard) {
+        this.episodes = episodes;
+        this.guard = guard;
         this.events = events;
         this.facts = facts;
         this.profiles = profiles;
@@ -66,11 +77,26 @@ public final class Consolidator {
         this.ids = ids;
     }
 
-    /** What one batch did; {@code operations}: {@code "<OP> [<subject>] <candidate statement>"}, in order. */
+    /**
+     * What one batch did; {@code operations}: {@code "<OP> [<subject>] <candidate statement>"}, in order.
+     * {@code redo}: nothing was written because the owner changed memory meanwhile (the batch stays unread).
+     */
     public record Result(int candidates, int added, int updated, int invalidated, int noop, int dropped, boolean skipped,
-                         int modelCalls, List<String> operations) {
+                         int modelCalls, List<String> operations, boolean redo, MemoryModel.Usage usage) {
+
+        public Result(int candidates, int added, int updated, int invalidated, int noop, int dropped, boolean skipped,
+                      int modelCalls, List<String> operations) {
+            this(candidates, added, updated, invalidated, noop, dropped, skipped, modelCalls, operations, false,
+                    MemoryModel.Usage.NONE);
+        }
 
         void into(Map<String, Integer> counts) {
+            counts.merge("prompt_tokens", usage.promptTokens(), Integer::sum);
+            counts.merge("model_ms", (int) Math.round(usage.totalSeconds() * 1000), Integer::sum);
+            if (redo) {
+                counts.merge("redone_batches", 1, Integer::sum);
+                return;
+            }
             counts.merge("batches", 1, Integer::sum);
             counts.merge("candidates", candidates, Integer::sum);
             counts.merge("added", added, Integer::sum);
@@ -93,6 +119,7 @@ public final class Consolidator {
             lines.add(new MemoryModel.Line(e.ts().atZone(zone), who(e), e.body()));
             sources = sources.atLeast(e.sensitivity());
         }
+        long seen = guard.generation();
         MemoryEvent last = batch.getLast();
         List<Long> eventIds = batch.stream().map(MemoryEvent::id).toList();
         String profile = profiles.active(Block.PROFILE).map(BlockVersion::content).orElse("");
@@ -111,6 +138,7 @@ public final class Consolidator {
                 return new Result(0, 0, 0, 0, 0, 0, true, calls, List.of());
             }
         }
+        Usage usage = new Usage(extraction.usage());
 
         List<FactCandidate> accepted = new ArrayList<>();
         int dropped = 0;
@@ -134,6 +162,8 @@ public final class Consolidator {
         }
         accepted = dedupe(accepted);
 
+        boolean sensitive = accepted.stream().anyMatch(c -> c.sensitivity().ordinal() >= Sensitivity.SENSITIVE.ordinal());
+        // throws Embedder.Unavailable: nothing written, the batch stays unread until the embedding model is back
         List<float[]> vectors = embeddings.embed(accepted.stream().map(c -> Fact.embeddingText(c.subject(), c.statement())).toList());
         Instant now = now();
         Instant eventTime = last.ts();
@@ -161,6 +191,7 @@ public final class Consolidator {
                 calls++;
                 MemoryModel.Decision d = model.reconcile(target, new MemoryModel.ReconcileRequest(c, similar,
                         eventTime.atZone(zone)), cancelled);
+                usage.add(d.usage());
                 op = Operation.parse(d.operation(), d.target(), d.statement(), d.validTo(), similar, zone);
             }
             Reconciliation.Plan plan = Reconciliation.plan(c, op, similar, eventIds, eventTime, now, ids, extractedBy);
@@ -185,13 +216,58 @@ public final class Consolidator {
         if (cancelled.getAsBoolean()) {
             throw new MemoryModel.Cancelled();
         }
-        for (Reconciliation.Plan p : plans) {
-            Map<UUID, float[]> vs = new LinkedHashMap<>();
-            p.added().forEach(f -> vs.put(f.id(), vectorOf.get(f.id())));
-            facts.apply(p, vs);
+        Map<UUID, float[]> vs = new LinkedHashMap<>();
+        plans.forEach(p -> p.added().forEach(f -> vs.put(f.id(), vectorOf.get(f.id()))));
+        boolean written;
+        try {
+            written = guard.write(seen, () -> {
+                facts.apply(plans, vs);
+                if (sensitive) {
+                    events.relabel(eventIds, Sensitivity.SENSITIVE);
+                    // a day already summarised with these lines is written again without them
+                    for (MemoryEvent e : batch) {
+                        java.time.LocalDate d = e.ts().atZone(zone).toLocalDate();
+                        if (episodes.get(marvin.host.domain.memory.EpisodeLevel.DAY, d).isPresent()) {
+                            episodes.markStale(d.atStartOfDay(zone).toInstant(), d.plusDays(1).atStartOfDay(zone).toInstant());
+                        }
+                    }
+                }
+                events.markConsolidated(eventIds, now);
+            });
+        } catch (FactStore.Conflict e) {
+            log.info("memory: a batch was not written (" + e.getMessage() + "); the next pass does it again");
+            written = false;
         }
-        events.markConsolidated(eventIds, now);
-        return new Result(accepted.size() + dropped, added, updated, invalidated, noop, dropped, false, calls, ops);
+        if (!written) {
+            return new Result(accepted.size() + dropped, 0, 0, 0, 0, dropped, false, calls, ops, true, usage.total());
+        }
+        return new Result(accepted.size() + dropped, added, updated, invalidated, noop, dropped, false, calls, ops, false,
+                usage.total());
+    }
+
+    /** The model's counts over a batch's calls. */
+    private static final class Usage {
+        int prompt;
+        double promptS;
+        int out;
+        double total;
+
+        Usage(MemoryModel.Usage first) {
+            add(first);
+        }
+
+        void add(MemoryModel.Usage u) {
+            if (u != null) {
+                prompt += u.promptTokens();
+                promptS += u.promptSeconds();
+                out += u.outputTokens();
+                total += u.totalSeconds();
+            }
+        }
+
+        MemoryModel.Usage total() {
+            return new MemoryModel.Usage(prompt, promptS, out, total);
+        }
     }
 
     private record Pending(Fact fact, float[] vector) {

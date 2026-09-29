@@ -208,7 +208,9 @@ export function episodeItem(e) {
   const head = el("div", "episode-head");
   head.append(el("span", "episode-title", episodeTitle(e)));
   head.append(el("span", "small muted", e.stale ? "rewritten tonight" : plural(e.events, "moment", "moments")));
-  li.append(head, el("p", null, e.summary));
+  // a stale summary is blanked at once (it may say what was forgotten or made private) until it is written again
+  li.append(head, e.summary ? el("p", null, e.summary)
+    : el("p", "muted", "Being written again: something in it was forgotten or made private."));
   return li;
 }
 

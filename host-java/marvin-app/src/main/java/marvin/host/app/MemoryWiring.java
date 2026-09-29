@@ -32,6 +32,7 @@ import marvin.host.application.memory.ForgetConfirmations;
 import marvin.host.application.memory.MemoryAdminService;
 import marvin.host.application.memory.MemoryConfig;
 import marvin.host.application.memory.MemoryExportService;
+import marvin.host.application.memory.MemoryGuard;
 import marvin.host.application.memory.MemoryLogService;
 import marvin.host.application.memory.MemoryRecallService;
 import marvin.host.application.memory.MemorySettingsService;
@@ -78,6 +79,12 @@ public class MemoryWiring {
         return new CachedProfiles(profiles);
     }
 
+    /** Orders the owner's changes and the memory worker's writes (every memory service shares this one). */
+    @Bean
+    public MemoryGuard memoryGuard() {
+        return new MemoryGuard();
+    }
+
     @Bean
     public Embeddings memoryEmbeddings(OllamaEmbedder embedder, MemorySettingsService settings, JdbcFactStore facts) {
         return new Embeddings(embedder, settings, facts.dimensions());
@@ -97,9 +104,10 @@ public class MemoryWiring {
 
     @Bean
     public MemoryAdminService memoryAdmin(JdbcEventLog events, JdbcFactStore facts, JdbcEpisodeStore episodes,
-                                          CachedProfiles profiles, Embeddings embeddings, LocalDays days, Clocks clocks) {
+                                          CachedProfiles profiles, Embeddings embeddings, LocalDays days, Clocks clocks,
+                                          MemoryGuard guard, JdbcMemoryState state) {
         return new MemoryAdminService(events, facts, episodes, profiles, embeddings, MemoryConfig.DEFAULTS, days, clocks,
-                UUID::randomUUID);
+                UUID::randomUUID, guard, state);
     }
 
     @Bean
@@ -119,16 +127,19 @@ public class MemoryWiring {
     public MemoryWorker memoryWorker(JdbcEventLog events, JdbcFactStore facts, JdbcEpisodeStore episodes,
                                      CachedProfiles profiles, Embeddings embeddings, OllamaMemoryModel model,
                                      MemorySettingsService settings, VoiceActivityTracker activity, VoiceService voice,
-                                     JdbcMemoryState state, LocalDays days, Clocks clocks,
+                                     JdbcMemoryState state, LocalDays days, Clocks clocks, MemoryGuard guard,
+                                     org.springframework.beans.factory.ObjectProvider<io.micrometer.tracing.Tracer> tracer,
                                      @Value("${marvin.memory.tick-s:30}") double tickS) {
         MemoryConfig config = new MemoryConfig(MemoryConfig.DEFAULTS.batchGap(), MemoryConfig.DEFAULTS.maxBatchEvents(),
                 MemoryConfig.DEFAULTS.pageSize(), MemoryConfig.DEFAULTS.similarK(), MemoryConfig.DEFAULTS.similarityFloor(),
                 MemoryConfig.DEFAULTS.maxDaysPerNight(), tickS, MemoryConfig.DEFAULTS.tokens(), MemoryConfig.DEFAULTS.decay());
         Consolidator consolidator = new Consolidator(events, facts, profiles, embeddings, model, days.zone(), config, clocks,
-                UUID::randomUUID);
-        NightlyPass nightly = new NightlyPass(events, facts, episodes, profiles, embeddings, model, days, config, settings, clocks);
+                UUID::randomUUID, episodes, guard);
+        NightlyPass nightly = new NightlyPass(events, facts, episodes, profiles, embeddings, model, days, config, settings, clocks,
+                guard, state);
         MemoryWorker worker = new MemoryWorker(consolidator, nightly, events, settings, activity, voice::rewarm, state, days,
-                clocks, config);
+                clocks, config, guard, embeddings);
+        tracer.ifAvailable(t -> worker.setTracing(new MicrometerTracing(t)));
         return worker;
     }
 
@@ -156,9 +167,13 @@ public class MemoryWiring {
     @Bean
     public MemoryContextBinding memoryForConversation(MemoryRecallService recall, MemoryAdminService admin,
                                                       ForgetConfirmations forgetting, VoiceService voice,
-                                                      @Value("${marvin.memory.read:true}") boolean read) {
+                                                      @Value("${marvin.memory.read:true}") boolean read,
+                                                      @Value("${marvin.memory.volatile-budget:250}") int budget) {
         if (read) {
             voice.setMemory(new MemoryForConversation(recall, admin, forgetting));
+            voice.setMemoryBudget(budget);
+            // what was forgotten may still be in the conversation's history (memory sections, tool results)
+            admin.addForgetListener(voice::clearHistory);
         }
         return new MemoryContextBinding(read);
     }
@@ -182,8 +197,8 @@ public class MemoryWiring {
     }
 
     /**
-     * After the start (the import done, the stores ready): the one-time backfill of the conversation and presence
-     * histories, a first embedding to know the model is there, then the worker's schedule. At stop: the worker, then
+     * After the start (the import done, the stores ready): the catch-up of the conversation and presence histories
+     * (their whole past the first time, then every ten minutes what the live feed missed), a first embedding to know the model is there, then the worker's schedule. At stop: the worker, then
      * what the log still has queued.
      */
     @Bean
@@ -192,17 +207,25 @@ public class MemoryWiring {
                                           @Value("${marvin.memory.worker:true}") boolean enabled) {
         return new SmartLifecycle() {
             private volatile boolean running;
+            private final java.util.concurrent.ScheduledExecutorService feeds = java.util.concurrent.Executors
+                    .newSingleThreadScheduledExecutor(Thread.ofVirtual().name("memory-feeds").factory());
+
+            /** The conversation's and presence's records the live feed missed (all of them at the first start). */
+            private void catchUp() {
+                try {
+                    memoryLog.catchUp(MemoryFeeds.conversation(conversation));
+                    memoryLog.catchUp(MemoryFeeds.presence(presence));
+                } catch (RuntimeException e) {
+                    log.warn("memory catch-up failed (it is tried again in a few minutes): {}", e.getMessage());
+                }
+            }
 
             @Override
             public void start() {
                 running = true;
                 Thread.ofVirtual().name("memory-start").start(() -> {
-                    try {
-                        memoryLog.backfill(MemoryFeeds.conversation(conversation));
-                        memoryLog.backfill(MemoryFeeds.presence(presence));
-                    } catch (RuntimeException e) {
-                        log.warn("memory backfill failed (it is tried again at the next start): {}", e.getMessage());
-                    }
+                    catchUp();
+                    feeds.scheduleWithFixedDelay(this::catchUp, 10, 10, java.util.concurrent.TimeUnit.MINUTES);
                     try {
                         embeddings.embed(List.of("ready"));
                     } catch (Embedder.Unavailable e) {
@@ -217,6 +240,7 @@ public class MemoryWiring {
             @Override
             public void stop() {
                 running = false;
+                feeds.shutdownNow();
                 worker.close();
                 memoryLog.close();
             }

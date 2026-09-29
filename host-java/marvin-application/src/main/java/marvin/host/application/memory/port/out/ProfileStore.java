@@ -23,5 +23,8 @@ public interface ProfileStore {
     /** Newest first. */
     List<BlockVersion> versions(Block block, int limit);
 
+    /** Replaces the text of a stored version (a forgotten fact's lines removed from the history too). */
+    void redact(long id, String content, int tokens, List<String> keptLines);
+
     void deleteAll();
 }

@@ -131,11 +131,13 @@ function renderState(s) {
   lastStateAt = performance.now();
   const orb = $("home-orb");
   orb.dataset.state = s.online ? (s.present ? "present" : "away") : "offline";
-  $("presence-h").textContent = s.status;
+  // a live region: written only when the words change (the state comes twice a second)
+  if ($("presence-h").textContent !== s.status) $("presence-h").textContent = s.status;
   const detail = [];
-  if (s.detail) detail.push(s.detail);
+  if (s.detail) detail.push(s.detail.replace(/[.!?]?\s*$/, "."));
   if (s.simulated) detail.push("Simulated sensors.");
-  $("presence-detail").textContent = detail.join(" ");
+  const text = detail.join(" ");
+  if ($("presence-detail").textContent !== text) $("presence-detail").textContent = text;
   $("presence-label").textContent = !s.online ? "Not connected" : s.present ? "Here with you" : "Waiting for you";
 
   const b = s.break, card = $("break");
@@ -292,6 +294,7 @@ async function loadDecisions() {
   const panel = $("home-decision"), body = $("decision-body"), pill = $("decision-pill");
   panel.classList.toggle("pending", pending.length > 0);
   emit("badge", { view: "home", n: pending.length, label: `${pending.length} decision${pending.length === 1 ? "" : "s"} waiting` });
+  emit("decisions", pending);
   if (!pending.length) {
     pill.className = "pill";
     pill.textContent = "Nothing pending";

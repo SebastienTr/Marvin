@@ -50,6 +50,12 @@ public interface VoiceControl {
     void rewarm();
 
     /**
+     * Drops the conversation's history: something was forgotten, and the earlier questions' memory sections and tool
+     * results may still state it.
+     */
+    void clearHistory();
+
+    /**
      * A typed question.
      *
      * @throws IllegalArgumentException empty or longer than 500 characters

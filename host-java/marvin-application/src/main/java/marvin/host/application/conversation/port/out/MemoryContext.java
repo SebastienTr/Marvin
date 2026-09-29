@@ -66,8 +66,11 @@ public interface MemoryContext {
     /** These items' facts were sent in a prompt (keys as given in {@link Recollection#facts()}). */
     void used(Collection<String> keys);
 
-    /** {@code remember(statement)}: the owner's fact, written at once. */
-    ToolAnswer remember(String statement);
+    /**
+     * {@code remember(statement)}: the owner's fact, written at once; said while someone else is in the room, only a
+     * suggestion for the owner to review (a guest must not plant the owner's own facts).
+     */
+    ToolAnswer remember(String statement, Audience audience);
 
     /** {@code recall(query, period)}. */
     ToolAnswer recall(String query, String period, Audience audience);
@@ -100,7 +103,7 @@ public interface MemoryContext {
         }
 
         @Override
-        public ToolAnswer remember(String statement) {
+        public ToolAnswer remember(String statement, Audience audience) {
             return ToolAnswer.failed("memory is not available");
         }
 

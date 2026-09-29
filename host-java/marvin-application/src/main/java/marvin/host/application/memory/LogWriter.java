@@ -30,7 +30,8 @@ final class LogWriter implements AutoCloseable {
     private final AtomicLong dropped = new AtomicLong();
     private final Object idle = new Object();
     private volatile boolean closing;
-    private volatile int inFlight;
+    /** Events accepted and not yet written or given up: counted from the offer, not from the queue's contents. */
+    private final AtomicLong outstanding = new AtomicLong();
 
     private LogWriter(Consumer<List<MemoryEvent>> append, boolean start) {
         this.append = append;
@@ -52,7 +53,9 @@ final class LogWriter implements AutoCloseable {
             append.accept(List.of(e));
             return;
         }
+        outstanding.incrementAndGet();
         if (!queue.offer(e)) {
+            outstanding.decrementAndGet();
             long n = dropped.incrementAndGet();
             if (n == 1 || n % 1000 == 0) {
                 log.warning("the memory log is behind: " + n + " events dropped so far");
@@ -61,7 +64,7 @@ final class LogWriter implements AutoCloseable {
     }
 
     int pending() {
-        return queue.size() + inFlight;
+        return (int) outstanding.get();
     }
 
     boolean flush(long timeoutMs) {
@@ -98,7 +101,6 @@ final class LogWriter implements AutoCloseable {
             List<MemoryEvent> batch = new ArrayList<>();
             batch.add(first);
             queue.drainTo(batch, BATCH - 1);
-            inFlight = batch.size();
             double backoff = FIRST_BACKOFF_S;
             for (int failures = 0; ; failures++) {
                 try {
@@ -118,26 +120,37 @@ final class LogWriter implements AutoCloseable {
                     try {
                         Thread.sleep((long) (backoff * 1000));
                     } catch (InterruptedException ie) {
-                        inFlight = 0;
+                        outstanding.addAndGet(-batch.size());
                         return;
                     }
                     backoff = Math.min(MAX_BACKOFF_S, backoff * 2);
                 }
             }
-            inFlight = 0;
+            outstanding.addAndGet(-batch.size());
             synchronized (idle) {
                 idle.notifyAll();
             }
         }
     }
 
+    /**
+     * Writes what is queued (at most {@code timeoutMs}), then stops the thread: it is joined, not interrupted in the
+     * middle of a write, so the last lines of a conversation are not lost at shutdown.
+     */
     void close(long timeoutMs) {
         if (thread == null) {
             return;
         }
         flush(timeoutMs);
         closing = true;
-        thread.interrupt();
+        try {
+            thread.join(1000);              // the writer notices within one poll (200 ms) once the queue is empty
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (thread.isAlive()) {
+            thread.interrupt();             // the database is away: give up the retries
+        }
     }
 
     @Override

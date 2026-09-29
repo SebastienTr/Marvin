@@ -74,9 +74,10 @@ public final class Reconciliation {
             case Operation.Noop n -> new Plan(List.of(), List.of(), Map.of(target.id(), List.copyOf(eventIds)), op);
             case Operation.Update u -> {
                 List<Long> sources = merge(target.sources(), eventIds);
-                Fact next = new Fact(ids.get(), target.subject(), u.statement() != null ? u.statement() : c.statement(),
+                Checked reworded = reworded(c, u.statement());
+                Fact next = new Fact(ids.get(), target.subject(), reworded.statement(),
                         c.kind(), Math.max(c.importance(), target.importance()), Math.max(c.confidence(), target.confidence()),
-                        c.sensitivity().atLeast(target.sensitivity()),
+                        reworded.sensitivity().atLeast(target.sensitivity()),
                         target.validFrom() != null ? target.validFrom() : c.validFrom(),
                         c.validTo() != null ? c.validTo() : target.validTo(), now, null, null, target.lastUsedAt(),
                         target.useCount(), false, false, FactOrigin.EXTRACTED, extractedBy, sources);
@@ -88,6 +89,24 @@ public final class Reconciliation {
                 Fact next = fresh(c, c.statement(), start, eventIds, now, ids, extractedBy);
                 yield new Plan(List.of(next), List.of(new Expiry(target.id(), now, end, null)), Map.of(), op);
             }
+        };
+    }
+
+    private record Checked(String statement, Sensitivity sensitivity) {
+    }
+
+    /**
+     * The model's merged wording of an update goes through the candidate's checks (a secret drops it, health and
+     * money make it sensitive, the length is bounded); rejected, the candidate's own statement is used.
+     */
+    static Checked reworded(FactCandidate c, String statement) {
+        if (statement == null || statement.isBlank()) {
+            return new Checked(c.statement(), c.sensitivity());
+        }
+        return switch (FactCandidate.check(new FactCandidate.Raw(c.subject(), statement, c.kind().wire(), null, null,
+                c.importance(), c.sensitivity().wire(), c.confidence()), java.time.ZoneOffset.UTC, c.sensitivity())) {
+            case FactCandidate.Accepted a -> new Checked(a.candidate().statement(), a.candidate().sensitivity().atLeast(c.sensitivity()));
+            case FactCandidate.Dropped d -> new Checked(c.statement(), c.sensitivity());
         };
     }
 

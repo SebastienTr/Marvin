@@ -19,6 +19,12 @@
     var changed = root.getAttribute("data-theme") !== theme || root.getAttribute("data-choice") !== choice;
     root.setAttribute("data-theme", theme);
     root.setAttribute("data-choice", choice);
+    // the browser's own bar follows the chosen appearance, not only the device's setting
+    var metas = document.querySelectorAll('meta[name="theme-color"]');
+    for (var i = 0; i < metas.length; i++) {
+      metas[i].removeAttribute("media");
+      metas[i].setAttribute("content", theme === "night" ? "#202133" : "#faf9f3");
+    }
     if (changed) document.dispatchEvent(new CustomEvent("marvin-theme", { detail: { theme: theme, choice: choice } }));
   }
 

@@ -9,7 +9,6 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -19,7 +18,6 @@ import java.util.function.BooleanSupplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.ollama.api.OllamaApi;
 
 import marvin.host.application.memory.port.out.MemoryModel;
 import marvin.host.domain.memory.EpisodeLevel;
@@ -31,7 +29,7 @@ import marvin.host.domain.shared.JsonText;
 
 /**
  * The memory jobs through Ollama's {@code /api/chat} with a JSON schema as {@code format} (structured output),
- * streamed so that a call is abandoned as soon as the voice needs the model (closing the stream makes Ollama stop).
+ * streamed so that a call is abandoned as soon as the voice needs the model (closing the connection makes Ollama stop).
  * The prompts are resources ({@code marvin/memory/prompts/v1/}); the options keep the voice's context size, so that
  * using the voice's model for memory does not reload it.
  */
@@ -40,14 +38,11 @@ public final class OllamaMemoryModel implements MemoryModel {
     public static final String VERSION = "memory-prompts/1";
     static final String PROMPTS = "/marvin/memory/prompts/v1/";
     static final Duration TIMEOUT = Duration.ofMinutes(5);
+    /** How often a call in flight checks whether the voice needs the model (also before the first chunk). */
+    static final Duration CANCEL_POLL = Duration.ofMillis(100);
     private static final DateTimeFormatter LINE = DateTimeFormatter.ofPattern("yyyy-MM-dd EEE HH:mm", Locale.ROOT);
 
-    private final Map<String, OllamaApi> clients = new ConcurrentHashMap<>();
     private final Map<String, String> prompts = new ConcurrentHashMap<>();
-
-    private OllamaApi api(String host) {
-        return clients.computeIfAbsent(host.replaceAll("/+$", ""), h -> OllamaApi.builder().baseUrl(h).build());
-    }
 
     String prompt(String name) {
         return prompts.computeIfAbsent(name, n -> {
@@ -176,7 +171,7 @@ public final class OllamaMemoryModel implements MemoryModel {
         };
         String system = prompt("summary").replace("{{period}}", period).replace("{{max_words}}", Integer.toString(r.maxWords()));
         String user = (r.level() == EpisodeLevel.DAY ? "Events:\n" : "Summaries:\n") + String.join("\n", r.items());
-        Answer a = call(target, system, user, SUMMARY_SCHEMA, r.maxWords() * 2 + 100, cancelled);
+        Answer a = call(target, system, user, SUMMARY_SCHEMA, r.maxWords() * 3 + 200, cancelled);
         if (!(a.json().get("summary") instanceof String s)) {
             throw new BadOutput("no \"summary\"");
         }
@@ -212,7 +207,12 @@ public final class OllamaMemoryModel implements MemoryModel {
         if (r.ended().isEmpty()) {
             user.append("(nothing)\n");
         }
-        Answer a = call(target, system, user.toString(), PROFILE_SCHEMA, r.maxTokens() * 2, cancelled);
+        if (!r.remove().isEmpty()) {
+            user.append("\nForgotten by the owner (remove every line that states or implies any of these, even in other words):\n");
+            r.remove().forEach(l -> user.append("- ").append(l).append('\n'));
+        }
+        // room for the whole JSON: a cut answer is unreadable, and at temperature 0 it would be cut again every night
+        Answer a = call(target, system, user.toString(), PROFILE_SCHEMA, r.maxTokens() * 3 + 200, cancelled);
         if (!(a.json().get("lines") instanceof List<?> lines)) {
             throw new BadOutput("no \"lines\"");
         }
@@ -238,56 +238,132 @@ public final class OllamaMemoryModel implements MemoryModel {
         return o;
     }
 
-    static OllamaApi.ChatRequest request(String model, String system, String user, Map<String, Object> schema, int numPredict) {
-        return OllamaApi.ChatRequest.builder(model)
-                .messages(List.of(OllamaApi.Message.builder(OllamaApi.Message.Role.SYSTEM).content(system).build(),
-                        OllamaApi.Message.builder(OllamaApi.Message.Role.USER).content(user).build()))
-                .stream(true)
-                .format(schema)
-                .options(options(numPredict))
-                .keepAlive(OllamaLanguageModel.KEEP_ALIVE)
-                .disableThinking()
-                .build();
+    /** Memory's calls, on their own client: closing a response's stream must close its connection (see {@link #call}). */
+    private static final java.net.http.HttpClient HTTP = java.net.http.HttpClient.newBuilder()
+            .version(java.net.http.HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+
+    /** The body of {@code /api/chat}, as {@link #request} builds it for Spring AI's client. */
+    static Map<String, Object> body(String model, String system, String user, Map<String, Object> schema, int numPredict) {
+        Map<String, Object> b = new LinkedHashMap<>();
+        b.put("model", model);
+        b.put("messages", List.of(Map.of("role", "system", "content", system), Map.of("role", "user", "content", user)));
+        b.put("stream", true);
+        b.put("format", schema);
+        b.put("keep_alive", OllamaLanguageModel.KEEP_ALIVE);
+        b.put("options", options(numPredict));
+        b.put("think", false);
+        return b;
     }
 
+    /**
+     * One streamed call. Ollama sends nothing while it loads the model and reads the prompt (the longest part with a
+     * large night model), so {@code cancelled} is not only checked between chunks: a watcher polls it and closes the
+     * response, which closes the connection, and Ollama stops at once. (Spring AI's reactive client does not close the
+     * connection when its stream is cancelled, so memory's calls use the JDK's client directly.)
+     */
     @SuppressWarnings("unchecked")
     private Answer call(Target target, String system, String user, Map<String, Object> schema, int numPredict,
                         BooleanSupplier cancelled) {
         if (cancelled.getAsBoolean()) {
             throw new Cancelled();
         }
-        OllamaApi.ChatRequest req = request(target.model(), system, user, schema, numPredict);
+        String host = target.host().replaceAll("/+$", "");
+        java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(host + "/api/chat"))
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                        JsonText.write(body(target.model(), system, user, schema, numPredict))))
+                .build();
+        java.util.concurrent.CompletableFuture<java.net.http.HttpResponse<InputStream>> sent =
+                HTTP.sendAsync(req, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+        java.util.concurrent.atomic.AtomicReference<InputStream> body = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicBoolean cut = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean over = new java.util.concurrent.atomic.AtomicBoolean();
+        long deadline = System.nanoTime() + TIMEOUT.toNanos();
+        Thread watcher = Thread.ofVirtual().name("memory-model-watch").start(() -> {
+            while (!over.get()) {
+                if (cancelled.getAsBoolean() || System.nanoTime() > deadline) {
+                    cut.set(true);
+                    sent.cancel(true);
+                    closeQuietly(body.get());
+                    return;
+                }
+                try {
+                    Thread.sleep(CANCEL_POLL.toMillis());
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+        });
         StringBuilder content = new StringBuilder();
-        OllamaApi.ChatResponse last = null;
-        try (java.util.stream.Stream<OllamaApi.ChatResponse> s = api(target.host()).streamingChat(req).timeout(TIMEOUT).toStream(1)) {
-            Iterator<OllamaApi.ChatResponse> it = s.iterator();
-            while (it.hasNext()) {
-                if (cancelled.getAsBoolean()) {
-                    throw new Cancelled();                  // closing the stream ends the request: Ollama stops
+        Map<String, Object> last = null;
+        try {
+            java.net.http.HttpResponse<InputStream> resp = sent.get();
+            body.set(resp.body());
+            if (cut.get()) {
+                closeQuietly(resp.body());
+            }
+            if (resp.statusCode() != 200) {
+                String err;
+                try (InputStream in = resp.body()) {
+                    err = OllamaErrors.errorOf(new String(in.readAllBytes(), StandardCharsets.UTF_8));
                 }
-                OllamaApi.ChatResponse r = it.next();
-                if (r.message() != null && r.message().content() != null) {
-                    content.append(r.message().content());
+                if (resp.statusCode() == 404) {
+                    throw new Unavailable("Ollama has no model '" + target.model() + "'", "Run `ollama pull " + target.model() + "`.");
                 }
-                if (Boolean.TRUE.equals(r.done())) {
-                    last = r;
-                    break;
+                throw new Unavailable("Ollama error " + resp.statusCode() + ": " + (err.isEmpty() ? "failed" : err), "");
+            }
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(resp.body(), StandardCharsets.UTF_8))) {
+                for (String line = r.readLine(); line != null; line = r.readLine()) {
+                    if (cancelled.getAsBoolean()) {
+                        throw new Cancelled();              // closing the stream ends the request: Ollama stops
+                    }
+                    if (line.isBlank()) {
+                        continue;
+                    }
+                    if (!(JsonText.parse(line) instanceof Map<?, ?> chunk)) {
+                        continue;
+                    }
+                    if (chunk.get("error") instanceof String e) {
+                        throw new Unavailable("Ollama error: " + e, "");
+                    }
+                    if (chunk.get("message") instanceof Map<?, ?> msg && msg.get("content") instanceof String piece) {
+                        content.append(piece);
+                    }
+                    if (Boolean.TRUE.equals(chunk.get("done"))) {
+                        last = (Map<String, Object>) chunk;
+                        break;
+                    }
                 }
             }
-        } catch (Cancelled e) {
+        } catch (Cancelled | Unavailable e) {
             throw e;
-        } catch (RuntimeException e) {
-            OllamaErrors.Failure f = OllamaErrors.of(e);
-            if (f.status() == 404) {
-                throw new Unavailable("Ollama has no model '" + target.model() + "'", "Run `ollama pull " + target.model() + "`.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new Cancelled();
+        } catch (java.util.concurrent.CancellationException e) {
+            throw cancelledOrTimedOut(cut, cancelled, target);
+        } catch (java.util.concurrent.ExecutionException | IOException | IllegalArgumentException e) {
+            if (cut.get()) {
+                throw cancelledOrTimedOut(cut, cancelled, target);
             }
-            if (f.status() != 0) {
-                throw new Unavailable("Ollama error " + f.status() + ": " + (f.message().isEmpty() ? "failed" : f.message()), "");
+            Throwable cause = e instanceof java.util.concurrent.ExecutionException && e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof IllegalArgumentException bad) {
+                throw new BadOutput("not JSON: " + bad.getMessage());
             }
-            throw new Unavailable("cannot reach Ollama at " + target.host() + ": " + f.message(), OllamaErrors.install(target.model()));
+            throw new Unavailable("cannot reach Ollama at " + target.host() + ": " + NetErrors.reason(cause),
+                    OllamaErrors.install(target.model()));
+        } finally {
+            over.set(true);
+            watcher.interrupt();
+            closeQuietly(body.get());
         }
-        Usage usage = last == null ? Usage.NONE : new Usage(n(last.promptEvalCount()), seconds(last.promptEvalDuration()),
-                n(last.evalCount()), seconds(last.totalDuration()));
+        if (last == null && cancelled.getAsBoolean()) {
+            throw new Cancelled();
+        }
+        Usage usage = last == null ? Usage.NONE : new Usage(count(last.get("prompt_eval_count")), nanos(last.get("prompt_eval_duration")),
+                count(last.get("eval_count")), nanos(last.get("total_duration")));
         if (log.isDebugEnabled()) {
             log.debug("memory model {}: prompt {} tokens in {} s, {} tokens out", target.model(), usage.promptTokens(),
                     usage.promptSeconds(), usage.outputTokens());
@@ -305,12 +381,30 @@ public final class OllamaMemoryModel implements MemoryModel {
         return new Answer((Map<String, Object>) m, usage);
     }
 
-    private static int n(Integer i) {
-        return i == null ? 0 : i;
+    private static RuntimeException cancelledOrTimedOut(java.util.concurrent.atomic.AtomicBoolean cut, BooleanSupplier cancelled,
+                                                        Target target) {
+        if (cancelled.getAsBoolean()) {
+            return new Cancelled();
+        }
+        return new Unavailable("Ollama did not answer within " + TIMEOUT.toMinutes() + " minutes (" + target.model() + ")", "");
     }
 
-    private static double seconds(Long nanos) {
-        return nanos == null ? 0 : nanos / 1e9;
+    private static void closeQuietly(InputStream in) {
+        if (in != null) {
+            try {
+                in.close();
+            } catch (IOException e) {
+                // closing is all we wanted
+            }
+        }
+    }
+
+    private static int count(Object o) {
+        return o instanceof Number x ? x.intValue() : 0;
+    }
+
+    private static double nanos(Object o) {
+        return o instanceof Number x ? x.doubleValue() / 1e9 : 0;
     }
 
     private static String text(Object o) {

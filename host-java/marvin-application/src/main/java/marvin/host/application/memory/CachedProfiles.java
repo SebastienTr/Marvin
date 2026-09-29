@@ -54,6 +54,14 @@ public final class CachedProfiles implements ProfileStore {
     }
 
     @Override
+    public void redact(long id, String content, int tokens, List<String> keptLines) {
+        synchronized (active) {
+            active.clear();
+            store.redact(id, content, tokens, keptLines);
+        }
+    }
+
+    @Override
     public void deleteAll() {
         synchronized (active) {
             active.clear();

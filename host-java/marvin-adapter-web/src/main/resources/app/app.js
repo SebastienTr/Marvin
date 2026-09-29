@@ -89,8 +89,10 @@ function setConnection(state) {
   app.connection = state;
   const conn = $("conn");
   conn.dataset.state = state;
+  const local = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(location.hostname);
   $("conn-text").textContent = {
-    connecting: "Connecting", live: "Live · on this computer", lost: "Reconnecting", offline: "Robot offline",
+    connecting: "Connecting", live: local ? "Live · on this computer" : "Live · connected to Marvin’s host",
+    lost: "Reconnecting", offline: "Robot offline",
   }[state];
   conn.title = $("conn-text").textContent;
   // every screen: say plainly when what it shows may be out of date

@@ -32,6 +32,13 @@ class ArchitectureRulesBiteTest {
     }
 
     @Test
+    void theConversationReachingIntoMemorysServicesIsCaught() {
+        assertThat(check().getFailureReport().getDetails())
+                .anyMatch(v -> v.contains("context 'conversation' reaches into context 'memory'")
+                        && v.contains("archfixture.application.memory.RecallService"));
+    }
+
+    @Test
     void portsAndEventsOfAnotherContextAreAllowed() {
         assertThat(check().getFailureReport().getDetails())
                 .noneMatch(v -> v.contains("RobotLinkQuery") || v.contains("DeviceConnected"));

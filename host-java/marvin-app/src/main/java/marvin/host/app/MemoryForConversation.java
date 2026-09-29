@@ -72,10 +72,16 @@ final class MemoryForConversation implements MemoryContext {
     }
 
     @Override
-    public ToolAnswer remember(String statement) {
+    public ToolAnswer remember(String statement, Audience audience) {
         try {
-            Fact f = facts.remember(statement, "owner", null);
             Map<String, Object> m = new LinkedHashMap<>();
+            if (audience.othersPresent()) {
+                Fact f = facts.suggest(statement, "owner", null);
+                m.put("suggested", f.statement());
+                m.put("note", "Someone else is in the room: this waits for the owner to keep it in the app. Say it is noted.");
+                return ToolAnswer.ok(m);
+            }
+            Fact f = facts.remember(statement, "owner", null);
             m.put("remembered", f.statement());
             return ToolAnswer.ok(m);
         } catch (IllegalArgumentException e) {
@@ -97,11 +103,20 @@ final class MemoryForConversation implements MemoryContext {
             if (p.facts().isEmpty()) {
                 m.put("note", "nothing in memory matches: say so");
             } else {
-                m.put("confirm", p.code());
-                m.put("note", "Nothing is forgotten yet. Tell the person what would be forgotten and ask them to confirm; "
-                        + "only after they say yes, call forget again with this confirmation code.");
+                if (audience.othersPresent()) {
+                    m.put("note", "Nothing is forgotten yet. Someone else is in the room: the owner confirms this in the app, "
+                            + "where the request now waits. Say so.");
+                } else {
+                    m.put("confirm", p.code());
+                    m.put("note", "Nothing is forgotten yet. Tell the person what would be forgotten and ask them to confirm; "
+                            + "only after they say yes, call forget again with this confirmation code.");
+                }
             }
             return ToolAnswer.ok(m);
+        }
+        if (audience.othersPresent()) {
+            return ToolAnswer.failed("someone else is in the room: only the owner confirms a forget, in the app (the request "
+                    + "waits on Home)");
         }
         ConfirmForgetting.Outcome o = forgetting.confirm(confirm, turn, null);
         if (!o.done()) {

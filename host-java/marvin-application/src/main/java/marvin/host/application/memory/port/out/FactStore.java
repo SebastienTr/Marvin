@@ -52,12 +52,28 @@ public interface FactStore {
     }
 
     /**
-     * Writes a reconciliation plan in one transaction: new facts with their sources and embeddings, ends of old
-     * facts, and more sources for existing ones.
+     * The facts changed under a plan: a fact it ends was ended or deleted meanwhile, or a new fact has none of its
+     * sources left. Nothing of the plans was written.
+     */
+    final class Conflict extends RuntimeException {
+        public Conflict(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * Writes reconciliation plans in one transaction: new facts with their sources and embeddings, ends of old
+     * facts, and more sources for existing ones. An end applies only to a fact still current in the store and a new
+     * fact needs at least one source still in the log; otherwise nothing is written and {@link Conflict} is thrown.
      *
      * @param embeddings the embedding of each new fact (a missing one is computed later)
      */
-    void apply(Reconciliation.Plan plan, Map<UUID, float[]> embeddings);
+    void apply(List<Reconciliation.Plan> plans, Map<UUID, float[]> embeddings);
+
+    /** One plan, as {@link #apply(List, Map)}. */
+    default void apply(Reconciliation.Plan plan, Map<UUID, float[]> embeddings) {
+        apply(List.of(plan), embeddings);
+    }
 
     /** The nearest facts to an embedding, most similar first. */
     List<Scored> nearest(float[] embedding, int k, Filter filter);
@@ -102,6 +118,9 @@ public interface FactStore {
 
     /** Deletes the facts left with no source (their events were forgotten); returns how many. */
     int deleteOrphans();
+
+    /** The facts left with no source (their events were forgotten), before they are deleted. */
+    List<Fact> orphans();
 
     /** Facts without an embedding (the model was missing when they were written). */
     List<Fact> withoutEmbedding(int limit);

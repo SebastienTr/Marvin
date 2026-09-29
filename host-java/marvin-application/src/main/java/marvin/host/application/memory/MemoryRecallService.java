@@ -137,7 +137,7 @@ public final class MemoryRecallService implements RecallMemory, MemoryListener {
         Instant now = now();
         List<Line> gist = List.of();
         try {
-            gist = gist(question, now);
+            gist = gist(question, now, audience);
         } catch (RuntimeException e) {
             log.log(Level.WARNING, "could not read today's summaries", e);
         }
@@ -183,17 +183,22 @@ public final class MemoryRecallService implements RecallMemory, MemoryListener {
     /**
      * Today's and yesterday's summaries, sentence by sentence (docs/design.md 5.3, "today so far"): a sentence scores
      * by its words in common with the question, then today before yesterday, then its place in the summary (a
-     * summary leads with what mattered). Sensitive days are never summarised with sensitive events, so a summary is
-     * safe for any audience.
+     * summary leads with what mattered). A summary is written without sensitive events (the lines a sensitive fact
+     * came from are made sensitive too, and the day written again), and a stale summary (its day had something
+     * forgotten or made sensitive) is never used until it is written again. With someone else in the room, a day
+     * that still had sensitive events is left out entirely: its summary may hint at them.
      */
-    List<Line> gist(String question, Instant now) {
+    List<Line> gist(String question, Instant now, Audience audience) {
         LocalDate today = now.atZone(zone()).toLocalDate();
         Set<String> q = MemoryText.words(question);
         List<Line> out = new ArrayList<>();
         for (int back = 0; back <= 1; back++) {
             LocalDate day = today.minusDays(back);
             Optional<Episode> e = episodes.get(EpisodeLevel.DAY, day);
-            if (e.isEmpty() || e.get().summary().isBlank()) {
+            if (e.isEmpty() || e.get().stale() || e.get().summary().isBlank()) {
+                continue;
+            }
+            if (!audience.sensitiveAllowed() && hadSensitive(day)) {
                 continue;
             }
             String label = back == 0 ? "Today" : "Yesterday";
@@ -206,6 +211,13 @@ public final class MemoryRecallService implements RecallMemory, MemoryListener {
             }
         }
         return out;
+    }
+
+    /** Whether a day's log has sensitive events (the summary left them out, but a guest need not hear about that day). */
+    private boolean hadSensitive(LocalDate day) {
+        Instant from = day.atStartOfDay(zone()).toInstant();
+        return events.between(from, day.plusDays(1).atStartOfDay(zone()).toInstant(), 5000).stream()
+                .anyMatch(e -> e.sensitivity() == Sensitivity.SENSITIVE && !MemorySources.BRAIN.equals(e.source()));
     }
 
     @Override
@@ -306,6 +318,8 @@ public final class MemoryRecallService implements RecallMemory, MemoryListener {
         if (w.bounded() && eps.isEmpty()) {
             eps.addAll(episodes.list(EpisodeLevel.WEEK, from.minusDays(6), to));
         }
+        eps.removeIf(e -> e.stale() || e.summary().isBlank()
+                || !audience.sensitiveAllowed() && e.level() == EpisodeLevel.DAY && hadSensitive(e.day()));
         eps.sort(Comparator.comparingDouble((Episode e) -> -MemoryText.overlap(qwords, e.summary()))
                 .thenComparing(Episode::day, Comparator.reverseOrder()));
         for (Episode e : eps) {

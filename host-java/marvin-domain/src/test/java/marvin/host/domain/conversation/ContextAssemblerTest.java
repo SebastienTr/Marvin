@@ -25,6 +25,24 @@ class ContextAssemblerTest {
     }
 
     @Test
+    void memorySectionsShareOneBudgetFilledByScore() {
+        // 4 characters per token: "- " + 34 x + "\n" is 37 characters, 10 tokens; each heading ("h\n") 1 token
+        ContextAssembler.Section today = new ContextAssembler.Section("today", "h", 100, List.of(
+                item("d1", "x".repeat(34), 0.9), item("d2", "x".repeat(34), 0.2)));
+        ContextAssembler.Section facts = new ContextAssembler.Section("facts", "h", 100, List.of(
+                item("f1", "x".repeat(34), 0.8), item("f2", "x".repeat(34), 0.5), item("f3", "x".repeat(34), 0.1)));
+        List<ContextAssembler.Cut> cuts = ContextAssembler.cutTogether(List.of(today, facts), 31, est);
+        assertThat(cuts.get(0).kept()).extracting(ContextAssembler.Item::key).containsExactly("d1");
+        assertThat(cuts.get(1).kept()).extracting(ContextAssembler.Item::key).containsExactly("f1");
+        assertThat(cuts.get(0).tokens() + cuts.get(1).tokens()).isEqualTo(22);
+        // a section's own budget still holds within the total
+        List<ContextAssembler.Cut> wide = ContextAssembler.cutTogether(List.of(
+                new ContextAssembler.Section("today", "h", 11, today.items()), facts), 1000, est);
+        assertThat(wide.get(0).kept()).extracting(ContextAssembler.Item::key).containsExactly("d1");
+        assertThat(wide.get(1).kept()).hasSize(3);
+    }
+
+    @Test
     void aSectionIsCutByScoreNeverByPositionAndKeepsItsOrder() {
         List<ContextAssembler.Item> items = List.of(
                 item("a", "x".repeat(37), 0.1),         // 40 chars with "- " and the newline: 10 tokens

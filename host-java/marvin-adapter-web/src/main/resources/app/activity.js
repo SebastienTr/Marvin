@@ -3,7 +3,7 @@
 // today's moments, and History: any day's timeline and numbers with the day in Marvin's words, the last seven
 // days, the weeks in Marvin's words, the conversation of that day and a search over everything said.
 
-import { $, app, el, api, on, fmtDuration, fmtTime, timeEl, plural, isoDate, parseIso, dayLabel, longDate, reduceMotion } from "./core.js";
+import { $, app, el, api, on, emit, fmtDuration, fmtTime, timeEl, plural, isoDate, parseIso, dayLabel, longDate, reduceMotion } from "./core.js";
 import { DayCard } from "./daycard.js";
 import { ConvoBuilder } from "./convo.js";
 import { episodeItem } from "./memory.js";
@@ -90,7 +90,8 @@ async function daySummary(iso) {
   try {
     const r = await api(`/api/memory/episodes?level=day&from=${iso}&to=${isoDate(next)}`);
     const e = r.episodes.find((x) => x.day === iso);
-    if (e) text = e.summary + (e.stale ? " (Rewritten tonight: something from that day was forgotten.)" : "");
+    if (e && e.stale) text = "Being written again tonight: something from that day was forgotten or made private.";
+    else if (e) text = e.summary;
     else if (app.today && iso === app.today.date) text = "Marvin writes today tonight, from what happens until then.";
     else text = "Not written: nothing was kept from that day, or it was before memory.";
     box.classList.toggle("muted", !e);
@@ -259,8 +260,29 @@ const conversations = {
 
 // ------------------------------------------------------------------ setup
 
+// ------------------------------------------------------------------ what waits for the owner (decided on Home)
+
+function renderDecisions(pending) {
+  const box = $("activity-decisions");
+  emit("badge", { view: "activity", n: pending.length, label: `${pending.length} request${pending.length === 1 ? "" : "s"} waiting` });
+  if (!pending.length) {
+    box.replaceChildren(el("p", "small muted", "Today, the only thing that can wait for you is a request to forget. None is waiting."));
+    return;
+  }
+  const ul = el("ul", "request-list");
+  for (const p of pending) {
+    const what = p.everything ? "Forget everything" : p.facts.length === 1 ? `Forget “${p.facts[0].statement}”`
+      : `Forget ${p.facts.length} memories`;
+    ul.append(el("li", null, `${what} · ${p.origin === "voice" ? "asked by voice" : "asked in the app"}, waiting until ${fmtTime(p.expires_at)}`));
+  }
+  const go = el("a", "button primary", pending.length === 1 ? "Decide on Home" : `Decide on Home (${pending.length})`);
+  go.href = "#home";
+  box.replaceChildren(el("p", "small", `${pending.length === 1 ? "A request waits" : `${pending.length} requests wait`} for your yes:`), ul, go);
+}
+
 export function setup() {
   historyDay = new DayCard($("day"));
+  on("decisions", renderDecisions);
   conversations.setup();
   $("day-prev").addEventListener("click", () => shiftDay(-1));
   $("day-next").addEventListener("click", () => shiftDay(1));

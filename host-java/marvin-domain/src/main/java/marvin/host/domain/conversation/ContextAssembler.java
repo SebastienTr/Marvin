@@ -29,6 +29,11 @@ public final class ContextAssembler {
     public static final int NOW_BUDGET = 200;
     public static final int GIST_BUDGET = 150;
     public static final int FACTS_BUDGET = 300;
+    /**
+     * The memory sections together ("today so far" and the facts) at most, by default: what the model reads again
+     * with every question, so what memory costs the first word. Each section keeps its own budget within it.
+     */
+    public static final int MEMORY_BUDGET = 250;
 
     /**
      * A candidate line.
@@ -133,6 +138,53 @@ public final class ContextAssembler {
             (keep[i] ? kept : dropped).add(s.items().get(i));
         }
         return new Cut(s, kept, dropped, used);
+    }
+
+    /**
+     * Cuts several sections under one shared budget as well as their own: every item of every section in one order
+     * of score (the best of all sections first), each kept while its section and the total both have room.
+     */
+    public static List<Cut> cutTogether(List<Section> sections, int total, TokenEstimator est) {
+        record Ref(int section, int item, double score) {
+        }
+        List<Ref> order = new ArrayList<>();
+        for (int s = 0; s < sections.size(); s++) {
+            List<Item> items = sections.get(s).items();
+            for (int i = 0; i < items.size(); i++) {
+                order.add(new Ref(s, i, items.get(i).score()));
+            }
+        }
+        order.sort(Comparator.comparingDouble(Ref::score).reversed().thenComparingInt(Ref::section).thenComparingInt(Ref::item));
+        int[] used = new int[sections.size()];
+        int all = 0;
+        boolean[][] keep = new boolean[sections.size()][];
+        for (int s = 0; s < sections.size(); s++) {
+            keep[s] = new boolean[sections.get(s).items().size()];
+        }
+        for (Ref r : order) {
+            Section s = sections.get(r.section());
+            Item it = s.items().get(r.item());
+            if (it.text().isBlank()) {
+                continue;
+            }
+            int heading = used[r.section()] == 0 && !s.heading().isEmpty() ? est.estimate(s.heading() + "\n") : 0;
+            int cost = lineTokens(it.text(), est) + heading;
+            if (used[r.section()] + cost <= s.budget() && all + cost <= total) {
+                keep[r.section()][r.item()] = true;
+                used[r.section()] += cost;
+                all += cost;
+            }
+        }
+        List<Cut> out = new ArrayList<>();
+        for (int s = 0; s < sections.size(); s++) {
+            List<Item> kept = new ArrayList<>();
+            List<Item> dropped = new ArrayList<>();
+            for (int i = 0; i < keep[s].length; i++) {
+                (keep[s][i] ? kept : dropped).add(sections.get(s).items().get(i));
+            }
+            out.add(new Cut(sections.get(s), kept, dropped, used[s]));
+        }
+        return out;
     }
 
     /** A cut section as text: the heading, then one {@code "- "} line per item kept; empty when nothing is kept. */

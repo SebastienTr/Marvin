@@ -22,6 +22,7 @@ import marvin.host.application.memory.port.out.EpisodeStore;
 import marvin.host.application.memory.port.out.EventLog;
 import marvin.host.application.memory.port.out.FactStore;
 import marvin.host.application.memory.port.out.MemoryListener;
+import marvin.host.application.memory.port.out.MemoryStateStore;
 import marvin.host.application.memory.port.out.ProfileStore;
 import marvin.host.domain.memory.Block;
 import marvin.host.domain.memory.BlockVersion;
@@ -46,7 +47,14 @@ import marvin.host.domain.shared.LocalDays;
  * What the owner does with memory (docs/design.md 5.6 and 2.2): facts (list, sources, remember, edit, pin,
  * archive), the profile (versions, edit, restore), episodes, the raw log, forgetting, and the health report.
  * Every change is an owner event in the log first, so the worker never undoes it; forgetting leaves nothing of what
- * was forgotten in that event.
+ * was forgotten in that event. Every change runs under the {@link MemoryGuard}: a memory pass that decided its
+ * writes before it does not write them.
+ *
+ * <p>Forgetting a fact takes it out of every future context: its versions are deleted; the lines it was learned
+ * from are withheld (never summarised, recalled, listed or exported again; the conversation itself stays in
+ * History); the summaries of their days, weeks and months are blanked and written again without them; the profile's
+ * lines that state it leave the active version and every older one at once, and the statement waits for the next
+ * profile rewrite, which removes reworded lines too.
  */
 public final class MemoryAdminService implements ManageFacts, ForgetMemory, BrowseMemory, MemoryHealth {
     private static final Logger log = Logger.getLogger("marvin.memory");
@@ -62,10 +70,15 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
     private final LocalDays days;
     private final Clocks clocks;
     private final Supplier<UUID> ids;
+    private final MemoryGuard guard;
+    private final MemoryStateStore state;
     private final List<MemoryListener> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     public MemoryAdminService(EventLog events, FactStore facts, EpisodeStore episodes, ProfileStore profiles,
-                              Embeddings embeddings, MemoryConfig config, LocalDays days, Clocks clocks, Supplier<UUID> ids) {
+                              Embeddings embeddings, MemoryConfig config, LocalDays days, Clocks clocks, Supplier<UUID> ids,
+                              MemoryGuard guard, MemoryStateStore state) {
+        this.guard = guard;
+        this.state = state;
         this.events = events;
         this.facts = facts;
         this.episodes = episodes;
@@ -79,6 +92,23 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
 
     public void addListener(MemoryListener l) {
         listeners.add(l);
+    }
+
+    private final List<Runnable> forgetListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Called after anything is forgotten (the voice drops its history, which may still state it). */
+    public void addForgetListener(Runnable r) {
+        forgetListeners.add(r);
+    }
+
+    private void forgotten() {
+        for (Runnable r : forgetListeners) {
+            try {
+                r.run();
+            } catch (RuntimeException e) {
+                log.warning("forget listener failed: " + e);
+            }
+        }
     }
 
     private Instant now() {
@@ -133,7 +163,24 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
                 null, now, null, null, null, 0, false, false, FactOrigin.OWNER, "", List.of(e.id()));
         Map<UUID, float[]> v = new LinkedHashMap<>();
         v.put(f.id(), embedOrNull(f.embeddingText()));
-        facts.apply(new Reconciliation.Plan(List.of(f), List.of(), Map.of(), new Operation.Add()), v);
+        guard.ownerRun(() -> facts.apply(new Reconciliation.Plan(List.of(f), List.of(), Map.of(), new Operation.Add()), v));
+        changed("facts");
+        return f;
+    }
+
+    @Override
+    public Fact suggest(String statement, String subject, Sensitivity sensitivity) {
+        FactCandidate c = checked(statement, subject, sensitivity);
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("subject", c.subject());
+        d.put("others_present", true);
+        MemoryEvent e = owner(MemorySources.REMEMBER, c.statement(), d, c.sensitivity());
+        Instant now = now();
+        Fact f = new Fact(ids.get(), c.subject(), c.statement(), FactKind.STATE, 5, 0.6, c.sensitivity(), now, null, now, null,
+                null, null, 0, false, false, FactOrigin.EXTRACTED, "remember, said with someone else in the room", List.of(e.id()));
+        Map<UUID, float[]> v = new LinkedHashMap<>();
+        v.put(f.id(), embedOrNull(f.embeddingText()));
+        guard.ownerRun(() -> facts.apply(new Reconciliation.Plan(List.of(f), List.of(), Map.of(), new Operation.Add()), v));
         changed("facts");
         return f;
     }
@@ -170,8 +217,26 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
                 FactOrigin.OWNER, "", sources);
         Map<UUID, float[]> v = new LinkedHashMap<>();
         v.put(next.id(), embedOrNull(next.embeddingText()));
-        facts.apply(new Reconciliation.Plan(List.of(next), List.of(new Reconciliation.Expiry(old.id(), now, old.validTo(), next.id())),
-                Map.of(), new Operation.Update(old.id(), c.statement())), v);
+        boolean reworded = !c.statement().equals(old.statement());
+        boolean madeSensitive = next.sensitivity().ordinal() >= Sensitivity.SENSITIVE.ordinal()
+                && old.sensitivity().ordinal() < Sensitivity.SENSITIVE.ordinal();
+        try {
+            guard.ownerRun(() -> {
+                facts.apply(new Reconciliation.Plan(List.of(next), List.of(new Reconciliation.Expiry(old.id(), now, old.validTo(),
+                        next.id())), Map.of(), new Operation.Update(old.id(), c.statement())), v);
+                if (madeSensitive) {
+                    // what it was learned from is sensitive too: out of the day summaries and of a guest's hearing
+                    List<MemoryEvent> src = events.byIds(old.sources());
+                    events.relabel(old.sources(), Sensitivity.SENSITIVE);
+                    staleDays(src);
+                }
+                if (reworded || madeSensitive) {
+                    withdrawFromProfile(old.statement());     // the profile is heard by everyone in the room
+                }
+            });
+        } catch (FactStore.Conflict conflict) {
+            throw new IllegalArgumentException("this fact was changed meanwhile: open it again");
+        }
         changed("facts");
         return next;
     }
@@ -179,16 +244,23 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
     @Override
     public void pin(UUID id, boolean pinned) {
         facts.get(id).orElseThrow(() -> new IllegalArgumentException("no such fact"));
-        owner(MemorySources.PIN, "", Map.of("fact", id.toString(), "pinned", pinned), Sensitivity.NORMAL);
-        facts.setPinned(id, pinned);
+        guard.ownerRun(() -> {
+            owner(MemorySources.PIN, "", Map.of("fact", id.toString(), "pinned", pinned), Sensitivity.NORMAL);
+            facts.setPinned(id, pinned);
+        });
         changed("facts");
     }
 
     @Override
     public void archive(UUID id, boolean archived) {
-        facts.get(id).orElseThrow(() -> new IllegalArgumentException("no such fact"));
-        owner(MemorySources.EDIT, "", Map.of("fact", id.toString(), "archived", archived), Sensitivity.NORMAL);
-        facts.setArchived(List.of(id), archived);
+        Fact f = facts.get(id).orElseThrow(() -> new IllegalArgumentException("no such fact"));
+        guard.ownerRun(() -> {
+            owner(MemorySources.EDIT, "", Map.of("fact", id.toString(), "archived", archived), Sensitivity.NORMAL);
+            facts.setArchived(List.of(id), archived);
+            if (archived) {
+                withdrawFromProfile(f.statement());
+            }
+        });
         changed("facts");
     }
 
@@ -201,8 +273,10 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("facts", known.stream().map(UUID::toString).toList());
         d.put("reviewed", reviewed);
-        owner(MemorySources.REVIEW, "", d, Sensitivity.NORMAL);
-        facts.setReviewed(known, reviewed ? now() : null);
+        guard.ownerRun(() -> {
+            owner(MemorySources.REVIEW, "", d, Sensitivity.NORMAL);
+            facts.setReviewed(known, reviewed ? now() : null);
+        });
         changed("facts");
     }
 
@@ -210,18 +284,70 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
 
     @Override
     public Forgotten forgetFact(UUID id) {
-        List<Fact> versions = facts.versions(id);
-        if (versions.isEmpty()) {
-            return new Forgotten(0, 0, 0);
-        }
-        List<UUID> all = versions.stream().map(Fact::id).toList();
-        int n = facts.delete(all);
-        for (Fact f : versions) {
-            dropFromProfile(f.statement());
-        }
-        owner(MemorySources.FORGET, "", Map.of("facts", n), Sensitivity.NORMAL);
+        Forgotten out = guard.owner(() -> {
+            List<Fact> versions = facts.versions(id);
+            if (versions.isEmpty()) {
+                return new Forgotten(0, 0, 0);
+            }
+            List<Long> sources = versions.stream().flatMap(f -> f.sources().stream()).distinct().toList();
+            List<MemoryEvent> src = events.byIds(sources);
+            int n = facts.delete(versions.stream().map(Fact::id).toList());
+            forgetSources(src);
+            int stale = staleDays(src);
+            List<String> statements = versions.stream().map(Fact::statement).distinct().toList();
+            forgetInProfile(statements);
+            owner(MemorySources.FORGET, "", Map.of("facts", n), Sensitivity.NORMAL);
+            return new Forgotten(0, n, stale);
+        });
         changed("facts");
-        return new Forgotten(0, n, 0);
+        forgotten();
+        return out;
+    }
+
+    /**
+     * The lines a forgotten fact was learned from: withheld from summaries, recall, the raw log and the export; an
+     * owner event holds only the statement itself, so its text goes.
+     */
+    private void forgetSources(List<MemoryEvent> src) {
+        events.withhold(src.stream().map(MemoryEvent::id).toList());
+        for (MemoryEvent e : src) {
+            if (MemorySources.OWNER.equals(e.source()) && !e.body().isEmpty()) {
+                events.redact(e.id(), "");
+            }
+        }
+    }
+
+    /** Blanks the summaries of the events' days (and their weeks and months), to be written again without them. */
+    private int staleDays(List<MemoryEvent> evs) {
+        int n = 0;
+        for (LocalDate d : evs.stream().map(e -> e.ts().atZone(days.zone()).toLocalDate()).distinct().toList()) {
+            n += episodes.markStale(d.atStartOfDay(days.zone()).toInstant(), d.plusDays(1).atStartOfDay(days.zone()).toInstant());
+        }
+        return n;
+    }
+
+    /**
+     * Forgotten statements leave the profile: the lines that state them, from the active version (a new version) and
+     * from every older one (so that restoring one does not bring them back); reworded lines at the next rewrite.
+     */
+    private void forgetInProfile(List<String> statements) {
+        if (profiles.versions(Block.PROFILE, 1).isEmpty()) {
+            return;
+        }
+        for (String st : statements) {
+            dropFromProfile(st);
+            ProfileRemovals.redactHistory(profiles, config.tokens(), st);
+        }
+        ProfileRemovals.add(state, statements);
+    }
+
+    /** A statement no longer true or no longer for everyone's ears (corrected, archived, made sensitive). */
+    private void withdrawFromProfile(String statement) {
+        if (profiles.active(Block.PROFILE).isEmpty()) {
+            return;
+        }
+        dropFromProfile(statement);
+        ProfileRemovals.add(state, List.of(statement));
     }
 
     /** A forgotten fact leaves the profile at once (a new version without its lines), not only at the next rewrite. */
@@ -239,40 +365,67 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
 
     @Override
     public Forgotten forgetEvents(Instant from, Instant to) {
-        int n = events.deleteBetween(from, to);
-        int f = facts.deleteOrphans();
-        int s = episodes.markStale(from, to);
-        owner(MemorySources.FORGET, "", Map.of("events", n, "facts", f), Sensitivity.NORMAL);
+        Forgotten out = guard.owner(() -> {
+            int s = episodes.markStale(from, to);
+            ForgottenFeed.range(state, from, to);          // a catch-up of the other contexts never brings it back
+            int n = events.deleteBetween(from, to);
+            int f = forgetOrphans();
+            owner(MemorySources.FORGET, "", Map.of("events", n, "facts", f), Sensitivity.NORMAL);
+            return new Forgotten(n, f, s);
+        });
         changed("log");
-        return new Forgotten(n, f, s);
+        forgotten();
+        return out;
+    }
+
+    /** The facts whose events were all forgotten go, and the profile's lines with them. */
+    private int forgetOrphans() {
+        List<Fact> orphans = facts.orphans();
+        int n = facts.delete(orphans.stream().map(Fact::id).toList());
+        forgetInProfile(orphans.stream().map(Fact::statement).distinct().toList());
+        return n;
     }
 
     @Override
     public Forgotten forgetEvent(long id) {
-        List<MemoryEvent> e = events.byIds(List.of(id));
-        if (e.isEmpty()) {
-            return new Forgotten(0, 0, 0);
+        Forgotten out = guard.owner(() -> {
+            List<MemoryEvent> e = events.byIds(List.of(id));
+            if (e.isEmpty()) {
+                return new Forgotten(0, 0, 0);
+            }
+            int s = staleDays(e);
+            ForgottenFeed.event(state, e.getFirst());
+            int n = events.delete(List.of(id));
+            int f = forgetOrphans();
+            owner(MemorySources.FORGET, "", Map.of("events", n, "facts", f), Sensitivity.NORMAL);
+            return new Forgotten(n, f, s);
+        });
+        if (out.events() > 0) {
+            changed("log");
+            forgotten();
         }
-        int n = events.delete(List.of(id));
-        int f = facts.deleteOrphans();
-        LocalDate d = e.getFirst().ts().atZone(days.zone()).toLocalDate();
-        int s = episodes.markStale(d.atStartOfDay(days.zone()).toInstant(), d.plusDays(1).atStartOfDay(days.zone()).toInstant());
-        owner(MemorySources.FORGET, "", Map.of("events", n, "facts", f), Sensitivity.NORMAL);
-        changed("log");
-        return new Forgotten(n, f, s);
+        return out;
     }
 
     @Override
     public Forgotten forgetEverything() {
-        long n = events.count();
-        long f = facts.count(all());
-        facts.deleteAll();
-        episodes.deleteAll();
-        profiles.deleteAll();
-        events.deleteAll();
+        // a reset: the pass in progress stops, and nothing it decided before is written after
+        Forgotten out = guard.reset(() -> {
+            long n = events.count();
+            long f = facts.count(all());
+            facts.deleteAll();
+            episodes.deleteAll();
+            profiles.deleteAll();
+            events.deleteAll();
+            state.put("nightly", Map.of());
+            ProfileRemovals.clear(state);
+            ForgottenFeed.range(state, Instant.EPOCH, now().plusSeconds(1));
+            return new Forgotten((int) n, (int) f, 0);
+        });
         log.info("memory: everything forgotten at the owner's request");
         changed("all");
-        return new Forgotten((int) n, (int) f, 0);
+        forgotten();
+        return out;
     }
 
     FactStore.Query all() {
@@ -315,9 +468,12 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
             }
         }
         Instant now = now();
-        BlockVersion v = profiles.add(new BlockVersion(0, Block.PROFILE, text, tokens, BlockVersion.Status.ACTIVE,
-                "written by the owner", List.of(), BlockVersion.Author.OWNER, now, now, kept));
-        owner(MemorySources.PROFILE_EDIT, "", Map.of("version", v.id()), Sensitivity.NORMAL);
+        BlockVersion v = guard.owner(() -> {
+            BlockVersion added = profiles.add(new BlockVersion(0, Block.PROFILE, text, tokens, BlockVersion.Status.ACTIVE,
+                    "written by the owner", List.of(), BlockVersion.Author.OWNER, now, now, kept));
+            owner(MemorySources.PROFILE_EDIT, "", Map.of("version", added.id()), Sensitivity.NORMAL);
+            return added;
+        });
         changed("profile");
         return v;
     }
@@ -327,9 +483,20 @@ public final class MemoryAdminService implements ManageFacts, ForgetMemory, Brow
         BlockVersion old = profiles.get(versionId).filter(v -> v.block() == Block.PROFILE)
                 .orElseThrow(() -> new IllegalArgumentException("no such profile version"));
         Instant now = now();
-        BlockVersion v = profiles.add(new BlockVersion(0, Block.PROFILE, old.content(), old.tokens(), BlockVersion.Status.ACTIVE,
-                "restored version " + versionId, List.of(), BlockVersion.Author.OWNER, now, now, old.keptLines()));
-        owner(MemorySources.PROFILE_EDIT, "", Map.of("version", v.id(), "restored", versionId), Sensitivity.NORMAL);
+        BlockVersion v = guard.owner(() -> {
+            // nothing forgotten or withdrawn since comes back with an older version
+            String text = old.content();
+            for (String r : ProfileRemovals.pending(state)) {
+                text = ProfileText.withoutLinesLike(text, r);
+            }
+            List<String> lines = ProfileText.lines(text);
+            List<String> kept = old.keptLines().stream().filter(l -> lines.contains(l.strip())).toList();
+            BlockVersion added = profiles.add(new BlockVersion(0, Block.PROFILE, text, config.tokens().estimate(text),
+                    BlockVersion.Status.ACTIVE, "restored version " + versionId, List.of(), BlockVersion.Author.OWNER, now, now,
+                    kept));
+            owner(MemorySources.PROFILE_EDIT, "", Map.of("version", added.id(), "restored", versionId), Sensitivity.NORMAL);
+            return added;
+        });
         changed("profile");
         return v;
     }

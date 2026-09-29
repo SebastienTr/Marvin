@@ -89,7 +89,10 @@ small, .small { font-size: 12px; }
 .top-status { margin-left: 12px; color: var(--muted); font: 12px var(--mono); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .top-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--strong); }
 .top-status[data-state="live"] .dot { background: var(--live); }
-.top-status[data-state="lost"] .dot, .top-status[data-state="offline"] .dot { background: var(--reminder); }
+.top-status[data-state="lost"] .dot, .top-status[data-state="offline"] .dot {
+  /* a hollow ring, not only another colour: the state does not rest on colour alone */
+  background: transparent; box-shadow: inset 0 0 0 2px var(--reminder); width: 9px; height: 9px;
+}
 .sim-badge { position: relative; font-size: 12px; min-height: 30px; padding: 3px 10px; border-radius: 20px; }
 .sim-badge::after { content: ""; position: absolute; inset: -8px 0; }
 .sim-tip {
@@ -274,7 +277,9 @@ small, .small { font-size: 12px; }
 .insp-btn { border: 0; font-size: 12px; color: var(--muted); padding: 4px 6px; min-height: 32px; text-decoration: underline; text-underline-offset: 4px; position: relative; }
 .insp-btn::after { content: ""; position: absolute; inset: -6px -2px; }
 .chips-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding: 0 4px; }
-.memory-chip { font-size: 12px; padding: 6px 12px; min-height: 36px; border-radius: 18px; }
+.memory-chip { font-size: 12px; padding: 6px 12px; min-height: 36px; border-radius: 18px; position: relative; }
+.memory-chip::after { content: ""; position: absolute; inset: -4px 0; }       /* a 44 px target */
+.request-list { margin: 8px 0 14px; padding-left: 18px; font-size: 14px; line-height: 1.5; }
 .memory-chip.failed { color: var(--attention); border-color: var(--attention-bg); }
 .msg .err { color: var(--attention); font-size: 13px; margin-top: 6px; padding: 0 4px; }
 .aside.note { align-self: center; font-size: 12px; color: var(--muted); text-align: center; max-width: 90%; }
@@ -670,7 +675,8 @@ dialog .actions { justify-content: space-between; }
   .conversation { padding: 0; }
   .day-stats { gap: 25px; }
   .top { padding: 0 24px; }
-  .top-status #conn-text { display: none; }
+  /* the dot alone on screen; the words stay for screen readers (the status region keeps announcing) */
+  .top-status #conn-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .break-vitals { gap: 14px; }
 }
 
@@ -768,7 +774,6 @@ dialog .actions { justify-content: space-between; }
 }
 
 @media (max-width: 360px) {
-  .top-status { display: none; }
   .sim-badge { display: none; }
   .appearance button { min-width: 44px; padding: 7px 7px; }
   .presence { grid-template-columns: 1fr; }

@@ -55,8 +55,14 @@ public interface MemoryModel {
      * @param kept    lines to keep verbatim (the owner's)
      * @param learned statements learned since the last rewrite
      * @param ended   statements no longer true
+     * @param remove  statements the owner forgot or withdrew: no line may state or imply them any more
      */
-    record ProfileRequest(String previous, List<String> kept, List<String> learned, List<String> ended, int maxTokens) {
+    record ProfileRequest(String previous, List<String> kept, List<String> learned, List<String> ended, List<String> remove,
+                          int maxTokens) {
+
+        public ProfileRequest(String previous, List<String> kept, List<String> learned, List<String> ended, int maxTokens) {
+            this(previous, kept, learned, ended, List.of(), maxTokens);
+        }
     }
 
     record Text(String text, Usage usage) {

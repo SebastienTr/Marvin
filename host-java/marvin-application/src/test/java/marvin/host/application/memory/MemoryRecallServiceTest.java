@@ -36,7 +36,7 @@ class MemoryRecallServiceTest {
     final MemoryFixture m = new MemoryFixture(T, new FakeMemoryModel());
     final CachedProfiles profiles = new CachedProfiles(m.store.profiles);
     final MemoryAdminService admin = new MemoryAdminService(m.store.log, m.store.facts, m.store.episodes, profiles,
-            m.embeddings, m.config, m.days, m.clock, UUID::randomUUID);
+            m.embeddings, m.config, m.days, m.clock, UUID::randomUUID, m.guard, m.store.state);
     final AtomicInteger warmUps = new AtomicInteger();
     final MemoryRecallService recall = new MemoryRecallService(m.store.facts, m.store.log, m.store.episodes, profiles,
             m.embeddings, m.days, m.clock, SCORING, warmUps::incrementAndGet);

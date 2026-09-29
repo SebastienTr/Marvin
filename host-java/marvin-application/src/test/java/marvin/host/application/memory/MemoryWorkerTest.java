@@ -38,7 +38,7 @@ class MemoryWorkerTest {
         public double lastActivity() {
             return lastActivity;
         }
-    }, warmUps::incrementAndGet, m.store.state, m.days, m.clock, m.config);
+    }, warmUps::incrementAndGet, m.store.state, m.days, m.clock, m.config, m.guard, m.embeddings);
 
     @AfterEach
     void close() {

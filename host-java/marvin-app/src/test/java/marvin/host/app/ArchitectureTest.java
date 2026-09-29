@@ -84,7 +84,8 @@ class ArchitectureTest {
      * behaviour between two adapters belongs in an application service behind ports. The lifecycle classes
      * listed here predate the rule (start and stop of adapters, a health probe of the UDP link).
      */
-    static final Set<String> BOOT_GLUE_KNOWN = Set.of("DemoRobot", "DeviceNotices", "RobotLinkProbe", "StartupImport");
+    static final Set<String> BOOT_GLUE_KNOWN = Set.of("DemoRobot", "DeviceNotices", "HistoryLifecycle", "RobotLinkProbe",
+            "StartupImport");
 
     @ArchTest
     static final ArchRule bootGlueBuildsAdaptersOnlyInConfigurations = noClasses()
@@ -92,6 +93,20 @@ class ArchitectureTest {
             .and(DescribedPredicate.describe("not a @Configuration (or inside one)", c -> !inConfiguration(c)))
             .and(DescribedPredicate.describe("not known lifecycle glue", c -> !BOOT_GLUE_KNOWN.contains(topLevel(c).getSimpleName())))
             .should().dependOnClassesThat().resideInAPackage("marvin.host.adapter..");
+
+    /**
+     * The boot module's bridges between contexts (the memory feeds, memory for the conversation, the voice activity
+     * for the worker) promise that only ports meet there: outside the {@code @Configuration} classes, the boot module
+     * uses the application layer through its ports only, never a context's services.
+     */
+    @ArchTest
+    static final ArchRule bootBridgesUseApplicationPortsOnly = noClasses()
+            .that().resideInAPackage("marvin.host.app..")
+            .and().resideOutsideOfPackage("marvin.host.app.archfixture..")
+            .and(DescribedPredicate.describe("not a @Configuration (or inside one)", c -> !inConfiguration(c)))
+            .and(DescribedPredicate.describe("not known lifecycle glue", c -> !BOOT_GLUE_KNOWN.contains(topLevel(c).getSimpleName())))
+            .should().dependOnClassesThat(DescribedPredicate.describe("application classes other than ports",
+                    c -> c.getPackageName().startsWith("marvin.host.application.") && !c.getPackageName().contains(".port.")));
 
     private static JavaClass topLevel(JavaClass c) {
         JavaClass t = c;

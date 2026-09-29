@@ -38,6 +38,12 @@ public interface ManageFacts {
      */
     Fact remember(String statement, String subject, Sensitivity sensitivity);
 
+    /**
+     * A fact heard while someone else was in the room: kept as a suggestion (extracted, not reviewed) for the owner
+     * to keep or forget in the app, never as the owner's own word.
+     */
+    Fact suggest(String statement, String subject, Sensitivity sensitivity);
+
     /** A new version written by the owner; the old one is superseded. */
     Fact edit(UUID id, Edit edit);
 

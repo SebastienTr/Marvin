@@ -322,4 +322,78 @@ class MemoryStoresIT {
         assertThat(j.sql("SELECT count(*) FROM pg_indexes WHERE schemaname = 'memory' AND indexname = 'fact_embedding'")
                 .query(Long.class).single()).isZero();
     }
+
+    @Test
+    void aPlanOnAFactChangedMeanwhileWritesNothing() {
+        long e = event(T0, "conversation:1", "J'habite à Lyon");
+        Fact lyon = add("The owner lives in Lyon.", v(1, 0), T0, e);
+        // the owner's correction ends it first
+        FactCandidate owner = new FactCandidate("owner", "The owner lives in Lyon 3e.", FactKind.BIOGRAPHICAL, null, null, 8,
+                Sensitivity.NORMAL, 1.0);
+        Reconciliation.Plan edit = Reconciliation.plan(owner, new Operation.Update(lyon.id(), null), List.of(lyon), List.of(e),
+                T0, T0.plusSeconds(10), UUID::randomUUID, "owner");
+        facts.apply(edit, Map.of());
+        // the worker's plan, decided before, ends the same fact and adds its own version: refused as a whole
+        FactCandidate worker = new FactCandidate("owner", "The owner lives in Lyon near the park.", FactKind.BIOGRAPHICAL, null,
+                null, 7, Sensitivity.NORMAL, 0.9);
+        Reconciliation.Plan stale = Reconciliation.plan(worker, new Operation.Update(lyon.id(), null), List.of(lyon), List.of(e),
+                T0, T0.plusSeconds(20), UUID::randomUUID, "worker");
+        Reconciliation.Plan other = Reconciliation.plan(new FactCandidate("owner", "The owner has a cat.", FactKind.BIOGRAPHICAL,
+                null, null, 5, Sensitivity.NORMAL, 0.9), new Operation.Add(), List.of(), List.of(e), T0, T0.plusSeconds(20),
+                UUID::randomUUID, "worker");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> facts.apply(List.of(other, stale), Map.of()))
+                .isInstanceOf(FactStore.Conflict.class);
+        assertThat(jdbc.sql("SELECT statement FROM memory.fact WHERE expired_at IS NULL").query(String.class).list())
+                .containsExactly("The owner lives in Lyon 3e.");
+        // a new fact whose sources were all forgotten meanwhile is refused too
+        log.delete(List.of(e));
+        Reconciliation.Plan orphan = Reconciliation.plan(worker, new Operation.Add(), List.of(), List.of(e), T0, T0.plusSeconds(30),
+                UUID::randomUUID, "worker");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> facts.apply(orphan, Map.of()))
+                .isInstanceOf(FactStore.Conflict.class);
+    }
+
+    @Test
+    void withoutPgvectorThreeThousandFactsAreSearchedInMilliseconds() throws Exception {
+        try (Connection c = dataSource(postgres.getDatabaseName()).getConnection(); Statement st = c.createStatement()) {
+            st.execute("DROP DATABASE IF EXISTS noext1024");
+            st.execute("CREATE DATABASE noext1024");
+        }
+        PGSimpleDataSource ds = dataSource("noext1024");
+        ContextMigrations m = new ContextMigrations(ds, "live", 1024, "off");
+        m.afterPropertiesSet();
+        JdbcClient j = JdbcClient.create(ds);
+        TransactionTemplate t = new TransactionTemplate(new DataSourceTransactionManager(ds));
+        JdbcFactStore f = new JdbcFactStore(j, t, m, 1024);
+        long e = new JdbcEventLog(j, t, m).appendOne(said(T0, "conversation:1", "x")).orElseThrow().id();
+        java.util.Random rnd = new java.util.Random(7);
+        List<Reconciliation.Plan> plans = new ArrayList<>();
+        Map<UUID, float[]> vs = new java.util.HashMap<>();
+        for (int i = 0; i < 3000; i++) {
+            FactCandidate c = new FactCandidate("owner", "Fact " + i, FactKind.STATE, null, null, 5, Sensitivity.NORMAL, 0.9);
+            Reconciliation.Plan p = Reconciliation.plan(c, new Operation.Add(), List.of(), List.of(e), T0, T0, UUID::randomUUID, "t");
+            float[] x = new float[1024];
+            for (int k = 0; k < x.length; k++) {
+                x[k] = (float) rnd.nextGaussian();
+            }
+            vs.put(p.added().getFirst().id(), x);
+            plans.add(p);
+        }
+        f.apply(plans, vs);
+        JdbcFactStore fresh = new JdbcFactStore(j, t, m, 1024);         // a restarted host: the cache is empty
+        float[] q = vs.values().iterator().next();
+        long c0 = System.nanoTime();
+        assertThat(fresh.nearest(q, 30, FactStore.Filter.current(T0.plusSeconds(1)))).hasSize(30);
+        double cold = (System.nanoTime() - c0) / 1e6;
+        List<Double> warm = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            long w0 = System.nanoTime();
+            assertThat(fresh.nearest(q, 30, FactStore.Filter.current(T0.plusSeconds(1))).getFirst().similarity()).isGreaterThan(0.99);
+            warm.add((System.nanoTime() - w0) / 1e6);
+        }
+        double median = warm.stream().sorted().toList().get(warm.size() / 2);
+        System.out.printf("exact search without pgvector, 3000 facts x 1024: first call after a restart %.1f ms, then median %.1f ms%n",
+                cold, median);
+        assertThat(median).isLessThan(100);
+    }
 }

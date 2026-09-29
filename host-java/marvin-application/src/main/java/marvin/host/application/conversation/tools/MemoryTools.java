@@ -24,7 +24,7 @@ public final class MemoryTools {
     /** The three tools over a memory port. */
     public static List<ToolRegistry.Tool> tools(MemoryContext memory) {
         return List.of(
-                new ToolRegistry.Tool(MemoryToolSpecs.remember(), (args, ctx) -> value(memory.remember(str(args, "statement")))),
+                new ToolRegistry.Tool(MemoryToolSpecs.remember(), (args, ctx) -> value(memory.remember(str(args, "statement"), audience(ctx)))),
                 new ToolRegistry.Tool(MemoryToolSpecs.recall(), (args, ctx) ->
                         value(memory.recall(str(args, "query"), str(args, "period"), audience(ctx)))),
                 new ToolRegistry.Tool(MemoryToolSpecs.forget(), (args, ctx) ->

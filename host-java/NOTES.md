@@ -1468,3 +1468,161 @@ Nothing on the voice path changed: no host code, no new work per question. The w
   to the exact version the owner read (handoff.md).
 - Soul and connectors: Marvin's overview has their "coming later" panels; a connector's memory permission belongs
   beside Memory's per-source switches (`[data-source]`).
+
+## Stage: review fixes
+
+The review of memory v1 and the new app (2 blockers, 12 majors, 13 minors) fixed, with the tests that reproduce each
+finding. Details for a reader of the repo: [docs/memory.md](../docs/memory.md).
+
+### Fixed
+
+**Blockers (privacy).**
+
+1. **Forgetting a range of the log left its day summary in every prompt.** `EpisodeStore.markStale` now blanks the
+   summary (and its embedding) at once; `gist`, `recall`, the Memory screen and Activity never read a stale summary;
+   the next night rewrites it, or deletes it (`EpisodeStore.delete`) when nothing is left of its day, and its week and
+   month are blanked with it. Roll-ups never use blank or stale parts.
+2. **Forgetting a fact left it in summaries, recall, restored profiles and the export.** `forgetFact` now withholds
+   the fact's source events (`event_log.withheld`, migration `memory/V3__withheld.sql`: kept so that other facts keep
+   their links, but out of `between`, `recent`, `byIds`, `page` and `unconsolidated`: never summarised, recalled,
+   listed or exported again), empties an owner event that held the statement, blanks the days, weeks and months of
+   those events, removes the profile lines that state it from the active version (a new version) and from every older
+   one (`ProfileRemovals.redactHistory`), and keeps the statement in `memory.state` (`profile_removals`) until the next
+   profile rewrite, which is told to remove every line stating it even reworded (`ProfileRequest.remove`, a prompt
+   section); the lines that rewrite takes out for it leave the older versions too. The idle pass runs that rewrite when
+   a removal is pending, so it happens within `idle_minutes`, not only at night. `restoreProfile` filters the restored
+   text by the pending removals. The voice drops its conversation history (finding 8). Test:
+   `MemoryPrivacyAndRobustnessTest.aForgottenFactLeaves...` (prompt, summaries, recall, profile history, restore,
+   export) and `forgettingAWholeDay...`.
+
+**Majors.**
+
+3. **Sensitive conversation lines reached guests.** When a batch yields a sensitive fact, its events are relabelled
+   `sensitive` (`EventLog.relabel`, only ever raised) in the same guarded write, and a day already summarised with them
+   is blanked. With someone else in the room, `gist` and `recall` leave out every day that had sensitive lines. Tests
+   with `Audience(othersPresent=true)`.
+4. **A missing embedding model failed the whole nightly pass.** Each step of a pass now runs on its own
+   (`MemoryWorker.step`): a failing step is recorded (error and fix) and the others go on; the report says `partial`.
+   Extraction checks the embedding model first and does not start without it (no model call wasted, the events wait).
+5. **One unreadable summary failed every night.** `summarize` and `rewriteProfile` failures are caught per period:
+   the period is recorded in `memory.state` (`nightly.failed`) and tried again one, two, then three nights later (then
+   given up, logged); the profile keeps its previous version. `num_predict` raised (summary: 3 × words + 200, profile:
+   3 × tokens + 200), the likely cause being truncated JSON.
+6. **Day episodes stalled after a gap of more than 56 days.** The days to do come from the log
+   (`EventLog.days`: distinct local days with events), and a cursor (`nightly.days_through`) moves over days with
+   nothing to summarise. Tests with a four-month gap and with 60 days of sensitive-only events.
+7. and 13. **The worker could undo the owner.** `MemoryGuard`: every owner change (remember, suggest, edit, pin,
+   archive, review, forget, profile edit and restore) runs under it and moves its generation on; the worker writes
+   (the batch's plans, episodes, profile versions) only under it and only when the generation is the one it read
+   before its model calls; otherwise nothing is written and the batch is redone from fresh facts (at most three times
+   a pass). `FactStore.apply` takes all of a batch's plans in one transaction, ends a fact only `WHERE expired_at IS
+   NULL` (ends first, successor pointers after the insert), and refuses a new fact whose sources were all forgotten:
+   `FactStore.Conflict`, nothing written. Two concurrent owner edits of one fact: the second gets "this fact was
+   changed meanwhile". Forgetting everything is a reset: the running pass stops at once (`Run.cancelled`). Tests
+   with a model that forgets or edits the fact from inside `reconcile`, and `MemoryStoresIT.aPlanOnAFactChanged...`.
+8. **The prompt history kept retrieved and forgotten facts.** `VoiceControl.clearHistory` (one cache miss, then the
+   history grows again): called when a guest comes in (`othersPresent` false → true, checked per question) and after
+   anything is forgotten (`MemoryAdminService.addForgetListener`); a turn that began before the clear does not add its
+   messages (the forget tool's own list of matches included). `VoiceMemoryTest`.
+9. **The embedded database's exact scan would drop memory out of the prompt at a few thousand facts.** Without
+   pgvector the filter selects ids only and the vectors come from an in-process cache (read in the background at
+   start, updated on apply, `setEmbedding`, delete, orphans, everything). Measured in `MemoryStoresIT`, 3000 facts ×
+   1024 on PostgreSQL 18 without pgvector: **first call after a restart 1.4 s** (the cache not yet filled; the
+   background read normally does it before the first question), **then a median of 27.5 ms** (was about 280 ms on the
+   server alone plus the parsing).
+14. **Warm-ups raced the live conversation.** `VoiceService.rewarm` only sets a pending flag; the warm-up runs when the
+   voice is idle (no turn, not listening, thinking or speaking), checked on every status and at the end of each turn.
+   A question abandons a warm-up in flight, and an abandoned warm-up does not overwrite `lastPrompt`. The worker does
+   not ask for a warm-up after a pass that yielded. Tests: `aWarmUpAskedForDuringAQuestionWaitsUntilTheVoiceIsIdle`,
+   `aPassThatYieldsToTheVoiceDoesNotWarmItUp`.
+15. **Yielding did not free the GPU before the first token.** Found while testing the fix: Spring AI's reactive client
+   (WebFlux on the JDK connector) does **not** close the connection when its stream is cancelled, so Ollama went on
+   generating even mid-stream. Memory's calls now use the JDK `HttpClient` directly (HTTP/1.1, same request body), and a
+   virtual-thread watcher polls `cancelled` every 100 ms and closes the response, which closes the connection, also
+   before the first chunk; the 5-minute timeout is enforced by the same watcher. Test with the stub silent for 2 s:
+   `Cancelled` in under 300 ms and the stub sees the connection closed (`StubOllama.abandoned`).
+16. **The event log's flush reported done too early** (the `MemoryEndToEndIT` flake). `LogWriter` counts outstanding
+   work (from the offer to the end of the write) instead of the queue's contents, and `close` joins the writer rather
+   than interrupting it mid-write. `HistoryWriter` (presence) had the same pattern and got the same fix. `LogWriterTest`.
+
+**Minors.**
+
+10. Editing a fact's wording or making it sensitive, and archiving it, withdraw its line from the profile (and pass it
+    to the next rewrite as a removal); making it sensitive also relabels its sources.
+11. A reconciliation `UPDATE`'s merged wording goes through `FactCandidate.check` (secret → the candidate's own
+    statement, health and money → sensitive, bounded length).
+12. With a guest in the room, `remember` stores a suggestion (`ManageFacts.suggest`: extracted, unreviewed, confidence
+    0.6, under Suggested), and a forget proposal gives no code: it waits in the app, and a voice confirmation is
+    refused. `MemoryForConversationTest`.
+17. One shared budget for the memory sections, `marvin.memory.volatile-budget` (250 tokens), filled by score across
+    "today so far" and the facts (`ContextAssembler.cutTogether`); the question's trace gets `marvin.memory.tokens`.
+    `docs/test-plan.md` 9.4 and 9.5 are the Mac checks (20 questions with and without memory; a question during a
+    pass). The latency numbers of the read path stage were the Java side only: **the design's criterion (first word
+    within +100 ms of phase 2) is unverified until 9.4 is run on the Mac.**
+18. Traces: the question span carries `marvin.memory.embed_s`, `search_s`, `waited_s`, `timed_out`, `tokens`; each
+    worker pass is a `marvin.memory.pass` span (outcome and counts) with a `marvin.memory.step` span per step; the
+    report's counts include `prompt_tokens` and `model_ms` of extraction and reconciliation.
+19. The one-time backfill became an idempotent catch-up (`RecordMemory.catchUp`): a high-water mark per source
+    (`feed:<name>`), at every start and every ten minutes. Forgetting from the log records the time range or the
+    event's reference (`forgotten_feed`, no content), and a catch-up skips them. A database backfilled by the earlier
+    version starts its mark at the source's end (reading the past again could bring back what was forgotten since).
+20. ArchUnit: `bootBridgesUseApplicationPortsOnly` (outside `@Configuration` classes, the boot module reaches the
+    application layer through ports only; `HistoryLifecycle` joins the known lifecycle glue), and the rule-bites test
+    has a memory fixture (the conversation calling a memory service is caught).
+21. Phone and 320 px: the connection's words are visually hidden but kept for screen readers (the status region still
+    announces), the dot stays at 320 px, and lost/offline is a hollow ring, not only another colour.
+22. The live label says "Live · connected to Marvin's host" when the app is not opened on the host itself.
+23. The browser's `theme-color` follows the chosen appearance (theme.js updates both tags and drops their `media`).
+24. The presence sentence ends each part with a full stop.
+25. The presence live region is written only when its text changes.
+26. The memory chip has a 44 px hit area.
+27. Activity lists the pending forget requests with a link to decide on Home, and Activity's nav count follows them
+    (Home publishes its list as a `decisions` app event).
+
+Also: a stale summary shows "Being written again" in Memory and Activity instead of an empty or old text.
+
+### Not done, and why
+
+- **The voice's own model calls (`OllamaLanguageModel`) have the same cancellation problem as finding 15**: a
+  cancelled answer (barge-in, a dropped turn) does not close the connection, so Ollama may go on generating it. Out of
+  this stage's scope (the voice path, not memory), but it matters for latency: the next stage should move the voice's
+  streaming to the JDK client the same way and check it with `StubOllama.abandoned`.
+- Worker spans are per pass and per step, not per model call (the counts are summed in the report instead).
+- Withholding is per batch: forgetting one fact withholds every line of the conversation it was learned from (a
+  fact's sources are its whole batch), so other facts from that conversation lose those quotes. Narrower provenance
+  (per line) would need the extraction to say which lines a fact comes from.
+- A forgotten statement stays in `memory.state` until the next profile rewrite (the next pass after `idle_minutes`):
+  the only way to catch the reworded lines. Older profile versions are cleaned by exact line; a reworded line in an
+  old version that the rewrite never saw is not caught.
+- Paraphrases in the active profile are removed at the next rewrite, not at the very moment of forgetting (the word
+  match catches the lines that repeat the statement).
+- With a guest, a day that had any sensitive line is left out of "today so far" entirely (conservative); separate
+  guest-safe summaries were not built.
+
+### Verified
+
+- `cd host-java && ./mvnw verify`: 336 tests, 0 failures, 1 skipped (the embedded-database test, as root). New:
+  `MemoryPrivacyAndRobustnessTest` (14), `LogWriterTest` (2), `MemoryForConversationTest` (2), `VoiceMemoryTest` +3,
+  `ContextAssemblerTest` +1, `OllamaMemoryModelTest` +1, `MemoryLogServiceTest` +1, `MemoryStoresIT` +2,
+  `ArchitectureTest` +1 rule, `ArchitectureRulesBiteTest` +1. `VoiceMemoryTest`'s speculative-search test had a race
+  (it asked before the partial's search was recorded) and now waits for it.
+- `cd host && python3 -m pytest -q`: 304 passed, 3 skipped, 1 failed once (`test_parent.py::test_the_child_exits_when_its_host_is_killed`,
+  a timing test of the unchanged Python host); it passed on the rerun (3/3).
+- `python3 host-java/e2e/e2e.py review` against `./marvin demo --voice` with the stub Ollama: 55/55, no console error.
+  Screenshots: `/mnt/user-data/outputs/memory-shots/review-fixes/` and `review-fixes/minors/` (the phone and 320 px top
+  bar, Activity with a waiting request and its count, Night on a light device with the matching `theme-color`, a phone
+  over the LAN address reading "Live · connected to Marvin's host").
+
+### Latency
+
+- The voice path's Java work is unchanged in kind (one more small cut across two sections). The memory sections are now
+  bounded to 250 estimated tokens together (they could reach 450): at most that much more prompt evaluation per
+  question, to be measured on the Mac (test plan 9.4).
+- A question during a memory pass no longer waits for the pass's prompt evaluation (the connection is closed within
+  about 100 ms), nor for a warm-up (deferred until idle).
+
+### Hints for the next stages
+
+- Run test plan 9.4 and 9.5 on the Mac and write the numbers here; tune `marvin.memory.volatile-budget` from them.
+- Move `OllamaLanguageModel`'s streaming to the JDK client (see "Not done").
+- Per-line provenance in extraction would make withholding precise.

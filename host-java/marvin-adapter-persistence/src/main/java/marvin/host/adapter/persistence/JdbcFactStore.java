@@ -27,8 +27,8 @@ import marvin.host.domain.memory.Vectors;
 
 /**
  * Facts in {@code memory.fact} and {@code memory.fact_source}. With pgvector the nearest facts come from the HNSW
- * index (cosine distance); without it (the embedded PostgreSQL) the candidates are scanned and compared in Java,
- * exact and fast enough for the thousands of facts one home gathers.
+ * index (cosine distance); without it (the embedded PostgreSQL) the filter picks the candidate ids and their vectors,
+ * cached in memory after their first read, are compared in Java (exact; about a millisecond for 3000 facts).
  */
 @Component
 public class JdbcFactStore implements FactStore {
@@ -40,45 +40,94 @@ public class JdbcFactStore implements FactStore {
     private final JdbcClient jdbc;
     private final TransactionTemplate tx;
     private final MemoryRows.Vectors vectors;
+    /** Without pgvector: the facts' vectors, read once (an embedding never changes once written). */
+    private final java.util.concurrent.ConcurrentHashMap<UUID, float[]> cache;
 
     public JdbcFactStore(JdbcClient jdbc, TransactionTemplate tx, ContextMigrations migrated,
                          @Value("${marvin.memory.embedding-dimensions:1024}") int dimensions) {
         this.jdbc = jdbc;
         this.tx = tx;
         this.vectors = MemoryRows.Vectors.of(jdbc, "fact", dimensions);
+        this.cache = vectors.pgvector() ? null : new java.util.concurrent.ConcurrentHashMap<>();
+        if (cache != null) {
+            // read the vectors once in the background, so that the first question does not pay for it
+            Thread.ofVirtual().name("memory-vectors").start(() -> {
+                try {
+                    jdbc.sql("SELECT id, embedding FROM memory.fact WHERE embedding IS NOT NULL").query((rs, n) -> {
+                        cache.putIfAbsent(rs.getObject("id", UUID.class), floats(rs.getArray("embedding")));
+                        return 0;
+                    }).list();
+                } catch (RuntimeException e) {
+                    // read on demand instead
+                }
+            });
+        }
+    }
+
+    private static float[] floats(java.sql.Array a) throws SQLException {
+        Object[] xs = (Object[]) a.getArray();
+        float[] v = new float[xs.length];
+        for (int i = 0; i < xs.length; i++) {
+            v[i] = xs[i] == null ? 0f : ((Number) xs[i]).floatValue();
+        }
+        return v;
     }
 
     @Override
-    public void apply(Reconciliation.Plan plan, Map<UUID, float[]> embeddings) {
+    public void apply(List<Reconciliation.Plan> plans, Map<UUID, float[]> embeddings) {
         tx.executeWithoutResult(status -> {
-            for (Fact f : plan.added()) {
-                jdbc.sql("INSERT INTO memory.fact (id, subject, statement, kind, importance, confidence, sensitivity, valid_from, "
-                                + "valid_to, learned_at, expired_at, superseded_by, last_used_at, use_count, archived, pinned, origin, "
-                                + "extracted_by, reviewed_at, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS "
-                                + vectors.type() + "))")
-                        .params(f.id(), f.subject(), f.statement(), f.kind().wire(), f.importance(), (float) f.confidence(),
-                                stored(f.sensitivity()), MemoryRows.at(f.validFrom()), MemoryRows.at(f.validTo()),
-                                MemoryRows.at(f.learnedAt()), MemoryRows.at(f.expiredAt()), f.supersededBy(),
-                                MemoryRows.at(f.lastUsedAt()), f.useCount(), f.archived(), f.pinned(), f.origin().wire(),
-                                f.extractedBy(), MemoryRows.at(f.reviewedAt()), vectors.literal(embeddings.get(f.id())))
-                        .update();
-                link(f.id(), f.sources());
+            for (Reconciliation.Plan plan : plans) {
+                // ends first: a plan's new version must not be written when the fact it replaces changed meanwhile
+                for (Reconciliation.Expiry x : plan.expired()) {
+                    int n = jdbc.sql("UPDATE memory.fact SET expired_at = ?, valid_to = ?, superseded_by = ? "
+                                    + "WHERE id = ? AND expired_at IS NULL")
+                            .params(MemoryRows.at(x.expiredAt()), MemoryRows.at(x.validTo()), null, x.id()).update();
+                    if (n != 1) {
+                        throw new Conflict("fact " + x.id() + " was changed or forgotten meanwhile");
+                    }
+                }
+                for (Fact f : plan.added()) {
+                    jdbc.sql("INSERT INTO memory.fact (id, subject, statement, kind, importance, confidence, sensitivity, valid_from, "
+                                    + "valid_to, learned_at, expired_at, superseded_by, last_used_at, use_count, archived, pinned, origin, "
+                                    + "extracted_by, reviewed_at, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS "
+                                    + vectors.type() + "))")
+                            .params(f.id(), f.subject(), f.statement(), f.kind().wire(), f.importance(), (float) f.confidence(),
+                                    stored(f.sensitivity()), MemoryRows.at(f.validFrom()), MemoryRows.at(f.validTo()),
+                                    MemoryRows.at(f.learnedAt()), MemoryRows.at(f.expiredAt()), f.supersededBy(),
+                                    MemoryRows.at(f.lastUsedAt()), f.useCount(), f.archived(), f.pinned(), f.origin().wire(),
+                                    f.extractedBy(), MemoryRows.at(f.reviewedAt()), vectors.literal(embeddings.get(f.id())))
+                            .update();
+                    if (!f.sources().isEmpty() && link(f.id(), f.sources()) == 0) {
+                        throw new Conflict("the sources of a new fact were forgotten meanwhile");
+                    }
+                }
+                // the successor exists now: point the ended facts to it
+                for (Reconciliation.Expiry x : plan.expired()) {
+                    if (x.supersededBy() != null) {
+                        jdbc.sql("UPDATE memory.fact SET superseded_by = ? WHERE id = ?").params(x.supersededBy(), x.id()).update();
+                    }
+                }
+                plan.moreSources().forEach(this::link);
             }
-            for (Reconciliation.Expiry x : plan.expired()) {
-                jdbc.sql("UPDATE memory.fact SET expired_at = ?, valid_to = ?, superseded_by = ? WHERE id = ?")
-                        .params(MemoryRows.at(x.expiredAt()), MemoryRows.at(x.validTo()), x.supersededBy(), x.id()).update();
-            }
-            plan.moreSources().forEach(this::link);
         });
+        if (cache != null) {
+            plans.forEach(p -> p.added().forEach(f -> {
+                float[] v = embeddings.get(f.id());
+                if (v != null) {
+                    cache.put(f.id(), v);
+                }
+            }));
+        }
     }
 
     /** Links a fact to events that still exist (one may have been forgotten meanwhile). */
-    private void link(UUID fact, List<Long> events) {
-        if (!events.isEmpty()) {
-            jdbc.sql("INSERT INTO memory.fact_source (fact_id, event_id) SELECT ?, e.id FROM memory.event_log e "
-                            + "WHERE e.id = ANY(?) ON CONFLICT DO NOTHING")
-                    .params(fact, events.toArray(Long[]::new)).update();
+    private int link(UUID fact, List<Long> events) {
+        if (events.isEmpty()) {
+            return 0;
         }
+        return jdbc.sql("INSERT INTO memory.fact_source (fact_id, event_id) SELECT ?, e.id FROM memory.event_log e "
+                            + "WHERE e.id = ANY(?) ON CONFLICT DO NOTHING")
+                .params(fact, events.toArray(Long[]::new)).update();
     }
 
     private static String stored(Sensitivity s) {
@@ -138,11 +187,25 @@ public class JdbcFactStore implements FactStore {
                         .params(ps).query((rs, n) -> found.put(rs.getObject("id", UUID.class), rs.getDouble("similarity"))).list();
             });
         } else {
-            List<Map.Entry<UUID, Double>> all = jdbc.sql("SELECT f.id, f.embedding::text AS emb FROM memory.fact f" + w.sql)
-                    .params(w.params)
-                    .query((rs, n) -> Map.entry(rs.getObject("id", UUID.class),
-                            Vectors.cosine(embedding, MemoryRows.Vectors.parse(rs.getString("emb")))))
-                    .list();
+            // the embedded database: the filter picks the ids, their vectors come from the cache (read once)
+            List<UUID> ids = jdbc.sql("SELECT f.id FROM memory.fact f" + w.sql).params(w.params)
+                    .query((rs, n) -> rs.getObject("id", UUID.class)).list();
+            List<UUID> missing = ids.stream().filter(id -> !cache.containsKey(id)).toList();
+            if (!missing.isEmpty()) {
+                jdbc.sql("SELECT id, embedding FROM memory.fact WHERE id = ANY(?) AND embedding IS NOT NULL")
+                        .param(missing.toArray(UUID[]::new))
+                        .query((rs, n) -> {
+                            cache.put(rs.getObject("id", UUID.class), floats(rs.getArray("embedding")));
+                            return 0;
+                        }).list();
+            }
+            List<Map.Entry<UUID, Double>> all = new ArrayList<>(ids.size());
+            for (UUID id : ids) {
+                float[] v = cache.get(id);
+                if (v != null) {
+                    all.add(Map.entry(id, Vectors.cosine(embedding, v)));
+                }
+            }
             all.stream().sorted(Map.Entry.<UUID, Double>comparingByValue().reversed()).limit(k)
                     .forEach(e -> found.put(e.getKey(), e.getValue()));
         }
@@ -288,13 +351,28 @@ public class JdbcFactStore implements FactStore {
         if (ids.isEmpty()) {
             return 0;
         }
+        if (cache != null) {
+            ids.forEach(cache::remove);
+        }
         return jdbc.sql("DELETE FROM memory.fact WHERE id = ANY(?)").param(ids.toArray(UUID[]::new)).update();
     }
 
     @Override
     public int deleteOrphans() {
-        return jdbc.sql("DELETE FROM memory.fact f WHERE NOT EXISTS (SELECT 1 FROM memory.fact_source s WHERE s.fact_id = f.id)")
-                .update();
+        List<UUID> gone = jdbc.sql("DELETE FROM memory.fact f WHERE NOT EXISTS "
+                        + "(SELECT 1 FROM memory.fact_source s WHERE s.fact_id = f.id) RETURNING f.id")
+                .query((rs, n) -> rs.getObject("id", UUID.class)).list();
+        if (cache != null) {
+            gone.forEach(cache::remove);
+        }
+        return gone.size();
+    }
+
+    @Override
+    public List<Fact> orphans() {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.fact f WHERE NOT EXISTS "
+                        + "(SELECT 1 FROM memory.fact_source s WHERE s.fact_id = f.id)")
+                .query(JdbcFactStore::fact).list();
     }
 
     @Override
@@ -307,6 +385,9 @@ public class JdbcFactStore implements FactStore {
     public void setEmbedding(UUID id, float[] embedding) {
         jdbc.sql("UPDATE memory.fact SET embedding = CAST(? AS " + vectors.type() + ") WHERE id = ?")
                 .params(vectors.literal(embedding), id).update();
+        if (cache != null && embedding != null) {
+            cache.put(id, embedding);
+        }
     }
 
     @Override
@@ -321,6 +402,9 @@ public class JdbcFactStore implements FactStore {
 
     @Override
     public void deleteAll() {
+        if (cache != null) {
+            cache.clear();
+        }
         jdbc.sql("DELETE FROM memory.fact").update();
     }
 

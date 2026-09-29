@@ -2,11 +2,14 @@
 package marvin.host.application.memory.port.out;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 import marvin.host.domain.memory.MemoryEvent;
+import marvin.host.domain.memory.Sensitivity;
 
 /** The append-only event log (docs/design.md 5.4, {@code event_log}). Deletions are real: forgetting. */
 public interface EventLog {
@@ -28,12 +31,16 @@ public interface EventLog {
 
     void markConsolidated(Collection<Long> ids, Instant at);
 
-    /** Events with {@code from <= ts < to}, oldest first, at most {@code limit}. */
+    /** Events with {@code from <= ts < to}, oldest first, at most {@code limit}; withheld events are left out. */
     List<MemoryEvent> between(Instant from, Instant to, int limit);
 
+    /** The events with these ids, oldest first; withheld events are left out. */
     List<MemoryEvent> byIds(Collection<Long> ids);
 
-    /** Newest first, only ids below {@code beforeId} (0: from the newest); {@code query} filters bodies (blank: all). */
+    /**
+     * Newest first, only ids below {@code beforeId} (0: from the newest); {@code query} filters bodies (blank: all).
+     * Withheld events are left out.
+     */
     List<MemoryEvent> recent(String query, long beforeId, int limit);
 
     /** The earliest event's time, if any. */
@@ -41,6 +48,21 @@ public interface EventLog {
 
     /** Replaces the body of an event (a secret found in it). */
     void redact(long id, String body);
+
+    /**
+     * Raises the sensitivity of events to at least {@code s} (a sensitive fact was learned from them): they then
+     * leave day summaries and what a guest may hear recalled.
+     */
+    void relabel(Collection<Long> ids, Sensitivity s);
+
+    /**
+     * Withholds events (the source of a forgotten fact): they stay, so that other facts keep their link, but they
+     * are never summarised, recalled, listed or exported again. Returns how many were not withheld yet.
+     */
+    int withhold(Collection<Long> ids);
+
+    /** The distinct local days (in {@code zone}) with events at or after {@code from}, oldest first, at most {@code limit}. */
+    List<LocalDate> days(Instant from, ZoneId zone, int limit);
 
     /** Deletes events; the facts' links to them go too. Returns how many were deleted. */
     int delete(Collection<Long> ids);
@@ -56,7 +78,7 @@ public interface EventLog {
 
     long count();
 
-    /** Everything, oldest first, in pages (export). */
+    /** Everything but the withheld events, oldest first, in pages (export). */
     List<MemoryEvent> page(long afterId, int limit);
 
     /** Deletes the whole log. */

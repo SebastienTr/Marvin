@@ -74,7 +74,7 @@ class MemoryLogServiceTest {
     }
 
     @Test
-    void theBackfillRunsOncePerSourceAndNeverDuplicates() {
+    void theCatchUpReadsAfterItsMarkAndNeverDuplicates() {
         MemoryLogService log = new MemoryLogService(m.store.log, m.store.state, m.settings, m.clock, true);
         log.record(heard(2, "already fed live"));
         List<Long> asked = new ArrayList<>();
@@ -96,11 +96,41 @@ class MemoryLogServiceTest {
                 return new Page(List.of(), afterId, true);
             }
         };
-        assertThat(log.backfill(source)).isEqualTo(2);
+        assertThat(log.catchUp(source)).isEqualTo(2);
         assertThat(asked).containsExactly(0L, 3L, 4L);
         assertThat(m.store.log.rows.values()).extracting(MemoryEvent::body).containsExactly("already fed live", "first", "last");
-        assertThat(log.backfill(source)).isZero();
-        assertThat(asked).hasSize(3);
-        assertThat(m.store.state.get("backfill:conversation")).containsEntry("added", 2).containsEntry("read", 3);
+        // the next catch-up starts after the high-water mark: nothing read twice
+        assertThat(log.catchUp(source)).isZero();
+        assertThat(asked).containsExactly(0L, 3L, 4L, 4L);
+        assertThat(m.store.state.get("feed:conversation")).containsEntry("after", 4L);
+    }
+
+    @Test
+    void whatTheOwnerForgotIsNeverCaughtUpAgain() {
+        MemoryLogService log = new MemoryLogService(m.store.log, m.store.state, m.settings, m.clock, true);
+        log.record(heard(1, "fed live, then forgotten by range"));
+        log.record(heard(2, "fed live, then forgotten alone"));
+        log.record(heard(3, "kept"));
+        java.time.Instant t1 = heard(1, "x").ts();
+        m.admin.forgetEvents(t1, t1.plusMillis(500));
+        long two = m.store.log.rows.values().stream().filter(e -> e.body().contains("alone")).findFirst().orElseThrow().id();
+        m.admin.forgetEvent(two);
+        BackfillSource source = new BackfillSource() {
+            @Override
+            public String name() {
+                return "conversation";
+            }
+
+            @Override
+            public Page next(long afterId, int limit) {
+                return afterId == 0 ? new Page(List.of(heard(1, "fed live, then forgotten by range"),
+                        heard(2, "fed live, then forgotten alone"), heard(3, "kept"), heard(4, "missed by the live feed")), 4, true)
+                        : new Page(List.of(), afterId, true);
+            }
+        };
+        assertThat(log.catchUp(source)).isEqualTo(1);
+        assertThat(m.store.log.rows.values()).extracting(MemoryEvent::body)
+                .contains("kept", "missed by the live feed").doesNotContain("fed live, then forgotten by range",
+                        "fed live, then forgotten alone");
     }
 }

@@ -23,8 +23,14 @@ public interface EpisodeStore {
     /** The most recent episode of a level, if any. */
     Optional<Episode> latest(EpisodeLevel level);
 
-    /** Marks the episodes that overlap {@code [from, to)} for rewriting; returns how many. */
+    /**
+     * Marks the episodes that overlap {@code [from, to)} for rewriting and blanks their summary at once (what they
+     * said may be what was just forgotten); returns how many.
+     */
     int markStale(Instant from, Instant to);
+
+    /** Deletes the summary of a period (a stale day with nothing left to summarise). */
+    void delete(EpisodeLevel level, LocalDate day);
 
     List<Episode> stale();
 
