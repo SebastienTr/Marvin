@@ -81,6 +81,20 @@ public interface EventLog {
 
     long count();
 
+    /**
+     * How many events each source has (withheld ones left out), and how many of them no pass has read yet.
+     *
+     * @param waiting not consolidated yet
+     */
+    record SourceCount(String source, long events, long waiting) {
+    }
+
+    /** The events per source, for the app's picture of how memory is built. */
+    List<SourceCount> sources();
+
+    /** The newest events of one source and kind (withheld ones left out), newest first. */
+    List<MemoryEvent> ofKind(String source, String kind, int limit);
+
     /** Everything but the withheld events, oldest first, in pages (export). */
     List<MemoryEvent> page(long afterId, int limit);
 

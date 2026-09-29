@@ -340,7 +340,39 @@ worker's state (`{"kind": "worker", ...}`), and pending forget proposals (`{"kin
 | `GET /api/memory/log?q=&before=&limit=` | The raw log, newest first |
 | `GET /api/memory/export?format=json\|markdown` | Everything, as a file |
 | `GET /api/memory/settings`, `POST /api/memory/settings` | The settings, the per-source switches (`collect_conversation`, `collect_brain`) among them: a source switched off stops feeding the log at once |
+| `GET /api/memory/graph` | Nodes (the owner, and `person:`, `place:`, `thing:` subjects: facts, pinned, sensitive, past), edges (the facts linking two nodes), the facts by id |
+| `GET /api/memory/map` | Current, not archived facts with `x`, `y` (the embeddings projected on the host), the facts not embedded yet, the share of variance each direction holds |
+| `GET /api/memory/timeline?range=week\|month\|year\|all` | Lanes of fact bars (`start`, `end`, how each began and ended, what follows), the day and week summaries in the range |
+| `GET /api/memory/flow` | Events per source (and waiting), fact counts (current, updated, invalidated, archived, forgotten), profile versions and summaries, the worker and its last passes with their steps |
 | `GET /api/memory/worker`, `POST /api/memory/consolidate` | The worker (state, last passes, next night, models, embedding model), "Consolidate now" |
+
+## Seeing memory
+
+The app's "See your memory" (docs/ui.md) draws four read-only pictures, each from one route above, through one in-port,
+`VisualiseMemory` (`MemoryViewsService`). Nothing there writes, calls a model or computes an embedding.
+
+- **Graph** (`MemoryGraph`, domain): nodes are the owner and the fact subjects (`person:`, `place:`, `thing:`, names
+  compared case-insensitively). A fact about a subject links it to the owner; a fact whose statement names another
+  subject (a whole-word match on a name memory already made a subject, nothing guessed) links those two instead. Each
+  fact once, in its latest wording; past and archived facts are kept, marked. At most 60 nodes (the owner and the
+  busiest); the rest are counted.
+- **Meaning map** (`Projection`, domain): the current, not archived facts' embeddings are read with
+  `FactStore.embeddings` and projected to two dimensions on the host: principal components by power iteration, a fixed
+  start vector and each axis's sign fixed by its largest loading, so the same facts give the same picture. One scale
+  for both axes. The vectors never leave the host; the app gets two numbers per fact. The last projection is cached
+  for its fact set (the ids placed and not placed). Facts without an embedding of the schema's size (the model was
+  missing, or they are being embedded again) are listed apart.
+- **Timeline** (`FactTimeline`, domain): a bar from `valid_from` (else `learned_at`) to `valid_to` (else
+  `expired_at`), open while the fact holds. A lane is a fact and what followed it: its later wordings
+  (`superseded_by`, each from when it was written), or, after the world ended it, the fact written by the same plan
+  (same subject and kind, learned the instant it expired; only when exactly one fits).
+- **Flow**: `EventLog.sources()` (events and unread events per source), fact counts from `FactStore.count`, forgotten
+  facts from the owner's `forget` events (the facts themselves are gone), profile versions and episodes, and the
+  worker's last ten reports (`ConsolidateMemory.recent`, kept in `memory.state`). The app follows the worker live from
+  the `memory` stream messages.
+
+Forgotten facts are deleted, so they appear in none of them; sensitive facts are marked. The routes follow the same
+access rules as the rest of the API.
 
 ## Models and latency
 
@@ -430,4 +462,5 @@ only with a report before and after.
 | Wiring, feeds, voice activity | `marvin-app/.../MemoryWiring`, `MemoryFeeds`, `VoiceActivityTracker` |
 | Read path | `MemoryRecallService`, `ForgetConfirmations`, `CachedProfiles` (application); `RetrievalScoring`, `MemoryText`, `RecallWindow` (domain); the conversation's `MemoryContext` port, `ContextAssembler`, `MemoryTools`, `VoiceService`; `MemoryForConversation` (boot module) |
 | Memory API | `marvin-adapter-web/.../MemoryController` |
+| Seeing memory | `MemoryViewsService` (application); `MemoryGraph`, `Projection`, `FactTimeline` (domain); the app's `memviews.js`; tests `MemoryViewsTest`, `MemoryViewsServiceTest`, `MemoryViewsApiTest` |
 | Tests | domain `*Test`; application `memory/*Test` with in-memory stores (`memory/testing`, shared as a test jar); `MemoryStoresIT` (SQL, with and without pgvector); `OllamaMemoryModelTest`, `MemoryEvaluationTest`; `MemoryEndToEndIT` (the whole host); read path: `ReadPathTest`, `ContextAssemblerTest`, `MemoryRecallServiceTest`, `VoiceMemoryTest` (prompt stability, budgets, latency), `MemoryToolsLoopTest` (the tools through the answer loop and the stub Ollama), `MemoryApiIT` (every route, retrieval with 3000 facts); `MemoryPrivacyAndRobustnessTest` (forgetting end to end, guests, failing steps, the owner during a pass), `MemoryForConversationTest` (guests and the tools), `LogWriterTest` |

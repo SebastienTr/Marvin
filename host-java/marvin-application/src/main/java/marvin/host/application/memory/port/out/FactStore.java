@@ -127,6 +127,12 @@ public interface FactStore {
 
     void setEmbedding(UUID id, float[] embedding);
 
+    /**
+     * The stored embeddings of these facts (a fact without one is left out): the meaning map projects them. Read-only;
+     * never sent to the app as they are.
+     */
+    Map<UUID, float[]> embeddings(Collection<UUID> ids);
+
     /** Drops every fact's embedding (the embedding model changed: vectors of two models do not compare); returns how many. */
     int clearEmbeddings();
 

@@ -73,6 +73,24 @@ class MemoryWorkerTest {
     }
 
     @Test
+    void theLastPassesAreKeptNewestFirstWithTheirSteps() throws Exception {
+        markNightDone(NOW.minusSeconds(3600));
+        assertThat(worker.recent()).isEmpty();
+        m.say(NOW.minusSeconds(3600), "heard", "J'habite à Lyon");
+        worker.consolidateNow(ConsolidateMemory.Pass.IDLE).get(5, TimeUnit.SECONDS);
+        m.clock.advance(60);
+        worker.consolidateNow(ConsolidateMemory.Pass.NIGHTLY).get(5, TimeUnit.SECONDS);
+        List<ConsolidateMemory.Report> recent = worker.recent();
+        assertThat(recent).extracting(ConsolidateMemory.Report::pass)
+                .containsExactly(ConsolidateMemory.Pass.NIGHTLY, ConsolidateMemory.Pass.IDLE);
+        assertThat(recent.getFirst().steps()).extracting(s -> s.get("step")).contains("extract", "days", "decay");
+        for (int i = 0; i < 12; i++) {
+            worker.consolidateNow(ConsolidateMemory.Pass.IDLE).get(5, TimeUnit.SECONDS);
+        }
+        assertThat(worker.recent()).hasSize(MemoryWorker.RECENT);
+    }
+
+    @Test
     void aLargerNightModelDoesNotNeedAWarmUp() throws Exception {
         markNightDone(NOW.minusSeconds(3600));
         m.settings.update(Map.of("memory_model", "qwen3:27b"));

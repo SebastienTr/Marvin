@@ -30,6 +30,14 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <!-- memory's in-memory stores, for the memory API's tests without a database -->
+      <groupId>marvin.host</groupId>
+      <artifactId>marvin-application</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>

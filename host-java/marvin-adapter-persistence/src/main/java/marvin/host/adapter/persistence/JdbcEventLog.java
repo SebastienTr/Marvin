@@ -178,6 +178,20 @@ public class JdbcEventLog implements EventLog {
     }
 
     @Override
+    public List<SourceCount> sources() {
+        return jdbc.sql("SELECT source, count(*) AS events, count(*) FILTER (WHERE consolidated_at IS NULL) AS waiting "
+                        + "FROM memory.event_log WHERE NOT withheld GROUP BY source ORDER BY source")
+                .query((rs, n) -> new SourceCount(rs.getString("source"), rs.getLong("events"), rs.getLong("waiting"))).list();
+    }
+
+    @Override
+    public List<MemoryEvent> ofKind(String source, String kind, int limit) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE source = ? AND kind = ? AND NOT withheld "
+                        + "ORDER BY id DESC LIMIT ?")
+                .params(source, kind, limit).query(JdbcEventLog::event).list();
+    }
+
+    @Override
     public List<MemoryEvent> page(long afterId, int limit) {
         return jdbc.sql("SELECT " + COLUMNS + " FROM memory.event_log WHERE id > ? AND NOT withheld ORDER BY id LIMIT ?")
                 .params(afterId, limit).query(JdbcEventLog::event).list();

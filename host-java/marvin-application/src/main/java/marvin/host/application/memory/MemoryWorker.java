@@ -435,7 +435,35 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
             w.put("last_night_at", at);
         }
         w.put("last", toMap(report));
+        // the last passes, newest first: the app shows the idle and the nightly ones with their steps
+        List<Object> recent = new ArrayList<>();
+        recent.add(toMap(report));
+        if (w.get("recent") instanceof List<?> l) {
+            l.stream().limit(RECENT - 1).forEach(recent::add);
+        }
+        w.put("recent", recent);
         state.put("worker", w);
+    }
+
+    /** How many reports {@link #recent()} keeps. */
+    static final int RECENT = 10;
+
+    @Override
+    public List<Report> recent() {
+        Object o = state.get("worker").get("recent");
+        List<Report> out = new ArrayList<>();
+        if (o instanceof List<?> l) {
+            for (Object m : l) {
+                Report r = parse(m);
+                if (r != null) {
+                    out.add(r);
+                }
+            }
+        }
+        if (out.isEmpty() && last != null) {
+            out.add(last);          // a report saved before the list existed
+        }
+        return out;
     }
 
     static Map<String, Object> toMap(Report r) {
@@ -452,9 +480,12 @@ public final class MemoryWorker implements ConsolidateMemory, AutoCloseable {
         return m;
     }
 
-    @SuppressWarnings("unchecked")
     private Report lastReport() {
-        Object o = state.get("worker").get("last");
+        return parse(state.get("worker").get("last"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Report parse(Object o) {
         if (!(o instanceof Map<?, ?> m)) {
             return null;
         }

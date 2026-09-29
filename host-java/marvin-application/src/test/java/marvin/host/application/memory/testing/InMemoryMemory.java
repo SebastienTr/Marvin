@@ -224,6 +224,27 @@ public final class InMemoryMemory {
         }
 
         @Override
+        public synchronized List<SourceCount> sources() {
+            Map<String, long[]> n = new java.util.TreeMap<>();
+            rows.values().stream().filter(e -> !withheld.contains(e.id())).forEach(e -> {
+                long[] c = n.computeIfAbsent(e.source(), k -> new long[2]);
+                c[0]++;
+                if (e.consolidatedAt() == null) {
+                    c[1]++;
+                }
+            });
+            List<SourceCount> out = new ArrayList<>();
+            n.forEach((k, c) -> out.add(new SourceCount(k, c[0], c[1])));
+            return out;
+        }
+
+        @Override
+        public synchronized List<MemoryEvent> ofKind(String source, String kind, int limit) {
+            return rows.values().stream().filter(e -> e.source().equals(source) && e.kind().equals(kind) && !withheld.contains(e.id()))
+                    .sorted(Comparator.comparingLong(MemoryEvent::id).reversed()).limit(limit).toList();
+        }
+
+        @Override
         public synchronized List<MemoryEvent> page(long afterId, int limit) {
             return rows.values().stream().filter(e -> e.id() > afterId && !withheld.contains(e.id())).limit(limit).toList();
         }
@@ -465,6 +486,17 @@ public final class InMemoryMemory {
         @Override
         public synchronized void setEmbedding(UUID id, float[] embedding) {
             vectors.put(id, embedding);
+        }
+
+        @Override
+        public synchronized Map<UUID, float[]> embeddings(Collection<UUID> ids) {
+            Map<UUID, float[]> out = new LinkedHashMap<>();
+            ids.forEach(id -> {
+                if (vectors.get(id) != null) {
+                    out.put(id, vectors.get(id));
+                }
+            });
+            return out;
         }
 
         @Override

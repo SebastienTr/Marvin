@@ -31,11 +31,14 @@ import marvin.host.application.memory.port.in.ExportMemory;
 import marvin.host.application.memory.port.in.ForgetMemory;
 import marvin.host.application.memory.port.in.ManageFacts;
 import marvin.host.application.memory.port.in.MemoryHealth;
+import marvin.host.application.memory.port.in.VisualiseMemory;
 import marvin.host.application.memory.port.out.FactStore;
 import marvin.host.domain.memory.BlockVersion;
 import marvin.host.domain.memory.Episode;
 import marvin.host.domain.memory.EpisodeLevel;
 import marvin.host.domain.memory.Fact;
+import marvin.host.domain.memory.FactTimeline;
+import marvin.host.domain.memory.MemoryGraph;
 import marvin.host.domain.memory.MemoryEvent;
 import marvin.host.domain.memory.MemorySettings;
 import marvin.host.domain.memory.MemorySources;
@@ -49,7 +52,8 @@ import marvin.host.domain.shared.LocalDays;
  * The memory API for the app (docs/design.md 5.6; docs/memory.md lists every route): facts (list, filter, detail
  * with sources, remember, edit, pin, archive, review, forget with a confirmation), forgetting everything (a code and a
  * typed phrase), the profile (current, versions with diffs, edit, restore), episodes, the raw log, export, the
- * worker, the memory settings (the per-source switches among them). Behind the same access rules as the rest of the
+ * worker, the memory settings (the per-source switches among them), and four read-only pictures of it (graph,
+ * meaning map, timeline, flow). Behind the same access rules as the rest of the
  * API: every {@code POST} path is listed in {@link AccessFilter#POST_PATHS} (JSON only, same origin). Times are Unix
  * seconds, as elsewhere in the API.
  */
@@ -64,12 +68,13 @@ public class MemoryController {
     private final ConfirmForgetting forgetting;
     private final ExportMemory export;
     private final ConfigureMemory settings;
+    private final VisualiseMemory views;
     private final Clocks clocks;
     private final ZoneId zone;
 
     public MemoryController(ConsolidateMemory worker, MemoryHealth health, ManageFacts facts, BrowseMemory browse,
-                            ConfirmForgetting forgetting, ExportMemory export, ConfigureMemory settings, Clocks clocks,
-                            LocalDays days) {
+                            ConfirmForgetting forgetting, ExportMemory export, ConfigureMemory settings,
+                            VisualiseMemory views, Clocks clocks, LocalDays days) {
         this.worker = worker;
         this.health = health;
         this.facts = facts;
@@ -77,6 +82,7 @@ public class MemoryController {
         this.forgetting = forgetting;
         this.export = export;
         this.settings = settings;
+        this.views = views;
         this.clocks = clocks;
         this.zone = days.zone();
     }
@@ -522,6 +528,170 @@ public class MemoryController {
         m.put("error", r.error());
         m.put("fix", r.fix());
         return m;
+    }
+
+    // ------------------------------------------------------------------ seeing memory
+
+    /**
+     * The graph: the owner, the people, places and things facts are about as nodes, the facts as edges (their ids;
+     * the facts themselves in {@code facts}, by id).
+     */
+    @GetMapping("/api/memory/graph")
+    public ResponseEntity<byte[]> graph() {
+        VisualiseMemory.GraphView v = views.graph();
+        MemoryGraph.Graph g = v.graph();
+        java.util.Set<String> kept = new java.util.HashSet<>();
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        for (MemoryGraph.Node n : g.nodes()) {
+            kept.add(n.id());
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", n.id());
+            m.put("name", n.name());
+            m.put("type", n.type().wire());
+            m.put("facts", n.facts());
+            m.put("current", n.current());
+            m.put("pinned", n.pinned());
+            m.put("sensitive", n.sensitive());
+            m.put("past", n.past());
+            nodes.add(m);
+        }
+        java.util.Set<UUID> used = new java.util.HashSet<>();
+        List<Map<String, Object>> edges = new ArrayList<>();
+        for (MemoryGraph.Edge e : g.edges()) {
+            used.addAll(e.facts());
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("from", e.from());
+            m.put("to", e.to());
+            m.put("facts", e.facts().stream().map(UUID::toString).toList());
+            m.put("mention", e.mention());
+            m.put("current", e.current());
+            edges.add(m);
+        }
+        Map<String, Object> byId = new LinkedHashMap<>();
+        for (Fact f : v.facts()) {
+            if (used.contains(f.id()) || kept.contains(MemoryGraph.nodeId(f.subject()))) {
+                Map<String, Object> m = fact(f);
+                m.put("node", MemoryGraph.nodeId(f.subject()));
+                byId.put(f.id().toString(), m);
+            }
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("nodes", nodes);
+        m.put("edges", edges);
+        m.put("facts", byId);
+        m.put("total_facts", g.facts());
+        m.put("hidden_nodes", g.hiddenNodes());
+        return Responses.json(m);
+    }
+
+    /**
+     * The meaning map: each current, not archived fact placed by its embedding, projected to two dimensions on the
+     * host (principal components); the facts without an embedding apart.
+     */
+    @GetMapping("/api/memory/map")
+    public ResponseEntity<byte[]> map() {
+        VisualiseMemory.MapView v = views.map();
+        List<Map<String, Object>> points = new ArrayList<>();
+        for (VisualiseMemory.Point p : v.points()) {
+            Map<String, Object> m = fact(p.fact());
+            m.put("x", Math.round(p.x() * 1e5) / 1e5);
+            m.put("y", Math.round(p.y() * 1e5) / 1e5);
+            points.add(m);
+        }
+        MemoryHealth.Report h = health.health();
+        Map<String, Object> e = new LinkedHashMap<>();
+        e.put("model", h.embedModel());
+        e.put("state", h.embedder());
+        e.put("fix", h.fix());
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("points", points);
+        m.put("unplaced", v.unplaced().stream().map(this::fact).toList());
+        m.put("explained", List.of(Math.round(v.explained()[0] * 1000) / 1000.0, Math.round(v.explained()[1] * 1000) / 1000.0));
+        m.put("version", v.version());
+        m.put("embeddings", e);
+        return Responses.json(m);
+    }
+
+    /** {@code ?range=week|month|year|all}: facts as bars in time, in lanes of facts that follow one another; days and weeks. */
+    @GetMapping("/api/memory/timeline")
+    public ResponseEntity<byte[]> timeline(HttpServletRequest rq) {
+        VisualiseMemory.Range range;
+        try {
+            range = VisualiseMemory.Range.parse(param(rq, "range", "month"));
+        } catch (IllegalArgumentException e) {
+            throw new ApiController.BadRequest(e.getMessage());
+        }
+        VisualiseMemory.TimelineView v = views.timeline(range);
+        List<Map<String, Object>> lanes = new ArrayList<>();
+        for (FactTimeline.Lane l : v.lanes()) {
+            List<Map<String, Object>> bars = new ArrayList<>();
+            for (FactTimeline.Bar b : l.bars()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("fact", fact(b.fact()));
+                m.put("start", seconds(b.start()));
+                m.put("end", seconds(b.end()));
+                m.put("start_kind", b.startKind());
+                m.put("end_kind", b.endKind());
+                m.put("next", b.next() == null ? null : b.next().toString());
+                m.put("next_kind", b.nextKind());
+                bars.add(m);
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("subject", l.subject());
+            m.put("bars", bars);
+            lanes.add(m);
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("range", range.name().toLowerCase(Locale.ROOT));
+        m.put("from", seconds(v.from()));
+        m.put("to", seconds(v.to()));
+        m.put("lanes", lanes);
+        m.put("episodes", v.episodes().stream().map(this::episode).toList());
+        m.put("truncated", v.truncated());
+        return Responses.json(m);
+    }
+
+    /** How memory is built: the log per source, what waits to be read, what became facts, the profile; the worker. */
+    @GetMapping("/api/memory/flow")
+    public ResponseEntity<byte[]> flow() {
+        VisualiseMemory.FlowView v = views.flow();
+        List<Map<String, Object>> sources = new ArrayList<>();
+        long waiting = 0;
+        for (VisualiseMemory.Source s : v.sources()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("source", s.source());
+            m.put("events", s.events());
+            m.put("waiting", s.waiting());
+            waiting += s.waiting();
+            sources.add(m);
+        }
+        VisualiseMemory.FactCounts c = v.facts();
+        Map<String, Object> f = new LinkedHashMap<>();
+        f.put("stored", c.stored());
+        f.put("current", c.current());
+        f.put("archived", c.archived());
+        f.put("pinned", c.pinned());
+        f.put("suggested", c.suggested());
+        f.put("sensitive", c.sensitive());
+        f.put("updated", c.updated());
+        f.put("invalidated", c.invalidated());
+        f.put("forgotten", c.forgotten());
+        VisualiseMemory.Written w = v.written();
+        Map<String, Object> written = new LinkedHashMap<>();
+        written.put("profile_versions", w.profileVersions());
+        written.put("active_profile", w.activeProfile());
+        written.put("active_profile_at", seconds(w.activeProfileAt()));
+        written.put("days", w.days());
+        written.put("weeks", w.weeks());
+        written.put("months", w.months());
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("sources", sources);
+        m.put("waiting", waiting);
+        m.put("facts", f);
+        m.put("written", written);
+        m.put("worker", workerPayload());
+        m.put("recent", v.recent().stream().map(MemoryController::report).toList());
+        return Responses.json(m);
     }
 
     // ------------------------------------------------------------------ views

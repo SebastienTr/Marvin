@@ -391,6 +391,38 @@ public class JdbcFactStore implements FactStore {
     }
 
     @Override
+    public Map<UUID, float[]> embeddings(Collection<UUID> ids) {
+        Map<UUID, float[]> out = new java.util.LinkedHashMap<>();
+        if (ids.isEmpty()) {
+            return out;
+        }
+        List<UUID> missing = new ArrayList<>();
+        for (UUID id : ids) {
+            float[] v = cache == null ? null : cache.get(id);
+            if (v != null) {
+                out.put(id, v);
+            } else {
+                missing.add(id);
+            }
+        }
+        if (!missing.isEmpty()) {
+            // pgvector casts vector to real[]; without it the column already is real[]
+            jdbc.sql("SELECT id, CAST(embedding AS real[]) AS e FROM memory.fact WHERE id = ANY(?) AND embedding IS NOT NULL")
+                    .param(missing.toArray(UUID[]::new))
+                    .query((rs, n) -> {
+                        UUID id = rs.getObject("id", UUID.class);
+                        float[] v = floats(rs.getArray("e"));
+                        out.put(id, v);
+                        if (cache != null) {
+                            cache.put(id, v);
+                        }
+                        return 0;
+                    }).list();
+        }
+        return out;
+    }
+
+    @Override
     public int clearEmbeddings() {
         int n = jdbc.sql("UPDATE memory.fact SET embedding = NULL WHERE embedding IS NOT NULL").update();
         if (cache != null) {

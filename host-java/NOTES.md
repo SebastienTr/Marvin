@@ -1752,3 +1752,53 @@ The owner chooses the embedding model in Marvin > Memory's models: `qwen3-embedd
 searches find facts by their words meanwhile) and embeds them again in the background with the new model, pausing
 while the voice is busy; the nightly pass finishes what is left (`MemoryWorker.reembed`). Episode embeddings are not
 searched, so they are left as they are.
+
+## See your memory: graph, meaning map, timeline, flow
+
+Four read-only pictures of memory on the Memory screen, on real data only (docs/memory.md "Seeing memory", docs/ui.md).
+
+### What exists
+
+- **Host**: in-port `VisualiseMemory` and `MemoryViewsService` (application, plain Java, the `Clock` port); domain
+  `MemoryGraph` (nodes from fact subjects and the subject names statements mention), `Projection` (PCA to two
+  components by power iteration, deterministic signs), `FactTimeline` (bars and lanes: wordings and "then" successors).
+  Out-ports gained `FactStore.embeddings(ids)` (pgvector casts to `real[]`; the embedded database's cache is reused),
+  `EventLog.sources()` and `EventLog.ofKind(...)`; `ConsolidateMemory.recent()` (the worker keeps its last ten reports in
+  `memory.state`). Routes `GET /api/memory/graph`, `map`, `timeline?range=`, `flow` in `MemoryController`.
+- **App**: `memviews.js` (plain SVG, no library): graph with a seeded force layout (320 iterations, computed once, not
+  animated), zoom buttons and drag, a side sheet reusing "Source & edit"; meaning map with direct labels placed without
+  collisions; timeline with captions above thin bars and the day/week lane; flow (a Sankey-like diagram where units
+  match, arrows where one thing becomes another; stages stacked on a phone), the worker live from the `memory` stream,
+  the last idle and nightly passes with step durations. One tab stop per picture, arrow keys inside, a text list for
+  each. Six categorical tokens `--viz-1..6` per theme (checked for colour-blind separation on each surface; in Day three
+  are under 3:1 on the surface, so shapes, labels and lists carry the kinds too).
+
+### Decisions and deviations
+
+1. **The owner's app shows sensitive facts, marked**, like the rest of the memory API: the web API has no guest mode
+   (guests are a voice-path rule); forgotten facts are deleted and so absent everywhere.
+2. **Graph edges come from subjects and from names memory already made subjects**, not from a named-entity guess: an
+   owner fact naming no subject counts on the owner's node only.
+3. **"Then" links are structural** (same subject and kind, learned the instant the old fact expired, exactly one
+   candidate): an invalidation and its new fact are written by one plan with one `now`.
+4. **Forgotten counts** come from the owner's `forget` events (`data.facts`); "forget everything" resets them with the log.
+5. **The map uses one scale for both axes** and names no axis; the share of variance is said instead.
+
+### Verified
+
+- `JAVA_HOME=/opt/jdk25 ./mvnw -o -q test`: 326 tests, 0 failures (19 new: `MemoryViewsTest` 9, `MemoryViewsServiceTest`
+  4, `MemoryWorkerTest` +1, `MemoryViewsApiTest` 5 on in-memory stores behind the real `AccessFilter`); ArchUnit and
+  `AppFilesTest` green. Docker is not available here: the Testcontainers ITs were not run (`embeddings` on pgvector
+  untested; its SQL is a cast).
+- The host run as a non-root user on the embedded PostgreSQL with `e2e/stub_ollama.py` and the scripted week
+  (`week_fixture.py`), a nightly pass, owner facts with subjects, a pin, an edit, a sensitive fact and one fact written
+  while the embedding model was down. Screenshots of the four pictures, Day and Night, 1440 and 390 (and 320) wide, with
+  keyboard focus, the side sheet and the "Source & edit" dialog: `/mnt/user-data/outputs/memory-views/`. No console
+  error, no sideways scroll. A nightly pass started from the API updated the flow live (each step shown) and placed the
+  waiting fact on the map.
+
+### Known gaps
+
+- No e2e check in `e2e/e2e.py` for the new tab yet; the graph is capped at 60 nodes and the map at 2000 facts
+  (a list of every fact is under each picture). The timeline's range is fixed to now (no scrolling back in time
+  beyond "All"). Wheel/pinch zoom is not built (buttons and drag only).

@@ -307,6 +307,76 @@
             </section>
           </aside>
         </div>
+
+        <section class="panel mv" id="memory-views" aria-labelledby="mv-h">
+          <div class="panel-head wrap">
+            <div><h3 id="mv-h">See your memory</h3><p class="small muted mv-sub" id="mv-intro"></p></div>
+            <span class="small muted" id="mv-status" role="status"></span>
+          </div>
+          <div class="mv-tabs" role="tablist" aria-label="Ways to see your memory">
+            <button type="button" role="tab" id="mv-tab-graph" data-mv-tab="graph" aria-controls="mv-graph" aria-selected="true">Graph</button>
+            <button type="button" role="tab" id="mv-tab-map" data-mv-tab="map" aria-controls="mv-map" aria-selected="false" tabindex="-1">Meaning map</button>
+            <button type="button" role="tab" id="mv-tab-timeline" data-mv-tab="timeline" aria-controls="mv-timeline" aria-selected="false" tabindex="-1">Timeline</button>
+            <button type="button" role="tab" id="mv-tab-flow" data-mv-tab="flow" aria-controls="mv-flow" aria-selected="false" tabindex="-1">Flow</button>
+          </div>
+
+          <div class="mv-pane" role="tabpanel" id="mv-graph" aria-labelledby="mv-tab-graph" tabindex="-1">
+            <div class="mv-tools">
+              <p class="small muted mv-help">Tab into the picture, then the arrow keys move between nodes; Enter opens one.</p>
+              <div class="mv-zoom" role="group" aria-label="Zoom">
+                <button type="button" class="small-button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" class="small-button" data-zoom="out" aria-label="Zoom out">−</button>
+                <button type="button" class="small-button" data-zoom="reset">Fit</button>
+              </div>
+            </div>
+            <div class="mv-graph-layout">
+              <div class="mv-figure" id="mv-graph-figure"></div>
+              <aside class="mv-sheet" id="mv-sheet" aria-labelledby="mv-sheet-title" hidden>
+                <div class="row"><h4 id="mv-sheet-title" tabindex="-1"></h4><button type="button" class="small-button" id="mv-sheet-close">Close</button></div>
+                <p class="small muted" id="mv-sheet-meta"></p>
+                <ol class="mv-sheet-facts" id="mv-sheet-facts"></ol>
+              </aside>
+            </div>
+            <p class="mv-legend small muted" id="mv-graph-legend"></p>
+            <details class="mv-list"><summary>Read it as a list</summary><div id="mv-graph-list"></div></details>
+          </div>
+
+          <div class="mv-pane" role="tabpanel" id="mv-map" aria-labelledby="mv-tab-map" tabindex="-1" hidden>
+            <div class="mv-tools">
+              <div class="chips" role="radiogroup" aria-label="Colour by">
+                <label><input type="radio" name="mv-colour" value="kind" checked><span>By kind</span></label>
+                <label><input type="radio" name="mv-colour" value="subject"><span>By subject</span></label>
+              </div>
+              <p class="small muted mv-help">Close together: close in meaning. Arrow keys move between facts; Enter opens one.</p>
+            </div>
+            <div class="mv-figure" id="mv-map-figure"></div>
+            <p class="mv-legend small muted" id="mv-map-legend"></p>
+            <div class="mv-unplaced" id="mv-unplaced" hidden></div>
+            <details class="mv-list"><summary>Read it as a list</summary><div id="mv-map-list"></div></details>
+          </div>
+
+          <div class="mv-pane" role="tabpanel" id="mv-timeline" aria-labelledby="mv-tab-timeline" tabindex="-1" hidden>
+            <div class="mv-tools">
+              <div class="chips" role="radiogroup" aria-label="Time range">
+                <label><input type="radio" name="mv-range" value="week"><span>Week</span></label>
+                <label><input type="radio" name="mv-range" value="month" checked><span>Month</span></label>
+                <label><input type="radio" name="mv-range" value="year"><span>Year</span></label>
+                <label><input type="radio" name="mv-range" value="all"><span>All</span></label>
+              </div>
+              <p class="small muted mv-help">Up and down move between lanes, left and right along one; Enter opens a fact.</p>
+            </div>
+            <div class="mv-figure mv-scroll" id="mv-timeline-figure"></div>
+            <p class="mv-legend small muted" id="mv-timeline-legend"></p>
+            <details class="mv-list"><summary>Read it as a list</summary><div id="mv-timeline-list"></div></details>
+          </div>
+
+          <div class="mv-pane" role="tabpanel" id="mv-flow" aria-labelledby="mv-tab-flow" tabindex="-1" hidden>
+            <div class="mv-now" id="mv-now" role="status"></div>
+            <div class="mv-figure" id="mv-flow-figure"></div>
+            <div class="mv-passes" id="mv-passes"></div>
+            <details class="mv-list"><summary>Read it as a list</summary><div id="mv-flow-list"></div></details>
+          </div>
+        </section>
       </section>
 
       <!-- ============================================================ activity -->

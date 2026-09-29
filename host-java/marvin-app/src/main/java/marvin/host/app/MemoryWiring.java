@@ -36,6 +36,7 @@ import marvin.host.application.memory.MemoryGuard;
 import marvin.host.application.memory.MemoryLogService;
 import marvin.host.application.memory.MemoryRecallService;
 import marvin.host.application.memory.MemorySettingsService;
+import marvin.host.application.memory.MemoryViewsService;
 import marvin.host.application.memory.MemoryWorker;
 import marvin.host.application.memory.NightlyPass;
 import marvin.host.application.memory.port.in.MemoryHealth;
@@ -141,6 +142,13 @@ public class MemoryWiring {
                 clocks, config, guard, embeddings);
         tracer.ifAvailable(t -> worker.setTracing(new MicrometerTracing(t)));
         return worker;
+    }
+
+    /** The app's pictures of memory (graph, meaning map, timeline, flow), read-only. */
+    @Bean
+    public MemoryViewsService memoryViews(JdbcFactStore facts, JdbcEventLog events, JdbcEpisodeStore episodes,
+                                          CachedProfiles profiles, MemoryWorker worker, LocalDays days, Clocks clocks) {
+        return new MemoryViewsService(facts, events, episodes, profiles, worker, days, clocks);
     }
 
     /** The read path: the profile, the question's memory sections, the recall tool; a profile edit warms the voice up. */

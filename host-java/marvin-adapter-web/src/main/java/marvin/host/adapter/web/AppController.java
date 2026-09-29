@@ -30,8 +30,8 @@ public class AppController {
             Map.entry("manifest.webmanifest", "application/manifest+json"),
             script("theme.js"), script("app.js"), script("core.js"), script("face.js"), script("daycard.js"),
             script("memdata.js"), script("inspector.js"), script("convo.js"), script("home.js"), script("talk.js"),
-            script("memory.js"), script("memtools.js"), script("worker.js"), script("activity.js"), script("marvin.js"),
-            script("system.js"));
+            script("memory.js"), script("memviews.js"), script("memtools.js"), script("worker.js"), script("activity.js"),
+            script("marvin.js"), script("system.js"));
 
     private static Map.Entry<String, String> script(String name) {
         return Map.entry(name, "text/javascript; charset=utf-8");

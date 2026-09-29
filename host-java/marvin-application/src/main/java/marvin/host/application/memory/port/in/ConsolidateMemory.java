@@ -40,4 +40,10 @@ public interface ConsolidateMemory {
     CompletableFuture<Report> consolidateNow(Pass pass);
 
     Status status();
+
+    /** The last passes' reports, newest first (at most ten; the idle and the nightly ones among them). */
+    default List<Report> recent() {
+        Report last = status().last();
+        return last == null ? List.of() : List.of(last);
+    }
 }

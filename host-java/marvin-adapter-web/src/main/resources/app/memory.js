@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Memory: the facts Marvin keeps (all, pinned, suggested, past; search; each with its source and date, "Source &
 // edit", pin, keep), the profile it writes every night, the days and weeks in its words, its worker, and the
-// owner's controls: the sources it may learn from, its settings, the raw log, export and "forget everything".
+// owner's controls: the sources it may learn from, its settings, the raw log, export and "forget everything"; and
+// "See your memory" (memviews.js): a graph, a meaning map, a timeline and the flow.
 
 import { $, app, el, api, post, on, whenLabel, dayLabel, plural, parseIso, toast } from "./core.js";
 import { sourceLine, statusPill, sensitivityPill, openFact, openRemember, setFlag } from "./memdata.js";
 import { openProfile, openExport, openForgetEverything, openLog, openSettings, profileLines } from "./memtools.js";
 import * as worker from "./worker.js";
+import * as views from "./memviews.js";
 
 const PAGE = 50;
 let filter = "all";
@@ -282,6 +284,7 @@ function renderNotice(w) {
 
 export function setup() {
   worker.setup();
+  views.setup();
   for (const b of document.querySelectorAll("[data-memory-filter]")) {
     b.addEventListener("click", () => {
       filter = b.dataset.memoryFilter;
@@ -327,5 +330,5 @@ export function setup() {
 }
 
 export async function load() {
-  await Promise.all([loadFacts(), loadProfile(), worker.load().then(() => loadEpisodes()), loadSources()]);
+  await Promise.all([loadFacts(), loadProfile(), worker.load().then(() => loadEpisodes()), loadSources(), views.load()]);
 }
