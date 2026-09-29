@@ -47,7 +47,7 @@ No configuration is needed on either side: the host does not need to know the ro
 
 `VITALS` is sent by the simulators and by the real MR60BHA2 kit: the [MR60BHA2 bridge](../firmware/mr60_bridge/README.md) firmware runs on the kit's own ESP32-C6, reads the radar and sends its readings in this format (board id 4), so the host sees one stream.
 
-Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 Sense, 4 = MR60BHA2 kit (XIAO ESP32C6, vitals bridge), 255 = host-side simulator. Lidar models: 1 = D500 (STL-19P), 2 = D800 (STL-27L).
+Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 Sense, 4 = MR60BHA2 kit (XIAO ESP32C6, vitals bridge), 5 = ESP32 DevKit (ESP32-WROOM-32), 255 = host-side simulator. Lidar models: 1 = D500 (STL-19P), 2 = D800 (STL-27L).
 
 `HELLO` flags:
 

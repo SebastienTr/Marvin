@@ -45,7 +45,7 @@ SOUND = 0x86        # host -> device: play a built-in sound, u8 id (see SOUNDS)
 
 # HELLO board ids
 BOARDS = {1: "Wemos D1 mini (ESP8266)", 2: "ESP32-S3 DevKitC", 3: "XIAO ESP32S3 Sense", 4: "MR60BHA2 kit (XIAO ESP32C6)",
-          255: "simulator"}
+          5: "ESP32 DevKit (ESP32-WROOM-32)", 255: "simulator"}
 # LIDAR model ids
 LIDAR_MODELS = {1: "D500 (STL-19P)", 2: "D800 (STL-27L)"}
 # HELLO flags: bit 0 simulated sensor data; bits 1 and 2 are capabilities (older robots send 0)

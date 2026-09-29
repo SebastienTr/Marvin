@@ -10,9 +10,16 @@
 namespace real {
 namespace {
 
+#if CONFIG_IDF_TARGET_ESP32
+// Classic ESP32 DevKit (not wired or tested yet): UART0 is the USB bridge's, so the lidar reads on UART2.
+constexpr int LIDAR_RX = 16;          // GPIO16, UART2 RX
+constexpr int LD2450_RX = 26;         // GPIO26, UART1 RX  <- LD2450 TX
+constexpr int LD2450_TX = 27;         // GPIO27, UART1 TX  -> LD2450 RX
+#else
 constexpr int LIDAR_RX = 44;          // XIAO D7, UART0 RX
 constexpr int LD2450_RX = 5;          // XIAO D4, UART1 RX  <- LD2450 TX
 constexpr int LD2450_TX = 6;          // XIAO D5, UART1 TX  -> LD2450 RX
+#endif
 constexpr uint32_t LD2450_BAUD = 256000;
 constexpr size_t LIDAR_RX_BUFFER = 4096;    // ~44 ms at 921 600 baud
 constexpr size_t LD2450_RX_BUFFER = 1024;
@@ -22,7 +29,11 @@ constexpr int INIT_ATTEMPTS = 3;
 // With USB CDC on boot, `Serial` is the USB port and UART0 is free for the lidar as Serial0.
 // Only its RX pin is used; TX keeps its boot-time pin (GPIO43), which the I2S amplifier takes
 // over when audio is initialised.
+#if CONFIG_IDF_TARGET_ESP32
+HardwareSerial &lidar_uart = Serial2;
+#else
 HardwareSerial &lidar_uart = Serial0;
+#endif
 HardwareSerial &radar_uart = Serial1;
 
 framing::LidarFramer lidar;

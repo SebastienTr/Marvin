@@ -11,6 +11,8 @@ public final class Board {
     public static final int XIAO_ESP32S3_SENSE = 3;
     /** The MR60BHA2 kit's own ESP32-C6, bridging the vital-signs radar: a device of its own. */
     public static final int MR60BHA2_KIT = 4;
+    /** A classic ESP32 DevKit (ESP32-WROOM-32): no screen, no audio; simulated sensors on the bench. */
+    public static final int ESP32_DEVKIT = 5;
     public static final int SIMULATOR = 255;
 
     /** Boards with the face screen: the host sends them {@code FACE_STATE} and {@code FACE_EVENT}. */
@@ -21,6 +23,7 @@ public final class Board {
             ESP32_S3_DEVKITC, "ESP32-S3 DevKitC",
             XIAO_ESP32S3_SENSE, "XIAO ESP32S3 Sense",
             MR60BHA2_KIT, "MR60BHA2 kit (XIAO ESP32C6)",
+            ESP32_DEVKIT, "ESP32 DevKit (ESP32-WROOM-32)",
             SIMULATOR, "simulator");
 
     private static final Map<Integer, String> LIDAR_MODELS = Map.of(1, "D500 (STL-19P)", 2, "D800 (STL-27L)");
