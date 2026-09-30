@@ -311,6 +311,22 @@
               "seated_s": 0.0,
               "progress": 0.0,
               "due": false
+            },
+            "room": {
+              "fresh": true,
+              "age_s": 0.0,
+              "device": "marvin-a1b2c3",
+              "simulated": true,
+              "temperature_c": 21.5,
+              "humidity": 45.0,
+              "light": 0.62,
+              "light_word": "bright",
+              "motion_sensor": false,
+              "climate_sensor": true,
+              "light_sensor": true,
+              "warming_up": false,
+              "motion": false,
+              "motion_age_s": null
             }
           },
           "shapes": [
@@ -337,6 +353,48 @@
                 "seated_s": "number",
                 "progress": "number",
                 "due": "boolean"
+              },
+              "room": "null"
+            },
+            {
+              "t": "number",
+              "online": "boolean",
+              "present": "boolean",
+              "seated": "boolean",
+              "seated_s": "number",
+              "still_s": "number",
+              "distance_m": "null",
+              "breath_rate": "null",
+              "heart_rate": "null",
+              "targets": "number",
+              "vitals_sensor": "boolean",
+              "simulated": "boolean",
+              "expression": "null",
+              "status": "string",
+              "detail": "string",
+              "mood": "string",
+              "quiet": "boolean",
+              "break": {
+                "interval_s": "number",
+                "seated_s": "number",
+                "progress": "number",
+                "due": "boolean"
+              },
+              "room": {
+                "age_s": "number",
+                "climate_sensor": "boolean",
+                "device": "string",
+                "fresh": "boolean",
+                "humidity": "number",
+                "light": "number",
+                "light_sensor": "boolean",
+                "light_word": "string",
+                "motion": "boolean",
+                "motion_age_s": "null",
+                "motion_sensor": "boolean",
+                "simulated": "boolean",
+                "temperature_c": "number",
+                "warming_up": "boolean"
               }
             },
             {
@@ -362,6 +420,48 @@
                 "seated_s": "number",
                 "progress": "number",
                 "due": "boolean"
+              },
+              "room": "null"
+            },
+            {
+              "t": "number",
+              "online": "boolean",
+              "present": "boolean",
+              "seated": "boolean",
+              "seated_s": "number",
+              "still_s": "number",
+              "distance_m": "number",
+              "breath_rate": "null",
+              "heart_rate": "null",
+              "targets": "number",
+              "vitals_sensor": "boolean",
+              "simulated": "boolean",
+              "expression": "null",
+              "status": "string",
+              "detail": "string",
+              "mood": "string",
+              "quiet": "boolean",
+              "break": {
+                "interval_s": "number",
+                "seated_s": "number",
+                "progress": "number",
+                "due": "boolean"
+              },
+              "room": {
+                "age_s": "number",
+                "climate_sensor": "boolean",
+                "device": "string",
+                "fresh": "boolean",
+                "humidity": "number",
+                "light": "number",
+                "light_sensor": "boolean",
+                "light_word": "string",
+                "motion": "boolean",
+                "motion_age_s": "null",
+                "motion_sensor": "boolean",
+                "simulated": "boolean",
+                "temperature_c": "number",
+                "warming_up": "boolean"
               }
             },
             {
@@ -387,6 +487,48 @@
                 "seated_s": "number",
                 "progress": "number",
                 "due": "boolean"
+              },
+              "room": "null"
+            },
+            {
+              "t": "number",
+              "online": "boolean",
+              "present": "boolean",
+              "seated": "boolean",
+              "seated_s": "number",
+              "still_s": "number",
+              "distance_m": "number",
+              "breath_rate": "number",
+              "heart_rate": "number",
+              "targets": "number",
+              "vitals_sensor": "boolean",
+              "simulated": "boolean",
+              "expression": "null",
+              "status": "string",
+              "detail": "string",
+              "mood": "string",
+              "quiet": "boolean",
+              "break": {
+                "interval_s": "number",
+                "seated_s": "number",
+                "progress": "number",
+                "due": "boolean"
+              },
+              "room": {
+                "age_s": "number",
+                "climate_sensor": "boolean",
+                "device": "string",
+                "fresh": "boolean",
+                "humidity": "number",
+                "light": "number",
+                "light_sensor": "boolean",
+                "light_word": "string",
+                "motion": "boolean",
+                "motion_age_s": "null",
+                "motion_sensor": "boolean",
+                "simulated": "boolean",
+                "temperature_c": "number",
+                "warming_up": "boolean"
               }
             },
             {
@@ -412,6 +554,48 @@
                 "seated_s": "number",
                 "progress": "number",
                 "due": "boolean"
+              },
+              "room": "null"
+            },
+            {
+              "t": "number",
+              "online": "boolean",
+              "present": "boolean",
+              "seated": "boolean",
+              "seated_s": "number",
+              "still_s": "number",
+              "distance_m": "number",
+              "breath_rate": "number",
+              "heart_rate": "number",
+              "targets": "number",
+              "vitals_sensor": "boolean",
+              "simulated": "boolean",
+              "expression": "string",
+              "status": "string",
+              "detail": "string",
+              "mood": "string",
+              "quiet": "boolean",
+              "break": {
+                "interval_s": "number",
+                "seated_s": "number",
+                "progress": "number",
+                "due": "boolean"
+              },
+              "room": {
+                "age_s": "number",
+                "climate_sensor": "boolean",
+                "device": "string",
+                "fresh": "boolean",
+                "humidity": "number",
+                "light": "number",
+                "light_sensor": "boolean",
+                "light_word": "string",
+                "motion": "boolean",
+                "motion_age_s": "null",
+                "motion_sensor": "boolean",
+                "simulated": "boolean",
+                "temperature_c": "number",
+                "warming_up": "boolean"
               }
             }
           ]

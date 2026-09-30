@@ -24,6 +24,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -53,6 +54,7 @@ import marvin.host.domain.conversation.VoiceSettings.VoiceConfig;
 import marvin.host.domain.conversation.VoiceSnapshot;
 import marvin.host.domain.presence.event.PresenceEvent;
 import marvin.host.domain.presence.event.PresenceState;
+import marvin.host.domain.robot.event.RoomState;
 import marvin.host.domain.shared.Clocks;
 import marvin.host.domain.shared.LanguageTokens;
 import marvin.host.domain.shared.LocalDays;
@@ -128,6 +130,7 @@ public final class VoiceService implements VoiceControl {
     private final JsonFetcher fetch;
     private final ConversationStore store;
     private final PresenceQuery presence;
+    private volatile Supplier<RoomState> room = () -> null;
     private final Clocks clocks;
     private final LocalDays days;
     private final String platform;
@@ -252,6 +255,14 @@ public final class VoiceService implements VoiceControl {
      */
     public void setMemory(MemoryContext m) {
         memoryContext = Objects.requireNonNull(m, "memory");
+    }
+
+    /**
+     * The room sensors' latest readings (the robot context's), for the question's context while they are fresh. Set
+     * before the voice starts; none by default.
+     */
+    public void setRoom(Supplier<RoomState> room) {
+        this.room = Objects.requireNonNull(room, "room");
     }
 
     /** The memory sections' shared budget in tokens (what memory may add to each question's prompt). */
@@ -1322,6 +1333,14 @@ public final class VoiceService implements VoiceControl {
         return text == null ? "" : String.join(" ", text.strip().toLowerCase(java.util.Locale.ROOT).split("\\s+"));
     }
 
+    private RoomState room() {
+        try {
+            return room.get();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     private boolean othersPresent() {
         try {
             PresenceState st = presence.state();
@@ -1410,7 +1429,7 @@ public final class VoiceService implements VoiceControl {
         CompletableFuture<MemoryContext.Recollection> f = turn.recollection;
         if (f == null) {
             // no memory: the "now" section as it always was (no budget without the memory sections beside it)
-            return new Assembled(Persona.contextBlock(presence.state(), presence.recentEvents(), local, home), List.of(), null, 0,
+            return new Assembled(Persona.contextBlock(presence.state(), presence.recentEvents(), local, home, room()), List.of(), null, 0,
                     false, List.of(), 0);
         }
         double t0 = clocks.monotonicSeconds();
@@ -1430,7 +1449,8 @@ public final class VoiceService implements VoiceControl {
             r = MemoryContext.Recollection.EMPTY;
         }
         double waited = clocks.monotonicSeconds() - t0;
-        List<ContextAssembler.Item> nowItems = Persona.contextItems(presence.state(), presence.recentEvents(), local, home);
+        List<ContextAssembler.Item> nowItems = Persona.contextItems(presence.state(), presence.recentEvents(), local, home,
+                room());
         ContextAssembler.Cut now = ContextAssembler.cut(new ContextAssembler.Section("now", Persona.NOW_HEADING,
                 ContextAssembler.NOW_BUDGET, nowItems), est);
         // the memory sections share one budget: it bounds what memory adds to every question's prompt evaluation

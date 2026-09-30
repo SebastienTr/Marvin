@@ -338,7 +338,8 @@ def main() -> None:
             "volatile": ["times (t, ts, id, since, uptime, ages, durations)", "brain state values (seated_s, still_s, "
                          "distance_m, breath_rate, heart_rate, targets, expression, status, detail, mood)",
                          "today's stats and timeline", "device counters and rates", "sensor scene values",
-                         "log entries", "voice status", "about.data_dir"],
+                         "log entries", "voice status", "about.data_dir",
+                         "the room sensors' readings (state.room: the simulated room's values and ages)"],
             "machine_dependent": ["get/voice_options.json: Ollama models, speech backends and voices installed on "
                                   "the machine that recorded it; compare the shape only"],
         }

@@ -40,8 +40,8 @@ public class WebConfiguration {
 
     @Bean
     public LiveState liveState(PresenceQuery presence, PresenceHistory history, ManageSettings settings, FaceImage face,
-                               Clocks clocks, LocalDays days) {
-        return new LiveState(presence, history, settings, face, clocks, days);
+                               Clocks clocks, LocalDays days, RobotLinkQuery robot) {
+        return new LiveState(presence, history, settings, face, clocks, days, robot);
     }
 
     @Bean

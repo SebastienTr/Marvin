@@ -243,6 +243,7 @@ question goes into the last user message:
 Context:                                            ← "now", 200 tokens: clock, sensors, presence
 - It is Tuesday 29 September 2026, 14:03 (local time).
 - ...
+- The room, from your own sensors: 23.4 °C, 48 % humidity, movement just now.
 
 Earlier (summaries from your memory):               ← "today", 150 tokens: today's and yesterday's day summaries
 - Yesterday: The owner worked from home.

@@ -39,6 +39,9 @@ class Collect(Sink):
     def on_log(self, dev, t_us, text):
         self.calls.append(("log", t_us, text))
 
+    def on_environment(self, dev, t_us, env):
+        self.calls.append(("environment", t_us, env))
+
 
 class Tee(Sink):
     def __init__(self, *sinks):
@@ -63,6 +66,10 @@ class Tee(Sink):
     def on_log(self, *a):
         for s in self.sinks:
             s.on_log(*a)
+
+    def on_environment(self, *a):
+        for s in self.sinks:
+            s.on_environment(*a)
 
 
 def events(brain: Brain):

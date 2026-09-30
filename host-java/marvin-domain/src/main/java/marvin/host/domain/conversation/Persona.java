@@ -11,6 +11,7 @@ import java.util.Map;
 import marvin.host.domain.presence.event.EventKind;
 import marvin.host.domain.presence.event.PresenceEvent;
 import marvin.host.domain.presence.event.PresenceState;
+import marvin.host.domain.robot.event.RoomState;
 import marvin.host.domain.shared.PyNumbers;
 
 /**
@@ -19,7 +20,7 @@ import marvin.host.domain.shared.PyNumbers;
  *
  * <p>The system prompt does not change from one question to the next (only with the language, and whether
  * the model is given tools), so the model server reuses its cached work; the live context goes into the user
- * message. The context only states facts the brain is sure of.
+ * message. The context only states facts the brain is sure of, and the room sensors' readings while they are fresh.
  */
 public final class Persona {
 
@@ -219,7 +220,11 @@ public final class Persona {
                     + "asked about the room, the person or their vital signs, give the simulated values and "
                     + "say they are simulated.", 0.95));
         }
-        if (state.present()) {
+        if (state.present() && state.motionPresence()) {
+            String when = state.stillS() < RoomState.JUST_NOW_S ? "just now" : ago(state.stillS());
+            facts.add(ContextAssembler.Item.of("present", "Your motion sensor noticed someone moving near you " + when
+                    + "; it senses movement only, not where they are or who they are.", 0.85));
+        } else if (state.present()) {
             String where = state.distanceM() != null
                     ? ", about " + PyNumbers.fixed(state.distanceM(), 1) + " metres from you" : "";
             facts.add(ContextAssembler.Item.of("present", "Someone is in front of you" + where + ".", 0.85));
@@ -239,6 +244,9 @@ public final class Persona {
                 facts.add(ContextAssembler.Item.of("vitals_waiting", "Your 60 GHz vital-signs radar has no reliable reading right now: it needs the person "
                         + "seated and still, within about one and a half metres of you, for a few seconds.", 0.5));
             }
+        } else if (state.motionPresence()) {
+            facts.add(ContextAssembler.Item.of("nobody", "Your motion sensor has noticed no movement near you for a while, "
+                    + "so nobody seems to be there (someone sitting very still can go unnoticed).", 0.85));
         } else {
             facts.add(ContextAssembler.Item.of("nobody", "Your radar sees nobody right now (you may still be hearing someone out of view).", 0.85));
         }
@@ -261,6 +269,42 @@ public final class Persona {
         return facts;
     }
 
+    /**
+     * The room sensors' readings in one line (room.py {@code room_fact} in the Python host), while they are fresh;
+     * {@code null} otherwise, or with nothing to say.
+     */
+    public static String roomFact(RoomState room) {
+        if (room == null || !room.fresh()) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        if (room.temperatureC() != null) {
+            parts.add(PyNumbers.fixed(room.temperatureC(), 1) + " °C");
+        }
+        if (room.humidity() != null) {
+            parts.add(PyNumbers.fixed(room.humidity(), 0) + " % humidity");
+        }
+        if (room.lightWord() != null) {
+            parts.add(room.lightWord());
+        }
+        if (room.motionSensor()) {
+            if (room.warmingUp()) {
+                parts.add("motion sensor still warming up");
+            } else if (room.motion() || (room.motionAgeS() != null && room.motionAgeS() < RoomState.JUST_NOW_S)) {
+                parts.add("movement just now");
+            } else if (room.motionAgeS() != null) {
+                parts.add("last movement " + ago(room.motionAgeS()));
+            } else {
+                parts.add("no movement seen yet");
+            }
+        }
+        if (parts.isEmpty()) {
+            return null;
+        }
+        String source = room.simulated() ? "simulated sensors, for testing" : "your own sensors";
+        return "The room, from " + source + ": " + String.join(", ", parts) + ".";
+    }
+
     /** The heading of the "now" section. */
     public static final String NOW_HEADING = "Context:";
 
@@ -270,6 +314,12 @@ public final class Persona {
      */
     public static List<ContextAssembler.Item> contextItems(PresenceState state, List<PresenceEvent> events, LocalDateTime now,
                                                            String home) {
+        return contextItems(state, events, now, home, null);
+    }
+
+    /** The same, and the room sensors' readings last, while they are fresh ({@link #roomFact}). */
+    public static List<ContextAssembler.Item> contextItems(PresenceState state, List<PresenceEvent> events, LocalDateTime now,
+                                                           String home, RoomState room) {
         List<ContextAssembler.Item> lines = new ArrayList<>();
         lines.add(ContextAssembler.Item.of("time", "It is " + NOW.format(now) + " (local time).", 1.0));
         if (home != null && !home.isEmpty()) {
@@ -281,6 +331,10 @@ public final class Persona {
                     + "about the room or the person beyond what they tell you.", 0.9));
         }
         lines.addAll(scoredFacts(state, events));
+        String fact = roomFact(room);
+        if (fact != null) {
+            lines.add(ContextAssembler.Item.of("room", fact, 0.4));
+        }
         return lines;
     }
 
@@ -289,9 +343,15 @@ public final class Persona {
      * place, given so the model calls the weather tool without asking.
      */
     public static String contextBlock(PresenceState state, List<PresenceEvent> events, LocalDateTime now, String home) {
+        return contextBlock(state, events, now, home, null);
+    }
+
+    /** The same, with the room sensors' readings ({@code null}: none). */
+    public static String contextBlock(PresenceState state, List<PresenceEvent> events, LocalDateTime now, String home,
+                                      RoomState room) {
         List<String> lines = new ArrayList<>();
         lines.add(NOW_HEADING);
-        for (ContextAssembler.Item i : contextItems(state, events, now, home)) {
+        for (ContextAssembler.Item i : contextItems(state, events, now, home, room)) {
             lines.add("- " + i.text());
         }
         return String.join("\n", lines);

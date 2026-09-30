@@ -18,6 +18,7 @@ import marvin.host.domain.robot.HostMessages;
 import marvin.host.domain.robot.MessageType;
 import marvin.host.domain.robot.ProtocolV1;
 import marvin.host.domain.robot.SensorScene;
+import marvin.host.domain.robot.event.RoomState;
 
 class BuzzerChimeServiceTest {
     private static final int BENCH = ProtocolV1.FLAG_SIMULATED | ProtocolV1.FLAG_BUTTONS | ProtocolV1.FLAG_BUZZER;
@@ -41,6 +42,11 @@ class BuzzerChimeServiceTest {
         @Override
         public SensorScene.View scene(boolean history) {
             throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public RoomState room() {
+            return null;
         }
 
         @Override

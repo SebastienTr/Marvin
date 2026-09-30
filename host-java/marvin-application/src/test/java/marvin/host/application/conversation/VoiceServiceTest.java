@@ -27,6 +27,7 @@ import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.presence.event.EventKind;
 import marvin.host.domain.presence.event.PresenceEvent;
 import marvin.host.domain.presence.event.PresenceState;
+import marvin.host.domain.robot.event.RoomState;
 import marvin.host.domain.shared.Clocks;
 import marvin.host.domain.shared.LocalDays;
 
@@ -375,6 +376,26 @@ class VoiceServiceTest {
         assertThat(third.get(0)).isEqualTo(model.calls.get(2).get(0));
         assertThat(third.get(2).content()).isEqualTo("La capitale de la France, c'est Paris. Elle est grande.");
         assertThat(v.recent(0)).hasSize(5);
+    }
+
+    @Test
+    void theRoomSensorsAreInTheContextWhileTheyAreFresh() throws InterruptedException {
+        FakeModel model = FakeModel.of("w", "w", "Vingt-trois degrés.", "Je ne sais pas.");
+        VoiceService v = service(model);
+        RoomState[] room = {new RoomState(4.0, "marvin-112233", false, true, false, false, 41.0, true, 23.4, 48.0,
+                false, null)};
+        v.setRoom(() -> room[0]);
+        v.start();
+        waitFor(() -> model.calls.size() == 2);
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Il fait combien ?", "", "fr", "typed", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 1);
+        assertThat((String) kinds("reply").get(0).get("context"))
+                .endsWith("- The room, from your own sensors: 23.4 °C, 48 % humidity, last movement 41 seconds ago.");
+        room[0] = new RoomState(RoomState.FRESH_S, "marvin-112233", false, true, false, false, 41.0, true, 23.4, 48.0,
+                false, null);
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Et maintenant ?", "", "fr", "typed", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 2);
+        assertThat((String) kinds("reply").get(1).get("context")).doesNotContain("The room");
     }
 
     @Test

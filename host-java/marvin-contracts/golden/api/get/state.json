@@ -35,6 +35,22 @@
         "seated_s": 18.5,
         "progress": 0.006,
         "due": false
+      },
+      "room": {
+        "fresh": true,
+        "age_s": 1.0,
+        "device": "marvin-a1b2c3",
+        "simulated": true,
+        "temperature_c": 21.7,
+        "humidity": 45.7,
+        "light": 0.654,
+        "light_word": "bright",
+        "motion_sensor": false,
+        "climate_sensor": true,
+        "light_sensor": true,
+        "warming_up": false,
+        "motion": false,
+        "motion_age_s": null
       }
     },
     "today": {
@@ -119,6 +135,22 @@
         "seated_s": "number",
         "progress": "number",
         "due": "boolean"
+      },
+      "room": {
+        "fresh": "boolean",
+        "age_s": "number",
+        "device": "string",
+        "simulated": "boolean",
+        "temperature_c": "number",
+        "humidity": "number",
+        "light": "number",
+        "light_word": "string",
+        "motion_sensor": "boolean",
+        "climate_sensor": "boolean",
+        "light_sensor": "boolean",
+        "warming_up": "boolean",
+        "motion": "boolean",
+        "motion_age_s": "null"
       }
     },
     "today": {

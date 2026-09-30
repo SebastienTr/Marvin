@@ -7,9 +7,11 @@ import java.util.Map;
 import marvin.host.application.face.port.in.FaceImage;
 import marvin.host.application.presence.port.in.PresenceHistory;
 import marvin.host.application.presence.port.in.PresenceQuery;
+import marvin.host.application.robot.port.in.RobotLinkQuery;
 import marvin.host.application.settings.port.in.ManageSettings;
 import marvin.host.domain.presence.event.PresenceState;
 import marvin.host.domain.presence.history.Words;
+import marvin.host.domain.robot.event.RoomState;
 import marvin.host.domain.settings.AppSettings;
 import marvin.host.domain.shared.Clocks;
 import marvin.host.domain.shared.LocalDays;
@@ -23,15 +25,17 @@ public final class LiveState {
     private final FaceImage face;
     private final Clocks clocks;
     private final LocalDays days;
+    private final RobotLinkQuery robot;
 
     public LiveState(PresenceQuery presence, PresenceHistory history, ManageSettings settings, FaceImage face,
-                     Clocks clocks, LocalDays days) {
+                     Clocks clocks, LocalDays days, RobotLinkQuery robot) {
         this.presence = presence;
         this.history = history;
         this.settings = settings;
         this.face = face;
         this.clocks = clocks;
         this.days = days;
+        this.robot = robot;
     }
 
     public Map<String, Object> snapshot() {
@@ -68,6 +72,31 @@ public final class LiveState {
         b.put("progress", interval > 0 ? PyNumbers.round(Math.min(1.0, seatedS / interval), 3) : 0.0);
         b.put("due", s.seated() && seatedS >= interval);
         m.put("break", b);
+        // the room sensors' latest readings (room.py), null before any
+        m.put("room", room(robot.room()));
+        return m;
+    }
+
+    /** The app's {@code room} (the Python {@code Room.snapshot()}): {@code null} before any reading. */
+    static Map<String, Object> room(RoomState r) {
+        if (r == null) {
+            return null;
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("fresh", r.fresh());
+        m.put("age_s", PyNumbers.round(r.ageS(), 1));
+        m.put("device", r.device());
+        m.put("simulated", r.simulated());
+        m.put("temperature_c", r.temperatureC() == null ? null : PyNumbers.round(r.temperatureC(), 1));
+        m.put("humidity", r.humidity() == null ? null : PyNumbers.round(r.humidity(), 1));
+        m.put("light", r.light() == null ? null : PyNumbers.round(r.light(), 3));
+        m.put("light_word", r.lightWord());
+        m.put("motion_sensor", r.motionSensor());
+        m.put("climate_sensor", r.climateSensor());
+        m.put("light_sensor", r.lightSensor());
+        m.put("warming_up", r.warmingUp());
+        m.put("motion", r.motion());
+        m.put("motion_age_s", r.motionAgeS() == null ? null : PyNumbers.round(r.motionAgeS(), 1));
         return m;
     }
 }

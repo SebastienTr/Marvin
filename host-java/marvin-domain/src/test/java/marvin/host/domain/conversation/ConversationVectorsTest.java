@@ -21,6 +21,7 @@ import marvin.host.domain.conversation.tool.Weather;
 import marvin.host.domain.presence.event.EventKind;
 import marvin.host.domain.presence.event.PresenceEvent;
 import marvin.host.domain.presence.event.PresenceState;
+import marvin.host.domain.robot.event.RoomState;
 import marvin.host.domain.shared.JsonText;
 
 /**
@@ -99,9 +100,10 @@ class ConversationVectorsTest {
             if (c.get("state") != null) {
                 Map<String, Object> s = map(c.get("state"));
                 state = new PresenceState(((Number) s.get("t_us")).longValue(), (Boolean) s.get("present"),
-                        (Boolean) s.get("seated"), null, null, dbl(s.get("distance_m")), 0, 0, dbl(s.get("seated_s")),
-                        dbl(s.get("breath_rate")), dbl(s.get("heart_rate")), (Boolean) s.get("vitals_sensor"),
-                        (Boolean) s.get("simulated"), 0);
+                        (Boolean) s.get("seated"), null, null, dbl(s.get("distance_m")), 0, dbl(s.get("still_s")),
+                        dbl(s.get("seated_s")), dbl(s.get("breath_rate")), dbl(s.get("heart_rate")),
+                        (Boolean) s.get("vitals_sensor"), (Boolean) s.get("simulated"), 0,
+                        (Boolean) s.get("motion_presence"));
             }
             List<PresenceEvent> events = new ArrayList<>();
             for (Object e : list(c.get("events"))) {
@@ -115,6 +117,25 @@ class ConversationVectorsTest {
             assertThat(Persona.userMessage("Hello", block, null)).isEqualTo(c.get("message_none"));
         }
         assertThat(n).isGreaterThan(20);
+    }
+
+    @Test
+    void theRoomLine() {
+        LocalDateTime now = LocalDateTime.parse((String) map(v.get("context")).get("now"));
+        PresenceState here = new PresenceState(3_600_000_000L, true, false, null, null, null, 0, 2.0, 0, null, null,
+                false, false, 0, true);
+        int n = 0;
+        for (Object o : list(v.get("room"))) {
+            Map<String, Object> c = map(o);
+            Map<String, Object> r = map(c.get("room"));
+            RoomState room = new RoomState(dbl(r.get("age_s")), (String) r.get("device"), (Boolean) r.get("simulated"),
+                    (Boolean) r.get("motion_sensor"), (Boolean) r.get("warming_up"), (Boolean) r.get("motion"),
+                    dbl(r.get("motion_age_s")), (Boolean) r.get("climate_sensor"), dbl(r.get("temperature_c")),
+                    dbl(r.get("humidity")), (Boolean) r.get("light_sensor"), dbl(r.get("light")));
+            assertThat(Persona.roomFact(room)).as("room %d", n).isEqualTo(c.get("fact"));
+            assertThat(Persona.contextBlock(here, List.of(), now, "", room)).as("block %d", n++).isEqualTo(c.get("block"));
+        }
+        assertThat(n).isGreaterThanOrEqualTo(10);
     }
 
     @Test

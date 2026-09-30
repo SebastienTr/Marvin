@@ -6,6 +6,7 @@ import java.util.List;
 import marvin.host.domain.robot.Device;
 import marvin.host.domain.robot.DeviceStatus;
 import marvin.host.domain.robot.SensorScene;
+import marvin.host.domain.robot.event.RoomState;
 
 /** The devices the host has heard from. */
 public interface RobotLinkQuery {
@@ -18,6 +19,9 @@ public interface RobotLinkQuery {
 
     /** The sensor mini-views; {@code history}: with the vital sign rates of the last minutes. */
     SensorScene.View scene(boolean history);
+
+    /** The room sensors' latest readings (PIR, temperature and humidity, light), or {@code null} before any. */
+    RoomState room();
 
     /** Some device is online. */
     boolean linked();

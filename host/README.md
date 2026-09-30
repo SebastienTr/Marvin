@@ -69,7 +69,8 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `sim.py` | Simulated robot: lidar, LD2450 and MR60BHA2 frames from the scene |
 | `camera.py` | Camera model and the simulated camera (numpy ray casting) |
 | `events.py` | Events and presence state: the contract between the brain and what reacts to it |
-| `brain.py` | Presence, seating, stillness and vital-sign reliability, as debounced events |
+| `brain.py` | Presence, seating, stillness and vital-sign reliability, as debounced events; a real PIR as the presence of a board whose radar is simulated |
+| `room.py` | The room sensors' latest readings (`ENVIRONMENT`: PIR, temperature and humidity, light), for the app and the voice's context |
 | `face.py`, `raster.py` | The robot's eyes (reference renderer and behaviour) and the tiny rasterizer they use |
 | `link.py` | Host → robot face link: brain events (`FACE_EVENT`) and presence state (`FACE_STATE`, 10 Hz) to every robot with a screen |
 | `buttons.py` | The bench board's `BUTTON` presses on the voice (Talk now, mute), and the voice's moments as `SOUND` chimes on robots with a buzzer |

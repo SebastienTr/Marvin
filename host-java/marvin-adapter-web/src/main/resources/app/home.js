@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Home: Marvin's face and the presence sentence, your decisions (always shown), your day, a small thing
-// remembered, the break timer and breathing, recent moments. The modules can be hidden, shown and reordered
+// remembered, the break timer and breathing, recent moments, the room (once a robot has room sensors: temperature,
+// humidity, light, movement). The modules can be hidden, shown and reordered
 // (keyboard and touch, no dragging); the layout is kept in this browser only and never changes what Marvin
 // senses or does.
 
@@ -16,6 +17,7 @@ const MODULES = [
   { id: "memory", name: "A small thing remembered" },
   { id: "body", name: "Breaks and breathing" },
   { id: "moments", name: "Recent moments" },
+  { id: "room", name: "The room" },
 ];
 const DEFAULT = { order: MODULES.map((m) => m.id), hidden: [] };
 const QUIET_KINDS = new Set(["vitals_acquired", "vitals_lost"]);
@@ -206,6 +208,51 @@ function drawBreaths() {
   ctx.stroke();
 }
 
+// ------------------------------------------------------------------ the room
+
+const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+
+function sinceText(s) {
+  if (s < 10) return "Now";
+  if (s < 90) return `${Math.round(s)} s ago`;
+  if (s < 90 * 60) return `${Math.round(s / 60)} min ago`;
+  return `${(s / 3600).toFixed(1)} h ago`;
+}
+
+// The room sensors' latest readings (state.room: null until a robot sends them, and the card stays hidden).
+function renderRoom(r) {
+  const card = $("room");
+  if (!r) {
+    card.dataset.empty = "";
+    return;
+  }
+  delete card.dataset.empty;
+  card.classList.toggle("stale", !r.fresh);
+  const num = (v, unit) => (v == null ? ["–"] : [String(v), el("small", null, unit)]);
+  $("room-temp").replaceChildren(...num(r.temperature_c == null ? null : r.temperature_c.toFixed(1), " °C"));
+  $("room-humidity").replaceChildren(...num(r.humidity == null ? null : Math.round(r.humidity), " %"));
+  $("room-light").textContent = r.light_word ? cap(r.light_word) : "–";
+  let motion = "–";
+  if (r.motion_sensor) {
+    if (r.warming_up) motion = "Warming up";
+    else if (r.motion) motion = "Now";
+    else if (r.motion_age_s != null) motion = sinceText(r.motion_age_s);
+    else motion = "None yet";
+  }
+  $("room-motion-text").textContent = motion;
+  $("room-dot").classList.toggle("on", !!r.fresh && (r.motion || (r.motion_age_s != null && r.motion_age_s < 10)));
+  $("room-dot").hidden = !r.motion_sensor;
+  $("room-source").textContent = r.simulated ? "Simulated" : r.device;
+  const hint = [];
+  if (!r.fresh) hint.push(`Last reading ${sinceText(r.age_s).toLowerCase()}, no longer live.`);
+  else if (r.simulated) hint.push("Simulated readings, from the demo room.");
+  if (r.warming_up) hint.push("The motion sensor settles for about a minute after power-on.");
+  if (r.climate_sensor && r.temperature_c == null) hint.push("The temperature sensor is not answering.");
+  if (!r.light_sensor) hint.push("No light sensor yet.");
+  if (!hint.length) hint.push("Marvin knows these when you ask.");
+  $("room-hint").textContent = hint.join(" ");
+}
+
 // ------------------------------------------------------------------ recent moments
 
 function eventItem(e) {
@@ -359,6 +406,7 @@ export function setup() {
     } catch (e) { toast(e.message); }
   });
   on("state", renderState);
+  on("state", (s) => renderRoom(s.room));
   on("today", (d) => {
     todayCard.render(d);
     $("home-date").textContent = new Date(d.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });

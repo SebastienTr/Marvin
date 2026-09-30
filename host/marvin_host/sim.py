@@ -17,6 +17,7 @@ LIDAR_RATE = {1: 4500, 2: 21600}   # points per second, D500 / D800
 SCAN_HZ = 10.0
 LD2450_FOV_DEG = 60.0              # half-angle
 LD2450_RANGE_MM = 6000.0
+ENVIRONMENT_PERIOD_S = 5.0         # room sensors, as the bench board sends them
 
 
 def scan_distances(angles_deg: np.ndarray, t: float, yaw_deg: float | None = None) -> np.ndarray:
@@ -43,6 +44,16 @@ def ld2450_targets(t: float) -> list[ld2450.Target]:
     rx, ry = frames.device_to_ld2450(p.x, p.y)
     v = (p.vx * p.x + p.vy * dy) / (rng or 1.0)       # mm/s, positive = moving away
     return [ld2450.Target(int(rx), int(ry), int(-v / 10), 320)]
+
+
+def environment(t: float) -> protocol.Environment:
+    """The simulated room's temperature, humidity and light (no PIR: the simulated person is the radar's), marked
+    simulated. They drift slowly over ten minutes."""
+    light = 0.62 + 0.05 * math.sin(2 * math.pi * t / 420.0)
+    return protocol.Environment(climate=True, light_sensor=True,
+                                temperature_c=21.5 + 0.4 * math.sin(2 * math.pi * t / 600.0),
+                                humidity=45.0 + 2.0 * math.sin(2 * math.pi * t / 900.0),
+                                light=light, light_raw=round(4095 * (1 - light)), simulated=True)
 
 
 def vitals(t: float) -> protocol.Vitals:
@@ -80,7 +91,8 @@ class SimDevice:
         self.seq += 1
 
     def hello(self) -> None:
-        h = protocol.Hello(self.mac, 255, protocol.FLAG_SIMULATED, -40, self.now_us() // 1000, "sim-0.1.0")
+        h = protocol.Hello(self.mac, 255, protocol.FLAG_SIMULATED | protocol.FLAG_ENVIRONMENT, -40,
+                           self.now_us() // 1000, "sim-0.1.0")
         self._send(protocol.HELLO, h.encode())
 
     def poll_ack(self) -> None:
@@ -116,7 +128,7 @@ class SimDevice:
     def run(self, duration: float | None = None) -> None:
         pkt_rate = LIDAR_RATE[self.model] / ldrobot.POINTS
         angle = 0.0
-        next_hello = next_radar = 0.0
+        next_hello = next_radar = next_env = 0.0
         sent_pkts = 0
         start = time.monotonic()
         while duration is None or time.monotonic() - start < duration:
@@ -129,6 +141,9 @@ class SimDevice:
                 sent_pkts = int(t * pkt_rate)
                 time.sleep(0.05)
                 continue
+            if t >= next_env:                   # first, so the host knows at once there is no PIR
+                self._send(protocol.ENVIRONMENT, environment(t).encode())
+                next_env = t + ENVIRONMENT_PERIOD_S
             due = int(t * pkt_rate) - sent_pkts
             while due >= self.batch:
                 pkts, angle = self.lidar_packets(t, angle, self.batch)

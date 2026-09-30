@@ -66,10 +66,11 @@ public class VoiceWiring {
                                      VoiceSettingsFile settingsFile, JsonFetcher fetch, ConversationStore store,
                                      PresenceService presence, Clocks clocks, LocalDays days, EventHub hub,
                                      HostLog hostLog, PresenceEventBus bus, ObjectProvider<Tracer> tracer,
-                                     BuzzerChimeService chimes) {
+                                     BuzzerChimeService chimes, RobotLinkQuery robot) {
         VoiceService voice = new VoiceService(sidecar, model, settingsFile, fetch, store, presence, clocks, days,
                 platform(), sidecar::robotWithAudio);
         tracer.ifAvailable(t -> voice.setTracing(new MicrometerTracing(t)));
+        voice.setRoom(robot::room);                         // the room sensors' readings in the question's context
         voice.addListener(hub);
         voice.addListener((kind, payload) -> logLine(hostLog, kind, payload));
         voice.addListener(new VoiceChimes(chimes));        // the voice's moments on the bench board's buzzer

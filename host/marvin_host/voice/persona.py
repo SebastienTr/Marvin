@@ -6,8 +6,9 @@ sparingly; a faint echo of its namesake, the paranoid android, is allowed once i
 never more.
 
 The context only states facts the brain is sure of: presence, how long the person has been
-seated, breathing and heart rate while the vital-sign readings are reliable, recent events. The
-model is told not to bring up health readings unless asked or clearly relevant.
+seated, breathing and heart rate while the vital-sign readings are reliable, recent events, and the
+room sensors' readings while they are fresh (room.py). The model is told not to bring up health
+readings unless asked or clearly relevant.
 
 SPDX-License-Identifier: MIT
 """
@@ -17,6 +18,7 @@ import datetime as dt
 from typing import Iterable
 
 from ..events import Event, EventKind, PresenceState
+from ..room import JUST_NOW_S, RoomState
 
 LANGUAGE_NAMES = {"fr": "French", "en": "English", "de": "German", "es": "Spanish", "it": "Italian",
                   "nl": "Dutch", "pt": "Portuguese"}
@@ -147,7 +149,11 @@ def context_facts(state: PresenceState | None, events: Iterable[Event] = (),
                      "a simulated one walking in a simulated room on a loop, not the one talking to you. If "
                      "asked about the room, the person or their vital signs, give the simulated values and "
                      "say they are simulated.")
-    if state.present:
+    if state.present and state.motion_presence:
+        when = "just now" if state.still_s < JUST_NOW_S else _ago(state.still_s)
+        facts.append(f"Your motion sensor noticed someone moving near you {when}; it senses movement only, not "
+                     "where they are or who they are.")
+    elif state.present:
         where = f", about {state.distance_m:.1f} metres from you" if state.distance_m is not None else ""
         facts.append(f"Someone is in front of you{where}.")
         if state.seated and state.seated_s >= 60:
@@ -162,6 +168,9 @@ def context_facts(state: PresenceState | None, events: Iterable[Event] = (),
         elif state.vitals_sensor:
             facts.append("Your 60 GHz vital-signs radar has no reliable reading right now: it needs the person "
                          "seated and still, within about one and a half metres of you, for a few seconds.")
+    elif state.motion_presence:
+        facts.append("Your motion sensor has noticed no movement near you for a while, so nobody seems to be "
+                     "there (someone sitting very still can go unnoticed).")
     else:
         facts.append("Your radar sees nobody right now (you may still be hearing someone out of view).")
     if not state.vitals_sensor and state.breath_rate is None and state.heart_rate is None:
@@ -177,6 +186,32 @@ def context_facts(state: PresenceState | None, events: Iterable[Event] = (),
     return facts
 
 
+def room_fact(room: RoomState | None) -> str | None:
+    """The room sensors' readings in one line, while they are fresh; None otherwise (or with nothing to say)."""
+    if room is None or not room.fresh:
+        return None
+    parts = []
+    if room.temperature_c is not None:
+        parts.append(f"{room.temperature_c:.1f} °C")
+    if room.humidity is not None:
+        parts.append(f"{room.humidity:.0f} % humidity")
+    if room.light_word is not None:
+        parts.append(room.light_word)
+    if room.motion_sensor:
+        if room.warming_up:
+            parts.append("motion sensor still warming up")
+        elif room.motion or (room.motion_age_s is not None and room.motion_age_s < JUST_NOW_S):
+            parts.append("movement just now")
+        elif room.motion_age_s is not None:
+            parts.append(f"last movement {_ago(room.motion_age_s)}")
+        else:
+            parts.append("no movement seen yet")
+    if not parts:
+        return None
+    source = "simulated sensors, for testing" if room.simulated else "your own sensors"
+    return f"The room, from {source}: " + ", ".join(parts) + "."
+
+
 def persona_prompt(language: str = "fr", tools: bool = False) -> str:
     """The system prompt. It does not change from one question to the next (only with the
     language, and whether the model is given tools), so the model server can reuse its cached
@@ -186,8 +221,9 @@ def persona_prompt(language: str = "fr", tools: bool = False) -> str:
 
 
 def context_block(state: PresenceState | None = None, events: Iterable[Event] = (),
-                  now: dt.datetime | None = None, home: str = "") -> str:
-    """`home`: the owner's home place, given so the model calls the weather tool without asking."""
+                  now: dt.datetime | None = None, home: str = "", room: RoomState | None = None) -> str:
+    """`home`: the owner's home place, given so the model calls the weather tool without asking. `room`: the room
+    sensors' readings (said only while fresh)."""
     now = now or dt.datetime.now()
     lines = ["Context:", f"- It is {now:%A %d %B %Y, %H:%M} (local time)."]
     if home:
@@ -196,6 +232,9 @@ def context_block(state: PresenceState | None = None, events: Iterable[Event] = 
         lines.append("- Your sensors are not connected right now (voice-only mode): you know nothing "
                      "about the room or the person beyond what they tell you.")
     lines += [f"- {f}" for f in context_facts(state, events)]
+    fact = room_fact(room)
+    if fact:
+        lines.append(f"- {fact}")
     return "\n".join(lines)
 
 

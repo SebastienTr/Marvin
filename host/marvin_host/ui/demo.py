@@ -104,11 +104,15 @@ class DemoRobot:
         v = 0.0
         if self.devices is not None:
             self.devices.hello()
+        next_env = 0.0
         for t in self.scene_times():
             while not self._stop.is_set() and (time.monotonic() - self.m0) * self.speed < v:
                 time.sleep(0.01)
             if self._stop.is_set():
                 return
+            if v >= next_env and hasattr(self.brain, "on_environment"):     # the room sensors, simulated
+                self.brain.on_environment(self.dev, round(v * 1e6), sim.environment(v))
+                next_env = v + sim.ENVIRONMENT_PERIOD_S * self.speed
             step(self.brain, t, v, self.dev)
             if self.devices is not None:
                 self.devices.step(t)
@@ -363,7 +367,8 @@ class DemoVoice:
             events = list(getattr(self.brain, "events", ()))
         except RuntimeError:
             events = []
-        context = persona.context_block(state, events)
+        room = getattr(self.brain, "room", None)
+        context = persona.context_block(state, events, room=room.state() if room is not None else None)
         return {"context": context, "prompt": persona.user_message(question, language="en", context=context),
                 "model": self.MODEL}
 

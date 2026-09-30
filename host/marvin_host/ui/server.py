@@ -468,6 +468,8 @@ class UIServer:
                 "progress": round(min(1.0, seated_s / interval), 3) if interval > 0 else 0.0,
                 "due": bool(s.seated and seated_s >= interval),
             },
+            # the room sensors' latest readings (room.py), None before any
+            "room": self.brain.room.snapshot() if hasattr(self.brain, "room") else None,
         }
 
     def today(self) -> dict:

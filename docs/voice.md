@@ -373,6 +373,23 @@ Later, a `look` tool could let Marvin take a picture with the robot's camera whe
 (the same path: an image on the question's message only). It is not built: the camera is not
 connected to the conversation yet.
 
+## The room
+
+With room sensors on a robot (the bench board's PIR and DHT11, [wiring-bench.md](wiring-bench.md)), each question's
+context ends with one line about the room, while the readings are under 2 minutes old:
+
+```
+- The room, from your own sensors: 23.4 °C, 48 % humidity, movement just now.
+```
+
+Only what the sensors really gave: the temperature and the humidity while the DHT11 answers, *bright*, *dim* or
+*dark* once a light sensor is wired, and the last movement from the PIR (*motion sensor still warming up* in its
+first minute). Nothing at all without room sensors, or with readings too old: Marvin then says it cannot tell,
+rather than guessing. Simulated readings (the demo) say *from simulated sensors, for testing*. When the PIR is the
+presence (a board whose radar is simulated), the presence line says so too: *your motion sensor noticed someone
+moving near you*, never *someone is in front of you* ([intelligence.md](intelligence.md#a-pir-on-the-bench-board)).
+Both hosts write the same line (`persona.room_fact`, `Persona.roomFact`), checked by the conversation vectors.
+
 ## Latency
 
 Every answer logs where the time went, from the moment you stop talking to Marvin's first word:
@@ -444,7 +461,7 @@ The code is in [`host/marvin_host/voice/`](../host/marvin_host/voice):
 | `llm.py` | `OllamaLLM` (`/api/chat`, streamed, tool calls, standard library only), `ToolCall`, `FakeLLM` (scriptable tool calls) |
 | `tools/` | `Tool`, `ToolRegistry` (schemas, validation, safe calls), `get_weather` (Open-Meteo) |
 | `net.py` | Verified HTTPS (certifi when installed) for downloads and online tools |
-| `persona.py` | The system prompt, the brain context, the sentences said without the model |
+| `persona.py` | The system prompt, the brain context and the room line, the sentences said without the model |
 | `text.py` | Streaming chunker (first clause early, then sentences), markdown, emoji and JSON removal, tool calls written as text |
 | `tts.py` | `MacSayTTS`, `PiperTTS`, `EspeakTTS` |
 | `echo.py` | `EchoGate` (half duplex), `EchoFilter` (its own words) |

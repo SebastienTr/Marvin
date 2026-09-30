@@ -2016,3 +2016,62 @@ chimes.
 - Long press, release and a third button are reserved in the payload, not sent. The Mute button's state is not shown
   on the board (the chime says it).
 - SH1106 (1.3") screens need U8g2's other driver: not a build flag yet.
+
+## Room sensors on the bench board (2026-09-30)
+
+The bench board gains a PIR (HC-SR501), a DHT11 and, once wired, a light sensor (docs/wiring-bench.md): the PIR is the
+presence of a board whose radar is simulated, the readings go to the app and to the question's context.
+
+### What exists
+
+- **Protocol v1, no version bump**: `ENVIRONMENT` (0x08, robot → host, 12 bytes: sensors u8, flags u8, temperature
+  i16 0.1 °C, humidity u16 0.1 %, light u16 0..1000, light raw u16, seconds since the last motion u16) and the `HELLO`
+  flag `FLAG_ENVIRONMENT` (0x40). Domain: `Environment`, `SensorFrame.RoomReading`, `Hello.hasEnvironment()`; Python
+  `protocol.Environment`, `Sink.on_environment`; vectors: a bench `HELLO`, seven `ENVIRONMENT`s and a short one, the
+  new constants.
+- **Presence**: `Brain.onMotion(tUs, simulated, motion, warmingUp)` (brain.py `on_motion`/`on_environment`), and
+  `BrainConfig.motionHoldS` (120 s). With no live radar (no targets frame for `leaveAfterS`), motion is `arrived`
+  ("movement on the motion sensor"), no motion for 120 s is `left`; `PresenceState.motionPresence` (a record component
+  at the end, with the old 14-argument constructor kept) and `stillS` as the time since the last motion. The bridge
+  `PresenceFeed` holds back the LD2450 and MR60BHA2 frames of a simulated device with room sensors until its first
+  `ENVIRONMENT`, and for good when it has a PIR; brain.py does the same itself (it is the sink).
+- **Robot context**: `Room` (the latest `ENVIRONMENT`, stamped on the host's monotonic clock) in `RobotLinkService`,
+  `RobotLinkQuery.room()`; the snapshot `RoomState` is published in `domain.robot.event` (a new package, the robot
+  context's published language), so `Persona` in the conversation's domain may use it.
+- **Conversation**: `Persona.roomFact` and a `room` item (score 0.4) at the end of the "now" section while the reading
+  is under 2 minutes old; `VoiceService.setRoom(Supplier<RoomState>)`, wired in `VoiceWiring` to `RobotLinkQuery::room`.
+  The presence line says *your motion sensor noticed someone moving near you* when `motionPresence`. Python: `room.py`
+  (`brain.room`), `persona.room_fact`, `context_block(..., room=)`. Conversation vectors: the new presence states and a
+  `room` section.
+- **App**: `state.room` in the live state (`LiveState.room`, Python `Room.snapshot()`), and the Home module *The
+  room* (temperature, humidity, light, last movement), hidden while `room` is null.
+
+### Decisions and deviations
+
+1. **One `HELLO` bit for three sensors**: bit 7 is the last free one, kept for a second flags byte. `ENVIRONMENT`'s
+   first byte says which sensors the device has, so a DHT11 that stops answering is *not answering*, not *absent*.
+2. **The PIR replaces a simulated radar, never a live one**: fusing a real radar with a real PIR waits for a robot that
+   has both. Frames from several devices still share one brain and its clock (as before).
+3. **No confirmation for an arrival from the PIR**: the module already filters (its own hold, the firmware's 100 ms
+   debounce, the minute of warm-up).
+4. **The API snapshots were patched, not regenerated**: `api_snapshots.py` records the whole demo again, and a full run
+   also rewrites every volatile value and the voice's newer keys (`hearing`, `vision_model`), which are not part of
+   this change. `get/state.json` and the `state` stream of `sse.json` gained `room` exactly as a run writes it (a
+   state shape with `room: null` and one with the readings), and `index.json` lists the room as volatile.
+5. **The simulator sends a simulated room** (temperature, humidity, light, no PIR, marked simulated), so the demo's
+   Home shows the card and the contract has a `room` object to compare.
+
+### Verified
+
+- `mvn -o clean verify` (Temurin 25): all green (new: `RoomTest`, `LiveStateTest`, `PresenceFeedTest` 3, `BrainTest`
+  +2, `RobotLinkProcessorTest` +1, `VoiceServiceTest` +1, `ConversationVectorsTest` +1, `ProtocolVectorsTest` on the
+  new vectors, `GoldenRecordingsTest` on `motion_presence`, `ArchitectureTest` on `domain.robot.event`). Docker is not
+  available: the Testcontainers ITs (and `ApiContractIT`) did not run.
+- Python: `python -m pytest -q` green (+12 in `test_room.py`).
+- Firmware: every env builds without warnings; `pio test -e native` green (+11 in `test_room`). Not yet run on the
+  board.
+
+### Known gaps
+
+- The PIR does not move the eyes (no position), and the break timer does not run on a PIR alone (no sitting).
+- The light sensor has no auto-detection of an empty pin: it is a build flag.

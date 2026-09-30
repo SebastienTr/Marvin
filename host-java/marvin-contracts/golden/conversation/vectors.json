@@ -304,7 +304,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "",
@@ -322,7 +324,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "Nice",
@@ -340,7 +344,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -399,7 +405,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -458,7 +466,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "",
@@ -476,7 +486,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "Nice",
@@ -494,7 +506,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -553,7 +567,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -612,7 +628,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "",
@@ -630,7 +648,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "Nice",
@@ -648,7 +668,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -707,7 +729,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -766,7 +790,9 @@
           "breath_rate": 14.5,
           "heart_rate": 66.5,
           "vitals_sensor": true,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "",
@@ -784,7 +810,9 @@
           "breath_rate": 14.5,
           "heart_rate": 66.5,
           "vitals_sensor": true,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "Nice",
@@ -802,7 +830,9 @@
           "breath_rate": 14.5,
           "heart_rate": 66.5,
           "vitals_sensor": true,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -861,7 +891,9 @@
           "breath_rate": 14.5,
           "heart_rate": 66.5,
           "vitals_sensor": true,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -920,7 +952,9 @@
           "breath_rate": 12.0,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": true
+          "simulated": true,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "",
@@ -938,7 +972,9 @@
           "breath_rate": 12.0,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": true
+          "simulated": true,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "Nice",
@@ -956,7 +992,9 @@
           "breath_rate": 12.0,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": true
+          "simulated": true,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -1015,7 +1053,9 @@
           "breath_rate": 12.0,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": true
+          "simulated": true,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -1074,7 +1114,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": true
+          "simulated": true,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "",
@@ -1092,7 +1134,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": true
+          "simulated": true,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "Nice",
@@ -1110,7 +1154,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": true
+          "simulated": true,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -1169,7 +1215,9 @@
           "breath_rate": null,
           "heart_rate": null,
           "vitals_sensor": true,
-          "simulated": true
+          "simulated": true,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -1228,7 +1276,9 @@
           "breath_rate": null,
           "heart_rate": 70.49,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "",
@@ -1246,7 +1296,9 @@
           "breath_rate": null,
           "heart_rate": 70.49,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [],
         "home": "Nice",
@@ -1264,7 +1316,9 @@
           "breath_rate": null,
           "heart_rate": 70.49,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -1323,7 +1377,9 @@
           "breath_rate": null,
           "heart_rate": 70.49,
           "vitals_sensor": false,
-          "simulated": false
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": false
         },
         "events": [
           {
@@ -1371,9 +1427,677 @@
         "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Someone is in front of you.\n- They have been seated for 90 seconds.\n- Your 60 GHz radar measures their heart rate at 70 beats per minute, right now.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.",
         "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Someone is in front of you.\n- They have been seated for 90 seconds.\n- Your 60 GHz radar measures their heart rate at 70 beats per minute, right now.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
         "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Someone is in front of you.\n- They have been seated for 90 seconds.\n- Your 60 GHz radar measures their heart rate at 70 beats per minute, right now.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": true,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 4.0,
+          "motion_presence": true
+        },
+        "events": [],
+        "home": "",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": true,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 4.0,
+          "motion_presence": true
+        },
+        "events": [],
+        "home": "Nice",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": true,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 4.0,
+          "motion_presence": true
+        },
+        "events": [
+          {
+            "kind": "arrived",
+            "t_us": -1400000000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 600000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 1600000000
+          },
+          {
+            "kind": "vitals_acquired",
+            "t_us": 2600000000
+          },
+          {
+            "kind": "stood_up",
+            "t_us": 3200000000
+          },
+          {
+            "kind": "approached",
+            "t_us": 3511000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 3510000000
+          },
+          {
+            "kind": "still_long",
+            "t_us": 3570000000
+          },
+          {
+            "kind": "left",
+            "t_us": 3597500000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 3601000000
+          }
+        ],
+        "home": "",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": true,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 4.0,
+          "motion_presence": true
+        },
+        "events": [
+          {
+            "kind": "arrived",
+            "t_us": -1400000000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 600000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 1600000000
+          },
+          {
+            "kind": "vitals_acquired",
+            "t_us": 2600000000
+          },
+          {
+            "kind": "stood_up",
+            "t_us": 3200000000
+          },
+          {
+            "kind": "approached",
+            "t_us": 3511000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 3510000000
+          },
+          {
+            "kind": "still_long",
+            "t_us": 3570000000
+          },
+          {
+            "kind": "left",
+            "t_us": 3597500000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 3601000000
+          }
+        ],
+        "home": "Nice",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": true,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 75.0,
+          "motion_presence": true
+        },
+        "events": [],
+        "home": "",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": true,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 75.0,
+          "motion_presence": true
+        },
+        "events": [],
+        "home": "Nice",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": true,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 75.0,
+          "motion_presence": true
+        },
+        "events": [
+          {
+            "kind": "arrived",
+            "t_us": -1400000000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 600000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 1600000000
+          },
+          {
+            "kind": "vitals_acquired",
+            "t_us": 2600000000
+          },
+          {
+            "kind": "stood_up",
+            "t_us": 3200000000
+          },
+          {
+            "kind": "approached",
+            "t_us": 3511000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 3510000000
+          },
+          {
+            "kind": "still_long",
+            "t_us": 3570000000
+          },
+          {
+            "kind": "left",
+            "t_us": 3597500000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 3601000000
+          }
+        ],
+        "home": "",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": true,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 75.0,
+          "motion_presence": true
+        },
+        "events": [
+          {
+            "kind": "arrived",
+            "t_us": -1400000000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 600000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 1600000000
+          },
+          {
+            "kind": "vitals_acquired",
+            "t_us": 2600000000
+          },
+          {
+            "kind": "stood_up",
+            "t_us": 3200000000
+          },
+          {
+            "kind": "approached",
+            "t_us": 3511000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 3510000000
+          },
+          {
+            "kind": "still_long",
+            "t_us": 3570000000
+          },
+          {
+            "kind": "left",
+            "t_us": 3597500000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 3601000000
+          }
+        ],
+        "home": "Nice",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor noticed someone moving near you 75 seconds ago; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": false,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": true
+        },
+        "events": [],
+        "home": "",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": false,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": true
+        },
+        "events": [],
+        "home": "Nice",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": false,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": true
+        },
+        "events": [
+          {
+            "kind": "arrived",
+            "t_us": -1400000000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 600000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 1600000000
+          },
+          {
+            "kind": "vitals_acquired",
+            "t_us": 2600000000
+          },
+          {
+            "kind": "stood_up",
+            "t_us": 3200000000
+          },
+          {
+            "kind": "approached",
+            "t_us": 3511000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 3510000000
+          },
+          {
+            "kind": "still_long",
+            "t_us": 3570000000
+          },
+          {
+            "kind": "left",
+            "t_us": 3597500000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 3601000000
+          }
+        ],
+        "home": "",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Hello"
+      },
+      {
+        "state": {
+          "t_us": 3600000000,
+          "present": false,
+          "seated": false,
+          "distance_m": null,
+          "seated_s": 0.0,
+          "breath_rate": null,
+          "heart_rate": null,
+          "vitals_sensor": false,
+          "simulated": false,
+          "still_s": 0.0,
+          "motion_presence": true
+        },
+        "events": [
+          {
+            "kind": "arrived",
+            "t_us": -1400000000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 600000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 1600000000
+          },
+          {
+            "kind": "vitals_acquired",
+            "t_us": 2600000000
+          },
+          {
+            "kind": "stood_up",
+            "t_us": 3200000000
+          },
+          {
+            "kind": "approached",
+            "t_us": 3511000000
+          },
+          {
+            "kind": "sat_down",
+            "t_us": 3510000000
+          },
+          {
+            "kind": "still_long",
+            "t_us": 3570000000
+          },
+          {
+            "kind": "left",
+            "t_us": 3597500000
+          },
+          {
+            "kind": "arrived",
+            "t_us": 3601000000
+          }
+        ],
+        "home": "Nice",
+        "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.",
+        "message_fr": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Quelle heure est-il ?\n\n(Answer in French.)",
+        "message_none": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your owner lives in Nice: that is where the weather tool looks when no place is named.\n- Your motion sensor has noticed no movement near you for a while, so nobody seems to be there (someone sitting very still can go unnoticed).\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- Recent events: the person stood up 7 minutes ago; the person came close to you 89 seconds ago; the person sat down 2 minutes ago; you noticed they had been seated for a long time 30 seconds ago; the person left 2 seconds ago.\n\nThe person says: Hello"
       }
     ]
   },
+  "room": [
+    {
+      "room": {
+        "age_s": 3.0,
+        "device": "marvin-112233",
+        "simulated": false,
+        "motion_sensor": true,
+        "warming_up": false,
+        "motion": true,
+        "motion_age_s": 0.0,
+        "climate_sensor": true,
+        "temperature_c": 23.4,
+        "humidity": 48.0,
+        "light_sensor": false,
+        "light": null
+      },
+      "fact": "The room, from your own sensors: 23.4 °C, 48 % humidity, movement just now.",
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- The room, from your own sensors: 23.4 °C, 48 % humidity, movement just now."
+    },
+    {
+      "room": {
+        "age_s": 3.0,
+        "device": "marvin-112233",
+        "simulated": false,
+        "motion_sensor": true,
+        "warming_up": false,
+        "motion": false,
+        "motion_age_s": 9.9,
+        "climate_sensor": true,
+        "temperature_c": -3.25,
+        "humidity": 40.5,
+        "light_sensor": false,
+        "light": null
+      },
+      "fact": "The room, from your own sensors: -3.2 °C, 40 % humidity, movement just now.",
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- The room, from your own sensors: -3.2 °C, 40 % humidity, movement just now."
+    },
+    {
+      "room": {
+        "age_s": 3.0,
+        "device": "marvin-112233",
+        "simulated": false,
+        "motion_sensor": true,
+        "warming_up": false,
+        "motion": false,
+        "motion_age_s": 200.0,
+        "climate_sensor": false,
+        "temperature_c": null,
+        "humidity": null,
+        "light_sensor": true,
+        "light": 0.3
+      },
+      "fact": "The room, from your own sensors: dim, last movement 3 minutes ago.",
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- The room, from your own sensors: dim, last movement 3 minutes ago."
+    },
+    {
+      "room": {
+        "age_s": 3.0,
+        "device": "marvin-112233",
+        "simulated": false,
+        "motion_sensor": true,
+        "warming_up": false,
+        "motion": false,
+        "motion_age_s": 5400.0,
+        "climate_sensor": false,
+        "temperature_c": null,
+        "humidity": null,
+        "light_sensor": true,
+        "light": 0.1499
+      },
+      "fact": "The room, from your own sensors: dark, last movement 1.5 hours ago.",
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- The room, from your own sensors: dark, last movement 1.5 hours ago."
+    },
+    {
+      "room": {
+        "age_s": 3.0,
+        "device": "marvin-112233",
+        "simulated": false,
+        "motion_sensor": true,
+        "warming_up": true,
+        "motion": false,
+        "motion_age_s": null,
+        "climate_sensor": true,
+        "temperature_c": null,
+        "humidity": null,
+        "light_sensor": false,
+        "light": null
+      },
+      "fact": "The room, from your own sensors: motion sensor still warming up.",
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- The room, from your own sensors: motion sensor still warming up."
+    },
+    {
+      "room": {
+        "age_s": 3.0,
+        "device": "marvin-112233",
+        "simulated": false,
+        "motion_sensor": true,
+        "warming_up": false,
+        "motion": false,
+        "motion_age_s": null,
+        "climate_sensor": false,
+        "temperature_c": null,
+        "humidity": null,
+        "light_sensor": false,
+        "light": null
+      },
+      "fact": "The room, from your own sensors: no movement seen yet.",
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- The room, from your own sensors: no movement seen yet."
+    },
+    {
+      "room": {
+        "age_s": 3.0,
+        "device": "marvin-112233",
+        "simulated": false,
+        "motion_sensor": false,
+        "warming_up": false,
+        "motion": false,
+        "motion_age_s": null,
+        "climate_sensor": true,
+        "temperature_c": null,
+        "humidity": null,
+        "light_sensor": true,
+        "light": null
+      },
+      "fact": null,
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits."
+    },
+    {
+      "room": {
+        "age_s": 119.9,
+        "device": "marvin-112233",
+        "simulated": false,
+        "motion_sensor": false,
+        "warming_up": false,
+        "motion": false,
+        "motion_age_s": null,
+        "climate_sensor": true,
+        "temperature_c": 19.05,
+        "humidity": null,
+        "light_sensor": true,
+        "light": 0.45
+      },
+      "fact": "The room, from your own sensors: 19.1 °C, bright.",
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- The room, from your own sensors: 19.1 °C, bright."
+    },
+    {
+      "room": {
+        "age_s": 120.0,
+        "device": "marvin-112233",
+        "simulated": false,
+        "motion_sensor": false,
+        "warming_up": false,
+        "motion": false,
+        "motion_age_s": null,
+        "climate_sensor": true,
+        "temperature_c": 23.4,
+        "humidity": null,
+        "light_sensor": false,
+        "light": null
+      },
+      "fact": null,
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits."
+    },
+    {
+      "room": {
+        "age_s": 3.0,
+        "device": "marvin-112233",
+        "simulated": true,
+        "motion_sensor": false,
+        "warming_up": false,
+        "motion": false,
+        "motion_age_s": null,
+        "climate_sensor": true,
+        "temperature_c": 21.46,
+        "humidity": 45.5,
+        "light_sensor": true,
+        "light": 0.62
+      },
+      "fact": "The room, from simulated sensors, for testing: 21.5 °C, 46 % humidity, bright.",
+      "block": "Context:\n- It is Monday 21 September 2026, 08:52 (local time).\n- Your motion sensor noticed someone moving near you just now; it senses movement only, not where they are or who they are.\n- Your 60 GHz vital-signs radar is not connected yet, so you cannot measure breathing or heart rate at all for now, wherever the person sits.\n- The room, from simulated sensors, for testing: 21.5 °C, 46 % humidity, bright."
+    }
+  ],
   "clean": {
     "clean_for_speech": [
       {

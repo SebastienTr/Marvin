@@ -157,6 +157,17 @@
             <ol class="recent" id="events"></ol>
             <p class="empty-line muted" id="events-empty" hidden>Nothing yet today.</p>
           </section>
+
+          <section class="panel room-panel" data-module="room" id="room" aria-labelledby="room-h" data-empty>
+            <div class="panel-head"><h3 id="room-h">The room</h3><span class="small muted" id="room-source"></span></div>
+            <dl class="day-stats room-stats">
+              <div><dt>Temperature</dt><dd id="room-temp">–</dd></div>
+              <div><dt>Humidity</dt><dd id="room-humidity">–</dd></div>
+              <div><dt>Light</dt><dd id="room-light">–</dd></div>
+              <div><dt>Movement</dt><dd id="room-motion"><i class="motion-dot" id="room-dot" aria-hidden="true"></i><span id="room-motion-text">–</span></dd></div>
+            </dl>
+            <p class="small muted" id="room-hint"></p>
+          </section>
         </div>
         <p class="footnote">Everything Marvin sees, hears and remembers stays on this computer.</p>
       </section>

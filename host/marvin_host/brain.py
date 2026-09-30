@@ -40,6 +40,7 @@ import numpy as np
 from . import ld2450, protocol
 from .events import Event, EventKind, PresenceState
 from .receiver import Device, Sink
+from .room import Room
 
 log = logging.getLogger("marvin.brain")
 
@@ -95,6 +96,7 @@ class Brain(Sink):
         self._listeners: list[Callable[[Event], None]] = []
         # devices whose PIR (ENVIRONMENT) stands in for their simulated radar: address -> has a PIR
         self._pir_devices: dict[tuple, bool] = {}
+        self.room = Room()          # the room sensors' latest readings, for the voice and the app
         self._reset(0)
 
     # ------------------------------------------------------------ public API
@@ -160,7 +162,9 @@ class Brain(Sink):
                 self._lose_vitals(t_us, "movement" if s.present and not self._still else "no valid reading")
 
     def on_environment(self, dev: Device, t_us: int, env: protocol.Environment) -> None:
-        """The room sensors: a device's PIR, once warm, tells whether someone is there (see the module docstring)."""
+        """The room sensors: kept in `room`; a device's PIR, once warm, tells whether someone is there (see the
+        module docstring)."""
+        self.room.on_environment(dev, t_us, env)
         self._pir_devices[getattr(dev, "addr", None)] = env.pir
         if env.pir:
             self.on_motion(t_us, env.simulated, env.motion, env.warming_up)

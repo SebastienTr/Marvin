@@ -107,7 +107,8 @@ class VoiceAssistant(VoiceEngine):
                 del self.history[starts[-1]:]
             self._remembered_uid = 0
         home = self.config.home_place.strip() if schemas else ""
-        job.context = persona.context_block(state, events, home=home)
+        room = getattr(self.brain, "room", None)
+        job.context = persona.context_block(state, events, home=home, room=room.state() if room is not None else None)
         user = persona.user_message(job.text, language=job.language, context=job.context)
         return [{"role": "system", "content": persona.persona_prompt(job.language, tools=bool(schemas))},
                 *self.history,

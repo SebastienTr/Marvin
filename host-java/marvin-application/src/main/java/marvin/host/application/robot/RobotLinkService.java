@@ -15,15 +15,18 @@ import marvin.host.domain.robot.DeviceMonitor;
 import marvin.host.domain.robot.SensorScene;
 import marvin.host.domain.robot.DeviceStatus;
 import marvin.host.domain.robot.Extrinsics;
+import marvin.host.domain.robot.Room;
 import marvin.host.domain.robot.SensorFrame;
+import marvin.host.domain.robot.event.RoomState;
 
 /**
- * The robot link's use cases: every frame from the link goes to the device monitor and to the
- * listeners (the presence feed first); a tick turns counters into rates and notices.
+ * The robot link's use cases: every frame from the link goes to the device monitor (and the room sensors' readings
+ * to the room) and to the listeners (the presence feed first); a tick turns counters into rates and notices.
  */
 public final class RobotLinkService implements RobotInbound, RobotLinkQuery, MonitorRobotLink {
     private final DeviceMonitor monitor;
     private final SensorScene scene;
+    private final Room room = new Room();
     private final List<SensorFrameListener> listeners;
     private final List<LinkNoticeListener> noticeListeners;
     private final HostClock clock;
@@ -42,6 +45,9 @@ public final class RobotLinkService implements RobotInbound, RobotLinkQuery, Mon
         double now = clock.monotonicSeconds();
         monitor.record(frame, now, clock.wallSeconds());
         scene.record(frame, now);
+        if (frame instanceof SensorFrame.RoomReading r) {
+            room.record(r.device(), r.environment(), now);
+        }
         RuntimeException failure = null;
         for (SensorFrameListener l : listeners) {
             try {
@@ -77,6 +83,11 @@ public final class RobotLinkService implements RobotInbound, RobotLinkQuery, Mon
     @Override
     public SensorScene.View scene(boolean history) {
         return scene.view(clock.monotonicSeconds(), history);
+    }
+
+    @Override
+    public RoomState room() {
+        return room.state(clock.monotonicSeconds());
     }
 
     @Override
