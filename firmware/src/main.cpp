@@ -161,13 +161,42 @@ void led(bool on) {
 #endif
 }
 
+// Wi-Fi back-pressure. On a weak link the radio falls behind and lwIP runs out of buffers (endPacket()
+// fails with ENOMEM, error 12). The sensor streams then pause for TX_PAUSE_MS, so the link messages
+// (HELLO, BUTTON, ENVIRONMENT, LOG) still get through, and the drops are counted in one line every
+// DROP_REPORT_MS instead of one core error per datagram.
+constexpr uint32_t TX_PAUSE_MS = 250;
+constexpr uint32_t DROP_REPORT_MS = 5000;
+uint32_t tx_pause_until = 0;
+uint32_t tx_dropped = 0;
+uint32_t next_drop_report = 0;
+
+bool is_stream(proto::Type type) { return type == proto::LIDAR || type == proto::LD2450; }
+
+void report_drops(uint32_t ms) {
+  if (tx_dropped == 0 || (int32_t)(ms - next_drop_report) < 0) return;
+  Serial.printf("wifi: %u sensor datagrams dropped in %u s (RSSI %d dBm): the link is too slow, move closer to the router\n",
+                (unsigned)tx_dropped, (unsigned)(DROP_REPORT_MS / 1000), (int)WiFi.RSSI());
+  tx_dropped = 0;
+  next_drop_report = ms + DROP_REPORT_MS;
+}
+
 // Sends the datagram in `dgram` (header space + payload_len bytes of payload), stamped t_us.
 void send_datagram(uint8_t *dgram, proto::Type type, size_t payload_len, uint64_t t_us) {
+  const uint32_t ms = millis();
+  report_drops(ms);
+  if (is_stream(type) && (int32_t)(tx_pause_until - ms) > 0) {
+    tx_dropped++;
+    return;
+  }
   proto::header(dgram, type, seq++, t_us);
   IPAddress to = linked ? host : IPAddress(255, 255, 255, 255);
   udp.beginPacket(to, proto::HOST_PORT);
   udp.write(dgram, proto::HEADER_SIZE + payload_len);
-  udp.endPacket();
+  if (!udp.endPacket()) {
+    tx_dropped++;
+    tx_pause_until = ms + TX_PAUSE_MS;
+  }
 }
 
 // Sends the payload already written in buf, stamped now.
