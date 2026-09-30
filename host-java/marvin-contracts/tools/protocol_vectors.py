@@ -40,6 +40,7 @@ def vec(name: str, typ: int, seq: int, t_us: int, payload: bytes, decoded, note:
 def hello_decoded(h: protocol.Hello) -> dict:
     return {"device_id": h.device_id.hex(), "board": h.board, "board_name": protocol.BOARDS.get(h.board),
             "flags": h.flags, "simulated": h.simulated, "has_camera": h.has_camera, "has_audio": h.has_audio,
+            "has_buttons": h.has_buttons, "has_buzzer": h.has_buzzer, "has_face": h.has_face,
             "rssi": h.rssi, "uptime_ms": h.uptime_ms, "firmware": h.firmware, "device_name": h.device_name}
 
 
@@ -88,6 +89,12 @@ def robot_to_host() -> list[dict]:
                                                    protocol.FLAG_CAMERA | protocol.FLAG_AUDIO, -61, 123456, "0.6.0")),
         ("hello_mr60_bridge", protocol.Hello(bytes.fromhex("58cf79aabbcc"), 4, 0, -72, 4294967295, "mr60-0.2.1")),
         ("hello_d1_mini_no_firmware", protocol.Hello(bytes.fromhex("5ccf7f010203"), 1, protocol.FLAG_SIMULATED, -128, 0, "")),
+        ("hello_esp32_devkit_bench", protocol.Hello(bytes.fromhex("08d1f9112233"), 5,
+                                                    protocol.FLAG_SIMULATED | protocol.FLAG_BUTTONS
+                                                    | protocol.FLAG_BUZZER | protocol.FLAG_FACE, -55, 60000, "0.1.0")),
+        ("hello_esp32_devkit_no_oled", protocol.Hello(bytes.fromhex("08d1f9112233"), 5,
+                                                      protocol.FLAG_SIMULATED | protocol.FLAG_BUTTONS
+                                                      | protocol.FLAG_BUZZER, -55, 5000, "0.1.0")),
     ]:
         out.append(vec(name, protocol.HELLO, 7, 99_000, h.encode(), hello_decoded(h)))
     # LIDAR: the real LD19 packet, a built one crossing 0 degrees, a datagram with a bad CRC in the middle
@@ -142,6 +149,18 @@ def robot_to_host() -> list[dict]:
                    {"index": 4_294_967_000, "samples": len(pcm), "first": pcm[:8].tolist(), "last": pcm[-4:].tolist()}))
     out.append(vec("audio_in_odd_length", protocol.AUDIO_IN, 1006, 5_600_000, p[:-1],
                    {"error": error(protocol.AudioIn.decode, p[:-1])}, "counted as bad, dropped"))
+    # BUTTON
+    for name, payload, note in [
+        ("button_talk", protocol.Button(protocol.BUTTON_TALK).encode(), ""),
+        ("button_mute", protocol.Button(protocol.BUTTON_MUTE).encode(), ""),
+        ("button_unknown_kept", bytes([9, 1, 0xAA]),
+         "an unknown button (and a longer payload) decodes; the host ignores it"),
+    ]:
+        b = protocol.Button.decode(payload)
+        out.append(vec(name, protocol.BUTTON, 1007, 5_700_000, payload,
+                       {"button": b.button, "action": b.action, "name": b.name}, note))
+    out.append(vec("button_too_short", protocol.BUTTON, 1008, 5_800_000, b"\x01",
+                   {"error": error(protocol.Button.decode, b"\x01")}, "counted as bad, dropped"))
     return out
 
 
@@ -221,7 +240,9 @@ def main() -> None:
                       "boards": protocol.BOARDS, "lidar_models": protocol.LIDAR_MODELS,
                       "screen_boards": sorted(protocol.SCREEN_BOARDS),
                       "flags": {"simulated": protocol.FLAG_SIMULATED, "camera": protocol.FLAG_CAMERA,
-                                "audio": protocol.FLAG_AUDIO},
+                                "audio": protocol.FLAG_AUDIO, "buttons": protocol.FLAG_BUTTONS,
+                                "buzzer": protocol.FLAG_BUZZER, "face": protocol.FLAG_FACE},
+                      "buttons": protocol.BUTTONS, "button_actions": {protocol.BUTTON_PRESS: "press"},
                       "face_event_codes": {k.value: v for k, v in protocol.FACE_EVENT_CODES.items()},
                       "sounds": {k: {"id": v[0], "duration_ms": v[1]} for k, v in protocol.SOUNDS.items()},
                       "audio": {"rate": protocol.AUDIO_RATE, "in_samples": protocol.AUDIO_IN_SAMPLES,

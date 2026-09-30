@@ -38,6 +38,7 @@ No configuration is needed on either side: the host does not need to know the ro
 | `0x04` | `LOG` | robot → host | UTF-8 text |
 | `0x05` | `VITALS` | robot → host | MR60BHA2 readings: valid (u8), breath rate (u16, 0.01/min), heart rate (u16, 0.01/min), breathing wave (i16, ±32767), heartbeat wave (i16, ±32767), distance (u16, mm) |
 | `0x06` | `AUDIO_IN` | robot → host | Microphone: sample index (u32), then 320 × i16 PCM (see [Audio messages](#audio-messages)) |
+| `0x07` | `BUTTON` | robot → host | A button was pressed: button (u8), action (u8) (see [Buttons](#buttons)) |
 | `0x81` | `HOST_ACK` | host → robot | Host clock, microseconds (u64) |
 | `0x82` | `FACE_STATE` | host → robot | Presence state for the face, 17 bytes, ≈ 10 Hz (see [Face messages](#face-messages)) |
 | `0x83` | `FACE_EVENT` | host → robot | One brain event: event code (u8) |
@@ -56,14 +57,19 @@ Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 S
 | 0 | `0x01` | The sensor data is simulated |
 | 1 | `0x02` | Has a camera: MJPEG at `http://<robot ip>:81/stream` (see [Camera](#camera)) |
 | 2 | `0x04` | Has audio: speaker and microphone, `AUDIO_IN` / `AUDIO_OUT` / `AUDIO_CTRL` / `SOUND` |
+| 3 | `0x08` | Has buttons: sends `BUTTON` (see [Buttons](#buttons)) |
+| 4 | `0x10` | Has a buzzer: plays `SOUND` as tones, no `AUDIO_OUT` and no microphone |
+| 5 | `0x20` | Shows the face on a small screen of its own: send it `FACE_STATE` and `FACE_EVENT`, whatever its board id |
 
-Bits 1 and 2 were added to v1 without a version bump: older robots send 0 there, and older hosts only look at bit 0. A robot sets a capability bit only once that part has started (a camera that failed to initialise is not announced). Other bits are reserved and sent as 0.
+Bits 1 to 5 were added to v1 without a version bump: older robots send 0 there, and older hosts only look at bit 0. A robot sets a capability bit only once that part has started (a camera that failed to initialise is not announced; the bench board's OLED is announced while it answers on I2C, so a screen plugged in later shows up at the next `HELLO`). Bits 6 and 7 are reserved and sent as 0.
+
+The bench boards (board ids 2 and 5 with `MARVIN_HAS_BENCH_IO`, [wiring-bench.md](wiring-bench.md)) announce bits 3, 4 and 5.
 
 The sensor frames travel **raw**, CRC included, so the host validates them exactly as it would on a serial port, and a recording can be replayed through the same parsers.
 
 ## Face messages
 
-The host sends the robot's face what its brain knows (`host/marvin_host/link.py`), only to robots whose `HELLO` board id has the screen (2 and 3), at the address the `HELLO` came from. They were added to v1 without a version bump: a robot that does not know them ignores them. Both are optional for the robot: with no `FACE_STATE` for 5 s, the face assumes nobody is there and falls asleep on its own.
+The host sends the robot's face what its brain knows (`host/marvin_host/link.py`), only to robots whose `HELLO` board id has the screen (2 and 3) or whose `HELLO` has flag bit 5 (the bench board's OLED), at the address the `HELLO` came from. They were added to v1 without a version bump: a robot that does not know them ignores them. Both are optional for the robot: with no `FACE_STATE` for 5 s, the face assumes nobody is there and falls asleep on its own.
 
 **`FACE_STATE` (0x82, 17 bytes), about 10 times a second:**
 
@@ -132,6 +138,26 @@ The robot keeps a jitter buffer: it starts playing once 100 ms are queued (or wh
 | 3 | `wake` | 200 ms | | 6 | `hello` | 430 ms |
 
 The largest host → robot datagram is `AUDIO_OUT`: robots with audio read datagrams up to 1 024 bytes, others 512.
+
+Robots with a buzzer (`HELLO` flag bit 4) and no speaker are sent `SOUND` too, and play it as a short tone sequence with the same notes. The host sends them the voice's moments, following the voice's *chime* setting: `wake` when it starts listening from idle (Talk now, or "Marvin." alone) or is unmuted, `done` when a listening window ends or it is muted, `error` when the voice fails or Talk is pressed while it is off (`host/marvin_host/buttons.py`, `VoiceChimes` in the Java host). The bench board plays `hello` itself on its first link after boot.
+
+## Buttons
+
+**`BUTTON` (0x07), robot → host, 2 bytes, once per press** (debounced on the robot), from robots whose `HELLO` has flag bit 3:
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 1 | Button: 1 = Talk, 2 = Mute |
+| 1 | 1 | Action: 1 = press |
+
+The host ignores buttons and actions it does not know, and reads only these 2 bytes of a longer payload, so buttons and actions (a long press, a release) can be added. A shorter payload is counted as bad and dropped. A lost `BUTTON` is lost: press again.
+
+| Button | What the host does (as the app's button does) |
+|---|---|
+| Talk | Talk now: opens a listening window, or closes the one that is open. With the voice off, it sends `SOUND` `error` back to that robot |
+| Mute | Mutes the microphone, or unmutes it |
+
+The robot clicks its buzzer on each press. Without a host (not linked), it sends nothing and plays `error` itself.
 
 ## Camera
 

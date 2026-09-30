@@ -11,7 +11,10 @@ public final class Board {
     public static final int XIAO_ESP32S3_SENSE = 3;
     /** The MR60BHA2 kit's own ESP32-C6, bridging the vital-signs radar: a device of its own. */
     public static final int MR60BHA2_KIT = 4;
-    /** A classic ESP32 DevKit (ESP32-WROOM-32): no screen, no audio; simulated sensors on the bench. */
+    /**
+     * A classic ESP32 DevKit (ESP32-WROOM-32): simulated sensors on the bench, and the bench parts it announces in
+     * its {@code HELLO} flags (OLED eyes, buttons, buzzer).
+     */
     public static final int ESP32_DEVKIT = 5;
     public static final int SIMULATOR = 255;
 

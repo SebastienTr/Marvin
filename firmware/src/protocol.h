@@ -20,6 +20,7 @@ enum Type : uint8_t {
   LOG = 0x04,
   VITALS = 0x05,
   AUDIO_IN = 0x06,    // robot -> host: microphone PCM (audio/audio_packets.h)
+  BUTTON = 0x07,      // robot -> host: a button was pressed, button u8 + action u8 (ButtonId, ButtonAction)
   HOST_ACK = 0x81,
   FACE_STATE = 0x82,  // host -> robot: presence state for the face (FACE_STATE_SIZE bytes, ~10 Hz)
   FACE_EVENT = 0x83,  // host -> robot: one brain event, u8 code (face::Event in face/face.h)
@@ -32,6 +33,9 @@ enum Type : uint8_t {
 constexpr uint8_t FLAG_SIMULATED = 0x01;  // the sensor data is simulated
 constexpr uint8_t FLAG_CAMERA = 0x02;     // MJPEG camera at http://<robot ip>:CAMERA_PORT/stream
 constexpr uint8_t FLAG_AUDIO = 0x04;      // speaker and microphone: AUDIO_IN / AUDIO_OUT / AUDIO_CTRL / SOUND
+constexpr uint8_t FLAG_BUTTONS = 0x08;    // has buttons: sends BUTTON
+constexpr uint8_t FLAG_BUZZER = 0x10;     // plays SOUND on a buzzer (no AUDIO_OUT, no microphone)
+constexpr uint8_t FLAG_FACE = 0x20;       // shows the face on a small screen of its own: send it FACE_STATE / FACE_EVENT
 
 constexpr uint16_t CAMERA_PORT = 81;
 
@@ -51,6 +55,22 @@ enum AudioCommand : uint8_t {
   AUDIO_VOLUME = 4,     // argument: speaker volume 0..100 (capped in firmware for the 1 W speaker)
   AUDIO_MIC_GAIN = 5,   // argument: microphone gain in dB, 0..36
 };
+
+// BUTTON payload: button u8, action u8. The host ignores buttons and actions it does not know.
+constexpr size_t BUTTON_SIZE = 2;
+enum ButtonId : uint8_t {
+  BUTTON_TALK = 1,  // Talk now: the app's Talk now button
+  BUTTON_MUTE = 2,  // mute or unmute the microphone
+};
+enum ButtonAction : uint8_t {
+  BUTTON_PRESS = 1,
+};
+
+inline size_t button(uint8_t *p, uint8_t id, uint8_t action) {
+  p[0] = id;
+  p[1] = action;
+  return BUTTON_SIZE;
+}
 
 // FACE_STATE payload: flags u8, head x/y/z i16 mm, position x/y/z i16 mm, distance u16 mm,
 // heart rate u16 (0.01/min). Invalid fields are 0. Decoded by face/face_link.h.

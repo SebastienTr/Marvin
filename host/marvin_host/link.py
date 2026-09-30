@@ -1,7 +1,8 @@
 """Host -> robot link for the face: the brain's events and presence state, sent to the robot's screen.
 
 `FaceLink` listens to a `Brain` and, for every connected robot that has the screen (HELLO board id in
-`protocol.SCREEN_BOARDS`: the ESP32-S3 DevKitC and the XIAO ESP32S3 Sense):
+`protocol.SCREEN_BOARDS`: the ESP32-S3 DevKitC and the XIAO ESP32S3 Sense; or any device whose HELLO
+has `protocol.FLAG_FACE`, such as the bench board's OLED):
 
 - sends each event as a `FACE_EVENT` as soon as the brain emits it;
 - sends the presence state as a `FACE_STATE` at 10 Hz, from a background thread.
@@ -44,7 +45,8 @@ class FaceLink:
 
     def screens(self) -> list[Device]:
         """The connected devices that have a screen."""
-        return [d for d in list(self.receiver.devices.values()) if d.hello.board in self.boards]
+        return [d for d in list(self.receiver.devices.values())
+                if d.hello.board in self.boards or d.hello.flags & protocol.FLAG_FACE]
 
     def on_event(self, event: Event) -> None:
         """Brain listener: forward the event to every screen right away."""

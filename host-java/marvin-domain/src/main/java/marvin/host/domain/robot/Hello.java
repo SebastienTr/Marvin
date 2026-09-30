@@ -70,8 +70,17 @@ public record Hello(byte[] deviceId, int board, int flags, int rssi, long uptime
         return (flags & ProtocolV1.FLAG_AUDIO) != 0;
     }
 
+    public boolean hasButtons() {
+        return (flags & ProtocolV1.FLAG_BUTTONS) != 0;
+    }
+
+    public boolean hasBuzzer() {
+        return (flags & ProtocolV1.FLAG_BUZZER) != 0;
+    }
+
+    /** Shows the face: a board with the screen, or a device announcing one ({@link ProtocolV1#FLAG_FACE}). */
     public boolean hasScreen() {
-        return Board.hasScreen(board);
+        return Board.hasScreen(board) || (flags & ProtocolV1.FLAG_FACE) != 0;
     }
 
     /** {@code marvin-} and the last three bytes of the MAC address in hex, as the robot names itself. */

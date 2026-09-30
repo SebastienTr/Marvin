@@ -11,6 +11,7 @@
       "2": "ESP32-S3 DevKitC",
       "3": "XIAO ESP32S3 Sense",
       "4": "MR60BHA2 kit (XIAO ESP32C6)",
+      "5": "ESP32 DevKit (ESP32-WROOM-32)",
       "255": "simulator"
     },
     "lidar_models": {
@@ -24,7 +25,17 @@
     "flags": {
       "simulated": 1,
       "camera": 2,
-      "audio": 4
+      "audio": 4,
+      "buttons": 8,
+      "buzzer": 16,
+      "face": 32
+    },
+    "buttons": {
+      "1": "talk",
+      "2": "mute"
+    },
+    "button_actions": {
+      "1": "press"
     },
     "face_event_codes": {
       "arrived": 1,
@@ -367,6 +378,9 @@
         "simulated": true,
         "has_camera": false,
         "has_audio": false,
+        "has_buttons": false,
+        "has_buzzer": false,
+        "has_face": false,
         "rssi": -40,
         "uptime_ms": 2000,
         "firmware": "sim-0.1.0",
@@ -391,6 +405,9 @@
         "simulated": false,
         "has_camera": true,
         "has_audio": true,
+        "has_buttons": false,
+        "has_buzzer": false,
+        "has_face": true,
         "rssi": -61,
         "uptime_ms": 123456,
         "firmware": "0.6.0",
@@ -415,6 +432,9 @@
         "simulated": false,
         "has_camera": false,
         "has_audio": false,
+        "has_buttons": false,
+        "has_buzzer": false,
+        "has_face": false,
         "rssi": -72,
         "uptime_ms": 4294967295,
         "firmware": "mr60-0.2.1",
@@ -439,10 +459,67 @@
         "simulated": true,
         "has_camera": false,
         "has_audio": false,
+        "has_buttons": false,
+        "has_buzzer": false,
+        "has_face": false,
         "rssi": -128,
         "uptime_ms": 0,
         "firmware": "",
         "device_name": "marvin-010203"
+      }
+    },
+    {
+      "name": "hello_esp32_devkit_bench",
+      "type": 1,
+      "datagram": "4d56010107000000b88201000000000008d1f91122330539c960ea000005302e312e30",
+      "header": {
+        "type": 1,
+        "seq": 7,
+        "t_us": 99000
+      },
+      "payload": "08d1f91122330539c960ea000005302e312e30",
+      "decoded": {
+        "device_id": "08d1f9112233",
+        "board": 5,
+        "board_name": "ESP32 DevKit (ESP32-WROOM-32)",
+        "flags": 57,
+        "simulated": true,
+        "has_camera": false,
+        "has_audio": false,
+        "has_buttons": true,
+        "has_buzzer": true,
+        "has_face": true,
+        "rssi": -55,
+        "uptime_ms": 60000,
+        "firmware": "0.1.0",
+        "device_name": "marvin-112233"
+      }
+    },
+    {
+      "name": "hello_esp32_devkit_no_oled",
+      "type": 1,
+      "datagram": "4d56010107000000b88201000000000008d1f91122330519c98813000005302e312e30",
+      "header": {
+        "type": 1,
+        "seq": 7,
+        "t_us": 99000
+      },
+      "payload": "08d1f91122330519c98813000005302e312e30",
+      "decoded": {
+        "device_id": "08d1f9112233",
+        "board": 5,
+        "board_name": "ESP32 DevKit (ESP32-WROOM-32)",
+        "flags": 25,
+        "simulated": true,
+        "has_camera": false,
+        "has_audio": false,
+        "has_buttons": true,
+        "has_buzzer": true,
+        "has_face": false,
+        "rssi": -55,
+        "uptime_ms": 5000,
+        "firmware": "0.1.0",
+        "device_name": "marvin-112233"
       }
     },
     {
@@ -968,6 +1045,70 @@
       "payload": "d8feffff00000100ffffff7f008068c5c9c52ac68bc6ecc64dc7aec70fc870c8d1c832c993c9f4c955cab6ca17cb78cbd9cb3acc9bccfccc5dcdbecd1fce80cee1ce42cfa3cf04d065d0c6d027d188d1e9d14ad2abd20cd36dd3ced32fd490d4f1d452d5b3d514d675d6d6d637d798d7f9d75ad8bbd81cd97dd9ded93fdaa0da01db62dbc3db24dc85dce6dc47dda8dd09de6adecbde2cdf8ddfeedf4fe0b0e011e172e1d3e134e295e2f6e257e3b8e319e47ae4dbe43ce59de5fee55fe6c0e621e782e7e3e744e8a5e806e967e9c8e929ea8aeaebea4cebadeb0eec6fecd0ec31ed92edf3ed54eeb5ee16ef77efd8ef39f09af0fbf05cf1bdf11ef27ff2e0f241f3a2f303f464f4c5f426f587f5e8f549f6aaf60bf76cf7cdf72ef88ff8f0f851f9b2f913fa74fad5fa36fb97fbf8fb59fcbafc1bfd7cfdddfd3efe9ffe00ff61ffc2ff23008400e5004601a70108026902ca022b038c03ed034e04af0410057105d20533069406f5065607b70718087908da083b099c09fd095e0abf0a200b810be20b430ca40c050d660dc70d280e890eea0e4b0fac0f0d106e10cf1030119111f2115312b41215137613d71338149914fa145b15bc151d167e16df164017a11702186318c41825198619e719481aa91a0a1b6b1bcc1b2d1c8e1cef1c501db11d121e731ed41e351f961ff71f5820b9201a217b21dc213d229e22ff226023c12322248324e4244525a62507266826c9262a278b27ec274d28ae280f297029d129322a932af42a552bb62b172c782cd92c3a2d9b2dfc2d5d2ebe2e1f2f802fe12f4230a33004316531c63127328832e9324a33ab330c346d34ce342f359035f1355236b33614377537d63737389838f9385a39bb391c3a7d3ade3a3f3ba03b013c62",
       "decoded": {
         "error": "ProtocolError: bad AUDIO_IN length"
+      },
+      "note": "counted as bad, dropped"
+    },
+    {
+      "name": "button_talk",
+      "type": 7,
+      "datagram": "4d560107ef030000a0f95600000000000101",
+      "header": {
+        "type": 7,
+        "seq": 1007,
+        "t_us": 5700000
+      },
+      "payload": "0101",
+      "decoded": {
+        "button": 1,
+        "action": 1,
+        "name": "talk"
+      }
+    },
+    {
+      "name": "button_mute",
+      "type": 7,
+      "datagram": "4d560107ef030000a0f95600000000000201",
+      "header": {
+        "type": 7,
+        "seq": 1007,
+        "t_us": 5700000
+      },
+      "payload": "0201",
+      "decoded": {
+        "button": 2,
+        "action": 1,
+        "name": "mute"
+      }
+    },
+    {
+      "name": "button_unknown_kept",
+      "type": 7,
+      "datagram": "4d560107ef030000a0f95600000000000901aa",
+      "header": {
+        "type": 7,
+        "seq": 1007,
+        "t_us": 5700000
+      },
+      "payload": "0901aa",
+      "decoded": {
+        "button": 9,
+        "action": 1,
+        "name": null
+      },
+      "note": "an unknown button (and a longer payload) decodes; the host ignores it"
+    },
+    {
+      "name": "button_too_short",
+      "type": 7,
+      "datagram": "4d560107f0030000408058000000000001",
+      "header": {
+        "type": 7,
+        "seq": 1008,
+        "t_us": 5800000
+      },
+      "payload": "01",
+      "decoded": {
+        "error": "ProtocolError: BUTTON too short"
       },
       "note": "counted as bad, dropped"
     }

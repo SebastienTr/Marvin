@@ -36,6 +36,7 @@ LD2450 = 0x03       # device -> host: one raw 30-byte HLK-LD2450 frame
 LOG = 0x04          # device -> host: UTF-8 text
 VITALS = 0x05       # device -> host: MR60BHA2 readings (see Vitals)
 AUDIO_IN = 0x06     # device -> host: microphone PCM, u32 sample index + 320 x i16 (see AudioIn)
+BUTTON = 0x07       # device -> host: a button was pressed, u8 button + u8 action (see Button)
 HOST_ACK = 0x81     # host -> device: u64 host clock (us); the device then unicasts to the sender
 FACE_STATE = 0x82   # host -> device: presence state for the face, ~10 Hz (see FaceState)
 FACE_EVENT = 0x83   # host -> device: one brain event, u8 code (see FACE_EVENT_CODES)
@@ -48,10 +49,13 @@ BOARDS = {1: "Wemos D1 mini (ESP8266)", 2: "ESP32-S3 DevKitC", 3: "XIAO ESP32S3 
           5: "ESP32 DevKit (ESP32-WROOM-32)", 255: "simulator"}
 # LIDAR model ids
 LIDAR_MODELS = {1: "D500 (STL-19P)", 2: "D800 (STL-27L)"}
-# HELLO flags: bit 0 simulated sensor data; bits 1 and 2 are capabilities (older robots send 0)
+# HELLO flags: bit 0 simulated sensor data; bits 1 to 5 are capabilities (older robots send 0)
 FLAG_SIMULATED = 0x01
 FLAG_CAMERA = 0x02     # MJPEG camera at camera_url(ip)
 FLAG_AUDIO = 0x04      # speaker and microphone: AUDIO_IN / AUDIO_OUT / AUDIO_CTRL / SOUND
+FLAG_BUTTONS = 0x08    # buttons: BUTTON
+FLAG_BUZZER = 0x10     # a buzzer that plays SOUND (no AUDIO_OUT, no microphone)
+FLAG_FACE = 0x20       # the face on a small screen of its own: FACE_STATE / FACE_EVENT, whatever the board
 CAMERA_PORT = 81
 
 # Audio, both directions: 16 kHz mono signed 16-bit little-endian PCM (same as audio.py)
@@ -75,8 +79,15 @@ SOUNDS: dict[str, tuple[int, int]] = {
     "error": (5, 360),
     "hello": (6, 430),
 }
-# HELLO board ids that have the face screen: the host sends them FACE_STATE and FACE_EVENT
+# HELLO board ids that have the face screen: the host sends them FACE_STATE and FACE_EVENT (and to any
+# device whose HELLO has FLAG_FACE)
 SCREEN_BOARDS = frozenset({2, 3})
+
+# BUTTON: button ids and actions. The host ignores the ones it does not know.
+BUTTONS = {1: "talk", 2: "mute"}
+BUTTON_TALK = 1         # the app's Talk now
+BUTTON_MUTE = 2         # mute or unmute the microphone
+BUTTON_PRESS = 1
 
 # FACE_EVENT codes, one table for both sides (firmware/src/face/face.h, enum face::Event). 0 is unused;
 # the robot ignores codes it does not know.
@@ -154,8 +165,45 @@ class Hello:
         return bool(self.flags & FLAG_AUDIO)
 
     @property
+    def has_buttons(self) -> bool:
+        return bool(self.flags & FLAG_BUTTONS)
+
+    @property
+    def has_buzzer(self) -> bool:
+        return bool(self.flags & FLAG_BUZZER)
+
+    @property
+    def has_face(self) -> bool:
+        """Shows the face: a board with the screen, or a device announcing one (FLAG_FACE)."""
+        return self.board in SCREEN_BOARDS or bool(self.flags & FLAG_FACE)
+
+    @property
     def device_name(self) -> str:
         return "marvin-" + self.device_id[-3:].hex()
+
+
+@dataclass
+class Button:
+    """BUTTON payload: button (u8, BUTTONS) and action (u8, BUTTON_PRESS). Longer payloads keep this prefix."""
+
+    button: int
+    action: int = BUTTON_PRESS
+
+    SIZE = 2
+
+    def encode(self) -> bytes:
+        return bytes([self.button & 0xFF, self.action & 0xFF])
+
+    @classmethod
+    def decode(cls, payload: bytes) -> "Button":
+        if len(payload) < cls.SIZE:
+            raise ProtocolError("BUTTON too short")
+        return cls(payload[0], payload[1])
+
+    @property
+    def name(self) -> str | None:
+        """talk, mute, or None for a button this host does not know."""
+        return BUTTONS.get(self.button)
 
 
 def camera_url(ip: str, path: str = "/stream") -> str:

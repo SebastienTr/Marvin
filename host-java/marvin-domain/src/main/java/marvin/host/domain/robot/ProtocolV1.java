@@ -21,6 +21,12 @@ public final class ProtocolV1 {
     public static final int FLAG_CAMERA = 0x02;
     /** {@code HELLO} flag: speaker and microphone. */
     public static final int FLAG_AUDIO = 0x04;
+    /** {@code HELLO} flag: buttons, sent as {@code BUTTON}. */
+    public static final int FLAG_BUTTONS = 0x08;
+    /** {@code HELLO} flag: a buzzer that plays {@code SOUND} (no speaker stream, no microphone). */
+    public static final int FLAG_BUZZER = 0x10;
+    /** {@code HELLO} flag: the face on a small screen of its own, whatever the board: send it the face messages. */
+    public static final int FLAG_FACE = 0x20;
     public static final int CAMERA_PORT = 81;
 
     /** Audio in both directions: 16 kHz mono signed 16-bit little-endian PCM. */

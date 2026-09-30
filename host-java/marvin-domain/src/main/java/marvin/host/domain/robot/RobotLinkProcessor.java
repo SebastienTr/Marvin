@@ -127,6 +127,13 @@ public final class RobotLinkProcessor {
             } catch (ProtocolException e) {
                 dev.stats().bad();
             }
+        } else if (type == MessageType.BUTTON.code()) {
+            try {
+                Button b = Button.decode(payload);
+                out.add(new SensorFrame.ButtonPress(dev, hdr.tUs(), b.button(), b.action()));
+            } catch (ProtocolException e) {
+                dev.stats().bad();
+            }
         }
         return new Reception(ack, dev, out, null);
     }

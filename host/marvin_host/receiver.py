@@ -9,7 +9,8 @@ Two threads while `serve()` runs:
 - the dispatch thread makes the sink calls, in the order the datagrams came in.
 
 If the sinks fall behind, the oldest lidar scans are dropped first (a newer revolution replaces
-them); HELLO, LOG, VITALS, LD2450 and AUDIO_IN calls are dropped only when the whole queue is full.
+them); HELLO, LOG, VITALS, LD2450, AUDIO_IN and BUTTON calls are dropped only when the whole queue
+is full.
 Drops are counted per callback in `Device.stats.shed`, and `Receiver.timings()` tells how long each
 callback takes and how long calls wait in the queue.
 
@@ -72,6 +73,8 @@ class Sink:
     def on_log(self, dev: Device, t_us: int, text: str) -> None: ...
     # AUDIO_IN: seq is the sample index of pcm[0] (u32), pcm int16 at 16 kHz (see protocol.AudioIn)
     def on_audio(self, dev: Device, t_us: int, seq: int, pcm: np.ndarray) -> None: ...
+    # BUTTON: button and action ids (protocol.BUTTONS, protocol.BUTTON_PRESS)
+    def on_button(self, dev: Device, t_us: int, button: int, action: int) -> None: ...
 
 
 @dataclass
@@ -241,6 +244,13 @@ class Receiver:
             for fn in list(self._audio_listeners):     # the microphone must not wait for the sinks
                 fn(dev, hdr.t_us, a.index, a.pcm)
             self._submit("audio", dev, (hdr.t_us, a.index, a.pcm))
+        elif hdr.type == protocol.BUTTON:
+            try:
+                b = protocol.Button.decode(payload)
+            except protocol.ProtocolError:
+                s.bad += 1
+                return
+            self._submit("button", dev, (hdr.t_us, b.button, b.action))
 
     def _hello(self, hdr, payload, addr) -> None:
         try:
@@ -406,6 +416,8 @@ class Receiver:
                 sink.on_log(dev, *args)
             elif name == "audio":
                 sink.on_audio(dev, *args)
+            elif name == "button":
+                sink.on_button(dev, *args)
             elif name == "hello":
                 sink.on_hello(dev)
         finally:

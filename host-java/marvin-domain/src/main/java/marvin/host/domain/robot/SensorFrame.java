@@ -59,9 +59,13 @@ public sealed interface SensorFrame {
     record AudioChunk(Device device, long tUs, long index, short[] pcm) implements SensorFrame {
     }
 
+    /** A button of the device was pressed: {@link Button#TALK}, {@link Button#MUTE}, or one this host does not know. */
+    record ButtonPress(Device device, long tUs, int button, int action) implements SensorFrame {
+    }
+
     /**
      * The name of the matching Python {@code Sink} callback, used for statistics: scan, targets,
-     * vitals, log, audio, hello.
+     * vitals, log, audio, hello; button (no Python sink before it).
      */
     default String kind() {
         return switch (this) {
@@ -71,6 +75,7 @@ public sealed interface SensorFrame {
             case VitalSigns v -> "vitals";
             case LogLine l -> "log";
             case AudioChunk a -> "audio";
+            case ButtonPress b -> "button";
         };
     }
 }

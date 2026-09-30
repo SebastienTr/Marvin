@@ -75,10 +75,33 @@ class RobotLinkProcessorTest {
         send(MessageType.LD2450, 2, 0, new byte[30]);
         send(MessageType.VITALS, 3, 0, new byte[4]);
         send(MessageType.AUDIO_IN, 4, 0, new byte[5]);
+        send(MessageType.BUTTON, 5, 0, new byte[1]);
         LinkStats.Snapshot s = rx.device(from).stats().snapshot();
         assertThat(s.crcErrors()).isEqualTo(1);
         assertThat(s.lidarPackets()).isEqualTo(1);
-        assertThat(s.bad()).isEqualTo(3);
+        assertThat(s.bad()).isEqualTo(4);
+    }
+
+    @Test
+    void buttonsBecomeButtonPresses() {
+        Hello bench = new Hello(new byte[] {8, (byte) 0xd1, (byte) 0xf9, 0x11, 0x22, 0x33}, Board.ESP32_DEVKIT,
+                ProtocolV1.FLAG_SIMULATED | ProtocolV1.FLAG_BUTTONS | ProtocolV1.FLAG_BUZZER | ProtocolV1.FLAG_FACE,
+                -55, 1, "0.1.0");
+        assertThat(bench.hasButtons()).isTrue();
+        assertThat(bench.hasBuzzer()).isTrue();
+        assertThat(bench.hasScreen()).as("an OLED of its own").isTrue();
+        send(MessageType.HELLO, 0, 0, bench.encode());
+        List<SensorFrame> f = send(MessageType.BUTTON, 1, 7000, new Button(Button.TALK, Button.PRESS).encode()).frames();
+        assertThat(f).singleElement().satisfies(x -> {
+            SensorFrame.ButtonPress b = (SensorFrame.ButtonPress) x;
+            assertThat(b.button()).isEqualTo(Button.TALK);
+            assertThat(b.action()).isEqualTo(Button.PRESS);
+            assertThat(b.tUs()).isEqualTo(7000);
+            assertThat(b.kind()).isEqualTo("button");
+        });
+        assertThat(send(MessageType.BUTTON, 2, 0, new byte[] {9, 1, 5}).frames()).singleElement()
+                .satisfies(x -> assertThat(Button.name(((SensorFrame.ButtonPress) x).button())).isNull());
+        assertThat(new Hello(new byte[6], Board.ESP32_DEVKIT, ProtocolV1.FLAG_SIMULATED, -55, 1, "").hasScreen()).isFalse();
     }
 
     @Test

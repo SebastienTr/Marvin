@@ -19,6 +19,7 @@ import marvin.host.domain.presence.event.EventKind;
 import marvin.host.domain.robot.AudioIn;
 import marvin.host.domain.robot.AudioOut;
 import marvin.host.domain.robot.Board;
+import marvin.host.domain.robot.Button;
 import marvin.host.domain.robot.Extrinsics;
 import marvin.host.domain.robot.FaceState;
 import marvin.host.domain.robot.Header;
@@ -58,6 +59,13 @@ class ProtocolVectorsTest {
         assertThat(c.get("flags").get("simulated").asInt()).isEqualTo(ProtocolV1.FLAG_SIMULATED);
         assertThat(c.get("flags").get("camera").asInt()).isEqualTo(ProtocolV1.FLAG_CAMERA);
         assertThat(c.get("flags").get("audio").asInt()).isEqualTo(ProtocolV1.FLAG_AUDIO);
+        assertThat(c.get("flags").get("buttons").asInt()).isEqualTo(ProtocolV1.FLAG_BUTTONS);
+        assertThat(c.get("flags").get("buzzer").asInt()).isEqualTo(ProtocolV1.FLAG_BUZZER);
+        assertThat(c.get("flags").get("face").asInt()).isEqualTo(ProtocolV1.FLAG_FACE);
+        c.get("buttons").properties().forEach(e -> assertThat(Button.name(Integer.parseInt(e.getKey())))
+                .isEqualTo(e.getValue().asString()));
+        assertThat(Button.names()).hasSize(c.get("buttons").size());
+        assertThat(c.get("button_actions").get(String.valueOf(Button.PRESS)).asString()).isEqualTo("press");
         c.get("face_event_codes").properties().forEach(e -> assertThat(
                 EventKind.fromWireName(e.getKey()).orElseThrow().faceCode()).isEqualTo(e.getValue().asInt()));
         c.get("sounds").properties().forEach(e -> {
@@ -106,6 +114,9 @@ class ProtocolVectorsTest {
                 assertThat(hello.simulated()).isEqualTo(e.get("simulated").asBoolean());
                 assertThat(hello.hasCamera()).isEqualTo(e.get("has_camera").asBoolean());
                 assertThat(hello.hasAudio()).isEqualTo(e.get("has_audio").asBoolean());
+                assertThat(hello.hasButtons()).isEqualTo(e.get("has_buttons").asBoolean());
+                assertThat(hello.hasBuzzer()).isEqualTo(e.get("has_buzzer").asBoolean());
+                assertThat(hello.hasScreen()).isEqualTo(e.get("has_face").asBoolean());
                 assertThat(hello.rssi()).isEqualTo(e.get("rssi").asInt());
                 assertThat(hello.uptimeMs()).isEqualTo(e.get("uptime_ms").asLong());
                 assertThat(hello.firmware()).isEqualTo(e.get("firmware").asString());
@@ -193,6 +204,18 @@ class ProtocolVectorsTest {
                     assertThat(a.pcm()[a.pcm().length - n + k]).isEqualTo((short) e.get("last").get(k).asInt());
                 }
                 assertThat(a.encode()).isEqualTo(payload);
+            }
+            case 0x07 -> {
+                if (e.has("error")) {
+                    assertThatThrownBy(() -> Button.decode(payload)).isInstanceOf(ProtocolException.class)
+                            .hasMessage("BUTTON too short");
+                    return;
+                }
+                Button b = Button.decode(payload);
+                assertThat(b.button()).isEqualTo(e.get("button").asInt());
+                assertThat(b.action()).isEqualTo(e.get("action").asInt());
+                assertThat(Button.name(b.button())).isEqualTo(e.get("name").isNull() ? null : e.get("name").asString());
+                assertThat(b.encode()).isEqualTo(java.util.Arrays.copyOf(payload, Button.SIZE));
             }
             default -> throw new AssertionError("no check for type " + vec.get("type"));
         }

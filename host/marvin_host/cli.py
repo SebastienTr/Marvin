@@ -101,6 +101,10 @@ class Tee(Sink):
         for s in self.sinks:
             s.on_log(*a)
 
+    def on_button(self, *a):
+        for s in self.sinks:
+            s.on_button(*a)
+
 
 def _print_event(e) -> None:
     print(f"  * {e.kind.value}" + (f": {e.detail}" if e.detail else ""), flush=True)
