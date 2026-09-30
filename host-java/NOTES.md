@@ -1968,3 +1968,51 @@ needs it, sent the same way, on the question's message only) is a later step, no
   there predates `hearing`; `ApiContractIT` needs Docker and was not run.
 - The Python host's own app and voice have no images.
 
+
+## The bench board (2026-09-30)
+
+A classic ESP32 DevKit (board 5) or an ESP32-S3 DevKitC-1 (board 2) with an SSD1306 OLED, a Talk and a Mute button
+and a passive buzzer (docs/wiring-bench.md): the eyes follow the brain, the buttons drive the voice, the buzzer
+chimes.
+
+### What exists
+
+- **Protocol v1, no version bump**: `BUTTON` (0x07, robot → host: button u8, 1 talk / 2 mute; action u8, 1 press) and
+  `HELLO` flags `FLAG_BUTTONS` (0x08), `FLAG_BUZZER` (0x10), `FLAG_FACE` (0x20: the face on a screen of its own).
+  Domain: `Button`, `SensorFrame.ButtonPress`, `Hello.hasButtons()`, `hasBuzzer()`, `hasScreen()` (now the board or
+  `FLAG_FACE`, so `FaceLinkService` feeds the OLED with no change of its own). Python `protocol.py`, the receiver
+  (`Sink.on_button`) and the vectors (`protocol_vectors.py`: two bench `HELLO`s, three `BUTTON`s and a short one,
+  the new constants) the same.
+- **Robot context**: `RobotChimes` (port in) and `BuzzerChimeService`: `SOUND` to the robots with a buzzer and no
+  speaker (the voice plays its own sounds on robots with a speaker), or to one device by name.
+- **Boot module bridges** (ports only, as `PresenceFeed`): `ButtonFeed` (a `SensorFrameListener`: Talk is
+  `VoiceControl.listenNow(!listening)`, as the app's Talk now; Mute is `mute(!muted)`; Talk with the voice off sends
+  `error` to that robot; on a virtual thread, since the voice's commands wait up to 0.5 s for its status) and
+  `VoiceChimes` (a `VoiceListener`: `wake` when the voice goes from idle to listening or is unmuted, `done` when a
+  listening window ends or it is muted, `error` when it fails; one sound per change, none with the `chime` setting
+  off). Python: `host/marvin_host/buttons.py`, wired in `marvin-host run` and `marvin-host ui`.
+
+### Decisions and deviations
+
+1. **The eyes' voice moods come from `SOUND`**, not from new `FACE_EVENT` codes: `face::Event` holds presence events
+   only, and the chimes already mark the moments (listening, done, error). No speaking signal reaches the bench
+   board, so its eyes do not bounce while Marvin speaks.
+2. **`wake` only from idle**: the follow-up window after an answer also reports `listening`; chiming there would beep
+   after every answer. The voice's own chime has the same rule.
+3. **No new keys in the app's device list** (`buttons`, `buzzer`): the device entries are pinned by the API contract
+   goldens recorded from the Python host, and the board's name already says what it is.
+
+### Verified
+
+- `mvn -o verify` (Temurin 25): all green (new: `BuzzerChimeServiceTest` 2, `BenchButtonsTest` 3,
+  `RobotLinkProcessorTest` +1, `ProtocolVectorsTest` on the new vectors, `ArchitectureTest` on the new bridges).
+  Docker is not available: the Testcontainers ITs did not run.
+- Python: `python -m pytest -q` green (+16 in `test_buttons.py`).
+- Firmware: every env builds without warnings; `pio test -e native` green (+16 in `test_bench`). Not yet run on the
+  boards.
+
+### Known gaps
+
+- Long press, release and a third button are reserved in the payload, not sent. The Mute button's state is not shown
+  on the board (the chime says it).
+- SH1106 (1.3") screens need U8g2's other driver: not a build flag yet.

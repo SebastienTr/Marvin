@@ -130,6 +130,7 @@ def main(args) -> None:
         else:
             from .. import protocol
             from ..brain import Brain
+            from ..buttons import ButtonActions, VoiceChimes
             from ..cli import Tee
             from ..link import FaceLink
             from ..receiver import Receiver
@@ -148,7 +149,10 @@ def main(args) -> None:
             if server.settings.get("voice"):
                 voice.start()
             port = args.port or protocol.HOST_PORT
-            rx = Receiver(Tee(brain, sink), port=port)
+            buttons = ButtonActions(voice)
+            rx = Receiver(Tee(brain, sink, buttons), port=port)
+            buttons.receiver = rx
+            voice.add_listener(VoiceChimes(rx))
             link = FaceLink(rx, brain).start()
             cleanup.insert(0, link.stop)
             print(f"listening for the robot on UDP {port}...")

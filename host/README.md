@@ -72,6 +72,7 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `brain.py` | Presence, seating, stillness and vital-sign reliability, as debounced events |
 | `face.py`, `raster.py` | The robot's eyes (reference renderer and behaviour) and the tiny rasterizer they use |
 | `link.py` | Host → robot face link: brain events (`FACE_EVENT`) and presence state (`FACE_STATE`, 10 Hz) to every robot with a screen |
+| `buttons.py` | The bench board's `BUTTON` presses on the voice (Talk now, mute), and the voice's moments as `SOUND` chimes on robots with a buzzer |
 | `audio.py` | Audio contract (sources and sinks, 16 kHz mono) shared by the voice and the robot's audio |
 | `voice/` | Wake word, speech-to-text, local LLM and text-to-speech: talking to Marvin; `voice/tools/`: tools the model can call (the weather) |
 | `sidecar/voice/` | The voice sidecar for the Java core: the same audio loop behind gRPC (`python -m marvin_host.sidecar.voice`, see [docs/voice.md](../docs/voice.md#the-voice-sidecar)) |

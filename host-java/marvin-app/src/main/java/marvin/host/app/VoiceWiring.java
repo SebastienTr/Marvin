@@ -23,6 +23,7 @@ import marvin.host.application.conversation.VoiceService;
 import marvin.host.application.conversation.port.out.JsonFetcher;
 import marvin.host.application.conversation.port.out.ConversationStore;
 import marvin.host.application.presence.PresenceService;
+import marvin.host.application.robot.BuzzerChimeService;
 import marvin.host.application.robot.RobotAudioService;
 import marvin.host.application.robot.port.in.RobotLinkQuery;
 import marvin.host.application.settings.SettingsService;
@@ -64,12 +65,14 @@ public class VoiceWiring {
     public VoiceService voiceService(StartupImport imported, GrpcVoiceSidecar sidecar, OllamaLanguageModel model,
                                      VoiceSettingsFile settingsFile, JsonFetcher fetch, ConversationStore store,
                                      PresenceService presence, Clocks clocks, LocalDays days, EventHub hub,
-                                     HostLog hostLog, PresenceEventBus bus, ObjectProvider<Tracer> tracer) {
+                                     HostLog hostLog, PresenceEventBus bus, ObjectProvider<Tracer> tracer,
+                                     BuzzerChimeService chimes) {
         VoiceService voice = new VoiceService(sidecar, model, settingsFile, fetch, store, presence, clocks, days,
                 platform(), sidecar::robotWithAudio);
         tracer.ifAvailable(t -> voice.setTracing(new MicrometerTracing(t)));
         voice.addListener(hub);
         voice.addListener((kind, payload) -> logLine(hostLog, kind, payload));
+        voice.addListener(new VoiceChimes(chimes));        // the voice's moments on the bench board's buzzer
         bus.subscribe(voice::onPresenceEvent);
         return voice;
     }

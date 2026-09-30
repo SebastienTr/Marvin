@@ -27,6 +27,7 @@ import marvin.host.adapter.sidecar.SidecarProperties;
 import marvin.host.adapter.web.EventHub;
 import marvin.host.adapter.web.Views;
 import marvin.host.application.conversation.ConversationService;
+import marvin.host.application.conversation.port.in.VoiceControl;
 import marvin.host.application.conversation.port.out.ConversationStore;
 import marvin.host.application.face.FaceService;
 import marvin.host.application.memory.port.in.RecordMemory;
@@ -43,6 +44,7 @@ import marvin.host.domain.shared.Clocks;
 import marvin.host.domain.system.ComponentHealth;
 import marvin.host.domain.shared.LocalDays;
 import marvin.host.application.presence.PresenceService;
+import marvin.host.application.robot.BuzzerChimeService;
 import marvin.host.application.robot.FaceLinkService;
 import marvin.host.application.robot.RobotAudioService;
 import marvin.host.application.robot.RobotLinkService;
@@ -167,10 +169,19 @@ public class HostWiring {
     @Bean
     public RobotLinkService robotLinkService(Extrinsics extrinsics, SystemHostClock clock, PresenceService presence,
                                              HostLog hostLog, EventHub hub, ObjectProvider<RobotLinkQuery> query,
-                                             ObjectProvider<RobotAudioService> audio) {
+                                             ObjectProvider<RobotAudioService> audio,
+                                             ObjectProvider<VoiceControl> voice,
+                                             ObjectProvider<BuzzerChimeService> chimes) {
         DeviceNotices notices = new DeviceNotices(hostLog, hub, () -> Views.devicesOf(query.getObject()));
-        return new RobotLinkService(extrinsics, clock, List.of(new PresenceFeed(presence)),
+        return new RobotLinkService(extrinsics, clock,
+                List.of(new PresenceFeed(presence), new ButtonFeed(voice::getObject, chimes::getObject)),
                 List.of(HostWiring::logNotice, notices, n -> audio.getObject().onNotice(n)));
+    }
+
+    /** {@code SOUND} to the robots with a buzzer (the bench board). */
+    @Bean
+    public BuzzerChimeService buzzerChimeService(RobotLinkService link, UdpRobotLink udp) {
+        return new BuzzerChimeService(link, udp);
     }
 
     @Bean

@@ -165,7 +165,7 @@ conversation reads memory through its own port, `MemoryContext`, which `marvin-a
 
 | Context | PostgreSQL schema | Main use cases |
 |---|---|---|
-| `robot` | none (the link lives in memory) | `RobotLinkService`, `FaceLinkService`, `RobotAudioService` |
+| `robot` | none (the link lives in memory) | `RobotLinkService`, `FaceLinkService`, `RobotAudioService`, `BuzzerChimeService` |
 | `presence` | `presence` (events, minute samples) | `PresenceService`, `PresenceHistoryService` |
 | `conversation` | `conversation` (turns) | `VoiceService`, `ConversationService`, `WeatherTool` |
 | `settings` | `settings` | `SettingsService` |

@@ -20,6 +20,7 @@ import time
 
 from . import __version__, calibration, protocol, record, ui, voice
 from .brain import Brain
+from .buttons import ButtonActions, VoiceChimes
 from .link import FaceLink
 from .receiver import Receiver, Sink
 from .sim import SimDevice
@@ -226,11 +227,15 @@ def run_robot(args, cal) -> None:
         sinks.append(viewer.start(save=args.save, spawn=not args.no_viewer, brain=brain))
     if term.chatty:
         brain.add_listener(term.event)
+    buttons = ButtonActions(None)
+    sinks.append(buttons)
     rx = record.make_receiver(args, Tee(*sinks), port=args.port)
     uisink.start()
     link = FaceLink(rx, brain).start()          # drives the robot's face (robots with a screen)
     speech = voice.make_controller(brain, args)  # turned on with --voice or from the app
     speech.add_listener(term.voice)
+    buttons.voice, buttons.receiver = speech, rx    # the robot's Talk and Mute buttons
+    speech.add_listener(VoiceChimes(rx))            # and its buzzer
     app = ui.attach(brain, args, sink=uisink, voice=speech)      # None with --no-ui
     print(f"listening for the robot on UDP {args.port}", flush=True)
     if args.voice or (app is not None and app.settings.get("voice")):
