@@ -51,6 +51,16 @@ uint32_t Earcon::duration_ms(uint8_t id) {
   return ms;
 }
 
+bool Earcon::tone(uint8_t id, size_t i, uint16_t *f0, uint16_t *f1, uint16_t *ms) {
+  size_t n;
+  const Tone *t = tones(id, &n);
+  if (!t || i >= n) return false;
+  *f0 = t[i].f0;
+  *f1 = t[i].f1;
+  *ms = t[i].ms;
+  return true;
+}
+
 bool Earcon::start(uint8_t id) {
   size_t n;
   const Tone *t = tones(id, &n);

@@ -2,6 +2,8 @@
 
 **29 connections, and the only soldering is two header strips.** This guide assumes you have never wired electronics before.
 
+A bench board first (an ESP32 DevKit with Marvin's eyes on a small OLED, a Talk button and a buzzer, no soldering)? See [wiring-bench.md](wiring-bench.md).
+
 ## The idea in one paragraph
 
 There are two kinds of wires:

@@ -53,12 +53,18 @@ bool FaceLink::on_message(uint8_t type, const uint8_t *payload, size_t n, uint32
 }
 
 Rect FaceLink::frame(uint32_t now_ms, uint16_t *fb) {
+  advance(now_ms);
+  return face_.raster().render(fb);
+}
+
+const Face &FaceLink::advance(uint32_t now_ms) {
   if (has_clock_) elapsed_ms_ += (uint32_t)(now_ms - last_ms_);
   has_clock_ = true;
   last_ms_ = now_ms;
   static const Presence nobody;
   const Presence &s = host_alive(now_ms) ? state_ : nobody;
-  return face_.update_and_render(s, elapsed_ms_ / 1000.0, fb);
+  face_.update(s, elapsed_ms_ / 1000.0);
+  return face_;
 }
 
 }  // namespace face

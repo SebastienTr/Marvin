@@ -173,6 +173,10 @@ portable C++ (no Arduino), built and tested on the PC:
 | `display_st7789.{h,cpp}` | ST7789 init and pixel push (ESP32 + Arduino only) |
 | `face_app.{h,cpp}` | What `main.cpp` calls: `face_app::begin()`, `face_app::on_message()` (boards built with `-DMARVIN_HAS_SCREEN`) |
 
+The bench boards' 128 × 64 OLED ([wiring-bench.md](wiring-bench.md)) runs the same face through
+`FaceLink::advance()`, without the rasterizer: [`firmware/src/bench/eyes.h`](../firmware/src/bench/eyes.h)
+lays out `face.draw`'s shapes at half scale, in white on black, and adds moods from the voice's sounds.
+
 **Parity with Python.** The rasterizer follows `raster.py` operation by operation in single
 precision (numpy float32) and the behaviour follows `face.py` in double precision, with the same
 random draws in the same order. [`host/scripts/face_golden.py`](../host/scripts/face_golden.py)

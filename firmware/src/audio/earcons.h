@@ -40,6 +40,11 @@ class Earcon {
   // Length of sound `id` in milliseconds, 0 if unknown.
   static uint32_t duration_ms(uint8_t id);
 
+  // Tone i of sound `id`: frequency sweeping from f0 to f1 Hz over ms milliseconds (f0 == 0 is a
+  // silence). False past the last tone or for an unknown id. For players without PCM, such as the
+  // bench board's buzzer (bench/chime.h).
+  static bool tone(uint8_t id, size_t i, uint16_t *f0, uint16_t *f1, uint16_t *ms);
+
  private:
   struct Tone;
   static const Tone *tones(uint8_t id, size_t *count);

@@ -28,6 +28,8 @@ Short sounds generated on the robot (a few tones with smooth 5 ms edges, no samp
 
 Earcons peak at 0.8 of full scale before the volume, so they sit a little above normal speech.
 
+The bench boards play the same ids on a passive buzzer, as square waves with the same notes and no envelope ([wiring-bench.md](wiring-bench.md)); the host sends them `wake`, `done` and `error` for the voice's moments.
+
 ## Volume and its cap
 
 The MAX98357A, powered at 5 V with its GAIN pin unconnected (9 dB), can drive about 1.4 W into 8 Ω before clipping: more than the 1 W speaker is rated for, and with a sustained tone, enough to make a small cavity speaker rattle and heat. So the firmware caps the digital level instead of trusting every host to behave:

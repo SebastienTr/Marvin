@@ -36,6 +36,10 @@ class FaceLink {
   // (SCREEN_W x SCREEN_H RGB565). Returns the rectangle that changed.
   Rect frame(uint32_t now_ms, uint16_t *fb);
 
+  // Advance the face to now_ms without drawing it, for renderers of their own (the bench board's
+  // OLED, bench/eyes.h): they read the face's parameters, gaze and blink.
+  const Face &advance(uint32_t now_ms);
+
   // True while FACE_STATE messages arrive (the last one is less than HOST_TIMEOUT_MS old).
   bool host_alive(uint32_t now_ms) const {
     return has_state_ && (uint32_t)(now_ms - last_state_ms_) <= HOST_TIMEOUT_MS;

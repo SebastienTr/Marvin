@@ -10,12 +10,12 @@ Firmware for the Marvin robot's XIAO ESP32S3 Sense, built with PlatformIO.
 |---|---|---|
 | `xiao_esp32s3` | XIAO ESP32S3 Sense, **the robot** | **Real**: lidar on UART0, LD2450 on UART1 (`MARVIN_SENSORS=REAL`, `MARVIN_LIDAR_MODEL=2` = D800); screen, audio, camera |
 | `xiao_esp32s3_sim` | XIAO ESP32S3 Sense | Simulated; screen, audio, camera |
-| `esp32s3` | ESP32-S3 DevKitC-1 (bench) | Simulated |
-| `esp32dev` | Classic ESP32 DevKit (ESP32-WROOM-32, 30 pins; bench, a second device) | Simulated |
+| `esp32s3` | ESP32-S3 DevKitC-1 (bench) | Simulated; screen, and the bench parts ([wiring-bench.md](../docs/wiring-bench.md)) |
+| `esp32dev` | Classic ESP32 DevKit (ESP32-WROOM-32, 30 pins; bench, a second device) | Simulated; the bench parts: OLED eyes, Talk and Mute buttons, buzzer ([wiring-bench.md](../docs/wiring-bench.md)) |
 | `d1_mini` | Wemos D1 mini (ESP8266), default | Simulated (real sensors need an ESP32: the build stops with an error) |
 | `native` | Your computer | Unit tests of the portable code: `pio test -e native` |
 
-Build flags: `MARVIN_SENSORS=SIM|REAL`, `MARVIN_LIDAR_MODEL=1|2` for the real lidar (1 = D500 at 230 400 baud, 2 = D800 at 921 600 baud), `MARVIN_SIM_LIDAR_MODEL=1|2` for the simulated one. `MARVIN_HAS_SCREEN` (the face), `MARVIN_HAS_AUDIO` (speaker and microphone, see [Audio](#audio)) and `MARVIN_HAS_CAMERA` (see [Camera](#camera)) switch the optional parts on; the audio and camera ones are for the XIAO ESP32S3 Sense only (the build stops with an error elsewhere). The `d1_mini`, `esp32s3` and `esp32dev` builds have neither.
+Build flags: `MARVIN_SENSORS=SIM|REAL`, `MARVIN_LIDAR_MODEL=1|2` for the real lidar (1 = D500 at 230 400 baud, 2 = D800 at 921 600 baud), `MARVIN_SIM_LIDAR_MODEL=1|2` for the simulated one. `MARVIN_HAS_SCREEN` (the face), `MARVIN_HAS_AUDIO` (speaker and microphone, see [Audio](#audio)) and `MARVIN_HAS_CAMERA` (see [Camera](#camera)) switch the optional parts on; the audio and camera ones are for the XIAO ESP32S3 Sense only (the build stops with an error elsewhere). The `d1_mini`, `esp32s3` and `esp32dev` builds have neither. `MARVIN_HAS_BENCH_IO` (see [Bench parts](#bench-parts)) adds an OLED with the eyes, buttons and a buzzer to the two ESP32 DevKits.
 
 Partitions: the XIAO builds keep the board's `default_8MB.csv`, two 3.2 MB OTA app slots. With screen, audio and camera, the robot firmware is about 0.83 MB (25 % of a slot).
 
@@ -35,7 +35,7 @@ pio device monitor                 # serial log (Ctrl+C to quit); the speed come
 
 The robot: `pio run -e xiao_esp32s3 -t upload && pio device monitor -e xiao_esp32s3`. If the upload does not start, hold **BOOT**, press **RESET**, release **BOOT**, and upload again (the first flash of a new XIAO often needs it). The serial log goes over the USB-C port; UART0 belongs to the lidar.
 
-Then run `marvin-host run` on a computer on the same network (see [host/README.md](../host/README.md)). The on-board LED blinks fast while the robot looks for the host, and flashes briefly every 2 s once linked.
+Then run `marvin-host run` on a computer on the same network (see [host/README.md](../host/README.md)). The on-board LED blinks fast while the robot looks for the host, and flashes briefly every 2 s once linked. On the bench builds it blinks slowly while joining Wi-Fi, fast while looking for the host, and stays on once linked (the ESP32-S3 DevKitC-1's RGB LED: blue, amber, green).
 
 ## First power-on with the real sensors
 
@@ -101,13 +101,23 @@ Every 10 s while someone watches: `camera OV3660: 1 streaming, 10.0 frames/s, 10
 | Stream stutters, lidar datagrams lost | Wi-Fi air time | Lower `MARVIN_CAMERA_FPS` or raise `MARVIN_CAMERA_QUALITY` |
 | `503` from the camera | Four clients already connected | Close a viewer tab |
 
+## Bench parts
+
+`MARVIN_HAS_BENCH_IO` ([`src/bench/`](src/bench/), built by `esp32dev` and `esp32s3`): the parts of a bench board, wired as in [docs/wiring-bench.md](../docs/wiring-bench.md). They make a DevKit a second, simpler Marvin on the desk.
+
+- **Eyes on an SSD1306 OLED** (128 × 64, I2C at 400 kHz, address 0x3C or 0x3D): the robot's face (`face/face.h`, fed by `FACE_STATE` and `FACE_EVENT` through `face/face_link.h`) laid out at half scale in white on black (`bench/eyes.h`), drawn with [U8g2](https://github.com/olikraus/u8g2) (pinned in `platformio.ini`, built only by these two envs) in a FreeRTOS task on core 0 at up to 25 frames/s, so the ~25 ms of I2C per frame never block the loop. The voice's sounds set a mood on top: `wake` wide open (listening), `done` a glance aside (thinking), `error` concerned, `hello` happy. Before the host answers, a status line (`joining Wi-Fi`, `looking for the host`) under sleeping eyes. No screen, or one that stops answering: probed again every 5 s, I2C calls time out after 20 ms. `HELLO` flag bit 5 is set while it answers, so the host sends it the face messages.
+- **Buttons** (to ground, internal pull-ups, 30 ms debounce): each press clicks the buzzer and sends `BUTTON` (1 = Talk, 2 = Mute); without a host, the *error* sound instead. `HELLO` flag bit 3.
+- **Passive buzzer** (LEDC, channel `MARVIN_BUZZER_LEDC_CHANNEL`, 6): `SOUND` ids play as the earcons' notes in square waves, from a non-blocking sequencer (`bench/bench_logic.h`); the *hello* arpeggio on the first link after boot (`-DMARVIN_BOOT_SOUND=0` to silence it). `HELLO` flag bit 4.
+- **Status LED**: `LED_BUILTIN` on the classic DevKit; the S3's RGB LED through the RMT on GPIO48 and GPIO38 (its data pin on v1.0 and v1.1 boards).
+- Pins are `-D` flags per env: `MARVIN_OLED_SDA`, `MARVIN_OLED_SCL`, `MARVIN_BUTTON_TALK`, `MARVIN_BUTTON_MUTE`, `MARVIN_BUZZER_PIN`, `MARVIN_STATUS_RGB`, `MARVIN_STATUS_RGB_ALT`; `-1` leaves a part out. `MARVIN_OLED_FPS` (25). A 1.3" SH1106 screen would need U8g2's `sh1106` driver instead: not built in yet.
+
 ## Tests
 
 ```bash
 pio test -e native
 ```
 
-Runs the Unity tests in `test/` on your computer: the lidar and LD2450 stream framers against a real LD19 packet, the LD2450 datasheet frames, garbage, split and corrupted streams, round trips through the simulator, and the LD2450 command bytes; the face renderer; and (`test_audio`) the speaker jitter buffer (prebuffering, lost, late, duplicated and overlapping datagrams, index wrap, overflow, underrun, stop), the earcons, the audio payloads, the DSP helpers and the camera server's HTTP routing.
+Runs the Unity tests in `test/` on your computer: the lidar and LD2450 stream framers against a real LD19 packet, the LD2450 datasheet frames, garbage, split and corrupted streams, round trips through the simulator, and the LD2450 command bytes; the face renderer; the bench parts (`test_bench`: button debouncing, the buzzer's tone sequencer, the status LED patterns, the OLED eyes' layout, moods and gaze); and (`test_audio`) the speaker jitter buffer (prebuffering, lost, late, duplicated and overlapping datagrams, index wrap, overflow, underrun, stop), the earcons, the audio payloads, the DSP helpers and the camera server's HTTP routing.
 
 ## Source layout
 
@@ -123,6 +133,8 @@ Runs the Unity tests in `test/` on your computer: the lidar and LD2450 stream fr
 | `src/audio/jitter_buffer.cpp`, `earcons.cpp`, `audio_dsp.cpp`, `audio_packets.h` | Portable: speaker jitter buffer, procedural earcons, DC blocker / gain / volume, audio payloads |
 | `src/camera/camera_app.cpp` | ESP32-S3 only: esp32-camera setup and the MJPEG server on port 81 |
 | `src/camera/http_request.h` | Portable: the camera server's request routing and multipart framing |
+| `src/bench/bench_io.cpp` | ESP32 only: the bench parts: OLED task (U8g2), buttons, buzzer (LEDC), status LED |
+| `src/bench/eyes.cpp`, `bench_logic.cpp` | Portable: the eyes' layout on the 128 × 64 OLED and their moods; debounced button, tone sequencer, LED patterns |
 | `test/` | Unit tests (`pio test -e native`) |
 
 ## Responsibilities (full firmware)

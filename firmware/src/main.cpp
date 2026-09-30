@@ -15,6 +15,10 @@
 //   MARVIN_HAS_CAMERA  MJPEG over HTTP on port 81 (camera/camera_app.h).
 // A LOG with their counters every 10 s while they are in use.
 //
+// Bench parts on the ESP32 DevKits (MARVIN_HAS_BENCH_IO, bench/bench_io.h, docs/wiring-bench.md):
+// the eyes on an SSD1306 OLED (FACE_STATE, FACE_EVENT and SOUND in), Talk and Mute buttons (BUTTON
+// out), a buzzer playing SOUND, and the status LED. Announced in HELLO's flags.
+//
 // SPDX-License-Identifier: MIT
 #include <Arduino.h>
 
@@ -42,6 +46,10 @@
 #endif
 #if defined(MARVIN_HAS_CAMERA)
 #include "camera/camera_app.h"
+#endif
+#if defined(MARVIN_HAS_BENCH_IO)
+#include "audio/earcons.h"
+#include "bench/bench_io.h"
 #endif
 
 #if __has_include("secrets.h")
@@ -93,6 +101,14 @@
 #error "MARVIN_HAS_AUDIO and MARVIN_HAS_CAMERA are for the XIAO ESP32S3 Sense (pins in docs/wiring.md)."
 #endif
 
+#if defined(MARVIN_HAS_BENCH_IO) && !defined(ARDUINO_ARCH_ESP32)
+#error "MARVIN_HAS_BENCH_IO is for the ESP32 DevKits (esp32dev, esp32s3; pins in docs/wiring-bench.md)."
+#endif
+
+#if defined(MARVIN_HAS_BENCH_IO) && defined(MARVIN_HAS_AUDIO)
+#error "MARVIN_HAS_BENCH_IO's buzzer and MARVIN_HAS_AUDIO's speaker would both play SOUND: build one of them."
+#endif
+
 #if MARVIN_REAL_SENSORS && !defined(ARDUINO_ARCH_ESP32)
 #error "MARVIN_SENSORS=REAL needs an ESP32-S3 (lidar on UART0, LD2450 on UART1). The D1 mini (ESP8266) runs simulated sensors only: build it with MARVIN_SENSORS=SIM."
 #endif
@@ -127,8 +143,10 @@ uint64_t now_us() {
 }
 
 void led(bool on) {
-#ifdef LED_BUILTIN
+#if defined(LED_BUILTIN) && !defined(MARVIN_HAS_BENCH_IO)  // with bench parts, bench_io drives the LED
   digitalWrite(LED_BUILTIN, (on ^ MARVIN_LED_ACTIVE_LOW) ? HIGH : LOW);
+#else
+  (void)on;
 #endif
 }
 
@@ -151,6 +169,9 @@ void send_hello() {
 #endif
 #if defined(MARVIN_HAS_AUDIO)
   if (audio_app::ready()) flags |= proto::FLAG_AUDIO;
+#endif
+#if defined(MARVIN_HAS_BENCH_IO)
+  flags |= bench_io::hello_flags();
 #endif
   size_t n = proto::hello(buf + proto::HEADER_SIZE, mac, MARVIN_BOARD, flags, (int8_t)WiFi.RSSI(),
                           millis(), MARVIN_FW_VERSION);
@@ -176,6 +197,10 @@ void on_host_ack() {
 #if defined(MARVIN_HAS_AUDIO) && MARVIN_BOOT_SOUND
   static bool greeted = false;
   if (!greeted) greeted = audio_app::play_sound(audio::SOUND_HELLO);  // first link since boot
+#endif
+#if defined(MARVIN_HAS_BENCH_IO) && MARVIN_BOOT_SOUND
+  static bool chimed = false;
+  if (!chimed) chimed = bench_io::play_sound(audio::SOUND_HELLO);  // first link since boot, on the buzzer
 #endif
   Serial.printf("linked to host %s\n", host.toString().c_str());
   char msg[96];
@@ -218,6 +243,9 @@ void poll_host() {
         if (from_host)
           face_app::on_message(in[3], in + proto::HEADER_SIZE, n - proto::HEADER_SIZE);  // queued, never blocks
 #endif
+#if defined(MARVIN_HAS_BENCH_IO)
+        if (from_host) bench_io::on_message(in[3], in + proto::HEADER_SIZE, n - proto::HEADER_SIZE);  // never blocks
+#endif
         break;
     }
   }
@@ -232,10 +260,19 @@ void connect_wifi() {
 #endif
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.printf("joining %s", WIFI_SSID);
+#if defined(MARVIN_HAS_BENCH_IO)
+  for (uint32_t i = 0; WiFi.status() != WL_CONNECTED; i++) {
+    bench_io::step(millis());       // the LED blinks slowly; the eyes run in their own task
+    delay(10);
+    if (i % 20 == 19) Serial.print('.');
+  }
+  bench_io::set_phase(bench::LinkPhase::SEARCHING);
+#else
   while (WiFi.status() != WL_CONNECTED) {
     led(true); delay(100); led(false); delay(100);
     Serial.print('.');
   }
+#endif
   Serial.printf("\nIP %s, RSSI %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
 }
 
@@ -253,6 +290,23 @@ void link_step(uint32_t ms) {
     next_hello = ms + (linked ? 2000 : 500);
   }
   led(linked ? (ms % 2000) < 100 : (ms % 250) < 125);
+#if defined(MARVIN_HAS_BENCH_IO)
+  bench_io::set_phase(WiFi.status() != WL_CONNECTED ? bench::LinkPhase::WIFI  // Wi-Fi lost: reconnecting
+                      : linked                        ? bench::LinkPhase::LINKED
+                                                      : bench::LinkPhase::SEARCHING);
+  bench_io::step(ms);
+  uint8_t button;
+  while (bench_io::next_press(&button)) {
+    const char *name = button == proto::BUTTON_TALK ? "talk" : "mute";
+    if (linked) {
+      send(proto::BUTTON, proto::button(buf + proto::HEADER_SIZE, button, proto::BUTTON_PRESS));
+      Serial.printf("button %s\n", name);
+    } else {
+      bench_io::play_sound(audio::SOUND_ERROR);  // no host to tell: a low double beep
+      Serial.printf("button %s, but no host yet\n", name);
+    }
+  }
+#endif
 }
 
 // ---- Media: audio and camera (XIAO ESP32S3 Sense) ---------------------------------------------
@@ -431,7 +485,10 @@ void setup() {
   delay(200);
   Serial.printf("\nMarvin firmware %s, board %d, %s sensors\n", MARVIN_FW_VERSION, MARVIN_BOARD,
                 MARVIN_REAL_SENSORS ? "real" : "simulated");
-#ifdef LED_BUILTIN
+#if defined(MARVIN_HAS_BENCH_IO)
+  // the eyes run in their own task from here on; the buttons, buzzer and LED from the loop
+  if (!bench_io::begin()) Serial.println("bench: the eyes' task did not start");
+#elif defined(LED_BUILTIN)
   pinMode(LED_BUILTIN, OUTPUT);
 #endif
 #if defined(MARVIN_HAS_SCREEN)
