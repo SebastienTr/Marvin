@@ -17,18 +17,29 @@ package marvin.host.domain.presence.event;
  * @param vitalsSensor a vital-signs radar (MR60BHA2) has reported
  * @param simulated    the sensor data comes from a simulated person
  * @param targets      people seen by the LD2450
+ * @param motionPresence the presence comes from a PIR motion sensor alone (no radar): no position, and
+ *                     {@code stillS} is the time since the last motion
  */
 public record PresenceState(long tUs, boolean present, boolean seated, double[] position, double[] head,
                             Double distanceM, double speedCms, double stillS, double seatedS, Double breathRate,
-                            Double heartRate, boolean vitalsSensor, boolean simulated, int targets) {
+                            Double heartRate, boolean vitalsSensor, boolean simulated, int targets,
+                            boolean motionPresence) {
 
     /** Nobody, nothing known. */
     public static final PresenceState EMPTY = new PresenceState(0, false, false, null, null, null, 0, 0, 0, null,
-            null, false, false, 0);
+            null, false, false, 0, false);
 
     public PresenceState {
         position = position == null ? null : position.clone();
         head = head == null ? null : head.clone();
+    }
+
+    /** A state from the radars (not from a motion sensor alone). */
+    public PresenceState(long tUs, boolean present, boolean seated, double[] position, double[] head, Double distanceM,
+                         double speedCms, double stillS, double seatedS, Double breathRate, Double heartRate,
+                         boolean vitalsSensor, boolean simulated, int targets) {
+        this(tUs, present, seated, position, head, distanceM, speedCms, stillS, seatedS, breathRate, heartRate,
+                vitalsSensor, simulated, targets, false);
     }
 
     @Override

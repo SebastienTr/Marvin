@@ -52,3 +52,5 @@ class PresenceState:
     vitals_sensor: bool = False                          # a vital-signs radar (MR60BHA2) has reported
     simulated: bool = False                              # the sensor data comes from a simulated person
     targets: int = 0                                     # people seen by the LD2450
+    motion_presence: bool = False                        # presence comes from a PIR motion sensor alone (no radar):
+                                                         # no position; still_s is the time since the last motion

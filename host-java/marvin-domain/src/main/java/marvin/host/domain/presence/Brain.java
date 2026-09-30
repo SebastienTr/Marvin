@@ -25,6 +25,11 @@ import marvin.host.domain.presence.event.PresenceState;
  * to exactly the same events. If the device clock jumps back more than {@code clockResetS} (the robot
  * rebooted), the brain starts over; a frame slightly out of order is dropped.
  *
+ * <p>A PIR motion sensor is real evidence when the radar is not ({@link #onMotion}): with no live radar, motion is
+ * presence at once ({@code arrived}) and no motion for {@code motionHoldS} is {@code left}. It senses movement, not
+ * where anyone is: no position, no sitting; {@link PresenceState#motionPresence()} says so. Next to a live radar the
+ * PIR is only noted: the radar knows better.
+ *
  * <p>One robot: frames from several devices share one state. The lidar is not used (see brain.py).
  * Not thread-safe: the application service serializes the calls.
  */
@@ -48,6 +53,7 @@ public final class Brain {
     private boolean vitalsSensor;
     private boolean simulated;
     private int targets;
+    private boolean motionPresence;
 
     // internals
     private Long lastTUs;
@@ -68,6 +74,7 @@ public final class Brain {
     private boolean vitalsOk;
     private Double vitalsGoodSince;
     private Double vitalsBadSince;
+    private Double lastMotion;
 
     public Brain(BrainConfig config) {
         this.c = Objects.requireNonNull(config, "config");
@@ -93,7 +100,7 @@ public final class Brain {
     /** The current presence state. */
     public PresenceState state() {
         return new PresenceState(tUs, present, seated, position, head, distanceM, speedCms, stillS, seatedS,
-                breathRate, heartRate, vitalsSensor, simulated, targets);
+                breathRate, heartRate, vitalsSensor, simulated, targets, motionPresence);
     }
 
     /** The last {@code maxEvents} events, oldest first. */
@@ -116,6 +123,7 @@ public final class Brain {
             return List.of();
         }
         simulated = sim;
+        motionPresence = false;                     // the radar is the presence
         double t = frameTUs / 1e6;
         double dt = lastTargetsT == null ? 0.0 : Math.max(0.0, t - lastTargetsT);
         lastTargetsT = t;
@@ -185,6 +193,54 @@ public final class Brain {
         return List.copyOf(emitted);
     }
 
+    /**
+     * One PIR reading (the room sensors' {@code ENVIRONMENT}): motion now or not. Nothing is known while it warms up,
+     * but the clock still moves.
+     *
+     * @param sim the readings are simulated
+     * @return the events it caused, in order
+     */
+    public List<PresenceEvent> onMotion(long frameTUs, boolean sim, boolean motion, boolean warmingUp) {
+        emitted = new ArrayList<>();
+        if (!clock(frameTUs)) {
+            return List.of();
+        }
+        double t = frameTUs / 1e6;
+        if (lastTargetsT != null && t - lastTargetsT < c.leaveAfterS()) {
+            if (motion && !warmingUp) {
+                lastMotion = t;
+            }
+            return List.copyOf(emitted);            // a live radar: it knows better
+        }
+        motionPresence = true;
+        simulated = sim;
+        if (warmingUp) {
+            return List.copyOf(emitted);
+        }
+        if (motion) {
+            lastMotion = t;
+        }
+        if (!present) {
+            if (motion) {
+                present = true;
+                stillS = 0.0;
+                emit(EventKind.ARRIVED, frameTUs, "movement on the motion sensor");
+            }
+            return List.copyOf(emitted);
+        }
+        if (lastMotion == null || t - lastMotion >= c.motionHoldS()) {
+            if (vitalsOk) {
+                loseVitals(frameTUs, "person left");
+            }
+            emit(EventKind.LEFT, frameTUs, "no movement for " + fmt(c.motionHoldS(), 0) + " s");
+            reset(frameTUs);                        // forget everything about them, keep the clock
+            lastTUs = frameTUs;
+            return List.copyOf(emitted);
+        }
+        stillS = t - lastMotion;
+        return List.copyOf(emitted);
+    }
+
     // ------------------------------------------------------------ internals
 
     private void reset(long at) {
@@ -199,7 +255,7 @@ public final class Brain {
         seatedS = 0.0;
         breathRate = null;
         heartRate = null;
-        targets = 0;        // vitalsSensor and simulated are kept
+        targets = 0;        // vitalsSensor, simulated and motionPresence are kept
         lastTUs = null;
         lastTargetsT = null;
         seenSince = null;
@@ -218,6 +274,7 @@ public final class Brain {
         vitalsOk = false;
         vitalsGoodSince = null;
         vitalsBadSince = null;
+        lastMotion = null;
     }
 
     /** Checks the device clock; false for a frame to drop. */

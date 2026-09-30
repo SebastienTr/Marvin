@@ -18,6 +18,12 @@ Assumptions:
 - The lidar is not used. The LD2450 already tracks people, and a lidar slice at chest height
   cannot tell a person from a chair back or a coat rack without a background model of the room.
   It is a good candidate for later (confirming presence, following someone the radar misses).
+- A PIR motion sensor (`ENVIRONMENT`, the bench board's HC-SR501) is real evidence when the radar is
+  not: a device whose radar data is simulated but whose PIR is real no longer drives the brain with
+  its simulated person; its PIR does (`on_environment`). Motion is presence at once (ARRIVED); no
+  motion for `motion_hold_s` is LEFT. A PIR senses movement, not where anyone is: no position, no
+  sitting, no break timer; `state.motion_presence` says so. Next to a live radar the PIR is only
+  noted: the radar knows better (a real radar and a real PIR together: not built yet).
 
 SPDX-License-Identifier: MIT
 """
@@ -72,6 +78,8 @@ class BrainConfig:
     # head height estimate, device frame (Z = 0 on the table top, floor at -750)
     head_z_seated_mm: float = 550.0
     head_z_standing_mm: float = 1000.0
+    # PIR motion sensor, when it is the presence (no live radar)
+    motion_hold_s: float = 120.0         # no motion this long -> LEFT (someone at a desk moves now and then)
     # misc
     clock_reset_s: float = 1.0           # t_us going back more than this = device restart
     max_events: int = 200                # size of `Brain.events`
@@ -85,6 +93,8 @@ class Brain(Sink):
         self.state = PresenceState()
         self.events: deque[Event] = deque(maxlen=self.config.max_events)
         self._listeners: list[Callable[[Event], None]] = []
+        # devices whose PIR (ENVIRONMENT) stands in for their simulated radar: address -> has a PIR
+        self._pir_devices: dict[tuple, bool] = {}
         self._reset(0)
 
     # ------------------------------------------------------------ public API
@@ -99,9 +109,10 @@ class Brain(Sink):
     # ------------------------------------------------------------ Sink
 
     def on_targets(self, dev: Device, t_us: int, targets: list[ld2450.Target], points: list[tuple]) -> None:
-        if not self._clock(t_us):
+        if self._pir_stands_in(dev) or not self._clock(t_us):
             return
         self.state.simulated = _simulated(dev)
+        self.state.motion_presence = False          # the radar is the presence
         t = t_us / 1e6
         dt = 0.0 if self._last_targets_t is None else max(0.0, t - self._last_targets_t)
         self._last_targets_t = t
@@ -121,7 +132,7 @@ class Brain(Sink):
         self._update_head()
 
     def on_vitals(self, dev: Device, t_us: int, vitals: protocol.Vitals) -> None:
-        if not self._clock(t_us):
+        if self._pir_stands_in(dev) or not self._clock(t_us):
             return
         c, s, t = self.config, self.state, t_us / 1e6
         s.vitals_sensor = True
@@ -148,6 +159,42 @@ class Brain(Sink):
             if self._vitals_ok and t - self._vitals_bad_since >= c.vitals_lose_s:
                 self._lose_vitals(t_us, "movement" if s.present and not self._still else "no valid reading")
 
+    def on_environment(self, dev: Device, t_us: int, env: protocol.Environment) -> None:
+        """The room sensors: a device's PIR, once warm, tells whether someone is there (see the module docstring)."""
+        self._pir_devices[getattr(dev, "addr", None)] = env.pir
+        if env.pir:
+            self.on_motion(t_us, env.simulated, env.motion, env.warming_up)
+
+    def on_motion(self, t_us: int, simulated: bool, motion: bool, warming_up: bool = False) -> None:
+        """One PIR reading: motion now or not; nothing is known while it warms up (the clock still moves)."""
+        if not self._clock(t_us):
+            return
+        c, s, t = self.config, self.state, t_us / 1e6
+        if self._last_targets_t is not None and t - self._last_targets_t < c.leave_after_s:
+            if motion and not warming_up:
+                self._last_motion = t
+            return                                  # a live radar: it knows better
+        s.motion_presence = True
+        s.simulated = simulated
+        if warming_up:
+            return
+        if motion:
+            self._last_motion = t
+        if not s.present:
+            if motion:
+                s.present = True
+                s.still_s = 0.0
+                self._emit(EventKind.ARRIVED, t_us, "movement on the motion sensor")
+            return
+        if self._last_motion is None or t - self._last_motion >= c.motion_hold_s:
+            if self._vitals_ok:
+                self._lose_vitals(t_us, "person left")
+            self._emit(EventKind.LEFT, t_us, f"no movement for {c.motion_hold_s:.0f} s")
+            self._reset(t_us)                       # forget everything about them, keep the clock
+            self._last_t_us = t_us
+            return
+        s.still_s = t - self._last_motion
+
     def on_scan(self, dev: Device, t_us: int, points: np.ndarray, intensities: np.ndarray, speed_dps: int) -> None:
         pass            # not used yet, see the module docstring
 
@@ -156,7 +203,8 @@ class Brain(Sink):
     def _reset(self, t_us: int) -> None:
         old = getattr(self, "state", None)
         self.state = PresenceState(t_us=t_us, vitals_sensor=bool(old and old.vitals_sensor),
-                                   simulated=bool(old and old.simulated))
+                                   simulated=bool(old and old.simulated),
+                                   motion_presence=bool(old and old.motion_presence))
         self._last_t_us: int | None = None
         self._last_targets_t: float | None = None
         self._seen_since: float | None = None       # first frame of the current run of sightings
@@ -175,6 +223,15 @@ class Brain(Sink):
         self._vitals_ok = False
         self._vitals_good_since: float | None = None
         self._vitals_bad_since: float | None = None
+        self._last_motion: float | None = None      # the PIR's last motion
+
+    def _pir_stands_in(self, dev) -> bool:
+        """A simulated device with room sensors: its PIR, not its simulated radar, is the presence. Until its
+        first ENVIRONMENT says whether it has a PIR, its HELLO flag is enough to hold the radar back."""
+        hello = getattr(dev, "hello", None)
+        if not (_simulated(dev) and getattr(hello, "has_environment", False)):
+            return False
+        return self._pir_devices.get(getattr(dev, "addr", None), True)
 
     def _clock(self, t_us: int) -> bool:
         """Checks the device clock. Returns False for a frame that should be dropped."""

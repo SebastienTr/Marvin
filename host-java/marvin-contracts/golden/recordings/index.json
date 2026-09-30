@@ -31,6 +31,7 @@
     ],
     "head_z_seated_mm": 550.0,
     "head_z_standing_mm": 1000.0,
+    "motion_hold_s": 120.0,
     "clock_reset_s": 1.0,
     "max_events": 200
   },

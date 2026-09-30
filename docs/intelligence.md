@@ -15,6 +15,8 @@ Marvin sits on a desk and faces a seated person 0.65–1.1 m away.
 | **60 GHz radar** (MR60BHA2) | Breathing and heart rate at exactly the desk distance. | Ruined by movement (typing hurts heart rate most). The kit reports processed values only, no raw phase signal, so no heart-rate variability. | Yes, with a reliability gate | The core, but imperfect |
 | **24 GHz radar** (HLK-LD2450) | Arrivals, departures, someone approaching. Low power, works in the dark, sees no faces. | ±60° in front, 3 targets | Yes, drives the brain | The always-on trigger |
 | **Lidar** (D800) | 360° awareness: someone behind you or entering the room. Precise ranges. Notices when the robot is moved. | See below | No | The most questionable |
+| **PIR** (HC-SR501, bench board) | Someone moving nearby, for almost nothing, with no radar at all. | Movement only: no position, and someone sitting very still goes unnoticed; a minute to settle after power-on | Yes, as the presence of a board whose radar is simulated ([below](#a-pir-on-the-bench-board)) | A cheap stand-in |
+| **DHT11** and **light** (bench board) | The room itself: temperature, humidity, bright or dark. Context for the voice (*it is 27 °C in here*) and for later habits. | The DHT11 is slow and coarse (±2 °C, ±5 %); the light sensor is not wired yet | Shown in the app, given to the language model | Context, not presence |
 
 ### The lidar question
 
@@ -27,6 +29,17 @@ It is still the only sensor that sees behind the robot. So we keep it, and give 
 - **self-awareness**: when the map no longer matches, the robot has been moved or is in another room.
 
 Open question for the first build: its PWM pin is tied to ground (default speed), so software cannot stop the motor. Measure its noise at the desk. If it bothers you, a later revision can switch its power from a free GPIO so it only spins on demand (when the LD2450 loses the person, when someone enters, or a few seconds per minute).
+
+### A PIR on the bench board
+
+The bench board ([wiring-bench.md](wiring-bench.md)) simulates the lidar and both radars, so its "person" walks a loop that has nothing to do with whoever sits at the desk. Its PIR is real. So for a device whose `HELLO` says its sensor data is simulated and that has a PIR (`ENVIRONMENT`, [protocol.md](protocol.md#room-sensors)), the host ignores the simulated radar frames and takes the PIR as the presence (`brain.py`, `Brain.onMotion` and `PresenceFeed` in the Java host):
+
+- nothing during the PIR's first minute, while it settles (the brain's clock still moves: the robot counts as online);
+- motion: `arrived` at once ("movement on the motion sensor"), no half-second confirmation: the PIR has already filtered it;
+- no motion for 2 minutes (`motion_hold_s`, 120 s): `left` ("no movement for 120 s"). Someone at a desk moves often enough for a PIR at arm's length; someone reading very still may be taken for gone after two minutes, and comes back with the next movement;
+- no position, distance or sitting: the eyes wake up and look straight ahead rather than following you, the break timer does not run, and the vital signs (simulated on that board) are ignored. The state says `motion_presence`, and Marvin's context says a motion sensor noticed movement, not that someone is in front of it.
+
+A real, live radar always wins: a PIR next to it is only noted, since the radar knows where you are and that you are still there when you do not move. Fusing a real radar and a real PIR (the PIR confirming an arrival, or holding a presence the radar lost) waits for a robot that has both.
 
 ## How far machine learning goes: three levels
 

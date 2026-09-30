@@ -30,6 +30,7 @@ package marvin.host.domain.presence;
  * @param heartMax         plausible beats per minute, high end
  * @param headZSeatedMm    head height estimate, seated (Z = 0 on the table top)
  * @param headZStandingMm  head height estimate, standing
+ * @param motionHoldS      a PIR motion sensor as the presence (no live radar): no motion this long, {@code left}
  * @param clockResetS      the device clock going back more than this is a restart
  * @param maxEvents        events kept in memory
  */
@@ -39,23 +40,23 @@ public record BrainConfig(double arriveConfirmS, double leaveAfterS, double appr
                           double standMoveMm, double standAwayM, double standSpeedCms, double standSpeedS,
                           double stillLongS, double vitalsAcquireS, double vitalsLoseS, double breathMin,
                           double breathMax, double heartMin, double heartMax, double headZSeatedMm,
-                          double headZStandingMm, double clockResetS, int maxEvents) {
+                          double headZStandingMm, double motionHoldS, double clockResetS, int maxEvents) {
 
     /** The Python host's defaults. */
     public static final BrainConfig DEFAULT = new BrainConfig(0.5, 3.0, 0.6, 0.9, 0.2, 0.5, -1, 1.0, 120.0, 10.0,
-            1.3, 3.0, 300.0, 0.3, 30.0, 0.5, 50 * 60, 3.0, 1.0, 6.0, 30.0, 40.0, 140.0, 550.0, 1000.0, 1.0, 200);
+            1.3, 3.0, 300.0, 0.3, 30.0, 0.5, 50 * 60, 3.0, 1.0, 6.0, 30.0, 40.0, 140.0, 550.0, 1000.0, 120.0, 1.0, 200);
 
     public BrainConfig withRadarSpeedSign(int sign) {
         return new BrainConfig(arriveConfirmS, leaveAfterS, approachM, approachRearmM, positionTauS, speedTauS, sign,
                 stillWindowS, stillMoveMm, stillSpeedCms, sitMaxM, sitStillS, standMoveMm, standAwayM, standSpeedCms,
                 standSpeedS, stillLongS, vitalsAcquireS, vitalsLoseS, breathMin, breathMax, heartMin, heartMax,
-                headZSeatedMm, headZStandingMm, clockResetS, maxEvents);
+                headZSeatedMm, headZStandingMm, motionHoldS, clockResetS, maxEvents);
     }
 
     public BrainConfig withStillLongS(double s) {
         return new BrainConfig(arriveConfirmS, leaveAfterS, approachM, approachRearmM, positionTauS, speedTauS,
                 radarSpeedSign, stillWindowS, stillMoveMm, stillSpeedCms, sitMaxM, sitStillS, standMoveMm, standAwayM,
                 standSpeedCms, standSpeedS, s, vitalsAcquireS, vitalsLoseS, breathMin, breathMax, heartMin, heartMax,
-                headZSeatedMm, headZStandingMm, clockResetS, maxEvents);
+                headZSeatedMm, headZStandingMm, motionHoldS, clockResetS, maxEvents);
     }
 }

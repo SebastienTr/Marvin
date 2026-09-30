@@ -52,6 +52,16 @@ public final class PresenceService implements ObservePresence, PresenceQuery, Co
     }
 
     @Override
+    public void onMotion(long tUs, boolean simulated, boolean motion, boolean warmingUp) {
+        List<PresenceEvent> events;
+        synchronized (lock) {
+            events = brain.onMotion(tUs, simulated, motion, warmingUp);
+            state = brain.state();
+        }
+        events.forEach(publisher::publish);
+    }
+
+    @Override
     public PresenceState state() {
         return state;
     }

@@ -206,7 +206,8 @@
       "heart_rate": null,
       "vitals_sensor": false,
       "simulated": false,
-      "targets": 0
+      "targets": 0,
+      "motion_presence": false
     },
     "standing_right": {
       "t_us": 0,
@@ -230,7 +231,8 @@
       "heart_rate": null,
       "vitals_sensor": false,
       "simulated": false,
-      "targets": 0
+      "targets": 0,
+      "motion_presence": false
     },
     "close": {
       "t_us": 0,
@@ -254,7 +256,8 @@
       "heart_rate": null,
       "vitals_sensor": false,
       "simulated": false,
-      "targets": 0
+      "targets": 0,
+      "motion_presence": false
     },
     "seated_left": {
       "t_us": 0,
@@ -278,7 +281,8 @@
       "heart_rate": null,
       "vitals_sensor": false,
       "simulated": false,
-      "targets": 0
+      "targets": 0,
+      "motion_presence": false
     },
     "seated_vitals": {
       "t_us": 0,
@@ -302,7 +306,8 @@
       "heart_rate": 72.0,
       "vitals_sensor": false,
       "simulated": false,
-      "targets": 0
+      "targets": 0,
+      "motion_presence": false
     },
     "far_position_only": {
       "t_us": 0,
@@ -322,7 +327,8 @@
       "heart_rate": null,
       "vitals_sensor": false,
       "simulated": false,
-      "targets": 0
+      "targets": 0,
+      "motion_presence": false
     },
     "present_nowhere": {
       "t_us": 0,
@@ -338,7 +344,8 @@
       "heart_rate": null,
       "vitals_sensor": false,
       "simulated": false,
-      "targets": 0
+      "targets": 0,
+      "motion_presence": false
     }
   },
   "steps": [

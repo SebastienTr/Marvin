@@ -107,7 +107,7 @@ class GoldenRecordingsTest {
                 c.get("vitals_lose_s").asDouble(), c.get("breath_range").get(0).asDouble(),
                 c.get("breath_range").get(1).asDouble(), c.get("heart_range").get(0).asDouble(),
                 c.get("heart_range").get(1).asDouble(), c.get("head_z_seated_mm").asDouble(),
-                c.get("head_z_standing_mm").asDouble(), c.get("clock_reset_s").asDouble(),
+                c.get("head_z_standing_mm").asDouble(), c.get("motion_hold_s").asDouble(), c.get("clock_reset_s").asDouble(),
                 c.get("max_events").asInt());
     }
 
@@ -216,6 +216,7 @@ class GoldenRecordingsTest {
         assertThat(s.vitalsSensor()).as(at + " vitals_sensor").isEqualTo(e.get("vitals_sensor").asBoolean());
         assertThat(s.simulated()).as(at + " simulated").isEqualTo(e.get("simulated").asBoolean());
         assertThat(s.targets()).as(at + " targets").isEqualTo(e.get("targets").asInt());
+        assertThat(s.motionPresence()).as(at + " motion_presence").isEqualTo(e.get("motion_presence").asBoolean());
     }
 
     private static void vec(String what, JsonNode e, double[] got) {

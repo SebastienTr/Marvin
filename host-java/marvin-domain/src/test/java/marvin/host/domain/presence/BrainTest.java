@@ -119,6 +119,53 @@ class BrainTest {
         assertThat(brain.state().tUs()).isEqualTo(100_000);
     }
 
+    private void motion(double t, boolean motion, boolean warmingUp) {
+        events.addAll(brain.onMotion((long) (t * 1e6), false, motion, warmingUp));
+    }
+
+    @Test
+    void aPirAloneIsThePresenceWithAHoldTime() {
+        motion(0, false, true);
+        motion(30, true, true);                 // it fires on its own while warming up: nothing
+        assertThat(kinds()).isEmpty();
+        assertThat(brain.state().motionPresence()).isTrue();
+        assertThat(brain.state().tUs()).isEqualTo(30_000_000);     // the clock moves: the robot is online
+        motion(61, true, false);
+        assertThat(kinds()).containsExactly(EventKind.ARRIVED);
+        assertThat(events.get(0).detail()).isEqualTo("movement on the motion sensor");
+        assertThat(events.get(0).data()).isEmpty();
+        assertThat(brain.state().present()).isTrue();
+        assertThat(brain.state().position()).isNull();
+        assertThat(brain.state().head()).isNull();
+        assertThat(brain.state().distanceM()).isNull();
+        for (int t = 66; t < 180; t += 5) {
+            motion(t, false, false);
+        }
+        assertThat(kinds()).containsExactly(EventKind.ARRIVED);
+        assertThat(brain.state().stillS()).isEqualTo(115.0);
+        motion(181, false, false);
+        assertThat(kinds()).containsExactly(EventKind.ARRIVED, EventKind.LEFT);
+        assertThat(events.get(1).detail()).isEqualTo("no movement for 120 s");
+        assertThat(brain.state().present()).isFalse();
+        assertThat(brain.state().motionPresence()).as("kept: the PIR is still the presence").isTrue();
+        motion(186, true, false);
+        assertThat(kinds()).containsExactly(EventKind.ARRIVED, EventKind.LEFT, EventKind.ARRIVED);
+    }
+
+    @Test
+    void aLiveRadarKnowsBetterThanThePir() {
+        nobody(0.0);
+        motion(0.05, true, false);
+        assertThat(kinds()).isEmpty();
+        assertThat(brain.state().motionPresence()).isFalse();
+        for (double t = 0.1; t < 1; t += 0.1) {
+            seen(t, 0, -2000);
+        }
+        assertThat(kinds()).containsExactly(EventKind.ARRIVED);
+        assertThat(brain.state().distanceM()).isEqualTo(2.0);
+        assertThat(brain.state().motionPresence()).isFalse();
+    }
+
     @Test
     void formatsNumbersLikePython() {
         assertThat(Brain.fmt(0.125, 2)).isEqualTo("0.12");
