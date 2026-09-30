@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Bench board (2026-09-30)
+- `firmware/src/bench/` (`MARVIN_HAS_BENCH_IO`, envs `esp32dev` and `esp32s3`): Marvin's eyes on a 0.96" SSD1306 OLED (the robot's face at half scale, fed by `FACE_STATE` and `FACE_EVENT`, with moods from the voice's sounds; found again when a loose screen comes back), a Talk and a Mute button, a passive buzzer playing the earcons, and a status LED for Wi-Fi, host search and link (the S3 DevKitC-1's RGB LED on v1.0 and v1.1 boards). U8g2 pinned, built only by these envs. Unity tests in `test/test_bench`.
+- Protocol v1, without a version bump: `BUTTON` (0x07, robot → host: button, action) and `HELLO` flags bit 3 (buttons), 4 (buzzer) and 5 (the face on a screen of its own). Python and Java hosts and the protocol vectors updated together.
+- Hosts: a Talk press is the app's Talk now, a Mute press mutes or unmutes; the voice's moments (listening, done, error, muted) play as chimes on robots with a buzzer; the face messages go to any device announcing a screen (`host/marvin_host/buttons.py`; `ButtonFeed`, `VoiceChimes` and `BuzzerChimeService` in the Java host).
+- `docs/wiring-bench.md`: the pin maps of both DevKits, no soldering, how to flash and what to expect.
+
 ### Java host (2026-09-28)
 - `host-java/`: the host core in Java 25 and Spring Boot 4.1 (hexagonal, bounded contexts, ArchUnit), built phase by phase from `docs/design.md` and checked against the Python host (`marvin-contracts`: protocol vectors, recordings, API snapshots, face and conversation vectors). It reaches parity with `marvin-host run`: the robot link (UDP protocol v1), the brain, the face, the history in PostgreSQL (the Python host's `marvin.db` imported once), the app unchanged, and the voice: the conversation in Java (Ollama through Spring AI, tools, memory, reminders), the audio loop in the Python voice sidecar it supervises (`host/marvin_host/sidecar/voice`, gRPC `marvin.voice.v1`).
 - `./marvin up` is now the way to run Marvin (PostgreSQL, the Java host and its voice); `./marvin demo`, `status`, `logs`, `doctor`, `down`. The `marvin-host` commands stay as tools: simulator, viewer, recording, replay, calibration.
