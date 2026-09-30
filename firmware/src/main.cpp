@@ -19,6 +19,10 @@
 // the eyes on an SSD1306 OLED (FACE_STATE, FACE_EVENT and SOUND in), Talk and Mute buttons (BUTTON
 // out), a buzzer playing SOUND, and the status LED. Announced in HELLO's flags.
 //
+// Room sensors on the ESP32 DevKits (MARVIN_HAS_ROOM_SENSORS, room/room_io.h): a PIR motion sensor,
+// a DHT11 and, once wired, a light sensor (MARVIN_HAS_LDR), sent as ENVIRONMENT every 5 s and at once
+// when motion starts or ends. Announced in HELLO's flags.
+//
 // SPDX-License-Identifier: MIT
 #include <Arduino.h>
 
@@ -50,6 +54,9 @@
 #if defined(MARVIN_HAS_BENCH_IO)
 #include "audio/earcons.h"
 #include "bench/bench_io.h"
+#endif
+#if defined(MARVIN_HAS_ROOM_SENSORS)
+#include "room/room_io.h"
 #endif
 
 #if __has_include("secrets.h")
@@ -103,6 +110,10 @@
 
 #if defined(MARVIN_HAS_BENCH_IO) && !defined(ARDUINO_ARCH_ESP32)
 #error "MARVIN_HAS_BENCH_IO is for the ESP32 DevKits (esp32dev, esp32s3; pins in docs/wiring-bench.md)."
+#endif
+
+#if defined(MARVIN_HAS_ROOM_SENSORS) && !defined(ARDUINO_ARCH_ESP32)
+#error "MARVIN_HAS_ROOM_SENSORS is for the ESP32 DevKits (esp32dev, esp32s3; pins in docs/wiring-bench.md)."
 #endif
 
 #if defined(MARVIN_HAS_BENCH_IO) && defined(MARVIN_HAS_AUDIO)
@@ -172,6 +183,9 @@ void send_hello() {
 #endif
 #if defined(MARVIN_HAS_BENCH_IO)
   flags |= bench_io::hello_flags();
+#endif
+#if defined(MARVIN_HAS_ROOM_SENSORS)
+  flags |= room_io::hello_flags();
 #endif
   size_t n = proto::hello(buf + proto::HEADER_SIZE, mac, MARVIN_BOARD, flags, (int8_t)WiFi.RSSI(),
                           millis(), MARVIN_FW_VERSION);
@@ -263,6 +277,9 @@ void connect_wifi() {
 #if defined(MARVIN_HAS_BENCH_IO)
   for (uint32_t i = 0; WiFi.status() != WL_CONNECTED; i++) {
     bench_io::step(millis());       // the LED blinks slowly; the eyes run in their own task
+#if defined(MARVIN_HAS_ROOM_SENSORS)
+    room_io::step(millis());        // the PIR's warm-up counts from here
+#endif
     delay(10);
     if (i % 20 == 19) Serial.print('.');
   }
@@ -308,6 +325,26 @@ void link_step(uint32_t ms) {
   }
 #endif
 }
+
+// ---- Room sensors (ESP32 DevKits) -------------------------------------------------------------
+
+#if defined(MARVIN_HAS_ROOM_SENSORS)
+
+// PIR, DHT11 and light: ENVIRONMENT every 5 s, and at once when motion starts or ends, and on linking.
+void room_step(uint32_t ms) {
+  static uint32_t next_send = 0;
+  static bool was_linked = false;
+  room_io::step(ms);
+  const bool now = room_io::changed() || (linked && !was_linked);
+  was_linked = linked;
+  if (!linked || !(now || (int32_t)(ms - next_send) >= 0)) return;
+  send(proto::ENVIRONMENT, room_io::payload(buf + proto::HEADER_SIZE, ms));
+  next_send = ms + room_io::ENVIRONMENT_PERIOD_MS;
+}
+
+#else
+void room_step(uint32_t) {}
+#endif
 
 // ---- Media: audio and camera (XIAO ESP32S3 Sense) ---------------------------------------------
 
@@ -491,6 +528,10 @@ void setup() {
 #elif defined(LED_BUILTIN)
   pinMode(LED_BUILTIN, OUTPUT);
 #endif
+#if defined(MARVIN_HAS_ROOM_SENSORS)
+  // the DHT11 is read in its own task from here on; the PIR and the light from the loop
+  if (!room_io::begin()) Serial.println("room: the DHT11's task did not start");
+#endif
 #if defined(MARVIN_HAS_SCREEN)
   // the face runs in its own task from here on, asleep until the host says someone is there
   if (!face_app::begin()) Serial.println("face: screen init failed");
@@ -516,6 +557,7 @@ void loop() {
 #endif
   uint32_t ms = millis();
   link_step(ms);
+  room_step(ms);
   media_step(ms);
   sensors_step(ms);
   // Simulated sensors idle for 10 ms while searching for the host; real ones must keep the UARTs drained.

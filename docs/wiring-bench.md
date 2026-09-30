@@ -1,8 +1,8 @@
-# Bench wiring: OLED eyes, buttons and a buzzer
+# Bench wiring: OLED eyes, buttons, a buzzer and room sensors
 
-**A second Marvin on the desk, before the robot: 8 jumper wires on a classic ESP32 DevKit, no soldering.** The board runs the simulated sensors and a few real parts: Marvin's eyes on a small OLED screen, a **Talk** button (the app's *Talk now*), a **Mute** button, and a buzzer for the chimes. The host treats it like a robot: the eyes follow the person the brain sees, and the buttons drive the voice.
+**A second Marvin on the desk, before the robot: 8 jumper wires on a classic ESP32 DevKit, 6 more for the room sensors, no soldering.** The board runs the simulated sensors and a few real parts: Marvin's eyes on a small OLED screen, a **Talk** button (the app's *Talk now*), a **Mute** button, a buzzer for the chimes, and room sensors: a **PIR** motion sensor, a **DHT11** for the temperature and humidity and, later, a **light sensor**. The host treats it like a robot: the eyes follow the person the brain sees, the buttons drive the voice, and the PIR tells the brain whether someone is really there (the board's radar is simulated).
 
-Firmware: `MARVIN_HAS_BENCH_IO` ([`firmware/src/bench/`](../firmware/src/bench/)), built by the `esp32dev` and `esp32s3` envs. Protocol: the `HELLO` flags and the `BUTTON` message in [protocol.md](protocol.md#buttons).
+Firmware: `MARVIN_HAS_BENCH_IO` ([`firmware/src/bench/`](../firmware/src/bench/)) and `MARVIN_HAS_ROOM_SENSORS` ([`firmware/src/room/`](../firmware/src/room/)), built by the `esp32dev` and `esp32s3` envs. Protocol: the `HELLO` flags, the `BUTTON` message ([protocol.md](protocol.md#buttons)) and the `ENVIRONMENT` message ([protocol.md](protocol.md#room-sensors)).
 
 ## Parts
 
@@ -14,6 +14,9 @@ Firmware: `MARVIN_HAS_BENCH_IO` ([`firmware/src/bench/`](../firmware/src/bench/)
 | Mute button | The same (optional, it can come later) | |
 | Buzzer | **Passive** buzzer (no built-in oscillator), 3.3–5 V | An active buzzer only beeps at one pitch |
 | Resistor | 220 Ω | In series with the buzzer |
+| Motion sensor | **HC-SR501** PIR module (3 pins: VCC, OUT, GND) | Powered from 5 V, its output is 3.3 V |
+| Temperature and humidity | **DHT11** module, 3 pins (+, OUT or S, −), on a small board with its own pull-up | The bare 4-pin sensor needs a 10 kΩ pull-up from DATA to 3V3 |
+| Light sensor (later) | LDR module, 4 pins (VCC, GND, DO, AO) | Only AO is used |
 | Wires | Female-to-male jumper wires, a breadboard | |
 
 **No soldering.** The female end of each jumper goes onto a pin of the DevKit, the male end into the breadboard row of the part: the buttons, the buzzer and its resistor sit on the breadboard, and the OLED plugs into it by its own 4 pins (or takes female-to-female jumpers). Leave the DevKit off the breadboard: a 30-pin DevKit covers all but one row of it.
@@ -34,12 +37,21 @@ The pin names are printed on the board: `D21` is GPIO21, and so on.
 | Buzzer | **+** (the longer leg), through the 220 Ω resistor | **D25** | 25 |
 | Buzzer | **−** | **GND** | – |
 | Status LED | the blue LED on the board | nothing to wire | 2 |
+| PIR (HC-SR501) | VCC | **VIN** (5 V from the USB) | – |
+| PIR | OUT | **D34** | 34 |
+| PIR | GND | **GND** | – |
+| DHT11 module | **+** (VCC) | **3V3** | – |
+| DHT11 module | OUT (or S, DATA) | **D4** | 4 |
+| DHT11 module | **−** | **GND** | – |
+| Light sensor (later) | VCC / GND | **3V3** / **GND** | – |
+| Light sensor (later) | AO | **D35** | 35 |
 
 - **Buttons**: a 4-leg push button connects its legs in pairs. Take two **diagonally opposite** legs and you cannot get the pair wrong. No resistor: the ESP32's internal pull-up holds the pin high, the button pulls it to ground. A Mute button that is not fitted yet does no harm: its pin just stays high.
 - **Buzzer**: the resistor goes between D25 and the buzzer's **+** leg (either way round). Several GND pins on the DevKit are the same ground: use any.
 - **OLED**: 3V3, not VIN (5 V). Most modules have their own pull-ups on SDA and SCL.
-
-Reserved for later (not in the firmware yet): a **PIR** motion sensor on D34 (GPIO34), a **DHT11** on D4 (GPIO4), a **light sensor** (LDR divider) on D35 (GPIO35). GPIO34 and 35 are inputs only, without pull-ups, which suits these sensors.
+- **PIR**: the HC-SR501 wants 5 V (VIN, next to GND at the end of the board), and its output is 3.3 V, safe for the ESP32. The pins are marked under the white dome's lens (lift it off to read them). GPIO34 is an input only, without a pull-up: the PIR drives it both ways. Its two orange potentiometers: **time** (T_x, hold) fully **anticlockwise**, its minimum, about 3 s; **sensitivity** (S_x) as you like, about 3 m in the middle. The jumper: **H** (repeat trigger, the output stays high while you keep moving), as most modules come.
+- **DHT11**: on 3V3. The module's own resistor pulls DATA up (the firmware adds the ESP32's pull-up as well). Keep it away from the ESP32 and the PIR, which warm up a little, and from your breath unless you mean it.
+- **Light sensor**: AO on D35 (ADC1, the ADC that works with Wi-Fi on), DO unused. Its firmware part is off until you enable it ([below](#light-sensor)).
 
 ## ESP32-S3 DevKitC-1 (`esp32s3`, board 2)
 
@@ -54,10 +66,11 @@ The same parts on other pins. The OLED is on its own I2C bus: it works next to t
 | Mute button | one leg, the opposite leg to GND | 12 |
 | Buzzer | **+** through 220 Ω; **−** to GND | 13 |
 | Status LED | the RGB LED on the board | 48 (v1.0) or 38 (v1.1) |
+| PIR | VCC to **5V**, OUT, GND | 14 |
+| DHT11 module | + to 3V3, OUT, − to GND | 15 |
+| Light sensor (later) | VCC to 3V3, AO, GND | 5 (ADC1) |
 
 The RGB LED's data pin moved between board versions: GPIO48 on v1.0, GPIO38 on v1.1. The firmware drives both, so either board lights up; if you wire something to the other one, set `-DMARVIN_STATUS_RGB_ALT=-1` (or `-DMARVIN_STATUS_RGB=38 -DMARVIN_STATUS_RGB_ALT=-1` on a v1.1) in `platformio.ini`.
-
-Reserved for later: PIR on GPIO14, DHT11 on GPIO15, light sensor on GPIO5.
 
 ## Flash it
 
@@ -78,10 +91,21 @@ Marvin firmware 0.1.0, board 5, simulated sensors
 oled: SSD1306 at 0x3C, eyes on
 simulated room ready in 40 ms
 joining MyWifi.....
+pir: on GPIO34, warming up for 60 s
+dht11: on GPIO4
+simulated room ready in 40 ms
+joining MyWifi.....
 IP 192.168.1.43, RSSI -48 dBm
+dht11: 23.4 °C, 48 % humidity
 linked to host 192.168.1.10
 button talk
+pir: warmed up, no motion
+pir: motion
+pir: still
+room: 23.4 °C, 48 %, last motion 41 s ago
 ```
+
+The `room:` line comes every minute; `pir: motion` and `pir: still` as they happen, from about a minute after power-on.
 
 ## What it does
 
@@ -97,6 +121,12 @@ button talk
 - **Mute**: a click, then the microphone is muted (two notes down) or unmuted (two notes up), as the Mute button of the app.
 - Without a host, a press plays the low double beep and sends nothing.
 - The chimes follow the voice's `chime` setting (on by default, in `voice.json`): off, the buzzer only clicks.
+- **PIR**: for about a minute after power-on it settles and reports nothing (`warming up`). Then each motion starts and ends at once in the host (`ENVIRONMENT`, [protocol.md](protocol.md#room-sensors)), and its state every 5 s. Since the board's radar is simulated, the host takes **the real PIR** as the presence: wave at it and the eyes wake up, *Here with you* on Home; after 2 minutes without any movement the brain decides you left and the eyes fall asleep ([intelligence.md](intelligence.md#a-pir-on-the-bench-board)). The simulated person still walks around the Robot panel, but no longer drives the brain.
+- **DHT11**: read every 5 s, in a task of its own. The Home screen's *Room* card shows the temperature and the humidity, and Marvin knows them when you ask ("il fait quelle température ?"). Breathe on it: the humidity climbs within a few seconds. Unplugged, its readings are dropped within 12 s (`dht11: no reading for 12 s`), and come back when it answers again.
+
+### Light sensor
+
+Not built in yet: the classic ESP32's GPIO35 has no pull-up or pull-down, so an unwired pin reads noise that would look like light, and the firmware cannot tell. Once the module is wired, enable it in `platformio.ini`, in the env of your board: uncomment `-DMARVIN_HAS_LDR` and flash again. The *Room* card then says *bright*, *dim* or *dark*. The common module's AO voltage falls as the light rises, which the firmware expects; for a sensor wired the other way round (brighter, higher), add `-DMARVIN_LDR_BRIGHT_HIGH=1`.
 
 A screen that is not there, or loses contact, does not stop anything: the firmware looks for it every 5 s and starts it again when it answers (`oled: the screen stopped answering` in the log, then `eyes on` again).
 
@@ -112,3 +142,8 @@ A screen that is not there, or loses contact, does not stop anything: the firmwa
 | A press does nothing in the app | Not linked (low double beep), or the voice is off | Check `linked to host` in the log; turn the voice on in the app |
 | One press counts twice | A worn button | The firmware debounces 30 ms; try another button |
 | The upload never starts (classic) | The auto-reset circuit misses | Hold **BOOT** while `Connecting...` |
+| `pir: motion` every few seconds with nobody there | Still warming up in its first minute, sensitivity too high, or the PIR sees the Wi-Fi antenna's bursts | Wait for `warmed up`; turn S_x down; keep the PIR's wires short and the module away from the DevKit's antenna |
+| `pir: motion` never comes | OUT on the wrong pin, or no 5 V | OUT on D34, VCC on **VIN**; the module needs a minute after power-on |
+| The eyes stay awake long after you left | The PIR's hold (T_x) turned up, or the jumper on L with a long hold | T_x fully anticlockwise; the host waits 2 minutes without movement anyway |
+| `dht11: no reading on GPIO4 (no answer)` | DATA not on D4, no power, or the bare 4-pin sensor without its pull-up | OUT on D4, + on 3V3; a 10 kΩ from DATA to 3V3 for the bare sensor |
+| `dht11: ... (bad checksum)` now and then | A long or noisy wire | Shorter wires; an occasional bad read is retried, and a reading lasts 12 s |
