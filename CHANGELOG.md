@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Room sensors on the bench board (2026-09-30)
+- `firmware/src/room/` (`MARVIN_HAS_ROOM_SENSORS`, envs `esp32dev` and `esp32s3`): an HC-SR501 PIR (a minute's warm-up, debounced, motion start and end sent at once), a DHT11 read every 5 s in its own task (its own small driver: checksum and range checked, retried, invalid within 12 s when unplugged) and a light sensor (`MARVIN_HAS_LDR`, off until the module is wired). Unity tests in `test/test_room`.
+- Protocol v1, without a version bump: `ENVIRONMENT` (0x08, robot → host, 12 bytes: which sensors, motion, warming up, temperature, humidity, light, seconds since the last motion) and `HELLO` flag bit 6 (room sensors). Python and Java hosts and the protocol vectors updated together.
+- Presence: on a board whose radar data is simulated, a real, warm PIR is the presence (the simulated person no longer drives the brain): motion is `arrived` at once, 2 minutes without movement is `left`. A live radar always wins. Both hosts (`brain.py`; `Brain.onMotion` and `PresenceFeed`), `motion_presence` in the presence state, the golden recordings' states regenerated.
+- The room in Marvin's context ("The room, from your own sensors: 23.4 °C, 48 % humidity, movement just now.", only while the readings are under 2 minutes old; the presence line says a motion sensor noticed movement, not that someone is in front of Marvin), and a Room card on the app's Home. The simulated robot sends a simulated room (marked as such). Both hosts (`room.py`, `persona.py`; `Room`, `RoomState`, `Persona.roomFact`, `LiveState`), the conversation vectors and the API snapshots' `state` updated.
+- `docs/wiring-bench.md`: the PIR, the DHT11 and the light sensor on both DevKits, their settings and troubleshooting.
+
 ### Bench board (2026-09-30)
 - `firmware/src/bench/` (`MARVIN_HAS_BENCH_IO`, envs `esp32dev` and `esp32s3`): Marvin's eyes on a 0.96" SSD1306 OLED (the robot's face at half scale, fed by `FACE_STATE` and `FACE_EVENT`, with moods from the voice's sounds; found again when a loose screen comes back), a Talk and a Mute button, a passive buzzer playing the earcons, and a status LED for Wi-Fi, host search and link (the S3 DevKitC-1's RGB LED on v1.0 and v1.1 boards). U8g2 pinned, built only by these envs. Unity tests in `test/test_bench`.
 - Protocol v1, without a version bump: `BUTTON` (0x07, robot → host: button, action) and `HELLO` flags bit 3 (buttons), 4 (buzzer) and 5 (the face on a screen of its own). Python and Java hosts and the protocol vectors updated together.
