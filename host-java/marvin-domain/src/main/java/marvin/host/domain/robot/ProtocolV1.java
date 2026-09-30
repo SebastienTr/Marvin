@@ -27,6 +27,8 @@ public final class ProtocolV1 {
     public static final int FLAG_BUZZER = 0x10;
     /** {@code HELLO} flag: the face on a small screen of its own, whatever the board: send it the face messages. */
     public static final int FLAG_FACE = 0x20;
+    /** {@code HELLO} flag: room sensors (PIR, temperature and humidity, light), sent as {@code ENVIRONMENT}. */
+    public static final int FLAG_ENVIRONMENT = 0x40;
     public static final int CAMERA_PORT = 81;
 
     /** Audio in both directions: 16 kHz mono signed 16-bit little-endian PCM. */

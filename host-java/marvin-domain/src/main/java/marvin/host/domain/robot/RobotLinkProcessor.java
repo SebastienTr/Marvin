@@ -134,6 +134,12 @@ public final class RobotLinkProcessor {
             } catch (ProtocolException e) {
                 dev.stats().bad();
             }
+        } else if (type == MessageType.ENVIRONMENT.code()) {
+            try {
+                out.add(new SensorFrame.RoomReading(dev, hdr.tUs(), Environment.decode(payload)));
+            } catch (ProtocolException e) {
+                dev.stats().bad();
+            }
         }
         return new Reception(ack, dev, out, null);
     }

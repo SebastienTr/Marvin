@@ -20,6 +20,7 @@ import marvin.host.domain.robot.AudioIn;
 import marvin.host.domain.robot.AudioOut;
 import marvin.host.domain.robot.Board;
 import marvin.host.domain.robot.Button;
+import marvin.host.domain.robot.Environment;
 import marvin.host.domain.robot.Extrinsics;
 import marvin.host.domain.robot.FaceState;
 import marvin.host.domain.robot.Header;
@@ -62,6 +63,18 @@ class ProtocolVectorsTest {
         assertThat(c.get("flags").get("buttons").asInt()).isEqualTo(ProtocolV1.FLAG_BUTTONS);
         assertThat(c.get("flags").get("buzzer").asInt()).isEqualTo(ProtocolV1.FLAG_BUZZER);
         assertThat(c.get("flags").get("face").asInt()).isEqualTo(ProtocolV1.FLAG_FACE);
+        assertThat(c.get("flags").get("environment").asInt()).isEqualTo(ProtocolV1.FLAG_ENVIRONMENT);
+        JsonNode env = c.get("environment");
+        assertThat(env.get("size").asInt()).isEqualTo(Environment.SIZE);
+        env.get("sensors").properties().forEach(e -> assertThat(Environment.sensorNames().get(Integer.parseInt(e.getKey())))
+                .isEqualTo(e.getValue().asString()));
+        assertThat(Environment.sensorNames()).hasSize(env.get("sensors").size());
+        JsonNode ef = env.get("flags");
+        assertThat(List.of(ef.get("motion").asInt(), ef.get("warming_up").asInt(), ef.get("temperature_valid").asInt(),
+                ef.get("humidity_valid").asInt(), ef.get("light_valid").asInt(), ef.get("simulated").asInt()))
+                .containsExactly(Environment.MOTION, Environment.WARMING_UP, Environment.TEMPERATURE_VALID,
+                        Environment.HUMIDITY_VALID, Environment.LIGHT_VALID, Environment.SIMULATED);
+        assertThat(env.get("no_motion").asInt()).isEqualTo(Environment.NO_MOTION);
         c.get("buttons").properties().forEach(e -> assertThat(Button.name(Integer.parseInt(e.getKey())))
                 .isEqualTo(e.getValue().asString()));
         assertThat(Button.names()).hasSize(c.get("buttons").size());
@@ -117,6 +130,7 @@ class ProtocolVectorsTest {
                 assertThat(hello.hasButtons()).isEqualTo(e.get("has_buttons").asBoolean());
                 assertThat(hello.hasBuzzer()).isEqualTo(e.get("has_buzzer").asBoolean());
                 assertThat(hello.hasScreen()).isEqualTo(e.get("has_face").asBoolean());
+                assertThat(hello.hasEnvironment()).isEqualTo(e.get("has_environment").asBoolean());
                 assertThat(hello.rssi()).isEqualTo(e.get("rssi").asInt());
                 assertThat(hello.uptimeMs()).isEqualTo(e.get("uptime_ms").asLong());
                 assertThat(hello.firmware()).isEqualTo(e.get("firmware").asString());
@@ -216,6 +230,28 @@ class ProtocolVectorsTest {
                 assertThat(b.action()).isEqualTo(e.get("action").asInt());
                 assertThat(Button.name(b.button())).isEqualTo(e.get("name").isNull() ? null : e.get("name").asString());
                 assertThat(b.encode()).isEqualTo(java.util.Arrays.copyOf(payload, Button.SIZE));
+            }
+            case 0x08 -> {
+                if (e.has("error")) {
+                    assertThatThrownBy(() -> Environment.decode(payload)).isInstanceOf(ProtocolException.class)
+                            .hasMessage("ENVIRONMENT too short");
+                    return;
+                }
+                Environment r = Environment.decode(payload);
+                assertThat(r.pir()).isEqualTo(e.get("pir").asBoolean());
+                assertThat(r.climate()).isEqualTo(e.get("climate").asBoolean());
+                assertThat(r.lightSensor()).isEqualTo(e.get("light_sensor").asBoolean());
+                assertThat(r.motion()).isEqualTo(e.get("motion").asBoolean());
+                assertThat(r.warmingUp()).isEqualTo(e.get("warming_up").asBoolean());
+                assertThat(r.simulated()).isEqualTo(e.get("simulated").asBoolean());
+                assertThat(r.temperatureC()).isEqualTo(e.get("temperature_c").isNull() ? null : e.get("temperature_c").asDouble());
+                assertThat(r.humidity()).isEqualTo(e.get("humidity").isNull() ? null : e.get("humidity").asDouble());
+                assertThat(r.light()).isEqualTo(e.get("light").isNull() ? null : e.get("light").asDouble());
+                assertThat(r.lightRaw()).isEqualTo(e.get("light_raw").isNull() ? null : e.get("light_raw").asInt());
+                assertThat(r.motionAgeS()).isEqualTo(e.get("motion_age_s").isNull() ? null : e.get("motion_age_s").asInt());
+                if (payload.length == Environment.SIZE) {
+                    assertThat(r.encode()).as("re-encoded").isEqualTo(payload);
+                }
             }
             default -> throw new AssertionError("no check for type " + vec.get("type"));
         }

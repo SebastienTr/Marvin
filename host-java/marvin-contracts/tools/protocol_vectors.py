@@ -41,7 +41,7 @@ def hello_decoded(h: protocol.Hello) -> dict:
     return {"device_id": h.device_id.hex(), "board": h.board, "board_name": protocol.BOARDS.get(h.board),
             "flags": h.flags, "simulated": h.simulated, "has_camera": h.has_camera, "has_audio": h.has_audio,
             "has_buttons": h.has_buttons, "has_buzzer": h.has_buzzer, "has_face": h.has_face,
-            "rssi": h.rssi, "uptime_ms": h.uptime_ms, "firmware": h.firmware, "device_name": h.device_name}
+            "has_environment": h.has_environment, "rssi": h.rssi, "uptime_ms": h.uptime_ms, "firmware": h.firmware, "device_name": h.device_name}
 
 
 def lidar_packet_decoded(raw: bytes) -> dict:
@@ -95,6 +95,10 @@ def robot_to_host() -> list[dict]:
         ("hello_esp32_devkit_no_oled", protocol.Hello(bytes.fromhex("08d1f9112233"), 5,
                                                       protocol.FLAG_SIMULATED | protocol.FLAG_BUTTONS
                                                       | protocol.FLAG_BUZZER, -55, 5000, "0.1.0")),
+        ("hello_esp32_devkit_room_sensors", protocol.Hello(bytes.fromhex("08d1f9112233"), 5,
+                                                           protocol.FLAG_SIMULATED | protocol.FLAG_BUTTONS
+                                                           | protocol.FLAG_BUZZER | protocol.FLAG_FACE
+                                                           | protocol.FLAG_ENVIRONMENT, -55, 61000, "0.1.0")),
     ]:
         out.append(vec(name, protocol.HELLO, 7, 99_000, h.encode(), hello_decoded(h)))
     # LIDAR: the real LD19 packet, a built one crossing 0 degrees, a datagram with a bad CRC in the middle
@@ -161,6 +165,34 @@ def robot_to_host() -> list[dict]:
                        {"button": b.button, "action": b.action, "name": b.name}, note))
     out.append(vec("button_too_short", protocol.BUTTON, 1008, 5_800_000, b"\x01",
                    {"error": error(protocol.Button.decode, b"\x01")}, "counted as bad, dropped"))
+    # ENVIRONMENT
+    E = protocol.Environment
+    for name, payload, note in [
+        ("environment_bench_motion", E(pir=True, climate=True, motion=True, temperature_c=23.4, humidity=48.0,
+                                       motion_age_s=0).encode(), "the bench board: PIR and DHT11, motion now"),
+        ("environment_warming_up_no_dht", E(pir=True, climate=True, warming_up=True).encode(),
+         "the PIR is warming up and the DHT11 does not answer: nothing valid, no motion age"),
+        ("environment_all_sensors", E(pir=True, climate=True, light_sensor=True, temperature_c=-5.2, humidity=61.5,
+                                      light=0.734, light_raw=1090, motion_age_s=125).encode(),
+         "a negative temperature; motion ended 125 s ago"),
+        ("environment_no_motion_yet", E(pir=True, motion_age_s=None).encode(), "warm, but no motion since then"),
+        ("environment_simulated", E(climate=True, light_sensor=True, temperature_c=21.5, humidity=45.0, light=0.62,
+                                    light_raw=1556, simulated=True).encode(), "the simulator's room"),
+        ("environment_rounds_half_to_even", E(climate=True, temperature_c=20.25, humidity=40.05).encode(),
+         "0.1 steps: Python's round() goes to the even neighbour"),
+        ("environment_longer_kept", bytes.fromhex("01c5eb00c201000000000000") + b"\xaa\xbb",
+         "unknown flag bits, a humidity without its valid flag and a longer payload: the host reads the first "
+         "12 bytes and the flags it knows"),
+    ]:
+        env = E.decode(payload)
+        out.append(vec(name, protocol.ENVIRONMENT, 1009, 5_900_000, payload, {
+            "pir": env.pir, "climate": env.climate, "light_sensor": env.light_sensor, "motion": env.motion,
+            "warming_up": env.warming_up, "temperature_c": env.temperature_c, "humidity": env.humidity,
+            "light": env.light, "light_raw": env.light_raw, "motion_age_s": env.motion_age_s,
+            "simulated": env.simulated}, note))
+    short = bytes.fromhex("0104ea00e001000000")
+    out.append(vec("environment_too_short", protocol.ENVIRONMENT, 1010, 6_000_000, short,
+                   {"error": error(protocol.Environment.decode, short)}, "counted as bad, dropped"))
     return out
 
 
@@ -241,8 +273,16 @@ def main() -> None:
                       "screen_boards": sorted(protocol.SCREEN_BOARDS),
                       "flags": {"simulated": protocol.FLAG_SIMULATED, "camera": protocol.FLAG_CAMERA,
                                 "audio": protocol.FLAG_AUDIO, "buttons": protocol.FLAG_BUTTONS,
-                                "buzzer": protocol.FLAG_BUZZER, "face": protocol.FLAG_FACE},
+                                "buzzer": protocol.FLAG_BUZZER, "face": protocol.FLAG_FACE,
+                                "environment": protocol.FLAG_ENVIRONMENT},
                       "buttons": protocol.BUTTONS, "button_actions": {protocol.BUTTON_PRESS: "press"},
+                      "environment": {"size": protocol.Environment.SIZE, "sensors": protocol.ENV_SENSORS,
+                                      "flags": {"motion": protocol.ENV_MOTION, "warming_up": protocol.ENV_WARMING_UP,
+                                                "temperature_valid": protocol.ENV_TEMPERATURE_VALID,
+                                                "humidity_valid": protocol.ENV_HUMIDITY_VALID,
+                                                "light_valid": protocol.ENV_LIGHT_VALID,
+                                                "simulated": protocol.ENV_SIMULATED},
+                                      "no_motion": protocol.ENV_NO_MOTION},
                       "face_event_codes": {k.value: v for k, v in protocol.FACE_EVENT_CODES.items()},
                       "sounds": {k: {"id": v[0], "duration_ms": v[1]} for k, v in protocol.SOUNDS.items()},
                       "audio": {"rate": protocol.AUDIO_RATE, "in_samples": protocol.AUDIO_IN_SAMPLES,

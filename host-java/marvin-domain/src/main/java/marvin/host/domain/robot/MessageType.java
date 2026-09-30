@@ -14,6 +14,7 @@ public enum MessageType {
     VITALS(0x05, Direction.ROBOT_TO_HOST),
     AUDIO_IN(0x06, Direction.ROBOT_TO_HOST),
     BUTTON(0x07, Direction.ROBOT_TO_HOST),
+    ENVIRONMENT(0x08, Direction.ROBOT_TO_HOST),
     HOST_ACK(0x81, Direction.HOST_TO_ROBOT),
     FACE_STATE(0x82, Direction.HOST_TO_ROBOT),
     FACE_EVENT(0x83, Direction.HOST_TO_ROBOT),

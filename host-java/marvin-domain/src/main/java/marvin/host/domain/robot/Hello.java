@@ -78,6 +78,11 @@ public record Hello(byte[] deviceId, int board, int flags, int rssi, long uptime
         return (flags & ProtocolV1.FLAG_BUZZER) != 0;
     }
 
+    /** Has room sensors: sends {@code ENVIRONMENT} (which sensors: its {@link Environment} sensors byte). */
+    public boolean hasEnvironment() {
+        return (flags & ProtocolV1.FLAG_ENVIRONMENT) != 0;
+    }
+
     /** Shows the face: a board with the screen, or a device announcing one ({@link ProtocolV1#FLAG_FACE}). */
     public boolean hasScreen() {
         return Board.hasScreen(board) || (flags & ProtocolV1.FLAG_FACE) != 0;

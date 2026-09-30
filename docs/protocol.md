@@ -39,6 +39,7 @@ No configuration is needed on either side: the host does not need to know the ro
 | `0x05` | `VITALS` | robot → host | MR60BHA2 readings: valid (u8), breath rate (u16, 0.01/min), heart rate (u16, 0.01/min), breathing wave (i16, ±32767), heartbeat wave (i16, ±32767), distance (u16, mm) |
 | `0x06` | `AUDIO_IN` | robot → host | Microphone: sample index (u32), then 320 × i16 PCM (see [Audio messages](#audio-messages)) |
 | `0x07` | `BUTTON` | robot → host | A button was pressed: button (u8), action (u8) (see [Buttons](#buttons)) |
+| `0x08` | `ENVIRONMENT` | robot → host | The room sensors: PIR motion, temperature and humidity, light, 12 bytes (see [Room sensors](#room-sensors)) |
 | `0x81` | `HOST_ACK` | host → robot | Host clock, microseconds (u64) |
 | `0x82` | `FACE_STATE` | host → robot | Presence state for the face, 17 bytes, ≈ 10 Hz (see [Face messages](#face-messages)) |
 | `0x83` | `FACE_EVENT` | host → robot | One brain event: event code (u8) |
@@ -60,10 +61,11 @@ Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 S
 | 3 | `0x08` | Has buttons: sends `BUTTON` (see [Buttons](#buttons)) |
 | 4 | `0x10` | Has a buzzer: plays `SOUND` as tones, no `AUDIO_OUT` and no microphone |
 | 5 | `0x20` | Shows the face on a small screen of its own: send it `FACE_STATE` and `FACE_EVENT`, whatever its board id |
+| 6 | `0x40` | Has room sensors: sends `ENVIRONMENT`, whose first byte says which (see [Room sensors](#room-sensors)) |
 
-Bits 1 to 5 were added to v1 without a version bump: older robots send 0 there, and older hosts only look at bit 0. A robot sets a capability bit only once that part has started (a camera that failed to initialise is not announced; the bench board's OLED is announced while it answers on I2C, so a screen plugged in later shows up at the next `HELLO`). Bits 6 and 7 are reserved and sent as 0.
+Bits 1 to 6 were added to v1 without a version bump: older robots send 0 there, and older hosts only look at bit 0. A robot sets a capability bit only once that part has started (a camera that failed to initialise is not announced; the bench board's OLED is announced while it answers on I2C, so a screen plugged in later shows up at the next `HELLO`). Bit 7 is reserved and sent as 0: the last free bit, kept for a second flags byte if more capabilities come. That is why the room sensors share one bit and say which they are in their own message.
 
-The bench boards (board ids 2 and 5 with `MARVIN_HAS_BENCH_IO`, [wiring-bench.md](wiring-bench.md)) announce bits 3, 4 and 5.
+The bench boards (board ids 2 and 5 with `MARVIN_HAS_BENCH_IO`, [wiring-bench.md](wiring-bench.md)) announce bits 3, 4 and 5, and bit 6 with `MARVIN_HAS_ROOM_SENSORS`.
 
 The sensor frames travel **raw**, CRC included, so the host validates them exactly as it would on a serial port, and a recording can be replayed through the same parsers.
 
@@ -159,6 +161,24 @@ The host ignores buttons and actions it does not know, and reads only these 2 by
 
 The robot clicks its buzzer on each press. Without a host (not linked), it sends nothing and plays `error` itself.
 
+## Room sensors
+
+**`ENVIRONMENT` (0x08), robot → host, 12 bytes**, from robots whose `HELLO` has flag bit 6: every 5 s, at once when motion starts or ends (and when the PIR has warmed up, or the temperature sensor starts or stops answering), and right after linking.
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 1 | Sensors the robot has: bit 0 PIR motion sensor, bit 1 temperature and humidity (DHT11), bit 2 light (LDR) |
+| 1 | 1 | Flags: bit 0 motion now, bit 1 the PIR is warming up, bit 2 temperature valid, bit 3 humidity valid, bit 4 light valid, bit 5 the readings are simulated |
+| 2 | 2 | Temperature, i16, 0.1 °C |
+| 4 | 2 | Relative humidity, u16, 0.1 % |
+| 6 | 2 | Light level, u16, 0 (dark) to 1000 (full scale) |
+| 8 | 2 | Light, the raw ADC reading, u16, 0–4095 |
+| 10 | 2 | Seconds since the last motion, u16: 0 while there is motion, `0xFFFF` when there has been none since the PIR warmed up |
+
+A reading whose valid flag is clear is sent as 0 and means nothing: a sensor the robot has but that does not answer (a DHT11 unplugged: invalid within 12 s) is still in byte 0, with its readings invalid, so the host can tell *not answering* from *not there*. The PIR reports nothing for about a minute after power-on, while it settles (bit 1). Bit 5 is the readings' own: `HELLO`'s *simulated* flag is about the lidar and radars, and a bench board with a simulated room can have a real PIR and a real DHT11.
+
+The host reads only these 12 bytes of a longer payload and ignores the flags and sensor bits it does not know, so readings can be added. A shorter payload is counted as bad and dropped. What the host does with it ([intelligence.md](intelligence.md#a-pir-on-the-bench-board)): the latest readings are shown in the app and given to the language model while they are fresh (under 2 minutes old); a real, warm PIR on a robot whose radar data is simulated tells the brain whether someone is there.
+
 ## Camera
 
 The camera does not use UDP: the robot serves it over **HTTP on TCP port 81**, and the host builds the URL from the address the `HELLO` came from (`protocol.camera_url(ip)`), when `HELLO` flag bit 1 is set.
@@ -193,6 +213,7 @@ The host converts every point into the device frame (X right as seen facing the 
 | LD2450 | 10 frames/s | 10 | 0.5 kB/s |
 | Vitals | 10 messages/s | 10 | 0.3 kB/s |
 | Face state (host → robot) | 10 messages/s | 10 | 0.3 kB/s |
+| Room sensors, `ENVIRONMENT` | every 5 s, and on motion | ≈ 0.2 | < 0.01 kB/s |
 | Microphone, `AUDIO_IN` (while listening) | 16 000 samples/s | 50 | 32 kB/s (33 kB/s with headers) |
 | Speaker, `AUDIO_OUT` (while speaking) | 16 000 samples/s | 50 | 32 kB/s (33 kB/s with headers) |
 | Camera, MJPEG over TCP (while watched) | VGA, 10 frames/s | – | ≈ 250–400 kB/s |

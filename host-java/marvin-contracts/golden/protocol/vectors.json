@@ -28,7 +28,8 @@
       "audio": 4,
       "buttons": 8,
       "buzzer": 16,
-      "face": 32
+      "face": 32,
+      "environment": 64
     },
     "buttons": {
       "1": "talk",
@@ -36,6 +37,23 @@
     },
     "button_actions": {
       "1": "press"
+    },
+    "environment": {
+      "size": 12,
+      "sensors": {
+        "1": "pir",
+        "2": "climate",
+        "4": "light"
+      },
+      "flags": {
+        "motion": 1,
+        "warming_up": 2,
+        "temperature_valid": 4,
+        "humidity_valid": 8,
+        "light_valid": 16,
+        "simulated": 32
+      },
+      "no_motion": 65535
     },
     "face_event_codes": {
       "arrived": 1,
@@ -381,6 +399,7 @@
         "has_buttons": false,
         "has_buzzer": false,
         "has_face": false,
+        "has_environment": false,
         "rssi": -40,
         "uptime_ms": 2000,
         "firmware": "sim-0.1.0",
@@ -408,6 +427,7 @@
         "has_buttons": false,
         "has_buzzer": false,
         "has_face": true,
+        "has_environment": false,
         "rssi": -61,
         "uptime_ms": 123456,
         "firmware": "0.6.0",
@@ -435,6 +455,7 @@
         "has_buttons": false,
         "has_buzzer": false,
         "has_face": false,
+        "has_environment": false,
         "rssi": -72,
         "uptime_ms": 4294967295,
         "firmware": "mr60-0.2.1",
@@ -462,6 +483,7 @@
         "has_buttons": false,
         "has_buzzer": false,
         "has_face": false,
+        "has_environment": false,
         "rssi": -128,
         "uptime_ms": 0,
         "firmware": "",
@@ -489,6 +511,7 @@
         "has_buttons": true,
         "has_buzzer": true,
         "has_face": true,
+        "has_environment": false,
         "rssi": -55,
         "uptime_ms": 60000,
         "firmware": "0.1.0",
@@ -516,8 +539,37 @@
         "has_buttons": true,
         "has_buzzer": true,
         "has_face": false,
+        "has_environment": false,
         "rssi": -55,
         "uptime_ms": 5000,
+        "firmware": "0.1.0",
+        "device_name": "marvin-112233"
+      }
+    },
+    {
+      "name": "hello_esp32_devkit_room_sensors",
+      "type": 1,
+      "datagram": "4d56010107000000b88201000000000008d1f91122330579c948ee000005302e312e30",
+      "header": {
+        "type": 1,
+        "seq": 7,
+        "t_us": 99000
+      },
+      "payload": "08d1f91122330579c948ee000005302e312e30",
+      "decoded": {
+        "device_id": "08d1f9112233",
+        "board": 5,
+        "board_name": "ESP32 DevKit (ESP32-WROOM-32)",
+        "flags": 121,
+        "simulated": true,
+        "has_camera": false,
+        "has_audio": false,
+        "has_buttons": true,
+        "has_buzzer": true,
+        "has_face": true,
+        "has_environment": true,
+        "rssi": -55,
+        "uptime_ms": 61000,
         "firmware": "0.1.0",
         "device_name": "marvin-112233"
       }
@@ -1109,6 +1161,196 @@
       "payload": "01",
       "decoded": {
         "error": "ProtocolError: BUTTON too short"
+      },
+      "note": "counted as bad, dropped"
+    },
+    {
+      "name": "environment_bench_motion",
+      "type": 8,
+      "datagram": "4d560108f1030000e0065a0000000000030dea00e001000000000000",
+      "header": {
+        "type": 8,
+        "seq": 1009,
+        "t_us": 5900000
+      },
+      "payload": "030dea00e001000000000000",
+      "decoded": {
+        "pir": true,
+        "climate": true,
+        "light_sensor": false,
+        "motion": true,
+        "warming_up": false,
+        "temperature_c": 23.4,
+        "humidity": 48.0,
+        "light": null,
+        "light_raw": null,
+        "motion_age_s": 0,
+        "simulated": false
+      },
+      "note": "the bench board: PIR and DHT11, motion now"
+    },
+    {
+      "name": "environment_warming_up_no_dht",
+      "type": 8,
+      "datagram": "4d560108f1030000e0065a000000000003020000000000000000ffff",
+      "header": {
+        "type": 8,
+        "seq": 1009,
+        "t_us": 5900000
+      },
+      "payload": "03020000000000000000ffff",
+      "decoded": {
+        "pir": true,
+        "climate": true,
+        "light_sensor": false,
+        "motion": false,
+        "warming_up": true,
+        "temperature_c": null,
+        "humidity": null,
+        "light": null,
+        "light_raw": null,
+        "motion_age_s": null,
+        "simulated": false
+      },
+      "note": "the PIR is warming up and the DHT11 does not answer: nothing valid, no motion age"
+    },
+    {
+      "name": "environment_all_sensors",
+      "type": 8,
+      "datagram": "4d560108f1030000e0065a0000000000071cccff6702de0242047d00",
+      "header": {
+        "type": 8,
+        "seq": 1009,
+        "t_us": 5900000
+      },
+      "payload": "071cccff6702de0242047d00",
+      "decoded": {
+        "pir": true,
+        "climate": true,
+        "light_sensor": true,
+        "motion": false,
+        "warming_up": false,
+        "temperature_c": -5.2,
+        "humidity": 61.5,
+        "light": 0.734,
+        "light_raw": 1090,
+        "motion_age_s": 125,
+        "simulated": false
+      },
+      "note": "a negative temperature; motion ended 125 s ago"
+    },
+    {
+      "name": "environment_no_motion_yet",
+      "type": 8,
+      "datagram": "4d560108f1030000e0065a000000000001000000000000000000ffff",
+      "header": {
+        "type": 8,
+        "seq": 1009,
+        "t_us": 5900000
+      },
+      "payload": "01000000000000000000ffff",
+      "decoded": {
+        "pir": true,
+        "climate": false,
+        "light_sensor": false,
+        "motion": false,
+        "warming_up": false,
+        "temperature_c": null,
+        "humidity": null,
+        "light": null,
+        "light_raw": null,
+        "motion_age_s": null,
+        "simulated": false
+      },
+      "note": "warm, but no motion since then"
+    },
+    {
+      "name": "environment_simulated",
+      "type": 8,
+      "datagram": "4d560108f1030000e0065a0000000000063cd700c2016c021406ffff",
+      "header": {
+        "type": 8,
+        "seq": 1009,
+        "t_us": 5900000
+      },
+      "payload": "063cd700c2016c021406ffff",
+      "decoded": {
+        "pir": false,
+        "climate": true,
+        "light_sensor": true,
+        "motion": false,
+        "warming_up": false,
+        "temperature_c": 21.5,
+        "humidity": 45.0,
+        "light": 0.62,
+        "light_raw": 1556,
+        "motion_age_s": null,
+        "simulated": true
+      },
+      "note": "the simulator's room"
+    },
+    {
+      "name": "environment_rounds_half_to_even",
+      "type": 8,
+      "datagram": "4d560108f1030000e0065a0000000000020cca00900100000000ffff",
+      "header": {
+        "type": 8,
+        "seq": 1009,
+        "t_us": 5900000
+      },
+      "payload": "020cca00900100000000ffff",
+      "decoded": {
+        "pir": false,
+        "climate": true,
+        "light_sensor": false,
+        "motion": false,
+        "warming_up": false,
+        "temperature_c": 20.2,
+        "humidity": 40.0,
+        "light": null,
+        "light_raw": null,
+        "motion_age_s": null,
+        "simulated": false
+      },
+      "note": "0.1 steps: Python's round() goes to the even neighbour"
+    },
+    {
+      "name": "environment_longer_kept",
+      "type": 8,
+      "datagram": "4d560108f1030000e0065a000000000001c5eb00c201000000000000aabb",
+      "header": {
+        "type": 8,
+        "seq": 1009,
+        "t_us": 5900000
+      },
+      "payload": "01c5eb00c201000000000000aabb",
+      "decoded": {
+        "pir": true,
+        "climate": false,
+        "light_sensor": false,
+        "motion": true,
+        "warming_up": false,
+        "temperature_c": 23.5,
+        "humidity": null,
+        "light": null,
+        "light_raw": null,
+        "motion_age_s": 0,
+        "simulated": false
+      },
+      "note": "unknown flag bits, a humidity without its valid flag and a longer payload: the host reads the first 12 bytes and the flags it knows"
+    },
+    {
+      "name": "environment_too_short",
+      "type": 8,
+      "datagram": "4d560108f2030000808d5b00000000000104ea00e001000000",
+      "header": {
+        "type": 8,
+        "seq": 1010,
+        "t_us": 6000000
+      },
+      "payload": "0104ea00e001000000",
+      "decoded": {
+        "error": "ProtocolError: ENVIRONMENT too short"
       },
       "note": "counted as bad, dropped"
     }

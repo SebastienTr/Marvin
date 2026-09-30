@@ -37,6 +37,7 @@ LOG = 0x04          # device -> host: UTF-8 text
 VITALS = 0x05       # device -> host: MR60BHA2 readings (see Vitals)
 AUDIO_IN = 0x06     # device -> host: microphone PCM, u32 sample index + 320 x i16 (see AudioIn)
 BUTTON = 0x07       # device -> host: a button was pressed, u8 button + u8 action (see Button)
+ENVIRONMENT = 0x08  # device -> host: the room sensors, PIR / temperature and humidity / light (see Environment)
 HOST_ACK = 0x81     # host -> device: u64 host clock (us); the device then unicasts to the sender
 FACE_STATE = 0x82   # host -> device: presence state for the face, ~10 Hz (see FaceState)
 FACE_EVENT = 0x83   # host -> device: one brain event, u8 code (see FACE_EVENT_CODES)
@@ -49,13 +50,14 @@ BOARDS = {1: "Wemos D1 mini (ESP8266)", 2: "ESP32-S3 DevKitC", 3: "XIAO ESP32S3 
           5: "ESP32 DevKit (ESP32-WROOM-32)", 255: "simulator"}
 # LIDAR model ids
 LIDAR_MODELS = {1: "D500 (STL-19P)", 2: "D800 (STL-27L)"}
-# HELLO flags: bit 0 simulated sensor data; bits 1 to 5 are capabilities (older robots send 0)
+# HELLO flags: bit 0 simulated sensor data; bits 1 to 6 are capabilities (older robots send 0)
 FLAG_SIMULATED = 0x01
 FLAG_CAMERA = 0x02     # MJPEG camera at camera_url(ip)
 FLAG_AUDIO = 0x04      # speaker and microphone: AUDIO_IN / AUDIO_OUT / AUDIO_CTRL / SOUND
 FLAG_BUTTONS = 0x08    # buttons: BUTTON
 FLAG_BUZZER = 0x10     # a buzzer that plays SOUND (no AUDIO_OUT, no microphone)
 FLAG_FACE = 0x20       # the face on a small screen of its own: FACE_STATE / FACE_EVENT, whatever the board
+FLAG_ENVIRONMENT = 0x40  # room sensors: ENVIRONMENT (which ones: its sensors byte)
 CAMERA_PORT = 81
 
 # Audio, both directions: 16 kHz mono signed 16-bit little-endian PCM (same as audio.py)
@@ -88,6 +90,19 @@ BUTTONS = {1: "talk", 2: "mute"}
 BUTTON_TALK = 1         # the app's Talk now
 BUTTON_MUTE = 2         # mute or unmute the microphone
 BUTTON_PRESS = 1
+
+# ENVIRONMENT: the sensors a device has (sensors byte) and what its readings say (flags byte)
+ENV_PIR = 0x01          # a PIR motion sensor
+ENV_CLIMATE = 0x02      # a temperature and humidity sensor (DHT11)
+ENV_LIGHT = 0x04        # a light sensor (LDR)
+ENV_SENSORS = {ENV_PIR: "pir", ENV_CLIMATE: "climate", ENV_LIGHT: "light"}
+ENV_MOTION = 0x01       # the PIR sees motion now
+ENV_WARMING_UP = 0x02   # the PIR is still warming up (about a minute after power-on): no motion reported
+ENV_TEMPERATURE_VALID = 0x04
+ENV_HUMIDITY_VALID = 0x08
+ENV_LIGHT_VALID = 0x10
+ENV_SIMULATED = 0x20    # the readings are simulated
+ENV_NO_MOTION = 0xFFFF  # motion age: none since the PIR warmed up
 
 # FACE_EVENT codes, one table for both sides (firmware/src/face/face.h, enum face::Event). 0 is unused;
 # the robot ignores codes it does not know.
@@ -178,6 +193,10 @@ class Hello:
         return self.board in SCREEN_BOARDS or bool(self.flags & FLAG_FACE)
 
     @property
+    def has_environment(self) -> bool:
+        return bool(self.flags & FLAG_ENVIRONMENT)
+
+    @property
     def device_name(self) -> str:
         return "marvin-" + self.device_id[-3:].hex()
 
@@ -204,6 +223,59 @@ class Button:
     def name(self) -> str | None:
         """talk, mute, or None for a button this host does not know."""
         return BUTTONS.get(self.button)
+
+
+@dataclass
+class Environment:
+    """ENVIRONMENT payload, 12 bytes: the room sensors of a device (docs/protocol.md).
+
+    sensors (u8: ENV_PIR, ENV_CLIMATE, ENV_LIGHT: the sensors it has), flags (u8: ENV_MOTION, ENV_WARMING_UP,
+    ENV_*_VALID, ENV_SIMULATED), temperature (i16, 0.1 degC), humidity (u16, 0.1 %RH), light level (u16,
+    0..1000, higher is brighter), light raw (u16, the ADC's 0..4095), seconds since the last motion (u16, 0
+    while there is motion, ENV_NO_MOTION: none since the PIR warmed up). Invalid readings are None here and 0
+    on the wire. A longer payload keeps this prefix.
+    """
+
+    pir: bool = False
+    climate: bool = False
+    light_sensor: bool = False
+    motion: bool = False
+    warming_up: bool = False
+    temperature_c: float | None = None
+    humidity: float | None = None          # %RH
+    light: float | None = None             # 0 (dark) .. 1 (full scale)
+    light_raw: int | None = None
+    motion_age_s: int | None = None        # None: no motion since the PIR warmed up (or no PIR)
+    simulated: bool = False
+
+    _S = struct.Struct("<BBhHHHH")
+    SIZE = 12
+
+    def encode(self) -> bytes:
+        sensors = ENV_PIR * self.pir | ENV_CLIMATE * self.climate | ENV_LIGHT * self.light_sensor
+        flags = (ENV_MOTION * self.motion | ENV_WARMING_UP * self.warming_up
+                 | ENV_TEMPERATURE_VALID * (self.temperature_c is not None)
+                 | ENV_HUMIDITY_VALID * (self.humidity is not None)
+                 | ENV_LIGHT_VALID * (self.light is not None) | ENV_SIMULATED * self.simulated)
+        t = max(-32768, min(32767, round(self.temperature_c * 10))) if self.temperature_c is not None else 0
+        h = max(0, min(0xFFFF, round(self.humidity * 10))) if self.humidity is not None else 0
+        lv = max(0, min(1000, round(self.light * 1000))) if self.light is not None else 0
+        raw = max(0, min(0xFFFF, int(self.light_raw))) if self.light is not None and self.light_raw is not None else 0
+        age = ENV_NO_MOTION if self.motion_age_s is None else max(0, min(0xFFFE, int(self.motion_age_s)))
+        return self._S.pack(sensors, flags, t, h, lv, raw, age)
+
+    @classmethod
+    def decode(cls, payload: bytes) -> "Environment":
+        if len(payload) < cls.SIZE:
+            raise ProtocolError("ENVIRONMENT too short")
+        sensors, flags, t, h, lv, raw, age = cls._S.unpack_from(payload)
+        light_ok = bool(flags & ENV_LIGHT_VALID)
+        return cls(bool(sensors & ENV_PIR), bool(sensors & ENV_CLIMATE), bool(sensors & ENV_LIGHT),
+                   bool(flags & ENV_MOTION), bool(flags & ENV_WARMING_UP),
+                   t / 10 if flags & ENV_TEMPERATURE_VALID else None,
+                   h / 10 if flags & ENV_HUMIDITY_VALID else None,
+                   lv / 1000 if light_ok else None, raw if light_ok else None,
+                   None if age == ENV_NO_MOTION else age, bool(flags & ENV_SIMULATED))
 
 
 def camera_url(ip: str, path: str = "/stream") -> str:

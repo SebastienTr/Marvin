@@ -105,6 +105,9 @@ public final class DeviceMonitor {
             case SensorFrame.ButtonPress b -> {
                 // counted in the datagrams; the button's listeners act on it
             }
+            case SensorFrame.RoomReading r -> {
+                // counted in the datagrams; the room keeps the readings
+            }
         }
     }
 

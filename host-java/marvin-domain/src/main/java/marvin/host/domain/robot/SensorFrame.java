@@ -63,9 +63,13 @@ public sealed interface SensorFrame {
     record ButtonPress(Device device, long tUs, int button, int action) implements SensorFrame {
     }
 
+    /** The device's room sensors: PIR, temperature and humidity, light ({@code ENVIRONMENT}). */
+    record RoomReading(Device device, long tUs, Environment environment) implements SensorFrame {
+    }
+
     /**
      * The name of the matching Python {@code Sink} callback, used for statistics: scan, targets,
-     * vitals, log, audio, hello; button (no Python sink before it).
+     * vitals, log, audio, hello, button, environment.
      */
     default String kind() {
         return switch (this) {
@@ -76,6 +80,7 @@ public sealed interface SensorFrame {
             case LogLine l -> "log";
             case AudioChunk a -> "audio";
             case ButtonPress b -> "button";
+            case RoomReading r -> "environment";
         };
     }
 }

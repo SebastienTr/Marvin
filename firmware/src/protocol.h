@@ -21,6 +21,7 @@ enum Type : uint8_t {
   VITALS = 0x05,
   AUDIO_IN = 0x06,    // robot -> host: microphone PCM (audio/audio_packets.h)
   BUTTON = 0x07,      // robot -> host: a button was pressed, button u8 + action u8 (ButtonId, ButtonAction)
+  ENVIRONMENT = 0x08, // robot -> host: the room sensors (PIR, DHT11, light), ENVIRONMENT_SIZE bytes (Environment)
   HOST_ACK = 0x81,
   FACE_STATE = 0x82,  // host -> robot: presence state for the face (FACE_STATE_SIZE bytes, ~10 Hz)
   FACE_EVENT = 0x83,  // host -> robot: one brain event, u8 code (face::Event in face/face.h)
@@ -36,6 +37,7 @@ constexpr uint8_t FLAG_AUDIO = 0x04;      // speaker and microphone: AUDIO_IN / 
 constexpr uint8_t FLAG_BUTTONS = 0x08;    // has buttons: sends BUTTON
 constexpr uint8_t FLAG_BUZZER = 0x10;     // plays SOUND on a buzzer (no AUDIO_OUT, no microphone)
 constexpr uint8_t FLAG_FACE = 0x20;       // shows the face on a small screen of its own: send it FACE_STATE / FACE_EVENT
+constexpr uint8_t FLAG_ENVIRONMENT = 0x40;  // has room sensors: sends ENVIRONMENT (which ones: its `sensors` byte)
 
 constexpr uint16_t CAMERA_PORT = 81;
 
@@ -72,6 +74,36 @@ inline size_t button(uint8_t *p, uint8_t id, uint8_t action) {
   return BUTTON_SIZE;
 }
 
+// ENVIRONMENT payload, 12 bytes: sensors u8 (EnvSensor: fitted), flags u8 (EnvFlag), temperature i16
+// (0.1 degC), humidity u16 (0.1 %RH), light level u16 (0..1000, higher is brighter), light raw u16 (ADC,
+// 0..4095), seconds since the last motion u16 (0 while there is motion; ENV_NO_MOTION: none since the
+// PIR warmed up). Invalid fields are 0. The host reads these 12 bytes of a longer payload.
+constexpr size_t ENVIRONMENT_SIZE = 12;
+constexpr uint16_t ENV_NO_MOTION = 0xFFFF;
+enum EnvSensor : uint8_t {
+  ENV_PIR = 0x01,      // a PIR motion sensor
+  ENV_CLIMATE = 0x02,  // a temperature and humidity sensor (DHT11)
+  ENV_LIGHT = 0x04,    // a light sensor (LDR)
+};
+enum EnvFlag : uint8_t {
+  ENV_MOTION = 0x01,             // the PIR sees motion now
+  ENV_WARMING_UP = 0x02,         // the PIR is still warming up: no motion reported yet
+  ENV_TEMPERATURE_VALID = 0x04,
+  ENV_HUMIDITY_VALID = 0x08,
+  ENV_LIGHT_VALID = 0x10,
+  ENV_SIMULATED = 0x20,          // the readings are simulated
+};
+
+struct Environment {
+  uint8_t sensors = 0;             // EnvSensor bits
+  uint8_t flags = 0;               // EnvFlag bits
+  int16_t temperature_dc = 0;      // 0.1 degC
+  uint16_t humidity_dpct = 0;      // 0.1 %RH
+  uint16_t light = 0;              // 0..1000
+  uint16_t light_raw = 0;          // 0..4095
+  uint16_t motion_age_s = ENV_NO_MOTION;
+};
+
 // FACE_STATE payload: flags u8, head x/y/z i16 mm, position x/y/z i16 mm, distance u16 mm,
 // heart rate u16 (0.01/min). Invalid fields are 0. Decoded by face/face_link.h.
 constexpr size_t FACE_STATE_SIZE = 17;
@@ -91,6 +123,19 @@ inline uint8_t *put64(uint8_t *p, uint64_t v) { for (int i = 0; i < 8; i++) p[i]
 inline uint16_t get16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 inline uint32_t get32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 inline uint64_t get64(const uint8_t *p) { uint64_t v = 0; for (int i = 7; i >= 0; i--) v = (v << 8) | p[i]; return v; }
+
+// ENVIRONMENT payload (Environment above), ENVIRONMENT_SIZE bytes.
+inline size_t environment(uint8_t *p, const Environment &e) {
+  p[0] = e.sensors;
+  p[1] = e.flags;
+  uint8_t *q = p + 2;
+  q = put16(q, (uint16_t)e.temperature_dc);
+  q = put16(q, e.humidity_dpct);
+  q = put16(q, e.light);
+  q = put16(q, e.light_raw);
+  put16(q, e.motion_age_s);
+  return ENVIRONMENT_SIZE;
+}
 
 // Writes the 16-byte header, returns a pointer to the payload.
 inline uint8_t *header(uint8_t *buf, Type type, uint32_t seq, uint64_t t_us) {

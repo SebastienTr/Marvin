@@ -76,10 +76,28 @@ class RobotLinkProcessorTest {
         send(MessageType.VITALS, 3, 0, new byte[4]);
         send(MessageType.AUDIO_IN, 4, 0, new byte[5]);
         send(MessageType.BUTTON, 5, 0, new byte[1]);
+        send(MessageType.ENVIRONMENT, 6, 0, new byte[11]);
         LinkStats.Snapshot s = rx.device(from).stats().snapshot();
         assertThat(s.crcErrors()).isEqualTo(1);
         assertThat(s.lidarPackets()).isEqualTo(1);
-        assertThat(s.bad()).isEqualTo(4);
+        assertThat(s.bad()).isEqualTo(5);
+    }
+
+    @Test
+    void environmentBecomesRoomReadings() {
+        Hello bench = new Hello(new byte[] {8, (byte) 0xd1, (byte) 0xf9, 0x11, 0x22, 0x33}, Board.ESP32_DEVKIT,
+                ProtocolV1.FLAG_SIMULATED | ProtocolV1.FLAG_ENVIRONMENT, -55, 1, "0.1.0");
+        assertThat(bench.hasEnvironment()).isTrue();
+        send(MessageType.HELLO, 0, 0, bench.encode());
+        Environment sent = new Environment(true, true, false, true, false, 23.4, 48.0, null, null, 0, false);
+        List<SensorFrame> f = send(MessageType.ENVIRONMENT, 1, 9000, sent.encode()).frames();
+        assertThat(f).singleElement().satisfies(x -> {
+            SensorFrame.RoomReading r = (SensorFrame.RoomReading) x;
+            assertThat(r.environment()).isEqualTo(sent);
+            assertThat(r.environment().motionKnown()).isTrue();
+            assertThat(r.tUs()).isEqualTo(9000);
+            assertThat(r.kind()).isEqualTo("environment");
+        });
     }
 
     @Test
