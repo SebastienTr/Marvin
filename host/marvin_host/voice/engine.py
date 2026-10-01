@@ -20,10 +20,9 @@ States: idle -> listening -> thinking -> speaking -> (listening for a follow-up)
   far announce more ("..., et", "parce que", "and", a lone "OK"): see `_endpoint`.
 
 `VoiceEngine` is everything but the conversation: what to answer is decided by `_answer(job)`,
-which a subclass implements. `VoiceAssistant` (assistant.py) answers in process with a local
-language model; the voice sidecar (marvin_host.sidecar.voice) sends the question to Marvin's core
-and speaks the text the core streams back. Both share this module, so they hear, gate, listen and
-speak the same way.
+which a subclass implements. The voice sidecar's (marvin_host.sidecar.voice) sends the question to
+Marvin's core (the Java host) and speaks the text the core streams back; the tests use scripted
+answers.
 
 Control from code (the app uses these): `ask(text)` (a typed question, answered aloud),
 `listen_now()` (a listening window without the wake word, like saying "Marvin." alone),
@@ -86,8 +85,6 @@ class VoiceConfig:
     # models (used when the components are not passed in)
     stt: str = "auto"                       # auto (MLX on Apple Silicon if installed), mlx, faster-whisper
     stt_model: str | None = None            # None: the backend's default (turbo on MLX, small on CPU)
-    llm_model: str = "qwen3:4b-instruct"
-    ollama_host: str = "http://localhost:11434"
     tts: str = "auto"                       # auto, say, piper, espeak
     tts_voice: str | None = None
     vad: str = "auto"                       # auto, webrtc, energy
@@ -97,13 +94,6 @@ class VoiceConfig:
     follow_up_s: float = 5.0                # after an answer, a question without the name
     barge_in: bool = True
     chime: bool = True                      # soft chime when listening after "Marvin."
-    memory_turns: int = 8                   # question/answer pairs kept (then the older half is dropped)
-    memory_reset_s: float = 180.0           # forget the conversation after this much silence
-    # tools the model can call (voice/tools)
-    tools: bool = True                      # False: no tools at all
-    internet: bool = True                   # False: no online tools (the weather): fully offline
-    home_place: str = ""                    # the weather's place when none is asked for, e.g. "Nice"
-    max_tool_rounds: int = 3                # tool calls, answer, calls again...: then it must answer
     # echo and latency
     duplex: bool = False                    # True: keep listening while speaking (headset, echo-cancelling robot)
     echo_tail_s: float = 0.8                # half duplex: still deaf this long after the speaker stops

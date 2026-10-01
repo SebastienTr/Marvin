@@ -7,9 +7,8 @@ the same brain state as the robot's screen, and served as PNG (png.py, no imagin
 Optional parts, when marvin-host passes them in:
 - ``sink``: a ``UISink`` (sink.py) on the receiver: devices, link quality and the sensor mini-views
   (Robot panel);
-- ``voice``: a ``VoiceController`` (voice/control.py): the conversation, and the voice turned on
-  and off and configured from the app (Talk panel). The conversation is kept in the store, so it
-  survives a restart and the History panel can show and search past days.
+- the conversation kept in the store (the History panel shows and searches past days). Marvin's
+  voice itself is the Java host's (./marvin up): the Talk panel here only says so.
 
 The Log panel gathers the brain's events, the devices' LOG messages and the host's warnings.
 
@@ -187,10 +186,9 @@ class UIServer:
     def __init__(self, brain, host: str = "0.0.0.0", port: int = 8765, store: EventStore | None = None,
                  token: str | None = "auto", clock: Callable[[], float] = time.time, face: bool = True,
                  offline_after_s: float = 15.0, sample_period_s: float = 1.0, quiet: bool = False,
-                 sink=None, voice=None):
+                 sink=None):
         self.brain = brain
         self.sink = sink
-        self.voice = voice
         self.host = host
         self.store = store if store is not None else EventStore()
         self.clock = clock
@@ -242,10 +240,6 @@ class UIServer:
         brain.add_listener(self._on_event)
         if sink is not None:
             sink.add_listener(self._on_sink)
-        if voice is not None:
-            if hasattr(voice, "attach_store") and getattr(voice, "store", None) is None:
-                voice.attach_store(self.store)      # the conversation is kept with the history
-            voice.add_listener(self._on_voice)
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -273,8 +267,6 @@ class UIServer:
         logging.getLogger().removeHandler(self._log_handler)
         if self.sink is not None:
             self.sink.remove_listener(self._on_sink)
-        if self.voice is not None:
-            self.voice.remove_listener(self._on_voice)
         self._httpd.shutdown()
         self._httpd.server_close()
         for th in self._threads:
@@ -412,20 +404,10 @@ class UIServer:
             self.add_log("device", "warning", f"{info['name']} stopped sending (link lost)", device=info["name"])
             self.hub.publish("devices", self.sink.devices())
 
-    def _on_voice(self, kind: str, payload: dict) -> None:
-        self.hub.publish(kind, payload)             # "voice" (state) or "transcript" (one entry)
-        if kind == "voice" and payload.get("state") == "error" and payload.get("error"):
-            self.add_log("voice", "warning", payload["error"] + (f". {payload['fix']}" if payload.get("fix") else ""))
-        elif kind == "transcript" and payload.get("kind") == "note":
-            self.add_log("voice", "info", payload["text"])
-
     def voice_payload(self) -> dict:
-        v = self.voice
-        if v is None:
-            return {"voice": {"state": "unavailable", "status": "off", "muted": False,
-                              "error": "Voice control is not available here", "fix": "Start marvin-host run."},
-                    "settings": None, "transcript": []}
-        return {"voice": v.snapshot(), "settings": v.app_settings(), "transcript": v.recent()}
+        return {"voice": {"state": "unavailable", "status": "off", "muted": False,
+                          "error": "Marvin's voice runs in the Java host", "fix": "./marvin up"},
+                "settings": None, "transcript": []}
 
     def robot_payload(self, history: bool = True) -> dict:
         if self.sink is None:
@@ -799,11 +781,6 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json({"day": d.isoformat(), "entries": app.store.conversation_day(d)})
         if path == "/api/voice":
             return self._json(app.voice_payload())
-        if path == "/api/voice/options":
-            if app.voice is None:
-                return self._error(HTTPStatus.NOT_FOUND, "voice control is not available")
-            from ..voice.control import options
-            return self._json(options(app.voice.settings()))
         self._error(HTTPStatus.NOT_FOUND, "not found")
 
     POST_PATHS = ("/api/settings", "/api/voice/settings", "/api/voice/on", "/api/voice/off", "/api/voice/ask",
@@ -837,43 +814,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._error(HTTPStatus.BAD_REQUEST, str(e))
 
     def _voice_post(self, path: str, body) -> None:
-        from ..voice.control import VoiceOff
-        app = self.app
-        v = app.voice
-        if v is None:
-            return self._error(HTTPStatus.NOT_FOUND, "voice control is not available")
-        if not isinstance(body, dict):
-            raise ValueError("send a JSON object")
-        try:
-            if path == "/api/voice/settings":
-                v.update_settings(body)
-            elif path == "/api/voice/on":
-                v.start()
-                if not app.settings.get("voice"):
-                    app.update_settings({"voice": True})      # and at the next start of marvin-host
-            elif path == "/api/voice/off":
-                v.stop()
-                if app.settings.get("voice"):
-                    app.update_settings({"voice": False})
-            elif path == "/api/voice/ask":
-                text = body.get("text")
-                if not isinstance(text, str):
-                    raise ValueError("text must be a string")
-                v.ask(text)
-            elif path == "/api/voice/listen":
-                on = body.get("on", True) if isinstance(body, dict) else True
-                if not isinstance(on, bool):
-                    raise ValueError("on must be true or false")
-                v.listen_now(on)
-            elif path == "/api/voice/mute":
-                if not isinstance(body.get("muted"), bool):
-                    raise ValueError("muted must be true or false")
-                v.mute(body["muted"])
-            elif path == "/api/voice/stop-speaking":
-                v.stop_speaking()
-        except VoiceOff as e:
-            return self._error(HTTPStatus.CONFLICT, str(e))
-        self._json({"voice": v.snapshot(), "settings": v.app_settings()})
+        return self._error(HTTPStatus.NOT_FOUND, "voice control is not available: Marvin's voice runs in the Java host")
 
     def _settings_payload(self) -> dict:
         app = self.app
@@ -904,8 +845,6 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             self._sse("hello", {"settings": app.settings}, retry=3000)
             self._sse("today", app.today())
-            if app.voice is not None:
-                self._sse("voice", app.voice.snapshot())
             if app.sink is not None:
                 self._sse("devices", app.sink.devices())
             next_state = 0.0

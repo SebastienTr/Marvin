@@ -24,8 +24,8 @@ import grpc
 import numpy as np
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
-from ...voice import control
-from ...voice.control import VoiceUnavailable
+from ...voice import backends
+from ...voice.backends import VoiceUnavailable
 from .contract import voice_pb2 as pb
 from .contract import voice_pb2_grpc as pb_grpc
 from .session import EngineFactory, VoiceSession, voice_config
@@ -91,7 +91,7 @@ class VoiceService(pb_grpc.VoiceServicer):
         c = voice_config(settings)
         try:
             if not self.factory.fake:
-                control.audio_preflight(settings, microphone=False)
+                backends.audio_preflight(microphone=False)
             stt = self.factory.stt(c)
         except VoiceUnavailable as e:
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, f"{e}. {e.fix}")
@@ -113,16 +113,16 @@ class VoiceService(pb_grpc.VoiceServicer):
 
 def options() -> pb.VoiceOptions:
     """What the settings can offer on this machine."""
-    out = pb.VoiceOptions(stt_models=["auto", *control.STT_MODELS], languages=["fr", "en"])
-    for name, ok in control.stt_available().items():
+    out = pb.VoiceOptions(stt_models=["auto", *backends.STT_MODELS], languages=["fr", "en"])
+    for name, ok in backends.stt_available().items():
         out.stt.add(name=name, installed=ok, why="" if ok else _why_not("stt", name))
-    tts = control.tts_available()
+    tts = backends.tts_available()
     for name, ok in tts.items():
         out.tts.add(name=name, installed=ok, why="" if ok else _why_not("tts", name))
     if tts["piper"]:
-        for v in control.piper_voices():
+        for v in backends.piper_voices():
             out.voices.add(id=v["name"], engine="piper", language=v["name"][:2], installed=v["installed"])
-    for v in control.say_voices():
+    for v in backends.say_voices():
         out.voices.add(id=v["name"], engine="say", language=v["locale"][:2], installed=True, locale=v["locale"])
     return out
 

@@ -21,9 +21,7 @@ from marvin_host.receiver import Device
 from marvin_host.ui import EventStore, UIServer
 from marvin_host.ui import server as ui_server
 from marvin_host.ui.sink import UISink, reduce_scan, rssi_bars
-from marvin_host.voice.control import VoiceController
 from test_ui import feed, get_json, request
-from test_voice_control import FakeAssistant
 
 JSON = {"Content-Type": "application/json"}
 
@@ -133,19 +131,11 @@ def test_ui_sink_callbacks_are_cheap():
 def control(tmp_path):
     brain = Brain()
     sink = UISink()
-    made = []
-
-    def factory(config, settings):
-        made.append(FakeAssistant(config, settings))
-        return made[-1]
-    voice = VoiceController(brain, factory=factory, check=None, path=tmp_path / "voice.json")
     store = EventStore(tmp_path / "marvin.db")
     srv = UIServer(brain, host="127.0.0.1", port=0, store=store, token="sekret", sample_period_s=0.05,
-                   quiet=True, sink=sink, voice=voice).start()
-    srv.made = made
+                   quiet=True, sink=sink).start()
     yield srv
     srv.stop()
-    voice.close()
     store.close()
 
 
@@ -179,34 +169,6 @@ def test_robot_endpoint(control):
     c.close()
 
 
-def test_voice_control_endpoints(control):
-    status, body = get_json(control, "/api/voice")
-    assert status == 200 and body["voice"]["state"] == "off" and body["settings"]["llm_model"]
-    assert post(control, "/api/voice/ask", {"text": "Bonjour"})[0] == 409          # off: nothing to ask
-
-    status, body = post(control, "/api/voice/on", {})
-    assert status == 200
-    control.voice.wait(5)
-    assert control.voice.state == "on" and control.settings["voice"] is True       # and at the next start
-    va = control.made[0]
-    assert post(control, "/api/voice/ask", {"text": "Quelle heure est-il ?"})[0] == 200
-    assert post(control, "/api/voice/listen", {})[0] == 200
-    status, body = post(control, "/api/voice/mute", {"muted": True})
-    assert status == 200 and body["voice"]["muted"] is True
-    assert post(control, "/api/voice/stop-speaking", {})[0] == 200
-    assert va.calls == [("ask", "Quelle heure est-il ?"), ("listen",), ("mute", True), ("stop",)]
-
-    for path, bad in (("/api/voice/ask", {"text": 3}), ("/api/voice/ask", {"text": "x" * 501}),
-                      ("/api/voice/mute", {"muted": "yes"}), ("/api/voice/ask", [1])):
-        assert post(control, path, bad)[0] == 400, (path, bad)
-    transcript = get_json(control, "/api/voice")[1]["transcript"]
-    assert [e["kind"] for e in transcript] == ["note", "heard"] and transcript[1]["source"] == "typed"
-
-    assert post(control, "/api/voice/off", {})[0] == 200
-    control.voice.wait(5)
-    assert va.closed and control.voice.state == "off" and control.settings["voice"] is False
-
-
 def test_voice_endpoints_are_protected(control, monkeypatch):
     r, _ = request(control, "POST", "/api/voice/on", "{}", {**JSON, "Origin": "http://evil.example"})
     assert r.status == 403
@@ -220,27 +182,7 @@ def test_voice_endpoints_are_protected(control, monkeypatch):
         r, _ = request(control, method, path, "{}" if method == "POST" else None, JSON if method == "POST" else None)
         assert r.status == 401, path
     r, _ = request(control, "POST", "/api/voice/on", "{}", {**JSON, "Authorization": "Bearer sekret"})
-    assert r.status == 200
-    assert control.voice.state in ("starting", "on")
-
-
-def test_voice_settings_round_trip(control, tmp_path):
-    post(control, "/api/voice/on", {})
-    control.voice.wait(5)
-    status, body = post(control, "/api/voice/settings", {"llm_model": "qwen3:8b", "language": "fr", "wake": False,
-                                                          "follow_up_s": 3.5, "reminders": False, "tts": "espeak"})
-    assert status == 200 and body["settings"]["llm_model"] == "qwen3:8b" and body["settings"]["language"] == "fr"
-    control.voice.wait(5)
-    saved = json.loads((tmp_path / "voice.json").read_text())
-    assert saved == {"llm_model": "qwen3:8b", "language": "fr", "wake": False, "follow_up_s": 3.5,
-                     "reminders": False, "tts": "espeak"}
-    assert len(control.made) == 2 and control.made[1].config.llm_model == "qwen3:8b"   # restarted with them
-    assert control.made[1].config.language == "fr" and control.made[1].config.wake is False
-    assert get_json(control, "/api/voice")[1]["settings"]["follow_up_s"] == 3.5
-    for bad in ({"llm_model": ""}, {"language": "es"}, {"follow_up_s": -1}, {"what": 1}):
-        assert post(control, "/api/voice/settings", bad)[0] == 400
-    status, opts = get_json(control, "/api/voice/options")
-    assert status == 200 and "llm_models" in opts and "voices" in opts
+    assert r.status == 404                                # through, then: the voice is the Java host's
 
 
 def read_sse(r, until, timeout=5.0):
@@ -257,28 +199,6 @@ def read_sse(r, until, timeout=5.0):
             if until(cur, data):
                 return out
     raise AssertionError(f"not found in {[k for k, _ in out]}")
-
-
-def test_sse_delivers_voice_status_and_transcript(control):
-    control.voice.start(wait=True)
-    va = control.made[0]
-    c = http.client.HTTPConnection("127.0.0.1", control.port, timeout=5)
-    c.request("GET", "/api/stream", headers={"Host": f"127.0.0.1:{control.port}"})
-    r = c.getresponse()
-    first = read_sse(r, lambda k, d: k == "voice")
-    assert first[-1][1]["state"] == "on"
-    va.status = "listening"
-    va.emit("status", status="listening")
-    got = read_sse(r, lambda k, d: k == "voice" and d["status"] == "listening")
-    assert got[-1][1]["status"] == "listening"
-    va.emit("heard", text="Quelle heure est-il ?", language="fr", source="voice")
-    va.emit("reply", text="Midi.", language="fr", latency={"endpoint": 0.55, "audio_start": 0.8}, interrupted=False,
-            proactive=False, error=None, hint="")
-    got = read_sse(r, lambda k, d: k == "transcript" and d["kind"] == "reply")
-    heard = [d for k, d in got if k == "transcript" and d["kind"] == "heard"]
-    assert heard and heard[0]["text"] == "Quelle heure est-il ?"
-    assert got[-1][1]["text"] == "Midi." and got[-1][1]["first_word_s"] == 1.35
-    c.close()
 
 
 def test_log_gathers_brain_devices_and_warnings(control):
@@ -305,11 +225,12 @@ def test_log_gathers_brain_devices_and_warnings(control):
     assert all(e["text"] != "after stop" for e in control.log_entries())    # the handler is removed
 
 
-def test_voice_unavailable_without_a_controller(tmp_path):
+def test_the_voice_is_the_java_hosts(tmp_path):
     srv = UIServer(Brain(), host="127.0.0.1", port=0, store=EventStore(":memory:"), token=None, quiet=True).start()
     try:
         status, body = get_json(srv, "/api/voice")
         assert status == 200 and body["voice"]["state"] == "unavailable" and body["settings"] is None
+        assert body["voice"]["fix"] == "./marvin up"
         assert post(srv, "/api/voice/on", {})[0] == 404
         assert get_json(srv, "/api/robot")[1] == {"devices": [], "scene": None}
     finally:
@@ -326,26 +247,14 @@ def test_terminal_lines():
     term.device("connected", info)
     term.device("log", {"device": "marvin-a1b2c3", "text": "firmware up", "ts": 0})
     term.device("disconnected", info)
-    term.voice("voice", {"state": "starting", "model": "qwen3:4b-instruct", "wake": True})
-    term.voice("voice", {"state": "on", "model": "qwen3:4b-instruct", "wake": True})
-    term.voice("voice", {"state": "on", "model": "qwen3:4b-instruct", "wake": True, "status": "listening"})
-    term.voice("transcript", {"kind": "heard", "text": "Quelle heure est-il ?", "source": "voice"})
-    term.voice("voice", {"state": "error", "error": "Ollama is not running", "fix": "ollama serve"})
     assert out == [
         "+ marvin-a1b2c3 connected (Wemos D1 mini (ESP8266), firmware 0.4.1, simulated sensors) at 192.168.1.40",
         "- marvin-a1b2c3 disconnected (nothing received for 6 s)",
-        "voice: starting (qwen3:4b-instruct)...",
-        "voice: on, say “Marvin, …”",
-        "voice: Ollama is not running. Fix: ollama serve",
     ]
     out.clear()
     chatty = cli.Terminal(verbose=True, out=out.append)
     chatty.device("log", {"device": "marvin-a1b2c3", "text": "firmware up", "ts": 0})
-    chatty.voice("transcript", {"kind": "heard", "text": "Quelle heure est-il ?", "source": "voice"})
-    chatty.voice("transcript", {"kind": "reply", "text": "Midi.", "first_word_s": 1.3})
-    chatty.voice("transcript", {"kind": "ignored", "text": "Merci.", "reason": "known hallucination"})
-    assert out == ["[marvin-a1b2c3] firmware up", "  you: Quelle heure est-il ?", "  marvin: Midi.  (1.3 s)",
-                   "  (ignored, known hallucination: Merci.)"]
+    assert out == ["[marvin-a1b2c3] firmware up"]
 
 
 def _free_udp_port() -> int:

@@ -31,7 +31,7 @@ from marvin_host.sidecar.voice.contract import voice_pb2_grpc as pb_grpc  # noqa
 from marvin_host.sidecar.voice.relay import RobotRelay  # noqa: E402
 from marvin_host.sidecar.voice.server import serve  # noqa: E402
 from marvin_host.sidecar.voice.session import EngineFactory, settings_dict, voice_config  # noqa: E402
-from marvin_host.voice import persona  # noqa: E402
+from marvin_host.sidecar.voice.engine import _phrase  # noqa: E402
 
 HOST = Path(__file__).resolve().parents[1]
 ROBOT = "marvin-a1b2c3"
@@ -272,7 +272,7 @@ def test_typed_question_filler_and_a_failed_answer(sidecar, cores):
     core.send(filler=pb.Filler(reply_id=5, text="Let me check.", language="en"))
     core.send(reply_end=pb.ReplyEnd(reply_id=5, error="llm_down"))
     spoken = core.wait("spoken")
-    assert spoken.text == "Let me check. " + persona.phrase("llm_down", "en")
+    assert spoken.text == "Let me check. " + _phrase("llm_down", "en")
     assert "filler_start" in spoken.latency and not spoken.interrupted
     core.send(ask=pb.Ask(text="Et demain ?", language="fr"))
     assert core.wait("heard", lambda h: h.uid != heard.uid).language == "fr"
@@ -449,7 +449,7 @@ def test_no_answer_from_the_core_is_said(sidecar, cores):
     core.ready()
     core.send(ask=pb.Ask(text="Tu es là ?"))
     spoken = core.wait("spoken")
-    assert spoken.text == persona.phrase("error", "fr") and spoken.reply_id == 0
+    assert spoken.text == _phrase("error", "fr") and spoken.reply_id == 0
 
 
 def test_token(sidecar, cores):

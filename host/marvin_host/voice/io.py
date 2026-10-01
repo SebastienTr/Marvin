@@ -120,7 +120,7 @@ def _sounddevice():
 
 
 def list_devices() -> str:
-    """The sound devices PortAudio sees, as text (`marvin-host talk --list-devices`)."""
+    """The sound devices PortAudio sees, as text (`python -m sounddevice` lists them too)."""
     return str(_sounddevice().query_devices())
 
 

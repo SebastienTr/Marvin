@@ -20,9 +20,8 @@ import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.shared.JsonText;
 
 /**
- * The voice's settings in {@code voice.json}, the file the Python host's {@code marvin-host talk} and
- * {@code run} read: {@code $MARVIN_CONFIG_DIR}, else {@code $XDG_CONFIG_HOME/marvin}, else
- * {@code ~/.config/marvin}. Written as the Python host writes it (two-space indent, other keys kept).
+ * The voice's settings in {@code voice.json}: {@code $MARVIN_CONFIG_DIR}, else {@code $XDG_CONFIG_HOME/marvin},
+ * else {@code ~/.config/marvin}. Written with a two-space indent, other keys kept.
  */
 public final class VoiceSettingsFile implements VoiceSettingsStore {
     private static final Logger log = LoggerFactory.getLogger("marvin.voice");

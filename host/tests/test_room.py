@@ -7,8 +7,7 @@ from marvin_host import frames, protocol, sim
 from marvin_host.brain import Brain
 from marvin_host.events import EventKind as K, PresenceState
 from marvin_host.receiver import Device, Receiver, Sink
-from marvin_host.room import Room, RoomState
-from marvin_host.voice import persona
+from marvin_host.room import Room
 
 MAC = bytes.fromhex("08d1f9112233")
 ROOM_HELLO = protocol.Hello(MAC, 5, protocol.FLAG_SIMULATED | protocol.FLAG_ENVIRONMENT, -55, 61000, "0.1.0")
@@ -147,7 +146,6 @@ def test_a_live_radar_knows_better_than_the_pir():
 # ---------------------------------------------------------------- the room's readings, for the app and the voice
 
 
-
 class Clock:
     def __init__(self):
         self.t = 1000.0
@@ -176,47 +174,6 @@ def test_room_keeps_the_latest_reading_and_its_age():
     room.on_environment(dev(), 2, protocol.Environment(pir=True, warming_up=True, light_sensor=True, light=0.05))
     s = room.state()
     assert s.warming_up and not s.motion and s.motion_age_s is None and s.light_word == "dark"
-
-
-def room_state(**kw):
-    base = dict(age_s=3.0, device="marvin-112233", simulated=False, motion_sensor=False, warming_up=False,
-                motion=False, motion_age_s=None, climate_sensor=False, temperature_c=None, humidity=None,
-                light_sensor=False, light=None)
-    base.update(kw)
-    return RoomState(**base)
-
-
-def test_the_room_line_says_only_what_is_fresh_and_valid():
-    f = persona.room_fact
-    assert f(None) is None
-    bench = room_state(motion_sensor=True, motion=True, motion_age_s=0.0, climate_sensor=True, temperature_c=23.4,
-                       humidity=48.0)
-    assert f(bench) == "The room, from your own sensors: 23.4 °C, 48 % humidity, movement just now."
-    assert f(room_state(age_s=120.0, climate_sensor=True, temperature_c=23.4)) is None         # too old
-    assert f(room_state(climate_sensor=True)) is None                                          # nothing valid
-    assert f(room_state(motion_sensor=True, motion_age_s=200.0, light_sensor=True, light=0.3)) == \
-        "The room, from your own sensors: dim, last movement 3 minutes ago."
-    assert f(room_state(motion_sensor=True, warming_up=True)) == \
-        "The room, from your own sensors: motion sensor still warming up."
-    assert f(room_state(motion_sensor=True)) == "The room, from your own sensors: no movement seen yet."
-    assert f(room_state(simulated=True, climate_sensor=True, temperature_c=21.46, humidity=45.5, light_sensor=True,
-                        light=0.62)) == \
-        "The room, from simulated sensors, for testing: 21.5 °C, 46 % humidity, bright."
-    block = persona.context_block(PresenceState(t_us=1), now=persona.dt.datetime(2026, 9, 30, 18, 5), room=bench)
-    assert block.endswith("- The room, from your own sensors: 23.4 °C, 48 % humidity, movement just now.")
-    assert "°C" not in persona.context_block(PresenceState(t_us=1), now=persona.dt.datetime(2026, 9, 30, 18, 5))
-
-
-def test_a_presence_from_the_motion_sensor_is_said_as_such():
-    here = persona.context_facts(PresenceState(t_us=1, present=True, motion_presence=True, still_s=4.0))
-    assert here[0] == ("Your motion sensor noticed someone moving near you just now; it senses movement only, not "
-                       "where they are or who they are.")
-    assert "front of you" not in " ".join(here)
-    later = persona.context_facts(PresenceState(t_us=1, present=True, motion_presence=True, still_s=75.0))
-    assert "moving near you 75 seconds ago;" in later[0]
-    gone = persona.context_facts(PresenceState(t_us=1, motion_presence=True))
-    assert gone[0].startswith("Your motion sensor has noticed no movement near you for a while")
-    assert not any("radar sees nobody" in x for x in gone)
 
 
 def test_the_brain_keeps_the_room_for_the_app_and_the_voice():

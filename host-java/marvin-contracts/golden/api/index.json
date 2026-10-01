@@ -1,5 +1,5 @@
 {
-  "about": "App API snapshots from the Python host in demo mode (host-java/marvin-contracts/tools/api_snapshots.py).",
+  "about": "The app API specification: recorded from the Python host in demo mode (2026-09-21), maintained by hand since the Python conversation was retired (marvin-contracts/README.md).",
   "demo": {
     "wall0": 1789983000.0,
     "wall0_iso": "2026-09-21T09:30:00+00:00",

@@ -5,13 +5,19 @@ What the Java host must reproduce, taken from the Python host (`host/marvin_host
 contract between the Java core and the voice sidecar. See [docs/design.md](../../docs/design.md),
 sections 3.5 and 4.3.
 
-Everything under `golden/` is **generated** by the scripts in `tools/`, from this checkout's Python
-host. Do not edit it by hand. Regenerate only on purpose, and review the diff: these files are the
-contract.
+Two kinds of files live under `golden/`:
+
+- **Generated** from this checkout's Python host by the scripts in `tools/` (the protocol, the
+  recordings and the brain, the face): the Python host still has these, as tools. Do not edit them
+  by hand; regenerate only on purpose, and review the diff.
+- **Specifications** kept by hand (`golden/api/`, `golden/conversation/`): they were
+  recorded from the Python host while it had its own conversation and voice. Those were retired
+  (2026-10): Marvin's conversation is the Java host's, the Python side keeps only the voice's audio
+  and models (the voice sidecar). The files stay the contract the Java host is tested against; a
+  change to the API, the persona or the voice's defaults edits them in the same commit, on purpose.
 
 ```bash
-python3 host-java/marvin-contracts/tools/generate_all.py            # everything (about 40 s)
-python3 host-java/marvin-contracts/tools/generate_all.py --no-api   # the deterministic part only
+python3 host-java/marvin-contracts/tools/generate_all.py            # the generated part (about 10 s)
 ```
 
 The scripts need the Python host's dependencies (`pip install -e "host[dev]"`), nothing else.
@@ -28,8 +34,9 @@ The Maven module puts `golden/` on the classpath under `marvin/contracts/golden/
 | `golden/recordings/*.states.jsonl` | `recordings.py` | The brain's presence state at the end of each device tick |
 | `golden/recordings/*.scans.jsonl` | `recordings.py` | The lidar revolutions the receiver assembled (device time, points, speed) |
 | `golden/recordings/index.json` | `recordings.py` | The scenarios, the receiver's counters per device, the brain's configuration, the lidar yaw estimate |
-| `golden/api/get/*.json`, `post/*.json`, `access/*.json` | `api_snapshots.py` | Every app endpoint in demo mode: request, status, headers, body and its shape (see below); the access key rules |
-| `golden/api/sse.json` | `api_snapshots.py` | The two event streams: event names, counts, a sample payload and the shapes of each |
+| `golden/api/get/*.json`, `post/*.json`, `access/*.json` | by hand (recorded from the Python host's demo until 2026-10) | Every app endpoint in demo mode: request, status, headers, body and its shape (see below); the access key rules |
+| `golden/api/sse.json` | by hand (as above) | The two event streams: event names, counts, a sample payload and the shapes of each |
+| `golden/conversation/vectors.json` | by hand (generated from the Python persona until 2026-10) | The conversation's texts and rules: prompts, context blocks, text cleaning, sentence splitting, the voice settings' validation and defaults |
 | `golden/face/` | `face_vectors.py` | The face: each expression as PNG, the icon, and the scripted scenario of `host/scripts/face_golden.py` with the CRC-32 of every frame |
 | `src/main/proto/marvin/voice/v1/voice.proto` | by hand | The gRPC contract between the Java core and the voice sidecar (design section 4) |
 
@@ -48,5 +55,7 @@ The Maven module puts `golden/` on the classpath under `marvin/contracts/golden/
   messages, settings, the access rules). `get/voice_options.json` depends on the machine that
   recorded it.
 - **Face**: pixels, compared through the CRC-32 of the RGB888 frames or the decoded PNGs.
+- **Conversation vectors**: `ConversationVectorsTest` checks the Java persona, context blocks, text
+  cleaning, sentence splitting and settings rules against them.
 - **voice.proto**: compiled by this module (Java classes in `marvin.host.contracts.voice.v1`),
-  and by the Python sidecar with `grpcio-tools` in phase 2.
+  and by the Python sidecar with `grpcio-tools` (host/scripts/gen_voice_contract.py).

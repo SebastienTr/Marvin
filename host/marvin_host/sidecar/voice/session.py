@@ -19,8 +19,7 @@ import logging
 import threading
 from typing import Callable
 
-from ...voice import cli as voice_cli
-from ...voice.control import VoiceUnavailable, audio_preflight
+from ...voice.backends import VoiceUnavailable, audio_preflight, device_index
 from ...voice.engine import VoiceConfig, load_tts
 from .contract import voice_pb2 as pb
 from .engine import SidecarVoice
@@ -54,9 +53,24 @@ def settings_dict(s: pb.VoiceSettings) -> dict:
     return out
 
 
+# settings key -> VoiceConfig attribute
+_ATTRS = {"stt": "stt", "stt_model": "stt_model", "tts": "tts", "tts_voice": "tts_voice", "language": "language",
+          "default_language": "default_language", "wake": "wake", "duplex": "duplex", "echo_tail_s": "echo_tail_s",
+          "follow_up_s": "follow_up_s", "listen_window_s": "listen_window_s", "speculative_stt": "speculative_stt",
+          "continue_grace_s": "continue_grace_s", "chime": "chime"}
+
+
 def voice_config(settings: dict) -> VoiceConfig:
-    c = voice_cli._config(None, settings=settings)
-    c.chime = bool(settings.get("chime", True))
+    c = VoiceConfig()
+    for key, v in settings.items():
+        if key == "end_silence_ms":
+            c.segmenter.end_silence_s = float(v) / 1000
+        elif key == "end_silence_long_ms":
+            c.segmenter.end_silence_long_s = float(v) / 1000
+        elif key in _ATTRS and v is not None:
+            setattr(c, _ATTRS[key], type(getattr(c, _ATTRS[key]) if getattr(c, _ATTRS[key]) is not None else "")(v))
+    if c.language:
+        c.default_language = c.language
     return c
 
 
@@ -127,17 +141,17 @@ class EngineFactory:
                 raise VoiceUnavailable("No robot with a microphone and a speaker is connected",
                                        "Turn the robot on, or choose the computer's microphone.")
             if not self.fake:
-                audio_preflight(settings, microphone=False)
+                audio_preflight(microphone=False)
             from ...robot_audio import RobotMicSource, RobotSpeakerSink
             source, sink = RobotMicSource(relay, dev), RobotSpeakerSink(relay, dev)
         elif self.fake:
             from ...voice.io import NullSink
             source, sink = ScriptedMic(self.script, self.speed), NullSink(realtime=True)
         else:
-            audio_preflight(settings, microphone=True)
+            audio_preflight(settings.get("input_device"), microphone=True)
             from ...voice import io
-            source = io.MicSource(voice_cli._device(settings.get("input_device")))
-            sink = io.SpeakerSink(voice_cli._device(settings.get("output_device")))
+            source = io.MicSource(device_index(settings.get("input_device")))
+            sink = io.SpeakerSink(device_index(settings.get("output_device")))
         try:
             stt, tts = self.stt(c), self.tts(c)
             vad = None

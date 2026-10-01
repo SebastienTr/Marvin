@@ -45,15 +45,15 @@ def _token(value: str | None) -> str | None:
     return None if value in (None, "", "off", "none") else value
 
 
-def attach(brain, args, sink: UISink | None = None, voice=None) -> UIServer | None:
+def attach(brain, args, sink: UISink | None = None) -> UIServer | None:
     """Starts the app for ``brain`` as the options ask; None with --no-ui or if the port is taken.
-    ``sink`` (a UISink on the receiver) feeds the Robot panel, ``voice`` (a VoiceController) the
-    Talk panel."""
+    ``sink`` (a UISink on the receiver) feeds the Robot panel. The Talk panel says where Marvin's
+    voice is: the Java host's (./marvin up)."""
     if not getattr(args, "ui", True):
         return None
     try:
         return UIServer(brain, host=args.ui_host, port=args.ui_port, token=_token(args.ui_token),
-                        sink=sink, voice=voice).start()
+                        sink=sink).start()
     except OSError as e:
         print(f"Marvin's app not started (port {args.ui_port}: {e.strerror or e}); try --ui-port")
         return None
@@ -72,37 +72,13 @@ def add_cli(subparsers) -> argparse.ArgumentParser:
     return p
 
 
-def demo_voice(brain, robot, folder: Path, store: EventStore | None = None):
-    """The demo's voice: the real one if everything it needs is there (it then waits to be turned
-    on), else ``DemoVoice``'s scripted conversation, already on. Settings go to ``folder``, the
-    conversation to ``store``."""
-    from ..voice import cli as voice_cli
-    from ..voice.control import VoiceController, VoiceUnavailable, preflight
-    from .demo import DemoVoice
-    path = folder / "voice.json"
-    voice_cli.save_settings(voice_cli.load_settings(), path)      # a copy: the demo keeps nothing
-    try:
-        preflight(voice_cli.load_settings(path))
-    except VoiceUnavailable as e:
-        ctl = VoiceController(brain, factory=lambda config, settings: DemoVoice(brain, robot.clock),
-                              check=None, path=path, clock=robot.clock)
-        if store is not None:
-            ctl.attach_store(store)
-        ctl.start(wait=True)
-        return ctl, f"scripted voice ({e}; the real one needs it)"
-    ctl = VoiceController(brain, path=path, clock=robot.clock)
-    if store is not None:
-        ctl.attach_store(store)
-    return ctl, "the real voice, off until you turn it on"
-
-
 def main(args) -> None:
     stop = threading.Event()
     cleanup = []
     try:
         if args.demo:
             from ..brain import Brain
-            from .demo import DemoRobot, seed_conversations, seed_history
+            from .demo import DemoRobot, seed_conversations, seed_history, seed_today
             tmp = Path(tempfile.mkdtemp(prefix="marvin-demo-"))
             cleanup.append(lambda: shutil.rmtree(tmp, ignore_errors=True))
             brain = Brain()
@@ -112,11 +88,10 @@ def main(args) -> None:
             cleanup.insert(0, store.close)
             seed_history(store, robot.clock())
             seed_conversations(store, robot.clock())
-            voice, what = demo_voice(brain, robot, tmp, store)
-            cleanup.insert(0, voice.close)
+            seed_today(store, robot.clock())
             server = UIServer(brain, host=args.ui_host, port=args.ui_port, store=store,
-                              token=_token(args.ui_token), clock=robot.clock, sink=sink, voice=voice)
-            print(f"Demo: a simulated robot, time {args.speed:g}x faster, a simulated past week, {what}. "
+                              token=_token(args.ui_token), clock=robot.clock, sink=sink)
+            print(f"Demo: a simulated robot, time {args.speed:g}x faster, a simulated past week. "
                   "Nothing is kept.")
             server.start()
             cleanup.insert(0, server.stop)
@@ -130,29 +105,19 @@ def main(args) -> None:
         else:
             from .. import protocol
             from ..brain import Brain
-            from ..buttons import ButtonActions, VoiceChimes
-            from ..cli import Tee
             from ..link import FaceLink
             from ..receiver import Receiver
-            from ..voice.control import VoiceController
             brain = Brain()
             sink = UISink().start()
             cleanup.insert(0, sink.stop)
             store = EventStore()
             cleanup.append(store.close)
-            voice = VoiceController(brain)
-            voice.attach_store(store)                   # the conversation survives a restart
-            cleanup.insert(0, voice.close)
             server = UIServer(brain, host=args.ui_host, port=args.ui_port, store=store,
-                              token=_token(args.ui_token), sink=sink, voice=voice).start()
+                              token=_token(args.ui_token), sink=sink).start()
             cleanup.insert(0, server.stop)
-            if server.settings.get("voice"):
-                voice.start()
             port = args.port or protocol.HOST_PORT
-            buttons = ButtonActions(voice)
-            rx = Receiver(Tee(brain, sink, buttons), port=port)
-            buttons.receiver = rx
-            voice.add_listener(VoiceChimes(rx))
+            from ..cli import Tee
+            rx = Receiver(Tee(brain, sink), port=port)
             link = FaceLink(rx, brain).start()
             cleanup.insert(0, link.stop)
             print(f"listening for the robot on UDP {port}...")

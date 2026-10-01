@@ -24,10 +24,10 @@ jobs:
         working-directory: host
         run: python -m pytest -q
       - name: Golden files are up to date
-        # the contract files are regenerated from the Python host; any change must be committed on
+        # the generated contract files are made again from the Python host; any change must be committed on
         # purpose. Compressed files (.gz, .png) depend on the zlib version: compare the rest.
         run: |
-          python host-java/marvin-contracts/tools/generate_all.py --no-api
+          python host-java/marvin-contracts/tools/generate_all.py
           git diff --stat --exit-code -- 'host-java/marvin-contracts/golden/*.json' 'host-java/marvin-contracts/golden/*.jsonl'
 
   java:

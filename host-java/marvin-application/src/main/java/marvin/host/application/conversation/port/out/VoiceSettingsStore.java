@@ -4,7 +4,7 @@ package marvin.host.application.conversation.port.out;
 import java.util.Map;
 
 /**
- * The voice's settings file ({@code voice.json}, shared with the Python host's {@code marvin-host talk}).
+ * The voice's settings file ({@code voice.json} in Marvin's configuration folder).
  */
 public interface VoiceSettingsStore {
 

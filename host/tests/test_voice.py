@@ -1,5 +1,5 @@
-"""The voice pipeline without microphone, speakers, models or network: fake STT, LLM and TTS,
-synthetic audio, and a fake Ollama server on localhost. One optional test runs Whisper tiny.
+"""The voice engine without microphone, speakers, models or network: fake STT and TTS, synthetic
+audio, scripted answers (voicekit.py). One optional test runs Whisper tiny.
 
 SPDX-License-Identifier: MIT
 """
@@ -18,31 +18,17 @@ import pytest
 
 from marvin_host.audio import FRAME_SAMPLES, SAMPLE_RATE, AudioSink, AudioSource
 from marvin_host.events import Event, EventKind, PresenceState
-from marvin_host.voice import persona
-from marvin_host.voice.assistant import VoiceAssistant, VoiceConfig
+from marvin_host.voice.engine import VoiceConfig
 from marvin_host.voice.io import ArraySource, NullSink, StreamResampler, WavSink, read_wav, resample, write_wav
-from marvin_host.voice.llm import FakeLLM, LLMUnavailable, OllamaLLM
-from marvin_host.voice.proactive import ProactiveConfig, ProactiveSpeaker
 from marvin_host.voice.stt import FakeSTT, Transcript
-from marvin_host.voice.text import SentenceSplitter, clean_for_speech, split_sentences
 from marvin_host.voice.tts import FakeTTS
 from marvin_host.voice.vad import EnergyVad, Segmenter, SegmenterConfig
 from marvin_host.voice.wake import TranscriptWakeWord, is_wake_word, match_wake_word
+from voicekit import (BlockingSink, OnceBlockingSink, Replies, ScriptedVoice, ScriptSource, make, silence,
+                      voice)
 
 
 # ---------------------------------------------------------------- synthetic audio
-
-def silence(s: float) -> np.ndarray:
-    rng = np.random.default_rng(1)
-    return (rng.normal(0, 30, int(s * SAMPLE_RATE))).astype(np.int16)        # quiet room noise
-
-
-def voice(s: float, f0: float = 140.0) -> np.ndarray:
-    """A buzzy harmonic tone with a syllable-like envelope: loud enough to be speech for the VAD."""
-    t = np.arange(int(s * SAMPLE_RATE)) / SAMPLE_RATE
-    x = sum(np.sin(2 * np.pi * f0 * k * t) / k for k in range(1, 8))
-    env = 0.6 + 0.4 * np.abs(np.sin(2 * np.pi * 3 * t))
-    return (x * env * 5000).astype(np.int16)
 
 
 # ---------------------------------------------------------------- wake word
@@ -173,187 +159,7 @@ def test_null_sink_realtime_busy_and_stop():
     assert time.monotonic() - t < 0.5 and not sink.busy
 
 
-# ---------------------------------------------------------------- text
-
-def test_sentence_splitter_streaming():
-    text = "Il est 14 h 30. M. Dupont a appelé à 9.5 heures ! Oui. C'est ça. Tu veux le rappeler ?"
-    sp = SentenceSplitter()
-    out = []
-    for ch in text:                                      # one character at a time, like a stream
-        out += sp.feed(ch)
-    first_before_end = list(out)
-    out += sp.flush()
-    assert out == ["Il est 14 h 30.", "M. Dupont a appelé à 9.5 heures !", "Oui. C'est ça.",
-                   "Tu veux le rappeler ?"]
-    assert first_before_end[0] == "Il est 14 h 30."     # available before the stream ended
-
-
-def test_split_sentences_newlines_and_clean():
-    assert split_sentences("Un\nDeux. Trois") == ["Un", "Deux.", "Trois"]
-    text = "**Bonjour** ! 😀 Voir [ici](http://x.y) :\n- un\n- deux"
-    assert clean_for_speech(text) == "Bonjour ! Voir ici :\nun\ndeux"
-
-
-# ---------------------------------------------------------------- persona and context
-
-def test_context_from_presence_state():
-    s = PresenceState(t_us=int(3600e6), present=True, seated=True, distance_m=0.8, seated_s=42 * 60,
-                      breath_rate=14.2, heart_rate=None)
-    events = [Event(EventKind.ARRIVED, int(3600e6 - 50 * 60e6)), Event(EventKind.SAT_DOWN, int(3600e6 - 42 * 60e6)),
-              Event(EventKind.VITALS_ACQUIRED, int(3600e6 - 60e6))]
-    facts = persona.context_facts(s, events)
-    text = " ".join(facts)
-    assert "seated for 42 minutes" in text
-    assert "breathing at 14 per minute, right now" in text
-    assert "heart" not in text                           # not reliable: not mentioned
-    assert "sat down 42 minutes ago" in text and "arrived 50 minutes ago" in text
-    prompt = persona.system_prompt("fr", s, events)
-    assert "French" in prompt and "Marvin" in prompt and "0.8 metres" in prompt
-    assert "markdown" in prompt
-
-
-def test_context_when_nobody_is_there():
-    facts = persona.context_facts(PresenceState(present=False, breath_rate=15.0))
-    assert len(facts) == 1 and "nobody" in facts[0]
-    assert persona.context_facts(None) == []
-    assert "English" in persona.system_prompt("en")
-
-
-# ---------------------------------------------------------------- Ollama client
-
-class _FakeOllama(BaseHTTPRequestHandler):
-    models = ["qwen3:4b-instruct"]
-    requests: list[dict] = []
-
-    def log_message(self, *a):
-        pass
-
-    def do_GET(self):
-        if self.path == "/api/tags":
-            self._json(200, {"models": [{"name": m} for m in self.models]})
-        else:
-            self._json(404, {"error": "not found"})
-
-    def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        type(self).requests.append(body)
-        if body["model"] not in self.models:
-            return self._json(404, {"error": f"model '{body['model']}' not found"})
-        self.send_response(200)
-        self.send_header("Content-Type", "application/x-ndjson")
-        self.end_headers()
-        for piece in ["Paris est ", "la capitale. ", "Voilà."]:
-            line = {"message": {"role": "assistant", "content": piece}, "done": False}
-            try:
-                self.wfile.write((json.dumps(line) + "\n").encode())
-                self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError):
-                return                                   # the client stopped reading (warm-up)
-            time.sleep(0.01)
-        self.wfile.write((json.dumps({"message": {"role": "assistant", "content": ""}, "done": True}) + "\n").encode())
-
-    def _json(self, code, obj):
-        data = json.dumps(obj).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-
-@pytest.fixture
-def ollama():
-    _FakeOllama.requests = []
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), _FakeOllama)
-    th = threading.Thread(target=srv.serve_forever, daemon=True)
-    th.start()
-    yield f"http://127.0.0.1:{srv.server_address[1]}"
-    srv.shutdown()
-
-
-def test_ollama_streams_chat(ollama):
-    llm = OllamaLLM(host=ollama, think=False)
-    assert llm.available()
-    pieces = list(llm.stream_chat([{"role": "user", "content": "Capitale ?"}]))
-    assert pieces == ["Paris est ", "la capitale. ", "Voilà."]
-    req = _FakeOllama.requests[-1]
-    assert req["stream"] is True and req["model"] == "qwen3:4b-instruct" and req["think"] is False
-    assert req["messages"][0]["content"] == "Capitale ?" and "num_predict" in req["options"]
-
-
-def test_ollama_missing_model(ollama):
-    llm = OllamaLLM("nope:1b", host=ollama)
-    assert not llm.available()
-    with pytest.raises(LLMUnavailable) as e:
-        list(llm.stream_chat([{"role": "user", "content": "?"}]))
-    assert "ollama pull nope:1b" in e.value.hint
-
-
-def test_ollama_not_running():
-    llm = OllamaLLM(host="http://127.0.0.1:9", timeout=2)
-    assert not llm.available()
-    with pytest.raises(LLMUnavailable) as e:
-        list(llm.stream_chat([{"role": "user", "content": "?"}]))
-    assert "ollama" in e.value.hint.lower()
-
-
-# ---------------------------------------------------------------- the assistant, end to end
-
-class ScriptSource:
-    """Plays a script of ("say", seconds), ("quiet", seconds), ("idle",) steps. "idle" waits until the
-    assistant has finished answering, like a person waiting for the reply."""
-
-    def __init__(self, script):
-        self.script = script
-        self.assistant = None
-        self._closed = False
-
-    def frames(self):
-        for step in self.script:
-            if self._closed:
-                return
-            if step[0] == "idle":
-                assert self.assistant.wait_idle(timeout=5)
-                continue
-            if step[0] == "call":
-                assert self.assistant.wait_idle(timeout=0.3) or True
-                step[1]()
-                continue
-            if step[0] == "status":
-                end = time.monotonic() + 5
-                while self.assistant.status != step[1]:
-                    assert time.monotonic() < end, f"never reached {step[1]}"
-                    time.sleep(0.005)
-                continue
-            audio = voice(step[1]) if step[0] == "say" else silence(step[1])
-            for i in range(len(audio) // FRAME_SAMPLES):
-                yield audio[i * FRAME_SAMPLES:(i + 1) * FRAME_SAMPLES]
-
-    def close(self):
-        self._closed = True
-
-
-def said(message: dict) -> str:
-    """What the person said, from a user message sent to the model (between the context block and
-    the language reminder)."""
-    if message["role"] != "user":
-        return message["content"]
-    return message["content"].split("The person says: ", 1)[-1].split("\n\n(Answer in ", 1)[0]
-
-
-def make(script, stt_script, replies=("D'accord.",), sink=None, brain=None, **cfg):
-    config = VoiceConfig(**{"follow_up_s": 0.0, **cfg})
-    src = ScriptSource(script)
-    stt = FakeSTT(stt_script)
-    llm = FakeLLM(replies) if not isinstance(replies, FakeLLM) else replies
-    tts = FakeTTS()
-    sink = sink or NullSink()
-    log = {"status": [], "transcript": [], "reply": []}
-    va = VoiceAssistant(src, sink, brain=brain, config=config, stt=stt, llm=llm, tts=tts, vad=EnergyVad(),
-                        on_status=log["status"].append, on_transcript=log["transcript"].append,
-                        on_reply=log["reply"].append)
-    src.assistant = va
-    return va, SimpleNamespace(stt=stt, llm=llm, tts=tts, sink=sink, log=log)
+# ---------------------------------------------------------------- the engine, end to end
 
 
 def test_question_in_one_breath():
@@ -361,32 +167,28 @@ def test_question_in_one_breath():
                  ["Marvin, quelle heure est-il ?"], ["Il est midi. Bon appétit, si c'est l'heure."])
     va.run()
     assert t.log["transcript"] == ["quelle heure est-il ?"]
-    msgs = t.llm.calls[0]
-    assert msgs[0]["role"] == "system" and "French" in msgs[0]["content"]
-    assert msgs[-1]["role"] == "user" and said(msgs[-1]) == "quelle heure est-il ?"
-    assert "Context:" in msgs[-1]["content"] and "Context" not in msgs[0]["content"]   # cacheable system prompt
+    assert t.asked == ["quelle heure est-il ?"]
     assert [s for s, _ in t.tts.said] == ["Il est midi.", "Bon appétit, si c'est l'heure."]
     assert t.log["reply"] == ["Il est midi. Bon appétit, si c'est l'heure."]
     assert t.log["status"] == ["thinking", "speaking", "idle"]
     assert len(t.sink.played) == 2
-    assert va.history[-1]["content"].startswith("Il est midi")
-    assert {"endpoint", "stt", "llm_first_token", "first_chunk", "tts", "audio_start", "total"} <= set(va.last_latency)
+    assert {"endpoint", "stt", "first_chunk", "tts", "audio_start", "total"} <= set(va.last_latency)
 
 
 def test_not_addressed_is_ignored():
     va, t = make([("say", 1.0), ("quiet", 1), ("idle",)], ["Il fait beau aujourd'hui."])
     va.run()
-    assert len(t.stt.calls) == 1 and t.llm.calls == [] and t.log["status"] == []
+    assert len(t.stt.calls) == 1 and t.asked == [] and t.log["status"] == []
 
 
 def test_name_then_question():
     va, t = make([("say", 0.6), ("quiet", 1.5), ("say", 1.2), ("quiet", 1), ("idle",)],
-                 ["Marvin.", "Tu peux me rappeler de boire de l'eau ?"], ["Je n'ai pas de rappels, hélas."])
+                 ["Marvin.", "Tu peux me rappeler de boire de l'eau ?"], ["Je n'ai pas de rappels. Hélas."])
     va.run()
     assert t.log["status"][:2] == ["listening", "thinking"]
-    assert said(t.llm.calls[0][-1]) == "Tu peux me rappeler de boire de l'eau ?"
+    assert t.asked[0] == "Tu peux me rappeler de boire de l'eau ?"
     assert len(t.sink.played) == 3                       # the chime, then the answer in two chunks
-    assert [s for s, _ in t.tts.said] == ["Je n'ai pas de rappels,", "hélas."]
+    assert [s for s, _ in t.tts.said] == ["Je n'ai pas de rappels.", "Hélas."]
 
 
 def test_listening_window_expires():
@@ -394,7 +196,7 @@ def test_listening_window_expires():
                  ["Marvin.", "Tu peux me rappeler de boire de l'eau ?"])
     va.run()
     assert t.log["status"] == ["listening", "idle"]
-    assert t.llm.calls == []
+    assert t.asked == []
 
 
 def test_follow_up_without_the_name():
@@ -403,9 +205,7 @@ def test_follow_up_without_the_name():
                  ["Marvin, c'est quoi la capitale du Pérou ?", "Et du Chili ?", "Et de l'Argentine ?"],
                  ["Lima.", "Santiago."], follow_up_s=4.0)
     va.run()
-    assert len(t.llm.calls) == 2                         # the third one came after the window
-    second = t.llm.calls[1]
-    assert [said(m) for m in second[1:]] == ["c'est quoi la capitale du Pérou ?", "Lima.", "Et du Chili ?"]
+    assert t.asked == ["c'est quoi la capitale du Pérou ?", "Et du Chili ?"]   # the third came after the window
 
 
 def test_no_wake_answers_everything_and_follows_language():
@@ -413,51 +213,8 @@ def test_no_wake_answers_everything_and_follows_language():
                  [Transcript("What's the time?", "en", True), Transcript("Et demain alors ?", "fr", False)],
                  ["It's noon.", "Of course."], wake=False)
     va.run()
-    assert [said(c[-1]) for c in t.llm.calls] == ["What's the time?", "Et demain alors ?"]
-    assert "English" in t.llm.calls[0][0]["content"]
-    assert "English" in t.llm.calls[1][0]["content"]     # unconfident detection: keep the conversation's language
-    assert [lang for _, lang in t.tts.said] == ["en", "en"]
-
-
-def test_llm_down_is_spoken():
-    va, t = make([("say", 1.0), ("quiet", 1), ("idle",)], ["Marvin, ça va ?"], FakeLLM(fail=True))
-    va.run()
-    assert t.tts.said == [(persona.phrase("llm_down", "fr"), "fr")]
-    assert va.history == [] and t.log["reply"] == []
-
-
-def test_brain_context_reaches_the_model():
-    brain = SimpleNamespace(state=PresenceState(t_us=int(100e6), present=True, seated=True, seated_s=3600,
-                                                heart_rate=62.0, distance_m=0.9),
-                            events=[Event(EventKind.SAT_DOWN, int(40e6))])
-    va, t = make([("say", 1.0), ("quiet", 1), ("idle",)], ["Marvin, depuis combien de temps je suis assis ?"],
-                 ["Une heure."], brain=brain)
-    va.run()
-    system = t.llm.calls[0][-1]["content"]
-    assert "seated for 60 minutes" in system and "heart rate at 62" in system
-
-
-class BlockingSink(NullSink):
-    """A speaker that never finishes on its own: it is only ever stopped."""
-
-    def __init__(self):
-        super().__init__()
-        self._stop = threading.Event()
-
-    def play(self, pcm, rate=SAMPLE_RATE):
-        super().play(pcm, rate)
-        self._stop.clear()
-
-    def wait(self):
-        self._stop.wait(5)
-
-    def stop(self):
-        super().stop()
-        self._stop.set()
-
-    @property
-    def busy(self):
-        return not self._stop.is_set()
+    assert t.asked == ["What's the time?", "Et demain alors ?"]
+    assert [lang for _, lang in t.tts.said] == ["en", "en"]   # unconfident detection: the conversation's language
 
 
 def test_barge_in_in_duplex_mode():
@@ -468,11 +225,10 @@ def test_barge_in_in_duplex_mode():
                  ["Marvin, raconte-moi une histoire.", "Il était une fois un phare", "Marvin !"],
                  [reply], sink=BlockingSink(), duplex=True)
     va.run()
-    assert len(t.llm.calls) == 1
+    assert len(t.asked) == 1
     assert t.sink.stops >= 1
     assert t.log["reply"] == []                          # interrupted: no complete reply
     assert "listening" in t.log["status"][t.log["status"].index("speaking"):]
-    assert va.history[-1]["content"].endswith("…")       # remembered as cut short
 
 
 def test_no_barge_in_while_it_says_its_own_name():
@@ -484,7 +240,7 @@ def test_no_barge_in_while_it_says_its_own_name():
                  ["Marvin, présente-toi.", "Marvin, votre robot de bureau."], [reply], sink=sink, duplex=True)
     stops = []
     va.run()
-    assert stops == [0] and len(t.llm.calls) == 1
+    assert stops == [0] and len(t.asked) == 1
     assert len(t.stt.calls) == 1                         # not even transcribed: the reply contains the name
 
 
@@ -577,7 +333,6 @@ def loop(script, questions, replies, delay_s=0.3, **cfg):
     sink = LoopSink()
     src = LoopSource(script, sink, delay_s)
     questions = list(questions)
-    llm = FakeLLM(list(replies))
     tts = FakeTTS(ms_per_char=15)
 
     def whisper(pcm):
@@ -587,10 +342,10 @@ def loop(script, questions, replies, delay_s=0.3, **cfg):
 
     stt = FakeSTT(whisper)
     turns = []
-    va = VoiceAssistant(src, sink, config=VoiceConfig(**cfg), stt=stt, llm=llm, tts=tts, vad=EnergyVad(),
-                        on_transcript=turns.append)
+    va = ScriptedVoice(src, sink, VoiceConfig(**cfg), stt=stt, tts=tts, vad=EnergyVad(),
+                       replies=Replies(list(replies)), on_transcript=turns.append)
     src.assistant = va
-    return va, SimpleNamespace(llm=llm, stt=stt, tts=tts, sink=sink, turns=turns)
+    return va, SimpleNamespace(stt=stt, tts=tts, sink=sink, turns=turns, asked=va.asked)
 
 
 def test_never_answers_its_own_voice_half_duplex():
@@ -598,7 +353,7 @@ def test_never_answers_its_own_voice_half_duplex():
                  ["Marvin, how are you doing today?"], [REPLY])
     va.run()
     assert t.turns == ["how are you doing today?"]
-    assert len(t.llm.calls) == 1
+    assert len(t.asked) == 1
     assert len(t.stt.calls) == 1                         # its own voice was not even heard
 
 
@@ -612,7 +367,7 @@ def test_never_answers_its_own_voice_duplex(delay_s, caplog):
     va.run()
     assert len(t.stt.calls) >= 2                         # it heard itself...
     assert t.turns == ["how are you doing today?"]       # ...and ignored it
-    assert len(t.llm.calls) == 1
+    assert len(t.asked) == 1
     if delay_s > 2:
         assert "(ignored: own voice)" in caplog.text
 
@@ -624,7 +379,7 @@ def test_follow_up_still_accepts_a_real_question():
                  [REPLY, "A lidar, two radars and a camera."])
     va.run()
     assert t.turns == ["how are you doing today?", "What are your sensors?"]
-    assert len(t.llm.calls) == 2
+    assert len(t.asked) == 2
 
 
 def test_echo_filter():
@@ -648,17 +403,6 @@ def test_echo_filter():
     assert not f.is_own_voice(REPLY)                                     # only the last two replies
     f.speaking("Je suis Marvin, votre robot.")
     assert f.current_has_wake_word()
-
-
-def test_history_only_grows_at_the_end_until_it_is_halved():
-    va, _ = make([("quiet", 0.1)], [], memory_turns=4)
-    starts = []
-    for i in range(1, 8):
-        va._remember(f"q{i}", f"a{i}")
-        starts.append(va.history[0]["content"])
-    # q1 stays first while the history fills (the model server keeps its work), then half goes at once
-    assert starts == ["q1", "q1", "q1", "q1", "q4", "q4", "q4"]
-    assert len(va.history) == 2 * 4
 
 
 def test_echo_filter_only_near_the_reply():
@@ -703,41 +447,6 @@ def test_say_is_skipped_during_a_conversation():
     va.close()
 
 
-# ---------------------------------------------------------------- proactive speech
-
-def test_proactive_reminders():
-    said = []
-    now = [0.0]
-    fake = SimpleNamespace(language="fr", say=lambda text, lang: said.append((text, lang)) or True)
-    p = ProactiveSpeaker(fake, clock=lambda: now[0])
-    p(Event(EventKind.STILL_LONG, int(3000e6), data={"seated_s": 3000}))
-    assert said == [("Tu es assis depuis 50 minutes. Et si tu faisais une pause ?", "fr")]
-    now[0] = 60
-    p(Event(EventKind.STILL_LONG, int(3600e6), data={"seated_s": 3600}))
-    assert len(said) == 1                                # rate-limited
-    now[0] = 3600
-    fake.language = "en"
-    p(Event(EventKind.STILL_LONG, int(7200e6), data={"seated_s": 3600}))
-    assert said[-1] == ("You've been sitting for an hour. Time to stretch?", "en")
-    # welcome back is off by default
-    p(Event(EventKind.LEFT, int(8000e6)))
-    now[0] = 99999
-    p(Event(EventKind.ARRIVED, int(8000e6 + 3600e6)))
-    assert len(said) == 2
-
-
-def test_proactive_welcome_back_after_long_absence_only():
-    said = []
-    fake = SimpleNamespace(language="fr", say=lambda text, lang: said.append(text) or True)
-    p = ProactiveSpeaker(fake, ProactiveConfig(welcome_back=True, min_interval_s=0))
-    p(Event(EventKind.ARRIVED, int(10e6)))               # first arrival: no absence known
-    p(Event(EventKind.LEFT, int(20e6)))
-    p(Event(EventKind.ARRIVED, int(80e6)))               # back after a minute
-    p(Event(EventKind.LEFT, int(90e6)))
-    p(Event(EventKind.ARRIVED, int(90e6 + 3600e6)))      # back after an hour
-    assert said == ["Re-bonjour."]
-
-
 # ---------------------------------------------------------------- optional: real Whisper
 
 def _speech_wav(tmp_path):
@@ -770,15 +479,14 @@ def test_whisper_tiny_hears_marvin(tmp_path):
     except Exception as e:                               # no network to download the model
         pytest.skip(f"whisper tiny unavailable: {e}")
     audio = np.concatenate([silence(0.5), speech, silence(1.0)])
-    fake = FakeLLM(["D'accord."])
     src = ArraySource(audio)
-    va = VoiceAssistant(src, NullSink(), config=VoiceConfig(follow_up_s=0), stt=stt, llm=fake, tts=FakeTTS())
+    va = ScriptedVoice(src, NullSink(), VoiceConfig(follow_up_s=0), stt=stt, tts=FakeTTS())
     va.run()
-    assert len(fake.calls) == 1, "wake word not heard"
-    assert len(said(fake.calls[0][-1])) > 5
+    assert len(va.asked) == 1, "wake word not heard"
+    assert len(va.asked[0]) > 5
 
 
-# ---------------------------------------------------------------- TTS backends and CLI glue
+# ---------------------------------------------------------------- TTS backends
 
 SAY_LISTING = """Albert              en_US    # Hello! My name is Albert.
 Amélie              fr_CA    # Bonjour, je m’appelle Amélie.
@@ -810,78 +518,7 @@ def test_espeak_tts():
     assert pcm.dtype == np.int16 and len(pcm) > rate * 0.2
 
 
-def test_cli_glue(tmp_path, monkeypatch):
-    import argparse
-
-    monkeypatch.setenv("MARVIN_CONFIG_DIR", str(tmp_path))
-
-    from marvin_host.voice import add_cli, add_run_arguments, attach
-    ap = argparse.ArgumentParser()
-    sub = ap.add_subparsers(dest="cmd")
-    handler = add_cli(sub)
-    run = sub.add_parser("run")
-    add_run_arguments(run)
-    assert callable(handler)
-    a = ap.parse_args(["talk", "--lang", "en", "--no-wake", "--stt-model", "tiny", "--wav", "x.wav"])
-    assert (a.lang, a.no_wake, a.stt_model, a.wav) == ("en", True, "tiny", "x.wav")
-    r = ap.parse_args(["run"])
-    assert attach(SimpleNamespace(), r) is None          # no --voice: nothing started
-    r = ap.parse_args(["run", "--voice", "--voice-llm-model", "llama3.2:3b", "--voice-welcome"])
-    from marvin_host.voice.cli import _config
-    c = _config(r, "voice_")
-    assert c.llm_model == "llama3.2:3b" and c.wake and r.voice_welcome
-
-
-def _parser():
-    import argparse
-
-    from marvin_host.voice import add_cli, add_run_arguments
-    ap = argparse.ArgumentParser()
-    sub = ap.add_subparsers(dest="cmd")
-    add_cli(sub)
-    add_run_arguments(sub.add_parser("run"))
-    return ap
-
-
-def test_settings_file_and_flags(tmp_path, monkeypatch):
-    from marvin_host.voice.cli import _config, _flags, _settings, save_settings, settings_path
-    monkeypatch.setenv("MARVIN_CONFIG_DIR", str(tmp_path))
-    assert settings_path() == tmp_path / "voice.json"
-    ap = _parser()
-    c = _config(ap.parse_args(["talk"]))
-    assert c.llm_model == "qwen3:4b-instruct" and not c.duplex and c.stt == "auto"      # built-in defaults
-    save_settings({"llm_model": "qwen3:8b", "stt": "mlx", "end_silence_ms": 450, "input_device": 2})
-    c = _config(ap.parse_args(["talk"]))
-    assert (c.llm_model, c.stt, c.segmenter.end_silence_s) == ("qwen3:8b", "mlx", 0.45)
-    assert _settings(ap.parse_args(["talk"]))["input_device"] == 2
-    a = ap.parse_args(["talk", "--llm-model", "qwen3:1.7b", "--duplex", "--no-wake"])
-    c = _config(a)
-    assert (c.llm_model, c.stt, c.duplex, c.wake) == ("qwen3:1.7b", "mlx", True, False)     # flags win
-    r = ap.parse_args(["run", "--voice", "--voice-echo-tail", "1.2"])
-    c = _config(r, "voice_")
-    assert c.echo_tail_s == 1.2 and c.llm_model == "qwen3:8b"
-    # --save-defaults keeps the other keys
-    save_settings(_flags(ap.parse_args(["talk", "--tts", "piper"])))
-    data = json.loads((tmp_path / "voice.json").read_text())
-    assert data["tts"] == "piper" and data["llm_model"] == "qwen3:8b"
-    (tmp_path / "voice.json").write_text("{not json")
-    assert _config(ap.parse_args(["talk"])).llm_model == "qwen3:4b-instruct"             # broken file: ignored
-
-
 # ---------------------------------------------------------------- latency
-
-def test_first_clause_is_released_early():
-    sp = SentenceSplitter()
-    out = []
-    for ch in "La capitale de la France, sans hésiter, c'est Paris. Une belle ville, vraiment.":
-        out += sp.feed(ch)
-        if out and len(out) == 1:
-            break
-    assert out == ["La capitale de la France,"]           # before the end of the first sentence
-    sp = SentenceSplitter()
-    assert sp.feed("Oui, ") == []                         # too short to stand alone
-    assert sp.feed("bien sûr. Et ") == ["Oui, bien sûr."]
-    assert split_sentences("Un, deux, trois, quatre, cinq.") == ["Un, deux, trois, quatre, cinq."]
 
 
 def test_speculative_transcription_is_used():
@@ -898,35 +535,15 @@ def test_speculation_is_dropped_when_the_speaker_goes_on():
                  ["Marvin, quelle", "Marvin, quelle heure est-il ?"], ["Midi."])
     va.run()
     assert len(t.stt.calls) == 2 and t.stt.calls[1] > t.stt.calls[0]
-    assert said(t.llm.calls[0][-1]) == "quelle heure est-il ?"
+    assert t.asked[0] == "quelle heure est-il ?"
 
 
 def test_latency_line():
-    from marvin_host.voice.assistant import format_latency
+    from marvin_host.voice.engine import format_latency
     line = format_latency({"endpoint": 0.55, "queue": 0.01, "stt": 0.12, "speculative": 1.0,
                            "llm_first_token": 0.25, "first_chunk": 0.4, "tts": 0.2, "audio_start": 0.8})
     assert line.startswith("first word 1.35 s after you stopped talking")
     assert "speech recognition 0.12 (speculative)" in line and "backlog" not in line
-
-
-def test_ollama_warm_up_rehearses_a_real_question(ollama, caplog):
-    """The warm-up must look exactly like a question (same options, stream, think, keep_alive,
-    same system prompt), or Ollama reloads the model or reprocesses the prompt at the first one."""
-    caplog.set_level("INFO", "marvin.voice.llm")
-    llm = OllamaLLM(host=ollama)
-    system = persona.persona_prompt("fr")
-    assert llm.warm_up(system, persona.user_message("Bonjour.")) is not None
-    warm = _FakeOllama.requests[-2:]
-    assert warm[0] == warm[1]                             # load, then check that the cache is reused
-    list(llm.stream_chat([{"role": "system", "content": system},
-                          {"role": "user", "content": persona.user_message("Quelle heure est-il ?")}]))
-    real = _FakeOllama.requests[-1]
-    for key in ("model", "options", "keep_alive", "think", "stream"):
-        assert warm[0][key] == real[key], key
-    assert real["options"]["num_ctx"] == 8192 and real["keep_alive"] == "30m" and real["think"] is False
-    assert warm[0]["messages"][0] == real["messages"][0]  # the cached prefix
-    assert "prompt cached" in caplog.text
-    assert OllamaLLM(host="http://127.0.0.1:9", timeout=1).warm_up("x") is None
 
 
 # ---------------------------------------------------------------- MLX Whisper (faked: no Apple GPU here)
@@ -1082,7 +699,7 @@ def test_no_turn_on_hallucinations_in_the_follow_up_window(heard, why, caplog):
     caplog.set_level("INFO", "marvin.voice")
     va, t = make(FOLLOW_UP, ["Marvin, tu m'entends ?", heard], ["Oui, très bien."], follow_up_s=5.0)
     va.run()
-    assert len(t.llm.calls) == 1, why
+    assert len(t.asked) == 1, why
     assert "(ignored:" in caplog.text
 
 
@@ -1090,7 +707,7 @@ def test_thanks_closes_the_conversation(caplog):
     caplog.set_level("INFO", "marvin.voice")
     va, t = make(FOLLOW_UP, ["Marvin, tu m'entends ?", "Merci."], ["Oui, très bien."], follow_up_s=5.0)
     va.run()
-    assert len(t.llm.calls) == 1 and t.log["status"][-2:] == ["listening", "idle"]
+    assert len(t.asked) == 1 and t.log["status"][-2:] == ["listening", "idle"]
     assert "conversation closed" in caplog.text
 
 
@@ -1101,7 +718,7 @@ def test_real_follow_up_questions_still_work():
                   "Un lidar, deux radars et une caméra. Autre chose ?",
                   "Lequel ?"], follow_up_s=5.0)
     va.run()
-    assert [said(c[-1]) for c in t.llm.calls] == ["tu m'entends ?", "Et qu'est-ce que tu as comme capteurs ?", "Oui."]
+    assert t.asked == ["tu m'entends ?", "Et qu'est-ce que tu as comme capteurs ?", "Oui."]
 
 
 def test_weak_audio_is_not_even_transcribed(caplog):
@@ -1109,21 +726,18 @@ def test_weak_audio_is_not_even_transcribed(caplog):
     # 0.28 s of sound: long enough to make a segment (0.25 s), too short to be worth Whisper (0.3 s)
     va, t = make([("quiet", 1), ("say", 0.28), ("quiet", 1), ("idle",)], ["Thank you."], wake=False)
     va.run()
-    assert t.stt.calls == [] and t.llm.calls == []
+    assert t.stt.calls == [] and t.asked == []
     assert "s of speech" in caplog.text
 
 
 def test_wake_word_with_a_hallucinated_tail_just_listens():
     va, t = make([("say", 1.0), ("quiet", 1), ("idle",)], ["Marvin. Thank you."], follow_up_s=5.0)
     va.run()
-    assert t.llm.calls == [] and t.log["status"] == ["listening"]
+    assert t.asked == [] and t.log["status"] == ["listening"]
 
 
-def test_reply_language_reminder_and_voice_follow_the_text():
-    from marvin_host.voice import persona
+def test_guess_language():
     from marvin_host.voice.text import guess_language
-    msg = persona.user_message("est-ce que t'as faim ?", language="fr")
-    assert msg.endswith("(Answer in French.)")
     assert guess_language("No, I do not get hungry. I am a program running on your computer.") == "en"
     assert guess_language("Non, je n'ai pas faim, je suis un programme.") == "fr"
     assert guess_language("OK.") is None
@@ -1151,7 +765,7 @@ def test_live_signals_for_the_app():
 
 
 def test_envelope():
-    from marvin_host.voice.assistant import envelope
+    from marvin_host.voice.engine import envelope
     t = np.arange(16000) / 16000
     pcm = np.concatenate([np.zeros(8000), 8000 * np.sin(2 * np.pi * 220 * t[:8000])]).astype(np.int16)
     env = envelope(pcm, 16000)
@@ -1197,24 +811,6 @@ def test_talk_now_can_be_stopped_and_says_how_long_is_left():
     va.run()
     assert 5.5 <= left[0] <= 6.5 and left[1] is None
     assert t.log["transcript"] == [] and t.log["status"] == ["listening", "idle"]
-
-
-def test_context_says_why_there_are_no_vital_signs():
-    near = dict(t_us=1, present=True, seated=True, distance_m=0.8)
-    none = " ".join(persona.context_facts(PresenceState(**near)))
-    assert "not connected yet" in none and "cannot measure" in none      # the MR60BHA2 is not there
-    waiting = " ".join(persona.context_facts(PresenceState(**near, vitals_sensor=True)))
-    assert "no reliable reading right now" in waiting and "still" in waiting
-    reading = " ".join(persona.context_facts(PresenceState(**near, vitals_sensor=True, heart_rate=64.0)))
-    assert "heart rate at 64 beats per minute" in reading and "no reliable" not in reading
-    assert "Never promise a reading" in persona.persona_prompt("fr")
-
-
-def test_context_says_the_sensors_are_simulated():
-    text = " ".join(persona.context_facts(PresenceState(t_us=1, present=True, simulated=True, vitals_sensor=True,
-                                                        heart_rate=66.0)))
-    assert "simulated" in text and "heart rate at 66" in text
-    assert "simulated" not in " ".join(persona.context_facts(PresenceState(t_us=1, present=True)))
 
 
 # ---------------------------------------------------------------- one thought, one question
@@ -1271,22 +867,11 @@ def test_adaptive_endpoint(first, whole, one):
                  [first, whole], ["Bien.", "Bien."], continue_grace_s=0.0)
     va.run()
     if one:
-        assert len(t.llm.calls) == 1 and said(t.llm.calls[0][-1]) == match_wake_word(whole)
+        assert len(t.asked) == 1 and t.asked[0] == match_wake_word(whole)
         assert len(t.stt.calls) == 2 and t.stt.calls[1] > 2.0                   # one utterance, both parts
     else:
-        assert said(t.llm.calls[0][-1]) == "quelle heure est-il ?"
+        assert t.asked[0] == "quelle heure est-il ?"
         assert t.stt.calls[0] < 1.5                                             # it ended at the pause
-
-
-def slow_llm(replies, delay_s=0.4):
-    """A model that takes `delay_s` before its first word: the listening goes on meanwhile."""
-    replies = list(replies)
-
-    def reply(messages):
-        time.sleep(delay_s)
-        return replies.pop(0) if replies else ""
-
-    return FakeLLM(reply)
 
 
 def _events(va):
@@ -1299,14 +884,13 @@ def test_speech_resuming_before_the_answer_continues_the_question(caplog):
     caplog.set_level("INFO", logger="marvin.voice")
     va, t = make([("quiet", 0.5), ("say", 1.5), ("quiet", 0.9), ("say", 1.0), ("quiet", 1.0), ("idle",)],
                  ["Marvin, je veux aussi que tu saches que je suis développeur.", "Et j'aime la voile."],
-                 slow_llm(["C'est noté.", "Développeur et marin, c'est noté."]))
+                 Replies(["C'est noté.", "Développeur et marin, c'est noté."], delay_s=0.4))
     events = _events(va)
     va.run()
     joined = "je veux aussi que tu saches que je suis développeur. Et j'aime la voile."
-    assert [said(c[-1]) for c in t.llm.calls] == ["je veux aussi que tu saches que je suis développeur.", joined]
+    assert t.asked == ["je veux aussi que tu saches que je suis développeur.", joined]
     assert " ".join(s for s, _ in t.tts.said) == "Développeur et marin, c'est noté."  # the first answer never played
     assert t.log["reply"] == ["Développeur et marin, c'est noté."]
-    assert [m["content"] for m in va.history if m["role"] == "user"] == [t.llm.calls[1][-1]["content"]]
     heard = [d for k, d in events if k == "heard"]
     assert [h["text"] for h in heard] == ["je veux aussi que tu saches que je suis développeur.", joined]
     assert heard[1]["continues"] == [heard[0]["uid"]] and "continues" not in heard[0]
@@ -1320,10 +904,10 @@ def test_speech_resuming_before_the_answer_continues_the_question(caplog):
 def test_no_merge_after_the_grace_period():
     va, t = make([("quiet", 0.5), ("say", 1.5), ("quiet", 2.0), ("say", 1.0), ("quiet", 1.0), ("idle",)],
                  ["Marvin, je suis développeur.", "Et j'aime la voile."],
-                 slow_llm(["C'est noté.", "Autre chose."]))
+                 Replies(["C'est noté.", "Autre chose."], delay_s=0.4))
     events = _events(va)
     va.run()
-    assert [said(c[-1]) for c in t.llm.calls] == ["je suis développeur."]      # the rest needed the name
+    assert t.asked == ["je suis développeur."]      # the rest needed the name
     assert t.log["reply"] == ["C'est noté."]
     assert not any("continues" in d for k, d in events if k == "heard")
 
@@ -1331,18 +915,10 @@ def test_no_merge_after_the_grace_period():
 def test_a_cough_after_the_question_only_delays_the_answer():
     # speech resumes within the grace period, but it is nothing: the answer plays, whole
     va, t = make([("quiet", 0.5), ("say", 1.5), ("quiet", 0.9), ("say", 0.6), ("quiet", 1.0), ("idle",)],
-                 ["Marvin, quelle heure est-il ?", "Merci."], slow_llm(["Midi."]))
+                 ["Marvin, quelle heure est-il ?", "Merci."], Replies(["Midi."], delay_s=0.4))
     va.run()
-    assert [said(c[-1]) for c in t.llm.calls] == ["quelle heure est-il ?"]
+    assert t.asked == ["quelle heure est-il ?"]
     assert t.log["reply"] == ["Midi."]
-
-
-class OnceBlockingSink(BlockingSink):
-    """Blocks (a long answer being said) until it is stopped once; then plays at once."""
-
-    def wait(self):
-        if not self.stops:
-            super().wait()
 
 
 def test_barge_in_soon_after_the_question_joins_it():
@@ -1354,10 +930,7 @@ def test_barge_in_soon_after_the_question_joins_it():
     events = _events(va)
     va.run()
     joined = "raconte-moi une histoire. avec des bateaux."
-    assert [said(c[-1]) for c in t.llm.calls] == ["raconte-moi une histoire.", joined]
-    # the cut answer is not in the history: the joined question says it all
-    assert [said(m) for m in t.llm.calls[1][1:]] == [joined]
-    assert [said(m) for m in va.history] == [joined, "Il était une fois un bateau."]
+    assert t.asked == ["raconte-moi une histoire.", joined]
     heard = [d for k, d in events if k == "heard"]
     assert heard[1]["continues"] == [heard[0]["uid"]] and heard[1]["cut"] == [heard[0]["uid"]]
     replies = [d for k, d in events if k == "reply"]
@@ -1372,7 +945,7 @@ def test_barge_in_long_after_the_question_is_a_new_question():
                  ["Marvin, raconte-moi une histoire.", "Marvin, quelle heure est-il ?"],
                  [reply, "Midi."], sink=OnceBlockingSink(), duplex=True)
     va.run()
-    assert [said(c[-1]) for c in t.llm.calls] == ["raconte-moi une histoire.", "quelle heure est-il ?"]
+    assert t.asked == ["raconte-moi une histoire.", "quelle heure est-il ?"]
 
 
 def test_talk_now_after_cutting_the_answer_joins_the_question():
@@ -1385,7 +958,7 @@ def test_talk_now_after_cutting_the_answer_joins_the_question():
     box["va"] = va
     events = _events(va)
     va.run()
-    assert said(t.llm.calls[-1][-1]) == "raconte-moi une histoire. Avec des bateaux."
+    assert t.asked[-1] == "raconte-moi une histoire. Avec des bateaux."
     heard = [d for k, d in events if k == "heard"]
     assert heard[-1]["continues"] == [heard[0]["uid"]]
 
@@ -1397,7 +970,7 @@ def test_ok_then_the_rest_in_a_follow_up_window():
                  ["Marvin, tu as mangé ?", "Ok.", "J'ai pas encore mangé, j'ai faim là."],
                  ["Non, je suis un robot.", "Alors mange quelque chose !"], follow_up_s=5.0)
     va.run()
-    assert [said(c[-1]) for c in t.llm.calls] == ["tu as mangé ?", "Ok. J'ai pas encore mangé, j'ai faim là."]
+    assert t.asked == ["tu as mangé ?", "Ok. J'ai pas encore mangé, j'ai faim là."]
 
 
 def test_listening_window_waits_while_someone_talks():
@@ -1420,12 +993,3 @@ def test_listening_window_waits_while_someone_talks():
     assert t.log["transcript"] == ["Quelle heure est-il ?"]
 
 
-def test_a_question_with_an_image_says_so_and_the_history_keeps_a_note():
-    ctx = persona.context_block(None)
-    asked = persona.user_message("What is this?", context=ctx, language="en", image_note=persona.IMAGE_NOTE)
-    assert asked.endswith(f"{persona.IMAGE_NOTE}\nThe person says: What is this?\n\n(Answer in English.)")
-    kept = persona.user_message("What is this?", context=ctx, language="en", image_note=persona.IMAGE_SHOWN_NOTE)
-    assert persona.IMAGE_NOTE not in kept and persona.IMAGE_SHOWN_NOTE in kept
-    assert persona.user_message("Hi", context=ctx) == f"{ctx}\n\nThe person says: Hi"
-    # the rule is in every system prompt: showing an image does not change it
-    assert "The one exception is an image the person shows you" in persona.persona_prompt("fr")

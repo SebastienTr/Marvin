@@ -12,7 +12,7 @@ import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * JSON shapes as the contract generator writes them (api_snapshots.py): every value replaced by its
+ * JSON shapes as the API specification (golden/api) holds them: every value replaced by its
  * type, a list by the distinct shapes of its items. Two shapes are compatible when their objects have the
  * same keys and their values are compatible; {@code null} is compatible with anything (the snapshot's
  * values are volatile: a field that was a number may be null now, and the other way round); an empty list

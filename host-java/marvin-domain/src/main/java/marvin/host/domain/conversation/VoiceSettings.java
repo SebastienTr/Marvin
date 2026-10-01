@@ -7,9 +7,8 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * The voice's settings: the keys of {@code voice.json} (the file the Python host's {@code marvin-host talk}
- * and {@code run} read), the ones the app edits and how they are checked (the Python host's
- * {@code voice/control.py}), and the configuration they give.
+ * The voice's settings: the keys of {@code voice.json}, the ones the app edits and how they are checked, and the
+ * configuration they give.
  */
 public final class VoiceSettings {
 

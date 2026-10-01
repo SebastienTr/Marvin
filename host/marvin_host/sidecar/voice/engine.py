@@ -33,7 +33,6 @@ import threading
 import time
 from typing import Callable
 
-from ...voice import persona
 from ...voice.engine import Status, VoiceEngine, _Job
 from ...voice.text import SentenceSplitter, clean_for_speech
 from .contract import voice_pb2 as pb
@@ -43,6 +42,17 @@ log = logging.getLogger("marvin.sidecar.voice")
 STATES = {Status.IDLE.value: pb.Status.IDLE, Status.LISTENING.value: pb.Status.LISTENING,
           Status.THINKING.value: pb.Status.THINKING, Status.SPEAKING.value: pb.Status.SPEAKING}
 UTTERANCE = {"start": pb.Utterance.START, "end": pb.Utterance.END, "done": pb.Utterance.DONE}
+
+
+# said when an answer failed and nothing was said of it (version 1 of the contract; version 2 cores send
+# their own sentence)
+_PHRASES = {"llm_down": {"fr": "Je n'arrive pas à joindre mon modèle de langage. Ollama est-il lancé ?",
+                         "en": "I can't reach my language model. Is Ollama running?"},
+            "error": {"fr": "Désolé, quelque chose s'est mal passé.", "en": "Sorry, something went wrong."}}
+
+
+def _phrase(key: str, language: str) -> str:
+    return _PHRASES[key].get(language, _PHRASES[key]["en"])
 
 
 class _Reply:
@@ -181,7 +191,7 @@ class SidecarVoice(VoiceEngine):
                 except queue.Empty:
                     if time.monotonic() - last > self.reply_timeout_s:
                         log.warning("no answer from the core after %.0f s", self.reply_timeout_s)
-                        emit(persona.phrase("error", job.language))
+                        emit(_phrase("error", job.language))
                         return
                     continue
                 last = time.monotonic()
@@ -201,7 +211,7 @@ class SidecarVoice(VoiceEngine):
                     for s in splitter.flush():
                         say(s)
                     if value and not clean_for_speech(" ".join(answer)):
-                        emit(persona.phrase("llm_down" if value == "llm_down" else "error", job.language))
+                        emit(_phrase("llm_down" if value == "llm_down" else "error", job.language))
                     return
 
         text = self._speak_all(job, produce, lat)

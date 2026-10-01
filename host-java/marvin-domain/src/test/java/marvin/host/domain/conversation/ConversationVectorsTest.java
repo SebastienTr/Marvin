@@ -25,9 +25,9 @@ import marvin.host.domain.robot.event.RoomState;
 import marvin.host.domain.shared.JsonText;
 
 /**
- * The conversation domain against the Python host's own output ({@code golden/conversation/vectors.json},
- * made by {@code conversation_vectors.py}): prompts, context blocks, text cleaning, sentence splitting,
- * language guesses, settings checks, memory and proactive speech.
+ * The conversation domain against its specification ({@code golden/conversation/vectors.json}: generated from the
+ * Python host's persona until it was retired, kept by hand since): prompts, context blocks, text cleaning, sentence
+ * splitting, language guesses, settings checks, memory and proactive speech.
  */
 class ConversationVectorsTest {
     static Map<String, Object> v;

@@ -1,13 +1,15 @@
 """marvin-host command line.
 
-    marvin-host run        [--voice] [--no-ui] [--record F.mvrec]   listen for the robot: viewer, app, face link
+    marvin-host run        [--no-ui] [--record F.mvrec]             listen for the robot: viewer, app, face link
                            [-v] [--stats]                            (quiet terminal: the app shows the rest)
     marvin-host demo       [--save FILE.rrd] [--seconds N]           simulator + receiver + viewer in one process
     marvin-host sim        [--host IP] [--model d500|d800]           pretend to be the robot
     marvin-host ui --demo  [--speed 10]                              the app in the browser, with a simulated robot
-    marvin-host talk       [--wav FILE] [--no-wake]                  talk to Marvin with the computer's mic and speakers
     marvin-host replay     FILE.mvrec [--speed 2]                    play a recorded session back
     marvin-host calibrate  lidar [--manual] [--save]                 calibrate the lidar's yaw
+
+Marvin's voice and conversation run in the Java host (./marvin up); this command line keeps the
+tools around the robot: the simulator, the viewer, recordings and calibration.
 
 SPDX-License-Identifier: MIT
 """
@@ -18,9 +20,8 @@ import logging
 import threading
 import time
 
-from . import __version__, calibration, protocol, record, ui, voice
+from . import __version__, calibration, protocol, record, ui
 from .brain import Brain
-from .buttons import ButtonActions, VoiceChimes
 from .link import FaceLink
 from .receiver import Receiver, Sink
 from .sim import SimDevice
@@ -127,15 +128,13 @@ def _sink(args, brain: Brain, *extra: Sink) -> Sink:
 
 class Terminal:
     """What `marvin-host run` prints. Quiet by default, the app shows the rest: the app's
-    address, devices connecting and disconnecting, the voice turning on and off, and warnings.
-    `verbose` (-v) or `console` (--no-ui) add the brain's events, the devices' logs and the
-    conversation."""
+    address, devices connecting and disconnecting, and warnings. `verbose` (-v) or `console`
+    (--no-ui) add the brain's events and the devices' logs."""
 
     def __init__(self, verbose: bool = False, console: bool = False, out=print):
         self.chatty = verbose or console
         self.verbose = verbose
         self.out = out
-        self._voice_state = "off"
 
     def device(self, kind: str, info: dict) -> None:
         """UISink listener."""
@@ -157,31 +156,6 @@ class Terminal:
     def event(self, e) -> None:
         """Brain listener (only added when chatty)."""
         _print_event(e)
-
-    def voice(self, kind: str, p: dict) -> None:
-        """VoiceController listener."""
-        if kind == "voice":
-            state = p["state"]
-            if state == self._voice_state:
-                return
-            self._voice_state = state
-            if state == "starting":
-                self.out(f"voice: starting ({p['model']})...")
-            elif state == "on":
-                self.out("voice: on, say “Marvin, …”" if p.get("wake", True) else "voice: on, listening")
-            elif state == "off":
-                self.out("voice: off")
-            elif state == "error":
-                self.out(f"voice: {p['error']}" + (f". Fix: {p['fix']}" if p.get("fix") else ""))
-        elif kind == "transcript" and self.chatty:
-            k = p["kind"]
-            if k == "heard":
-                self.out(f"  you{' (typed)' if p.get('source') == 'typed' else ''}: {p['text']}")
-            elif k == "reply":
-                lat = f"  ({p['first_word_s']:.1f} s)" if p.get("first_word_s") is not None and self.verbose else ""
-                self.out(f"  marvin: {p['text']}{lat}")
-            elif k == "ignored" and self.verbose:
-                self.out(f"  (ignored, {p['reason']}: {p['text'] or '…'})")
 
 
 class _Formatter(logging.Formatter):
@@ -217,7 +191,7 @@ def _setup_logging(args) -> None:
 
 
 def run_robot(args, cal) -> None:
-    """`marvin-host run`: receiver, brain, face link, app, voice."""
+    """`marvin-host run`: receiver, brain, face link, app (Marvin's voice is the Java host's)."""
     console = not args.ui
     term = Terminal(verbose=args.verbose > 0, console=console)
     brain = Brain(cal.brain_config())
@@ -231,19 +205,11 @@ def run_robot(args, cal) -> None:
         sinks.append(viewer.start(save=args.save, spawn=not args.no_viewer, brain=brain))
     if term.chatty:
         brain.add_listener(term.event)
-    buttons = ButtonActions(None)
-    sinks.append(buttons)
     rx = record.make_receiver(args, Tee(*sinks), port=args.port)
     uisink.start()
     link = FaceLink(rx, brain).start()          # drives the robot's face (robots with a screen)
-    speech = voice.make_controller(brain, args)  # turned on with --voice or from the app
-    speech.add_listener(term.voice)
-    buttons.voice, buttons.receiver = speech, rx    # the robot's Talk and Mute buttons
-    speech.add_listener(VoiceChimes(rx))            # and its buzzer
-    app = ui.attach(brain, args, sink=uisink, voice=speech)      # None with --no-ui
+    app = ui.attach(brain, args, sink=uisink)  # None with --no-ui
     print(f"listening for the robot on UDP {args.port}", flush=True)
-    if args.voice or (app is not None and app.settings.get("voice")):
-        speech.start()
     try:
         rx.serve(duration=args.seconds)
     finally:
@@ -252,7 +218,6 @@ def run_robot(args, cal) -> None:
         uisink.stop()
         if app:
             app.stop()
-        speech.close()
 
 
 def main(argv=None) -> None:
@@ -270,7 +235,6 @@ def main(argv=None) -> None:
     run.add_argument("--seconds", type=float, help="stop after this many seconds")
     record.add_run_arguments(run)          # --record FILE.mvrec
     ui.add_run_arguments(run)              # --ui/--no-ui, --ui-port, --ui-host, --ui-token
-    voice.add_run_arguments(run)           # --voice and its options (the app turns it on and off too)
 
     sim = sub.add_parser("sim", help="simulated robot")
     sim.add_argument("--host", default="255.255.255.255", help="host address (default: broadcast)")
@@ -288,7 +252,6 @@ def main(argv=None) -> None:
     ui.add_run_arguments(demo)
 
     ui.add_cli(sub)                        # marvin-host ui [--demo]
-    talk = voice.add_cli(sub)              # marvin-host talk
     record.add_cli(sub)                    # marvin-host replay
     calibration.add_cli(sub)               # marvin-host calibrate
 
@@ -322,8 +285,6 @@ def main(argv=None) -> None:
                     app.stop()
         elif args.cmd == "ui":
             args.ui_main(args)
-        elif args.cmd == "talk":
-            talk(args)
         elif args.cmd == "replay":
             record.run_replay(args, lambda: _sink(args, Brain(cal.brain_config())))
         elif args.cmd == "calibrate":

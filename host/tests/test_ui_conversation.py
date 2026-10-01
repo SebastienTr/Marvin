@@ -1,7 +1,6 @@
-"""The conversation kept with the history: the SQLite table and its migration, the controller
-bringing it back after a restart, the API for past days and search, and what the app shows with
-each answer (the context the model was given, the raw transcript, how loud an ignored sound was),
-the simulated-sensors flag and the browser sounds setting.
+"""The conversation kept with the history: the SQLite table and its migration, the API for past days
+and search, the demo's conversation, what the voice reports with what it hears (the raw transcript,
+how loud an ignored sound was), the simulated-sensors flag and the browser sounds setting.
 
 SPDX-License-Identifier: MIT
 """
@@ -16,11 +15,9 @@ from datetime import timedelta
 
 from marvin_host.brain import Brain
 from marvin_host.ui import EventStore, UIServer, stats
-from marvin_host.ui.demo import DemoVoice, seed_conversations
-from marvin_host.voice.control import VoiceController
+from marvin_host.ui.demo import SCRIPT, seed_conversations, seed_today
 from test_ui import get_json, request
-from test_voice import make, said
-from test_voice_control import FakeAssistant
+from voicekit import make
 
 JSON = {"Content-Type": "application/json"}
 
@@ -85,79 +82,7 @@ def test_conversation_round_trip_and_search(tmp_path):
     store.close()
 
 
-# ================================================================================ controller
-
-def controller(tmp_path, store=None):
-    made = []
-
-    def factory(config, settings):
-        made.append(FakeAssistant(config, settings))
-        return made[-1]
-    ctl = VoiceController(factory=factory, check=None, path=tmp_path / "voice.json")
-    if store is not None:
-        ctl.attach_store(store)
-    return ctl, made
-
-
-def test_the_conversation_survives_a_restart(tmp_path):
-    store = EventStore(tmp_path / "marvin.db")
-    ctl, made = controller(tmp_path, store)
-    ctl.start(wait=True)
-    va = made[0]
-    va.emit("heard", text="quelle heure est-il ?", raw="Marvin, quelle heure est-il ?", language="fr", source="voice")
-    va.emit("reply", text="Midi.", language="fr", latency={"endpoint": 0.5, "audio_start": 0.7}, interrupted=False,
-            proactive=False, error=None, hint="", context="Context:\n- It is noon.",
-            prompt="Context:\n- It is noon.\n\nThe person says: quelle heure est-il ?", model="qwen3:4b-instruct")
-    va.emit("ignored", text="", reason="too quiet (-52 dBFS)", dbfs=-52.4)
-    ctl.close()
-    before = ctl.recent()
-    assert [e["kind"] for e in before] == ["note", "heard", "reply", "ignored"]
-    assert before[1]["raw"] == "Marvin, quelle heure est-il ?"
-    assert before[2]["context"] == "Context:\n- It is noon." and before[2]["model"] == "qwen3:4b-instruct"
-    assert before[2]["prompt"].endswith("quelle heure est-il ?") and before[3]["dbfs"] == -52.4
-
-    # marvin-host again, with a clock that went backwards: the ids still grow
-    store.add_conversation({**before[-1], "id": before[-1]["id"] + 10_000_000})
-    again, _ = controller(tmp_path)
-    again._ids = itertools.count(1)
-    again.attach_store(store)
-    back = again.recent()
-    assert [e["id"] for e in back[:4]] == [e["id"] for e in before]
-    assert back[2] == before[2]
-    again._note("Voice on")
-    assert again.recent()[-1]["id"] > before[-1]["id"] + 10_000_000
-    assert store.conversation_day(stats.local_day(time.time()))[-1]["text"] == "Voice on"
-    store.close()
-
-
-def test_only_todays_entries_come_back(tmp_path):
-    store = EventStore(tmp_path / "marvin.db")
-    lo, _ = stats.day_bounds(stats.local_day(time.time()))
-    store.add_conversation({"id": 1, "t": lo - 3600, "kind": "heard", "text": "last night"})
-    for i in range(5):
-        store.add_conversation({"id": 10 + i, "t": lo + 60 * i, "kind": "heard", "text": f"today {i}"})
-    ctl, _ = controller(tmp_path)
-    ctl.attach_store(store, limit=3)
-    assert [e["text"] for e in ctl.recent()] == ["today 2", "today 3", "today 4"]
-    store.close()
-
-
-# ================================================================================ assistant
-
-def test_answers_carry_what_the_model_was_given():
-    events = []
-    va, t = make([("quiet", 0.5), ("say", 1.5), ("quiet", 1), ("idle",)],
-                 ["Marvin, quelle heure est-il ?"], ["Il est midi."], brain=Brain())
-    va.add_listener(lambda kind, data: events.append((kind, data)))
-    va.run()
-    heard = next(d for k, d in events if k == "heard")
-    assert heard["text"] == "quelle heure est-il ?" and heard["raw"] == "Marvin, quelle heure est-il ?"
-    reply = next(d for k, d in events if k == "reply")
-    assert reply["context"].startswith("Context:\n- It is ") and "radar sees nobody" in reply["context"]
-    assert reply["prompt"] == t.llm.calls[0][-1]["content"]              # exactly what was sent
-    assert reply["prompt"].startswith(reply["context"]) and said({"role": "user", "content": reply["prompt"]}) \
-        == "quelle heure est-il ?"
-    assert reply["model"]
+# ================================================================================ the voice
 
 
 def test_typed_questions_have_no_raw_transcript():
@@ -182,27 +107,25 @@ def test_ignored_utterances_say_how_loud_they_were():
 
 # ================================================================================ HTTP
 
-def server(tmp_path, voice=None):
+def server(tmp_path):
     brain = Brain()
     store = EventStore(tmp_path / "marvin.db")
-    srv = UIServer(brain, host="127.0.0.1", port=0, store=store, token=None, quiet=True, voice=voice).start()
+    srv = UIServer(brain, host="127.0.0.1", port=0, store=store, token=None, quiet=True).start()
     return srv, store
 
 
 def test_conversation_api(tmp_path):
-    ctl, made = controller(tmp_path)
-    srv, store = server(tmp_path, ctl)
+    srv, store = server(tmp_path)
     try:
-        assert ctl.store is store                                  # the app keeps the conversation
-        ctl.start(wait=True)
-        made[0].emit("heard", text="Is the kettle on?", language="en", source="voice")
-        made[0].emit("reply", text="I have no kettle sensor.", language="en", latency={}, interrupted=False,
-                     proactive=False, error=None, hint="")
         now = time.time()
+        store.add_conversation({"id": 1, "t": now - 2, "kind": "heard", "text": "Is the kettle on?", "language": "en",
+                                "source": "voice"})
+        store.add_conversation({"id": 2, "t": now - 1, "kind": "reply", "text": "I have no kettle sensor.",
+                                "language": "en", "latency": {}, "interrupted": False, "proactive": False})
         seed_conversations(store, now, days=3)
         status, body = get_json(srv, "/api/conversation")
         assert status == 200 and body["day"] == stats.local_day(now).isoformat()
-        assert [e["kind"] for e in body["entries"]] == ["note", "heard", "reply"]
+        assert [e["kind"] for e in body["entries"]] == ["heard", "reply"]
         workday = stats.local_day(now) - timedelta(days=1)          # the demo talks on working days
         while workday.weekday() >= 5:
             workday -= timedelta(days=1)
@@ -218,7 +141,6 @@ def test_conversation_api(tmp_path):
         assert len(get_json(srv, "/api/conversation?q=a&limit=5000")[1]["results"]) <= 100
     finally:
         srv.stop()
-        ctl.close()
         store.close()
 
 
@@ -267,18 +189,22 @@ def test_ui_sounds_setting(tmp_path):
 
 # ================================================================================ demo
 
-def test_demo_voice_explains_its_answers(tmp_path):
-    brain = Brain()
-    ctl = VoiceController(brain, factory=lambda config, settings: DemoVoice(brain), check=None,
-                          path=tmp_path / "voice.json")
-    ctl.start(wait=True)
+
+# ================================================================================ demo
+
+def test_the_demo_explains_its_answers(tmp_path):
+    store = EventStore(tmp_path / "marvin.db")
     try:
-        entries = ctl.recent()
+        now = time.time()
+        seed_today(store, now)
+        entries = store.conversation(now - 3600, now + 1)
+        assert len(entries) == len(SCRIPT)
         replies = [e for e in entries if e["kind"] == "reply" and not e["proactive"]]
         assert replies and all(e["context"].startswith("Context:") and e["model"] for e in replies)
+        assert all(e["first_word_s"] for e in replies)
         kinds = [e["kind"] for e in entries]
         assert "ignored, ignored" in ", ".join(kinds)                   # something to group in the app
         heard = [e for e in entries if e["kind"] == "heard"]
         assert heard[0]["raw"].startswith("Marvin")
     finally:
-        ctl.close()
+        store.close()

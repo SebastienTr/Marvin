@@ -12,8 +12,8 @@ of conversation with Marvin (History panel). Only ever use them on a throwaway d
 
 With a ``sink`` (the app's ``UISink``), ``DemoRobot`` also plays two devices for the Robot panel, in
 real time whatever the speed: the robot (lidar scans, LD2450 frames, link counters) and the
-MR60BHA2 vital signs radar. ``DemoVoice`` stands in for the voice assistant when there is no
-language model: a scripted conversation and canned answers, so the Talk panel can be tried.
+MR60BHA2 vital signs radar. ``seed_today`` writes today's scripted conversation, so the History
+and Talk panels have something to show.
 
 SPDX-License-Identifier: MIT
 """
@@ -30,7 +30,7 @@ import numpy as np
 
 from .. import frames, protocol, scene, sim
 from ..events import EventKind as K, PresenceState
-from ..voice import persona
+from . import demo_prompt as persona
 from ..receiver import Device
 from .stats import local_day
 
@@ -184,299 +184,45 @@ def step(brain, scene_t: float, device_t: float, dev=None) -> None:
 
 # ------------------------------------------------------------------------------ voice
 
-class DemoVoice:
-    """A stand-in for ``VoiceAssistant`` (same control API: ``ask``, ``listen_now``, ``mute``,
-    ``stop_speaking``, ``add_listener``...): a scripted past conversation, and canned answers to
-    typed questions, drawn from the brain. It hears nothing and says nothing aloud."""
-
-    MODEL = "qwen3:4b-instruct"             # what the scripted answers pretend to come from
-    SCRIPT = [   # minutes ago, kind, text, extra ("seated": minutes seated, for the context)
-        (38, "heard", "Good morning. Anything I should know?",
-         {"raw": "Marvin, good morning. Anything I should know?"}),
-        (38, "reply", "Good morning. You sat down at nine and haven't moved much. The coffee is still warm, I assume.",
-         {"latency": {"endpoint": 0.55, "stt": 0.18, "llm_first_token": 0.21, "first_chunk": 0.34, "tts": 0.14,
-                      "audio_start": 0.71, "speculative": 1.0}, "seated": 12}),
-        (31, "ignored", "Thanks for watching!", {"reason": "known hallucination", "dbfs": -41.5}),
-        (30, "ignored", "", {"reason": "too quiet (-53 dBFS)", "dbfs": -53.2}),
-        (30, "ignored", "", {"reason": "only 0.18 s of speech", "dbfs": -36.8}),
-        (22, "heard", "What's my heart rate right now?", {"raw": "Marvin, what's my heart rate right now?"}),
-        (22, "reply", "About 66 beats a minute, and you're breathing 14 times a minute. Calm, as far as I can tell.",
-         {"latency": {"endpoint": 0.55, "stt": 0.09, "llm_first_token": 0.19, "first_chunk": 0.30, "tts": 0.12,
-                      "audio_start": 0.62, "speculative": 1.0}, "seated": 28, "vitals": (14.0, 66.0)}),
-        (21, "ignored", "Oui, je sais.", {"reason": "conversation closed: thanks", "dbfs": -33.9}),
-        (4, "reply", "You've been sitting for 50 minutes. Time to stretch?", {"proactive": True}),
+# today's scripted conversation: minutes ago, kind, text, extra ("seated": minutes seated, for the context)
+MODEL = "qwen3:4b-instruct"             # what the scripted answers pretend to come from
+SCRIPT = [   # minutes ago, kind, text, extra ("seated": minutes seated, for the context)
+    (38, "heard", "Good morning. Anything I should know?",
+     {"raw": "Marvin, good morning. Anything I should know?"}),
+    (38, "reply", "Good morning. You sat down at nine and haven't moved much. The coffee is still warm, I assume.",
+     {"latency": {"endpoint": 0.55, "stt": 0.18, "llm_first_token": 0.21, "first_chunk": 0.34, "tts": 0.14,
+                  "audio_start": 0.71, "speculative": 1.0}, "seated": 12}),
+    (31, "ignored", "Thanks for watching!", {"reason": "known hallucination", "dbfs": -41.5}),
+    (30, "ignored", "", {"reason": "too quiet (-53 dBFS)", "dbfs": -53.2}),
+    (30, "ignored", "", {"reason": "only 0.18 s of speech", "dbfs": -36.8}),
+    (22, "heard", "What's my heart rate right now?", {"raw": "Marvin, what's my heart rate right now?"}),
+    (22, "reply", "About 66 beats a minute, and you're breathing 14 times a minute. Calm, as far as I can tell.",
+     {"latency": {"endpoint": 0.55, "stt": 0.09, "llm_first_token": 0.19, "first_chunk": 0.30, "tts": 0.12,
+                  "audio_start": 0.62, "speculative": 1.0}, "seated": 28, "vitals": (14.0, 66.0)}),
+    (21, "ignored", "Oui, je sais.", {"reason": "conversation closed: thanks", "dbfs": -33.9}),
+    (4, "reply", "You've been sitting for 50 minutes. Time to stretch?", {"proactive": True}),
     ]
 
-    def __init__(self, brain, clock=time.time, time_scale: float = 1.0):
-        self.brain = brain
-        self.clock = clock
-        self.time_scale = time_scale          # demo seconds per real second
-        self.status = "idle"
-        self.muted = False
-        self.language = "en"
-        self._saying = ""
-        self._listeners = []
-        self._timer: threading.Timer | None = None
-        self._lock = threading.Lock()
-        self._seq = 0
 
-    # the VoiceAssistant API used by VoiceController
-    def add_listener(self, fn) -> None:
-        self._listeners.append(fn)
-
-    def remove_listener(self, fn) -> None:
-        if fn in self._listeners:
-            self._listeners.remove(fn)
-
-    def start(self) -> DemoVoice:
-        now = self.clock()
-        question = ""
-        for minutes, kind, text, extra in self.SCRIPT:
-            extra = dict(extra)
-            t = now - minutes * 60
-            seated, vitals = extra.pop("seated", None), extra.pop("vitals", None)
-            data = {"text": text, **extra}
-            if kind == "heard":
-                question = text
-                data = {"language": "en", "source": "voice", **data}
-            if kind == "reply":
-                data = {"language": "en", "latency": {}, "interrupted": False, "proactive": False, "error": None,
-                        "hint": "", **data}
-                if not data["proactive"]:
-                    data.update(scripted_prompt(question, t, seated or 0, vitals))
-            self._emit(kind, t, **data)
-        return self
-
-    def close(self) -> None:
-        self._cancel()
-
-    def say(self, text: str, language: str | None = None, force: bool = False) -> bool:
-        if self.status != "idle" and not force:
-            return False
-        self._speak(text, {}, proactive=True)
-        return True
-
-    def ask(self, text: str, language: str | None = None) -> None:
-        self._cancel()
-        self._emit("heard", text=text, language="en", source="typed")
-        self._set("thinking")
-        seq = self._seq
-        if is_weather_question(text):           # the model calls get_weather (with demo data), then answers
-            self._later(1.1, lambda: self._speak(WEATHER_ANSWER, dict(WEATHER_LATENCY), seq=seq, question=text,
-                                                 tools=[dict(WEATHER_CALL)]))
-            return
-        self._later(0.7, lambda: self._speak(self.answer(text), {
-            "endpoint": 0.0, "stt": 0.0, "llm_first_token": 0.24, "first_chunk": 0.38, "tts": 0.13,
-            "audio_start": 0.52}, seq=seq, question=text))
-
-    SPOKEN = "What time is it?"               # what the demo "hears" after Talk now
-
-    def stop_listening(self) -> bool:
-        if self.status != "listening":
-            return False
-        self._cancel()
-        self._set("idle")
-        return True
-
-    def listen_remaining(self):
-        if self.status != "listening":
-            return None
-        return max(0.0, getattr(self, "_listen_end", 0.0) - time.monotonic())
-
-    def listen_now(self) -> None:
-        """A listening window in which the demo hears someone ask the time, with the live signals
-        (microphone level, utterance, partial transcript) the real assistant sends."""
-        self._cancel()
-        if self.muted:
-            self.mute(False)
-        self._listen_end = time.monotonic() + 6.0
-        self._set("listening")
-        seq = self._seq
-        uid = seq
-        talking = {"on": False}
-
-        def levels():
-            rnd = random.Random(seq)
-            while seq == self._seq and self.status == "listening":
-                t = time.monotonic()
-                mic = (0.45 + 0.4 * abs(math.sin(t * 9.0)) * rnd.random()) if talking["on"] else 0.04 + 0.05 * rnd.random()
-                self._emit("level", mic=round(mic, 3), speech=talking["on"], gated=False)
-                time.sleep(0.06)
-
-        def start():
-            talking["on"] = True
-            self._emit("utterance", state="start", uid=uid)
-
-        def end():
-            talking["on"] = False
-            self._emit("utterance", state="end", uid=uid)
-
-        def heard():
-            self._emit("heard", text=self.SPOKEN, language="en", source="voice")
-            self._emit("utterance", state="done", uid=uid)
-            self._set("thinking")
-
-        threading.Thread(target=levels, name="demo-voice-level", daemon=True).start()
-        self._steps(seq, [(0.9, start), (1.5, lambda: self._emit("partial", uid=uid, text="What time")),
-                          (1.2, end), (0.5, heard),
-                          (0.7, lambda: self._speak(self.answer(self.SPOKEN), {
-                              "endpoint": 0.5, "stt": 0.08, "llm_first_token": 0.22, "first_chunk": 0.35,
-                              "tts": 0.12, "audio_start": 0.61, "speculative": 1.0}, seq=seq,
-                              question=self.SPOKEN))])
-
-    def mute(self, muted: bool = True) -> None:
-        if muted != self.muted:
-            self.muted = muted
-            self._emit("muted", muted=muted)
-
-    def stop_speaking(self) -> bool:
-        busy = self.status in ("thinking", "speaking")
-        if busy:
-            self._cancel()
-            self._set("idle")
-        return busy
-
-    def _interrupted(self) -> None:
-        """What was being said is cut short, as the real assistant reports it."""
-        if self.status == "speaking" and self._saying:
-            self._emit("reply", text=self._saying + " …", language="en", latency={}, interrupted=True,
-                       proactive=False, error=None, hint="")
-
-    # scripted behaviour
-    def answer(self, text: str) -> str:
-        s = getattr(self.brain, "state", None)
-        q = text.lower()
-        if s is not None and any(w in q for w in ("sit", "seated", "long", "break")):
-            if s.seated:
-                return f"You've been seated for {max(1, round(s.seated_s / 60))} minutes. A short walk soon would do you good."
-            return "You're not sitting right now. Good."
-        if s is not None and any(w in q for w in ("heart", "breath", "pulse")):
-            if s.heart_rate is not None:
-                return (f"About {s.heart_rate:.0f} beats a minute, and {s.breath_rate:.0f} breaths a minute. "
-                        "Calm, as far as I can tell.")
-            return "I can only read that while you sit still in front of me."
-        if "time" in q:
-            return "It's " + time.strftime("%H:%M", time.localtime(self.clock())) + "."
-        return ("This is the demo, so I have no language model to think with. Install Ollama and start "
-                "marvin-host run to talk to me for real.")
-
-    def _prompt(self, question: str) -> dict:
-        """What a real assistant would have sent the model: the brain's context and the question."""
-        state = getattr(self.brain, "state", None)
-        try:
-            events = list(getattr(self.brain, "events", ()))
-        except RuntimeError:
-            events = []
-        room = getattr(self.brain, "room", None)
-        context = persona.context_block(state, events, room=room.state() if room is not None else None)
-        return {"context": context, "prompt": persona.user_message(question, language="en", context=context),
-                "model": self.MODEL}
-
-    def _speak(self, text: str, latency: dict, proactive: bool = False, seq: int | None = None,
-               question: str = "", tools: list | None = None) -> None:
-        if seq is not None and seq != self._seq:
-            return
-        self._set("speaking")
-        self._saying = text
-        seq = self._seq
-
-        what = {} if proactive else self._prompt(question)
-        if tools:
-            what["tools"] = tools
-
-        def done():
-            if seq != self._seq:
-                return
-            self._saying = ""
-            self._emit("reply", text=text, language="en", latency=latency, interrupted=False, proactive=proactive,
-                       error=None, hint="", **what)
-            self._set("listening")
-            self._later(3.0, lambda: self._idle(seq))
-
-        steps, total = [], 0.0
-        for piece in _sentences(text):                  # "say" per sentence, like the real speaker
-            seconds = 0.35 + 0.06 * len(piece)
-            steps.append((0.0 if not steps else prev, lambda p=piece, d=seconds: self._emit(
-                "say", text=p, seconds=round(d, 3), envelope=_envelope(p, d))))
-            prev = seconds * 0.4                        # synthesis runs ahead of playback
-            total += seconds
-        steps.append((max(0.2, total - sum(d for d, _ in steps)), done))
-        self._steps(seq, steps)
-
-    def _steps(self, seq: int, steps) -> None:
-        """Runs `(delay, fn)` steps one after the other on a thread, until the demo is interrupted."""
-        def run():
-            for delay, fn in steps:
-                time.sleep(delay)
-                if seq != self._seq:
-                    return
-                fn()
-        threading.Thread(target=run, name="demo-voice", daemon=True).start()
-
-    def _idle(self, seq: int) -> None:
-        if seq == self._seq:
-            self._set("idle")
-
-    def _later(self, s: float, fn) -> None:
-        with self._lock:
-            self._timer = threading.Timer(s, fn)
-            self._timer.daemon = True
-            self._timer.start()
-
-    def _cancel(self) -> None:
-        self._interrupted()
-        self._saying = ""
-        with self._lock:
-            self._seq += 1
-            if self._timer is not None:
-                self._timer.cancel()
-                self._timer = None
-
-    def _set(self, status: str) -> None:
-        if status != self.status:
-            self.status = status
-            self._emit("status", status=status)
-
-    def _emit(self, kind: str, t: float | None = None, **data) -> None:
-        data["t"] = self.clock() if t is None else t
-        for fn in list(self._listeners):
-            fn(kind, data)
-
-
-WEATHER_WORDS = ("weather", "météo", "meteo", "temperature", "température", "rain", "pluie", "forecast")
-# the demo's pretend weather: clearly marked as such, never a real forecast
-WEATHER_CALL = {"name": "get_weather", "arguments": {"place": "Nice", "day": "now"}, "ok": True, "seconds": 0.41,
-                "result": json.dumps({"place": "Nice, France (demo data)", "when": "now (demo)",
-                                      "conditions": "partly cloudy", "temperature_c": 21, "feels_like_c": 21,
-                                      "wind_kmh": 12, "precipitation_mm": 0.0, "today_min_c": 17, "today_max_c": 24,
-                                      "today_rain_chance_percent": 10}, ensure_ascii=False)}
-WEATHER_ANSWER = ("Let me check… In Nice it's twenty-one degrees and partly cloudy, with a light breeze. "
-                  "These are demo numbers, not a real forecast.")
-WEATHER_LATENCY = {"endpoint": 0.0, "stt": 0.0, "llm_first_token": 0.23, "tools": 0.41, "llm_first_token_2": 0.2,
-                   "first_chunk": 0.97, "tts": 0.13, "audio_start": 1.12, "filler_start": 0.38}
-
-
-def is_weather_question(text: str) -> bool:
-    q = text.lower()
-    return any(w in q for w in WEATHER_WORDS)
-
-
-def _sentences(text: str) -> list[str]:
-    out, cur = [], ""
-    for word in text.split():
-        cur = f"{cur} {word}".strip()
-        if word[-1] in ".?!":
-            out.append(cur)
-            cur = ""
-    return out + ([cur] if cur else [])
-
-
-def _envelope(text: str, seconds: float, hz: int = 20) -> list[float]:
-    """A made-up loudness curve for `text`: one bump per syllable-ish, silence between words."""
-    n = max(1, int(seconds * hz))
-    rnd = random.Random(text)
-    return [round(max(0.0, 0.25 + 0.6 * abs(math.sin(i * 1.7)) * rnd.random() - (0.2 if i % 7 == 6 else 0)), 2)
-            for i in range(n)]
+def seed_today(store, now: float) -> None:
+    """Writes today's scripted conversation (``SCRIPT``, minutes before ``now``) into ``store``."""
+    question = ""
+    for n, (minutes, kind, text, extra) in enumerate(SCRIPT):
+        extra = dict(extra)
+        t = now - minutes * 60
+        seated, vitals = extra.pop("seated", None), extra.pop("vitals", None)
+        data = {"text": text, **extra}
+        if kind == "heard":
+            question = text
+            data = {"language": "en", "source": "voice", **data}
+        elif kind == "reply":
+            data = {"language": "en", "latency": {}, "interrupted": False, "proactive": False, "error": None,
+                    "hint": "", **data}
+            lat = data["latency"]
+            data["first_word_s"] = round(lat["endpoint"] + lat["audio_start"], 2) if "audio_start" in lat else None
+            if not data["proactive"]:
+                data.update(scripted_prompt(question, t, seated or 0, vitals))
+        store.add_conversation({"id": int(t * 1000) + n, "t": t, "kind": kind, **data})
 
 
 def scripted_prompt(question: str, t: float, seated_min: float, vitals=None) -> dict:
@@ -486,7 +232,7 @@ def scripted_prompt(question: str, t: float, seated_min: float, vitals=None) -> 
                        vitals_sensor=True, simulated=True, targets=1)
     context = persona.context_block(st, now=datetime.fromtimestamp(t))
     return {"context": context, "prompt": persona.user_message(question, language="en", context=context),
-            "model": DemoVoice.MODEL}
+            "model": MODEL}
 
 
 # a few past conversations: (question, answer, minutes seated) or ("ignored", text, reason, dbfs)

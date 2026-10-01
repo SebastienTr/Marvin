@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""Regenerate every golden file from the Python host: protocol vectors, recordings, face vectors,
-and (unless --no-api) the app API snapshots.
+"""Regenerate the golden files made from the Python host: protocol vectors, recordings and face
+vectors. All deterministic: CI regenerates them and fails on any diff. Regenerate only on purpose,
+and review the diff (docs/design.md 3.5).
 
-    python3 host-java/marvin-contracts/tools/generate_all.py [--no-api]
+    python3 host-java/marvin-contracts/tools/generate_all.py
 
-Everything but the API snapshots is deterministic: CI regenerates those and fails on any diff.
-Regenerate only on purpose, and review the diff (docs/design.md 3.5).
+golden/api and golden/conversation are no longer generated: the Python host's conversation was
+retired, and they are the Java host's checked-in specifications now (README.md).
 """
 from __future__ import annotations
 
@@ -15,15 +16,14 @@ import sys
 
 from _common import TOOLS
 
-DETERMINISTIC = ["protocol_vectors.py", "recordings.py", "face_vectors.py", "conversation_vectors.py"]
+DETERMINISTIC = ["protocol_vectors.py", "recordings.py", "face_vectors.py"]
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--no-api", action="store_true", help="skip the API snapshots (they take about 30 s)")
-    args = ap.parse_args()
-    scripts = DETERMINISTIC + ([] if args.no_api else ["api_snapshots.py"])
-    for s in scripts:
+    ap.add_argument("--no-api", action="store_true", help="accepted for older scripts: nothing to skip any more")
+    ap.parse_args()
+    for s in DETERMINISTIC:
         subprocess.run([sys.executable, str(TOOLS / s)], check=True, cwd=TOOLS)
 
 
