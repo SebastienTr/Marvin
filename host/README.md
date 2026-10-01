@@ -2,7 +2,7 @@
 
 The desktop side of Marvin: the robot's big brain. Today it receives the robot's sensor stream, places every point in the robot's frame and shows it live in [Rerun](https://rerun.io). A simulator produces the same stream, so all of this runs before any hardware arrives.
 
-> **To run Marvin, use `./marvin up`** from the repository root: the Java host ([host-java](../host-java/README.md)), which starts this package's voice sidecar. The commands below are the first host, complete and kept as tools: the simulator, the Rerun viewer, recording and replay, calibration, and a voice in one process.
+> **To run Marvin, use `./marvin up`** from the repository root: the Java host ([host-java](../host-java/README.md)), which owns the conversation and starts this package's voice sidecar (the voice's audio and models: VAD, wake word, Whisper, Marvin's voice). The commands below are the first host, kept as tools: the simulator, the Rerun viewer, recording and replay, calibration. Its own voice and conversation (`marvin-host talk`, `run --voice`) were retired in October 2026: Marvin's voice is the Java host's.
 
 ## Install
 
@@ -11,7 +11,7 @@ Python 3.10 or newer.
 ```bash
 cd host
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"            # add ",voice" for the voice sidecar's audio and models
 ```
 
 ## Use
@@ -20,15 +20,13 @@ pip install -e ".[dev]"
 marvin-host demo                   # simulated robot + live 3D view, nothing else needed
 marvin-host ui --demo              # the app in the browser, with a simulated robot and week
 marvin-host run                    # wait for the real robot: viewer, app (http://localhost:8765) and face link
-marvin-host run --voice            # ... and talk to Marvin ("Marvin, ...") with the computer's mic
-marvin-host -v run                 # the same, printing events, the conversation and a summary per second
+marvin-host -v run                 # the same, printing events and a summary per second
 marvin-host run --record day1.mvrec   # keep the raw sensor data; `marvin-host replay day1.mvrec` plays it back
-marvin-host talk                   # voice only, no robot needed
 marvin-host calibrate lidar --save # find the lidar's yaw (person moving in front of the robot)
 marvin-host sim --model d800       # pretend to be the robot, for another machine running `run`
 ```
 
-Voice needs the `voice` extra and Ollama: see [docs/voice.md](../docs/voice.md). The app (this host keeps its older one; the Java host has the current design): [docs/ui.md](../docs/ui.md). Recording, replay, calibration and wireless firmware updates: [docs/tools.md](../docs/tools.md).
+The voice sidecar (`python -m marvin_host.sidecar.voice`) needs the `sidecar` and `voice` extras: see [docs/voice.md](../docs/voice.md); `./marvin up` installs them. The app (this host keeps its older one; the Java host has the current design): [docs/ui.md](../docs/ui.md). Recording, replay, calibration and wireless firmware updates: [docs/tools.md](../docs/tools.md).
 
 The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md). On macOS, allow incoming connections for Python the first time the firewall asks.
 
@@ -73,12 +71,11 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `room.py` | The room sensors' latest readings (`ENVIRONMENT`: PIR, temperature and humidity, light), for the app and the voice's context |
 | `face.py`, `raster.py` | The robot's eyes (reference renderer and behaviour) and the tiny rasterizer they use |
 | `link.py` | Host → robot face link: brain events (`FACE_EVENT`) and presence state (`FACE_STATE`, 10 Hz) to every robot with a screen |
-| `buttons.py` | The bench board's `BUTTON` presses on the voice (Talk now, mute), and the voice's moments as `SOUND` chimes on robots with a buzzer |
 | `audio.py` | Audio contract (sources and sinks, 16 kHz mono) shared by the voice and the robot's audio |
-| `voice/` | Wake word, speech-to-text, local LLM and text-to-speech: talking to Marvin; `voice/tools/`: tools the model can call (the weather) |
+| `voice/` | The voice's audio and models: the audio machine (`engine.py`: listening windows, Talk now, barge-in, speaking), audio devices and their profiles, VAD, wake word, Whisper, speech synthesis (Marvin's own voice, Qwen3-TTS; say, Piper), the echo filters |
 | `sidecar/voice/` | The voice sidecar for the Java core: the same audio loop behind gRPC (`python -m marvin_host.sidecar.voice`, see [docs/voice.md](../docs/voice.md#the-voice-sidecar)) |
 | `robot_audio.py`, `camera_stream.py` | The robot's microphone and speaker over UDP, its MJPEG camera |
-| `ui/` | The app: a local web page with the face, today's timeline, breaks, history, the conversation (kept, searchable, each answer explained) and voice controls, the robot's devices and sensors, the log, settings |
+| `ui/` | The first app: a local web page with the face, today's timeline, breaks, history, the conversation kept with it (searchable), the robot's devices and sensors, the log, settings; the demo's simulated week and conversation (`demo.py`, also used by the Java host's demo) |
 | `record.py`, `calibration.py` | Recording and replaying raw sessions, sensor calibration |
 | `cli.py` | The `marvin-host` command |
 
@@ -87,6 +84,6 @@ Tests: `pytest` (includes a real LD19 packet and the LD2450 datasheet example, a
 ## Roadmap
 
 1. Everything checked on the real hardware: sensors, screen, audio, camera, MR60BHA2 bridge.
-2. The voice through the robot's microphone and speaker instead of the computer's.
+2. The voice through the robot's microphone and speaker, tuned on the hardware (the robot device's profile).
 3. Camera/lidar extrinsic calibration, and using the camera in the brain.
 4. A dedicated "Marvin" wake-word model (Google Speech Commands).

@@ -56,6 +56,8 @@ Everything fits comfortably in the ESP32-S3's Wi-Fi throughput.
 | **Grown-up design language** | The companion is for adults: warm grey, anthracite, one orange knob. Personality comes from the eyes and behaviour, not from decoration. | Cute toy styling (robot v2) |
 | **Screen as the face, eyes by default** | A face makes the device readable at a glance: awake, listening, sleepy. The mini-map is still one tap away. | Back screen with a mini-map (rev C–D) |
 | **Thread-forming screws into PETG and PLA** | No heat-set inserts and no nuts, except the optional tripod nut. | Brass inserts (rev A) |
+| **The voice: one decider, one audio process** | The Java host owns the conversation and every decision around the voice: its settings and their defaults, which audio device it uses (the computer or a robot), when an earcon plays and where, how each answer is cut into clauses and which language each one is. The Python voice sidecar only hears and speaks with the device it is given, and swaps it under the running voice when a robot links or leaves. Nothing is decided twice, so the two can never disagree ([voice.md](voice.md#audio-devices)). | Defaults and the route decided on both sides; a second conversation in Python (retired in October 2026) |
+| **Marvin's own voice, cloned locally** | One voice for French and English, the one chosen for Marvin, synthesised on the computer's GPU (Qwen3-TTS through MLX, streamed) from a short reference recording kept in the repository. | The system voices (say, Piper): a voice per language, kept as fallbacks |
 
 ## Coordinate frame
 
@@ -95,6 +97,7 @@ The 24 GHz radar sits below the 60 GHz one, not above it: the 60 GHz beam leaves
 - [x] Host: voice (local), the app, recording and replay, lidar calibration
 - [x] Host: presence events (brain) and the face, on simulated data
 - [x] Host: Marvin looks on demand, through the robot's camera or the computer's ([vision.md](vision.md))
+- [x] Host: Marvin's own voice (Qwen3-TTS), the voice's device and defaults decided by the Java host, the Python conversation retired
 - [ ] Host: camera/lidar extrinsic calibration
 - [ ] Companion: tested daily on the real robot, voice through the robot
 - [ ] Companion: perception and learning, see [intelligence.md](intelligence.md)

@@ -128,7 +128,7 @@ The Python host is kept and still works on its own SQLite file.
 ```bash
 ./marvin down                                   # frees UDP 47100 and port 8765
 cd host && source .venv/bin/activate
-marvin-host run --voice                         # as before: viewer, app on :8765, voice
+marvin-host run                                 # viewer, app on :8765 (its voice was retired: the Java host's)
 ```
 
 What it shows: its own history up to the day of the switch (`~/.local/share/marvin/marvin.db`, which

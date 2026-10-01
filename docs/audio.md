@@ -28,7 +28,13 @@ Short sounds generated on the robot (a few tones with smooth 5 ms edges, no samp
 
 Earcons peak at 0.8 of full scale before the volume, so they sit a little above normal speech.
 
-The bench boards play the same ids on a passive buzzer, as square waves with the same notes and no envelope ([wiring-bench.md](wiring-bench.md)); the host sends them `wake`, `done` and `error` for the voice's moments.
+The bench boards play the same ids on a passive buzzer, as square waves with the same notes and no envelope ([wiring-bench.md](wiring-bench.md)).
+
+The voice's moments (`wake`, `done`, `error`) are decided by the Java host and played on one device only ([voice.md](voice.md#earcons)): the robot's speaker when the voice hears and speaks through the robot (the sidecar sends `SOUND` for it, and the microphone ignores the earcon while it plays), the computer's speaker when it uses the computer, a bench board's buzzer when the voice's device has none or does not run. Never two at once.
+
+## The robot as the voice's device
+
+When the voice uses the robot ([voice.md](voice.md#audio-devices)), the Java host sends the voice sidecar the robot's device profile with every configuration: half duplex (the speaker sits in the same body as the microphone and nothing cancels the echo), an echo tail of 0.5 s after the player's end plus 0.05 s for the Wi-Fi hop, a VAD floor of -55 dBFS per frame and -45 dBFS for an utterance's loudest half (the microphone has 12 dB of gain, and the lidar's motor turns a few centimetres away), and the strictest WebRTC VAD. These are starting points: tune them with `devices.robot` in `voice.json` once the robot is built, from the `audio:` log lines and the voice's "ignored: too quiet" entries. A stop (Talk now, barge-in) sends `PLAY_STOP` twice and counts the robot as playing for another 60 ms (one Wi-Fi hop and the DMA queue) before the microphone reopens.
 
 ## Volume and its cap
 

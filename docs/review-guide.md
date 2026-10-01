@@ -59,8 +59,9 @@ Run everything: `cd host-java && ./mvnw verify` (Docker needed for the `*IT` tes
 
 ## 4. Changes to the Python host (deliberate)
 
-- The voice package split: the audio half is the sidecar (`sidecar/voice`); `marvin-host talk` and
-  `run --voice` still work in process.
+- The voice package split: the audio half is the sidecar (`sidecar/voice`). Since October 2026 the
+  conversation half (`talk`, `run --voice`, assistant, Ollama client, tools, persona, controller) is
+  retired: the Python side keeps the voice's audio and models only.
 - `ui/server.py`: the Host check accepts only whole names (DNS rebinding fix, the same in both hosts).
 - `parent.py`: a child started by the Java host exits when the host dies.
 - Contract tools under `host-java/marvin-contracts/tools` import the Python host to make the golden files.

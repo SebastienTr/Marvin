@@ -11,9 +11,12 @@ The host owns the robot's UDP port (protocol v1, byte for byte as the Python hos
 brain on it, feeds the robot's face, records, replays and taps the datagrams, keeps the history in
 PostgreSQL, serves its app (the current design) with the Python host's API, event streams and access key, and
 talks: the conversation (persona, context, Ollama through Spring AI, the tool loop and the weather,
-memory, break reminders) runs in Java, the audio loop in the Python voice sidecar it supervises
+memory, break reminders, every voice setting and default, which audio device the voice uses, the
+earcons, clauses tagged with their language) runs in Java, the audio loop and its models (Whisper,
+Marvin's own voice with Qwen3-TTS) in the Python voice sidecar it supervises
 ([docs/voice.md](../docs/voice.md#the-voice-sidecar)). The Python host (`marvin-host`) stays for the
-simulator, the Rerun viewer and replays; only one host can own UDP 47100 at a time.
+simulator, the Rerun viewer and replays, without a voice of its own; only one host can own UDP 47100
+at a time.
 
 **Memory v1** (design phase 3) is built: an append-only event log fed by the conversation and the brain, facts on two
 clocks with their sources, day, week and month summaries, a profile with versions, a memory worker that learns when
@@ -264,14 +267,16 @@ From the repository root, one command does everything (JDK, build, database, hos
   database. `MARVIN_DB=docker` or `MARVIN_DB=embedded` forces one; `MARVIN_PG_PORT` moves the Docker
   database off 5433.
 - **Python**: the voice sidecar runs from `host/.venv`, which `./marvin up` creates with the
-  `sidecar` and `voice` extras the first time (a few minutes; `--no-voice` skips it). The demo's
+  `sidecar` and `voice` extras the first time (a few minutes; `--no-voice` skips it), then downloads
+  Marvin's voice model on Apple Silicon (Qwen3-TTS through MLX, about 1.5 GB, once; `./marvin restart`
+  does both for a checkout that predates it). The demo's
   simulated robot and past week also come from the Python host (`host/.venv` if it exists, else
   `python3` if it can import it, else `./marvin demo` creates `host/.venv` with the base
   dependencies; `./marvin demo --voice` adds the voice). The voice is optional: if its packages cannot
   be installed (offline), Marvin starts without it. The sidecars exit with the host, even when it is
   killed.
 - **The voice**: turned on and off in the app (Talk panel), settings in Settings > Voice, saved to
-  `~/.config/marvin/voice.json` (shared with `marvin-host talk`). It needs Ollama and its model
+  `~/.config/marvin/voice.json`. It needs Ollama and its model
   (`ollama pull qwen3:4b-instruct`); the panel says what is missing and how to fix it. The demo works
   on a copy of `voice.json` (in `~/.local/share/marvin/demo/`), remade at each start.
 - **The Python host's history**: on first start, `~/.local/share/marvin/marvin.db` (the Python
@@ -328,8 +333,9 @@ Python host keeps its older app): Day, Night or Auto, five destinations (Home, T
 same API and event streams (`/api/stream`, `/api/robot/stream`) as the Python host, the same rules
 ([docs/ui.md](../docs/ui.md)). `AppFilesTest` keeps it self-contained; `e2e/e2e.py` walks it in a browser. From this computer nothing is needed; other devices need the access key, which `./marvin up`
 prints in the phone address (`http://<LAN address>:8765/?token=...`); the browser keeps it in a
-cookie. `ApiContractIT` replays every request recorded from the Python host (marvin-contracts
-`golden/api`) against the Java host and compares status, headers and shapes.
+cookie. `ApiContractIT` replays every request of the API specification (marvin-contracts `golden/api`,
+recorded from the Python host's demo, kept by hand since its conversation was retired) against the
+Java host and compares status, headers and shapes.
 
 ### The demo
 
@@ -382,7 +388,7 @@ stand-in for Ollama; they are skipped when the sidecar cannot run.
 | `marvin-adapter-sidecar` | `marvin.host.adapter.sidecar` | The voice sidecar over gRPC, the process supervisor, the demo's simulator | application, contracts |
 | `marvin-adapter-camera` | `marvin.host.adapter.camera` | One picture on demand: the computer's camera through an `ffmpeg` process, the robot's MJPEG camera over HTTP ([docs/vision.md](../docs/vision.md)) | application |
 | `marvin-app` | `marvin.host.app` | Spring Boot main, wiring; `ArchitectureTest` | everything |
-| `marvin-contracts` | `marvin.host.contracts.voice.v1` (generated) | Golden files from the Python host, `voice.proto` ([README](marvin-contracts/README.md)) | protobuf, gRPC |
+| `marvin-contracts` | `marvin.host.contracts.voice.v1` (generated) | Golden files (generated from the Python host, or kept by hand: the API, the conversation, the voice's defaults), `voice.proto` ([README](marvin-contracts/README.md)) | protobuf, gRPC |
 
 Bounded contexts today: `robot`, `presence`, `conversation`, `settings`, `system`, `face`, `memory`, `vision`. A context
 reaches another only through its application ports (`application.<context>.port.in|out`) and its
