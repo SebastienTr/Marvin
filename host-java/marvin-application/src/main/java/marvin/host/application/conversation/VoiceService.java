@@ -36,11 +36,13 @@ import marvin.host.application.conversation.port.out.MemoryContext;
 import marvin.host.application.conversation.port.out.VoiceListener;
 import marvin.host.application.conversation.port.out.VoiceSettingsStore;
 import marvin.host.application.conversation.port.out.VoiceSidecar;
+import marvin.host.application.conversation.tools.LookTool;
 import marvin.host.application.conversation.tools.MemoryTools;
 import marvin.host.application.conversation.tools.ToolRegistry;
 import marvin.host.application.conversation.tools.WeatherTool;
 import marvin.host.application.presence.port.in.PresenceQuery;
 import marvin.host.application.system.port.out.Tracing;
+import marvin.host.application.vision.port.in.Camera;
 import marvin.host.domain.conversation.ChatMessage;
 import marvin.host.domain.conversation.ContextAssembler;
 import marvin.host.domain.conversation.ConversationEntry;
@@ -52,6 +54,8 @@ import marvin.host.domain.conversation.SpeechText;
 import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.conversation.VoiceSettings.VoiceConfig;
 import marvin.host.domain.conversation.VoiceSnapshot;
+import marvin.host.domain.conversation.tool.Look;
+import marvin.host.domain.conversation.tool.ToolError;
 import marvin.host.domain.presence.event.PresenceEvent;
 import marvin.host.domain.presence.event.PresenceState;
 import marvin.host.domain.robot.event.RoomState;
@@ -88,6 +92,10 @@ import marvin.host.domain.shared.TokenEstimator;
  * is the vision model of the settings, or the voice's; one that cannot see images (Ollama's capabilities, asked once
  * per model) is refused when the image is attached. The conversation entry records what the image was (size, bytes,
  * SHA-256), never the image.
+ *
+ * <p>With a camera (docs/vision.md), the {@code look} tool is offered while the vision context says a camera can take a
+ * picture, and the persona says Marvin can look; otherwise neither, so Marvin never claims a sight it does not have. A
+ * look takes one picture, the model for images describes it, and the conversation's model reads the description.
  */
 public final class VoiceService implements VoiceControl {
     private static final Logger log = Logger.getLogger("marvin.voice");
@@ -176,6 +184,9 @@ public final class VoiceService implements VoiceControl {
     private volatile String language;
     private volatile VoiceConfig config;
     private volatile ToolRegistry tools;
+    /** The camera ({@code null}: none on this host), and whether {@link #tools} offers {@code look}. */
+    private volatile Camera camera;
+    private volatile boolean toolsLook;
     private volatile ProactiveSpeech proactive;
     private volatile Tracing tracing = Tracing.NONE;
     private volatile MemoryContext memoryContext = MemoryContext.NONE;
@@ -263,6 +274,14 @@ public final class VoiceService implements VoiceControl {
      */
     public void setRoom(Supplier<RoomState> room) {
         this.room = Objects.requireNonNull(room, "room");
+    }
+
+    /**
+     * The camera (the vision context's): the {@code look} tool is offered while it can take a picture. Set before the
+     * voice starts; none by default.
+     */
+    public void setCamera(Camera c) {
+        camera = Objects.requireNonNull(c, "camera");
     }
 
     /** The memory sections' shared budget in tokens (what memory may add to each question's prompt). */
@@ -490,7 +509,8 @@ public final class VoiceService implements VoiceControl {
         if (c.language() != null) {
             language = c.language();
         }
-        tools = registry(c.tools(), c.internet(), c.homePlace());
+        toolsLook = cameraAvailable();
+        tools = registry(c.tools(), c.internet(), c.homePlace(), toolsLook);
         proactive = new ProactiveSpeech(c.reminders(), c.welcomeBack());
         CompletableFuture<Void> warm = CompletableFuture.runAsync(() -> warmUp(c), answers);
         VoiceSidecar.Status s;
@@ -570,15 +590,99 @@ public final class VoiceService implements VoiceControl {
         }
     }
 
-    /** The built-in tools, and memory's when it is there, switched on or off by the settings. */
-    private ToolRegistry registry(boolean enabled, boolean internet, String homePlace) {
+    /**
+     * The built-in tools, memory's when it is there, and {@code look} when {@code look} (a camera can take a picture),
+     * switched on or off by the settings.
+     */
+    private ToolRegistry registry(boolean enabled, boolean internet, String homePlace, boolean look) {
         List<ToolRegistry.Tool> all = new ArrayList<>();
         all.add(WeatherTool.tool(homePlace, fetch, clocks::monotonicSeconds));
         MemoryContext m = memoryContext;
         if (m.available()) {
             all.addAll(MemoryTools.tools(m));
         }
+        Camera cam = camera;
+        if (look && cam != null) {
+            all.add(LookTool.tool(cam, this::describe));
+        }
         return new ToolRegistry(all, enabled, internet, clocks::monotonicSeconds);
+    }
+
+    private boolean cameraAvailable() {
+        Camera cam = camera;
+        try {
+            return cam != null && cam.available();
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "could not tell whether a camera is there", e);
+            return false;
+        }
+    }
+
+    /**
+     * The tools for the next question: when a camera came or went since they were made (a robot with a camera
+     * connected, the computer's camera chosen), they are made again with or without {@code look}, and the system prompt
+     * changes with them.
+     */
+    private ToolRegistry currentTools() {
+        VoiceConfig c = config;
+        ToolRegistry reg = tools;
+        if (c == null || reg == null || camera == null) {
+            return reg;
+        }
+        boolean look = cameraAvailable();
+        if (look != toolsLook) {
+            synchronized (this) {
+                if (look != toolsLook) {
+                    toolsLook = look;
+                    tools = registry(c.tools(), c.internet(), c.homePlace(), look);
+                    log.info(look ? "a camera can take pictures: Marvin may look" : "no camera now: Marvin cannot look");
+                }
+                reg = tools;
+            }
+        }
+        return reg;
+    }
+
+    /**
+     * The {@code look} tool's eyes: the model for images describes the picture, answering the question when there is
+     * one. The picture goes in that one request, never in the conversation.
+     */
+    String describe(ImageAttachment picture, String question) {
+        VoiceConfig c = config != null ? config : VoiceSettings.config(settings());
+        String m = c.imageModel();
+        try {
+            if (!canSee(c.ollamaHost(), m)) {
+                throw new ToolError(m + " cannot see pictures: the owner can choose a vision model in Marvin > Voice & models");
+            }
+        } catch (LanguageModel.Unavailable e) {
+            throw new ToolError("the model for pictures cannot be reached (" + e.getMessage() + ")");
+        }
+        List<ChatMessage> messages = List.of(ChatMessage.system(Look.SYSTEM_PROMPT),
+                ChatMessage.user(Look.visionMessage(question), List.of(picture.base64())));
+        StringBuilder text = new StringBuilder();
+        try {
+            model.streamChat(c.ollamaHost(), m, messages, null, Look.DESCRIBE_S, new LanguageModel.Stream() {
+                @Override
+                public void text(String piece) {
+                    text.append(piece);
+                }
+
+                @Override
+                public void toolCall(marvin.host.domain.conversation.ToolCall call) {
+                    // no tools were offered: nothing to do
+                }
+
+                @Override
+                public boolean cancelled() {
+                    return Thread.currentThread().isInterrupted();
+                }
+            });
+        } catch (LanguageModel.Unavailable e) {
+            throw new ToolError("the model for pictures failed (" + e.getMessage() + ")");
+        }
+        String seen = SpeechText.stripThinking(text.toString()).strip();
+        log.info("looked with " + m + ": " + marvin.host.domain.conversation.tool.ToolResult.shorten(seen, 160));
+        return seen;
     }
 
     /**
@@ -589,7 +693,8 @@ public final class VoiceService implements VoiceControl {
      */
     private String systemPrompt(String lang, boolean offer, ToolRegistry reg, MemoryContext.Profile profile) {
         boolean memoryTools = offer && reg != null && reg.get("remember") != null;
-        return Persona.systemPrompt(memoryContext.available() ? null : lang, offer, memoryTools, profile.text());
+        boolean look = offer && reg != null && reg.get(Look.NAME) != null;
+        return Persona.systemPrompt(memoryContext.available() ? null : lang, offer, memoryTools, look, profile.text());
     }
 
     private MemoryContext.Profile profile() {
@@ -604,7 +709,7 @@ public final class VoiceService implements VoiceControl {
     /** Loads the model and fills the model server's prompt cache by rehearsing a real first question, twice. */
     private void warmUp(VoiceConfig c) {
         String key = c.ollamaHost() + " " + c.llmModel();
-        ToolRegistry reg = tools;
+        ToolRegistry reg = currentTools();
         boolean offer = reg != null && reg.ollamaTools() != null && toolSupport.getOrDefault(key, true);
         LocalDateTime now = LocalDateTime.ofInstant(Instant.ofEpochMilli((long) (clocks.wallSeconds() * 1000)), days.zone());
         String user = Persona.userMessage("Bonjour.", Persona.contextBlock(null, List.of(), now, ""), null);
@@ -1131,7 +1236,7 @@ public final class VoiceService implements VoiceControl {
     private void answer(Turn turn, Tracing.Span span) {
         VoiceSidecar.Heard h = turn.heard;
         VoiceConfig c = config != null ? config : VoiceSettings.config(settings());
-        ToolRegistry reg = tools;
+        ToolRegistry reg = currentTools();
         PendingImage image = turn.image;
         String modelName = image != null ? image.model() : c.llmModel();
         String key = c.ollamaHost() + " " + modelName;
@@ -1589,7 +1694,7 @@ public final class VoiceService implements VoiceControl {
         List<String> sttModels = new ArrayList<>(List.of("auto"));
         sttModels.addAll(VoiceSettings.STT_MODELS);
         List<Map<String, Object>> catalog = new ArrayList<>();
-        for (ToolRegistry.Tool t : registry(true, true, "").all()) {
+        for (ToolRegistry.Tool t : registry(true, true, "", camera != null).all()) {
             catalog.add(ordered("name", t.spec().name(), "description", t.spec().description(), "online", t.spec().online()));
         }
         Map<String, Object> out = new LinkedHashMap<>();

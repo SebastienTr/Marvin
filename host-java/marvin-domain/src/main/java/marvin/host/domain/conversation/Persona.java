@@ -147,6 +147,32 @@ public final class Persona {
             again with its confirmation code only after they said yes. Never say a confirmation code aloud.
             """;
 
+    /** What the persona says of the camera when Marvin cannot look through it (the Python host's words). */
+    static final String BLIND = "You cannot look at the camera image or the radar data yourself: everything you know "
+            + "about the room and the person comes from the context block at the start of each message. Never describe "
+            + "what you \"see\" beyond that block. The one exception is an image the person shows you: when their message "
+            + "says an image is attached, you can see that image; describe it and answer from it honestly, and say when "
+            + "something in it is unclear rather than guessing. It is the only image you can see: it is not your camera, "
+            + "which you still cannot look at.";
+
+    /** The same when the {@code look} tool is offered: one picture on demand, never a continuous sight. */
+    static final String CAMERA = "You cannot read the radar data yourself: everything you know about the room and the "
+            + "person comes from the context block at the start of each message, and from your look tool. Your camera: "
+            + "when the person asks what you see, what they are holding or showing you, or to read something, call look; "
+            + "it takes one picture now and tells you what is in it. Never describe what you \"see\" without calling it "
+            + "for this question, and never pretend to watch continuously: each look is a single picture, and if it fails, "
+            + "say you cannot see right now. You can also see an image the person shows you: when their message says an "
+            + "image is attached, describe it and answer from it honestly, and say when something in it is unclear rather "
+            + "than guessing.";
+
+    /** The persona with {@link #CAMERA} for {@link #BLIND}. */
+    static String withCamera(String prompt) {
+        if (!prompt.contains(BLIND)) {
+            throw new IllegalStateException("the persona's camera sentence changed: update Persona.BLIND");
+        }
+        return prompt.replace(BLIND, CAMERA);
+    }
+
     /** The heading of the profile in the system prompt. */
     static final String PROFILE_HEADING = "What you know about your owner (from your memory; they can correct it in the app; "
             + "use it when it helps, never recite it):";
@@ -159,7 +185,18 @@ public final class Persona {
      * {@link #personaPrompt(String, boolean)} byte for byte.
      */
     public static String systemPrompt(String language, boolean tools, boolean memoryTools, String profile) {
+        return systemPrompt(language, tools, memoryTools, false, profile);
+    }
+
+    /**
+     * The same, and {@code camera}: the {@code look} tool is offered (a camera can take a picture), so the persona's
+     * blind sentence about the camera becomes {@link #CAMERA}. Without it the prompt is the one above, byte for byte.
+     */
+    public static String systemPrompt(String language, boolean tools, boolean memoryTools, boolean camera, String profile) {
         String p = personaPrompt(language, tools);
+        if (tools && camera) {
+            p = withCamera(p);
+        }
         if (tools && memoryTools) {
             p += MEMORY_TOOLS;
         }

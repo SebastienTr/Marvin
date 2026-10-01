@@ -873,4 +873,100 @@ class VoiceServiceTest {
         waitFor(() -> v.snapshot().state().equals("on"));
         assertThat(sidecar.opened.get(3).wake()).isFalse();
     }
+
+    // ------------------------------------------------------------------ the look tool
+
+    /** A model that calls look for "je tiens quoi", describes pictures, and answers from the description. */
+    static FakeModel looking(String... vision) {
+        FakeModel m = new FakeModel(msgs -> {
+            marvin.host.domain.conversation.ChatMessage last = msgs.getLast();
+            if (msgs.get(0).content().equals(marvin.host.domain.conversation.tool.Look.SYSTEM_PROMPT)) {
+                return new ArrayList<>(List.of("A blue mug, held in a right hand."));
+            }
+            if ("tool".equals(last.role())) {
+                return new ArrayList<>(List.of("Tu tiens une tasse bleue."));
+            }
+            if (last.content().contains("je tiens quoi")) {
+                return new ArrayList<>(List.of(new marvin.host.domain.conversation.ToolCall("look",
+                        Map.of("question", "je tiens quoi ?"), "")));
+            }
+            return new ArrayList<>(List.of("Bonjour."));
+        });
+        Map<String, java.util.Set<String>> caps = new LinkedHashMap<>();
+        for (String name : vision) {
+            caps.put(name, java.util.Set.of("completion", "vision", "tools"));
+        }
+        m.capabilities = caps;
+        return m;
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void withACameraMarvinLooksWhenAskedAndThePictureNeverReachesTheConversation() throws InterruptedException {
+        LookToolTest.FakeCamera camera = new LookToolTest.FakeCamera();
+        FakeModel model = looking("qwen3:4b-instruct");
+        VoiceService v = service(model);
+        v.setCamera(camera);
+        v.start();
+        waitFor(() -> v.snapshot().state().equals("on"));
+        waitFor(() -> model.calls.size() == 2);
+        assertThat(model.calls.get(0).get(0).content()).contains("call look");
+        assertThat(model.tools.get(0)).anySatisfy(t -> assertThat(t.toString()).contains("name=look"));
+        assertThat((List<Map<String, Object>>) v.options().get("tools")).extracting(t -> t.get("name")).contains("look");
+
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Marvin, je tiens quoi ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 1);
+        assertThat(camera.purposes).containsExactly("look");
+        // the round that called look, the picture described, the answer from the description
+        assertThat(model.calls).hasSize(5);
+        List<marvin.host.domain.conversation.ChatMessage> described = model.calls.get(3);
+        assertThat(described).hasSize(2);
+        assertThat(described.get(1).images()).hasSize(1);
+        assertThat(described.get(1).content()).isEqualTo("The person asks: je tiens quoi ?");
+        List<marvin.host.domain.conversation.ChatMessage> answer = model.calls.get(4);
+        assertThat(anyImage(answer)).isFalse();
+        assertThat(answer.getLast().content()).contains("A blue mug, held in a right hand.");
+        assertThat(answer.get(0)).as("the system prompt stays cached").isEqualTo(model.calls.get(2).get(0));
+        Map<String, Object> reply = kinds("reply").get(0);
+        assertThat((String) reply.get("text")).endsWith("Tu tiens une tasse bleue.");
+        assertThat((List<Map<String, Object>>) reply.get("tools")).singleElement()
+                .satisfies(t -> assertThat(t).containsEntry("name", "look").containsEntry("ok", true));
+        assertThat(sidecar.sent(VoiceSidecar.Filler.class)).extracting(VoiceSidecar.Filler::text).containsExactly("Je regarde…");
+        String b64 = described.get(1).images().get(0);
+        assertThat(store.entries).allSatisfy(e -> assertThat(e.data().toString()).doesNotContain(b64.substring(0, 16)));
+
+        // the camera goes (the robot left, the setting is off): look is no longer offered, the persona is blind again
+        camera.refuse = new marvin.host.application.vision.port.in.Camera.NoPicture("The camera is off", "", true);
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Bonjour", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 2);
+        List<marvin.host.domain.conversation.ChatMessage> blind = model.calls.getLast();
+        assertThat(blind.get(0).content()).doesNotContain("call look").contains("which you still cannot look at");
+        assertThat(model.tools.getLast()).noneSatisfy(t -> assertThat(t.toString()).contains("name=look"));
+    }
+
+    @Test
+    void withoutACameraOrWithAModelThatCannotSeeMarvinSaysSo() throws InterruptedException {
+        // no camera at all: neither the tool nor the persona's camera sentence
+        FakeModel plain = looking();
+        VoiceService v0 = started(plain);
+        waitFor(() -> plain.calls.size() == 2);
+        assertThat(plain.calls.get(0).get(0).content()).doesNotContain("call look");
+        assertThat(plain.tools.get(0)).noneSatisfy(t -> assertThat(t.toString()).contains("name=look"));
+        v0.close();
+
+        LookToolTest.FakeCamera camera = new LookToolTest.FakeCamera();
+        FakeModel model = looking();                       // nothing can see
+        VoiceService v = service(model);
+        v.setCamera(camera);
+        v.start();
+        waitFor(() -> v.snapshot().state().equals("on"));
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Marvin, je tiens quoi ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 1);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> call = ((List<Map<String, Object>>) kinds("reply").get(0).get("tools")).get(0);
+        assertThat(call).containsEntry("ok", false);
+        assertThat((String) call.get("error")).isEqualTo("qwen3:4b-instruct cannot see pictures: the owner can choose a vision "
+                + "model in Marvin > Voice & models");
+        assertThat(model.calls.getLast().getLast().content()).contains("cannot see pictures");
+    }
 }
