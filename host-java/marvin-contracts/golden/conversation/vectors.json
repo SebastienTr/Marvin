@@ -3953,6 +3953,38 @@
         "out": {
           "vision_model": ""
         }
+      },
+      {
+        "in": {
+          "camera": "auto"
+        },
+        "out": {
+          "camera": "auto"
+        }
+      },
+      {
+        "in": {
+          "camera": "computer"
+        },
+        "out": {
+          "camera": "computer"
+        }
+      },
+      {
+        "in": {
+          "camera": "robot"
+        },
+        "out": {
+          "camera": "robot"
+        }
+      },
+      {
+        "in": {
+          "camera": "off"
+        },
+        "out": {
+          "camera": "off"
+        }
       }
     ],
     "bad": [
@@ -4111,6 +4143,24 @@
           "vision_model": 3
         },
         "error": "vision_model must be an Ollama model name, or empty to use the voice's model"
+      },
+      {
+        "in": {
+          "camera": "webcam"
+        },
+        "error": "camera must be one of auto, computer, robot, off"
+      },
+      {
+        "in": {
+          "camera": ""
+        },
+        "error": "camera must be one of auto, computer, robot, off"
+      },
+      {
+        "in": {
+          "camera": null
+        },
+        "error": "camera must be one of auto, computer, robot, off"
       }
     ],
     "app_defaults": {
@@ -4127,7 +4177,8 @@
       "home_place": "",
       "reminders": true,
       "welcome_back": false,
-      "vision_model": ""
+      "vision_model": "",
+      "camera": "auto"
     }
   },
   "tools": {

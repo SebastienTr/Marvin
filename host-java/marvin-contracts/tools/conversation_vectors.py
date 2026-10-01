@@ -219,6 +219,7 @@ SETTINGS_OK = [
     {"follow_up_s": 0}, {"follow_up_s": 30}, {"follow_up_s": 2.5},
     {"llm_model": "hf.co/user/model:Q4_K_M", "language": "en", "follow_up_s": 7},
     {"vision_model": "qwen2.5vl:7b"}, {"vision_model": ""}, {"vision_model": None},
+    {"camera": "auto"}, {"camera": "computer"}, {"camera": "robot"}, {"camera": "off"},
 ]
 SETTINGS_BAD = [
     {"llm_model": ""}, {"llm_model": "bad name"}, {"llm_model": 3}, {"stt": "whisper"}, {"stt_model": "a b"},
@@ -227,6 +228,7 @@ SETTINGS_BAD = [
     {"home_place": "Ni\u0007ce"}, {"wake": "yes"}, {"wake": 1}, {"tools": None}, {"follow_up_s": "soon"},
     {"follow_up_s": True}, {"follow_up_s": 31}, {"follow_up_s": -1}, {"volume": 3},
     {"vision_model": "bad name"}, {"vision_model": 3},
+    {"camera": "webcam"}, {"camera": ""}, {"camera": None},
 ]
 
 

@@ -18,15 +18,20 @@ public final class VoiceSettings {
     public static final List<String> STT_MODELS = List.of("tiny", "base", "small", "medium", "large-v3", "turbo");
     /** Where the voice hears and speaks: the computer, the robot (its microphone and speaker), or the robot when one with audio is connected. */
     public static final List<String> AUDIO_ROUTES = List.of("computer", "robot", "auto");
+    /**
+     * Which camera Marvin looks through with its {@code look} tool: the robot's when one with a camera is connected, else
+     * the computer's ({@code auto}); always the computer's or the robot's; or none.
+     */
+    public static final List<String> CAMERAS = List.of("auto", "computer", "robot", "off");
     /** The settings the app edits. */
     public static final List<String> APP_KEYS = List.of("llm_model", "stt", "stt_model", "tts", "tts_voice", "language",
-            "wake", "follow_up_s", "reminders", "welcome_back", "tools", "internet", "home_place", "vision_model");
+            "wake", "follow_up_s", "reminders", "welcome_back", "tools", "internet", "home_place", "vision_model", "camera");
     /** Every key of voice.json. */
     public static final List<String> FILE_KEYS = List.of("stt", "stt_model", "llm_model", "ollama_host", "tts",
             "tts_voice", "language", "default_language", "wake", "duplex", "echo_tail_s", "follow_up_s",
             "listen_window_s", "speculative_stt", "end_silence_ms", "reminders", "welcome_back", "tools", "internet",
             "home_place", "chime", "audio_route", "input_device", "output_device", "continue_grace_s",
-            "end_silence_long_ms", "vision_model");
+            "end_silence_long_ms", "vision_model", "camera");
     public static final int MAX_HOME_PLACE = 80;
     public static final String DEFAULT_MODEL = "qwen3:4b-instruct";
     public static final String DEFAULT_OLLAMA = "http://localhost:11434";
@@ -64,6 +69,11 @@ public final class VoiceSettings {
                     v = v == null ? "" : v;
                     if (!(v instanceof String s) || !s.isEmpty() && !MODEL.matcher(s).matches()) {
                         throw bad("vision_model must be an Ollama model name, or empty to use the voice's model");
+                    }
+                }
+                case "camera" -> {
+                    if (!(v instanceof String c) || !CAMERAS.contains(c)) {
+                        throw bad("camera must be one of " + String.join(", ", CAMERAS));
                     }
                 }
                 case "stt" -> {
@@ -157,6 +167,7 @@ public final class VoiceSettings {
         out.put("reminders", true);
         out.put("welcome_back", false);
         out.put("vision_model", "");
+        out.put("camera", "auto");
         for (String k : APP_KEYS) {
             if (settings.containsKey(k)) {
                 out.put(k, settings.get(k));
@@ -186,7 +197,11 @@ public final class VoiceSettings {
                 str(settings, "home_place", "").strip(), bool(settings, "reminders", true),
                 bool(settings, "welcome_back", false), route(str(settings, "audio_route", "computer")),
                 optionalNum(settings, "continue_grace_s"), optionalNum(settings, "end_silence_long_ms"),
-                str(settings, "vision_model", "").strip());
+                str(settings, "vision_model", "").strip(), camera(str(settings, "camera", "auto")));
+    }
+
+    private static String camera(String s) {
+        return CAMERAS.contains(s) ? s : "auto";
     }
 
     private static String route(String s) {
@@ -250,6 +265,7 @@ public final class VoiceSettings {
      * @param endSilenceLongMs the end-of-question silence when the words so far announce more; {@code null}: the
      *                      sidecar's default, 0: never longer
      * @param visionModel   the model for questions with an image; empty: the voice's model ({@link #imageModel()})
+     * @param camera        which camera the {@code look} tool uses: {@code auto}, {@code computer}, {@code robot}, {@code off}
      */
     public record VoiceConfig(String llmModel, String ollamaHost, String language, String defaultLanguage,
                               String stt, String sttModel, String tts, String ttsVoice, boolean wake, boolean duplex,
@@ -257,7 +273,7 @@ public final class VoiceSettings {
                               double endSilenceMs, boolean chime, String inputDevice, String outputDevice,
                               boolean tools, boolean internet, String homePlace, boolean reminders,
                               boolean welcomeBack, String audioRoute, Double continueGraceS, Double endSilenceLongMs,
-                              String visionModel) {
+                              String visionModel, String camera) {
 
         /** The model that answers a question with an image: the vision model, or the voice's when there is none. */
         public String imageModel() {

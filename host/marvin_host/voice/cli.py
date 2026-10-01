@@ -41,6 +41,8 @@ SETTINGS = {
     "chime": ("chime", bool), "audio_route": (None, str),
     # the model for questions with an image, empty for the voice's model (the Java host only)
     "vision_model": (None, str),
+    # which camera the Java host's look tool uses: auto, computer, robot or off (the Java host only)
+    "camera": (None, str),
 }
 DEVICE_KEYS = ("input_device", "output_device")
 

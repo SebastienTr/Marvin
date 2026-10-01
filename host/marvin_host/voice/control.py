@@ -49,9 +49,11 @@ PIPER_VOICES = ("fr_FR-siwis-medium", "fr_FR-tom-medium", "fr_FR-upmc-medium", "
                 "en_GB-alan-medium", "en_GB-northern_english_male-medium", "en_US-lessac-medium",
                 "en_US-ryan-high")
 APP_KEYS = ("llm_model", "stt", "stt_model", "tts", "tts_voice", "language", "wake", "follow_up_s",
-            "reminders", "welcome_back", "tools", "internet", "home_place", "vision_model")
-# vision_model: the model for questions with an image ("": the voice's model); only the Java host shows images
-DEFAULTS = {"reminders": True, "welcome_back": False, "vision_model": ""}
+            "reminders", "welcome_back", "tools", "internet", "home_place", "vision_model", "camera")
+# vision_model: the model for questions with an image ("": the voice's model); only the Java host shows images.
+# camera: which camera the Java host's look tool uses (auto: the robot's when connected, else the computer's)
+CAMERAS = ("auto", "computer", "robot", "off")
+DEFAULTS = {"reminders": True, "welcome_back": False, "vision_model": "", "camera": "auto"}
 MAX_HOME_PLACE = 80
 
 OFF, STARTING, ON, STOPPING, ERROR = "off", "starting", "on", "stopping", "error"
@@ -87,6 +89,9 @@ def validate(update: dict) -> dict:
             v = "" if v is None else v
             if not isinstance(v, str) or (v and not re.fullmatch(r"[\w.:/@+-]{1,120}", v)):
                 raise ValueError("vision_model must be an Ollama model name, or empty to use the voice's model")
+        elif key == "camera":
+            if v not in CAMERAS:
+                raise ValueError(f"camera must be one of {', '.join(CAMERAS)}")
         elif key == "stt":
             if v not in voice_cli.STT_CHOICES:
                 raise ValueError(f"stt must be one of {', '.join(voice_cli.STT_CHOICES)}")

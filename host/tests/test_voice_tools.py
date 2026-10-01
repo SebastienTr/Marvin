@@ -514,3 +514,17 @@ def test_the_model_for_images_is_a_setting_empty_for_the_voice_model():
     assert validate({"vision_model": None}) == {"vision_model": ""}
     with pytest.raises(ValueError, match="vision_model must be an Ollama model name"):
         validate({"vision_model": "bad name"})
+
+
+def test_the_camera_is_a_setting_auto_by_default(tmp_path):
+    # the Java host's look tool reads it; the Python host keeps it in voice.json and shows it
+    for camera in ("auto", "computer", "robot", "off"):
+        assert validate({"camera": camera}) == {"camera": camera}
+    for bad in ("webcam", "", None, 1):
+        with pytest.raises(ValueError, match="camera must be one of auto, computer, robot, off"):
+            validate({"camera": bad})
+    ctl = VoiceController(check=None, path=tmp_path / "voice.json")
+    assert ctl.app_settings()["camera"] == "auto"
+    ctl.update_settings({"camera": "computer"})
+    assert ctl.app_settings()["camera"] == "computer"
+    assert voice_cli.load_settings(tmp_path / "voice.json") == {"camera": "computer"}   # a known key: no warning
