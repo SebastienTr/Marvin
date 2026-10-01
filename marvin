@@ -728,6 +728,18 @@ cmd_doctor() {
         fix "install it from https://ollama.com, then: ollama serve, and ollama pull qwen3:4b-instruct"
     fi
 
+    # the computer's camera (docs/vision.md): ffmpeg opens it for one picture when Marvin is asked to look
+    if have ffmpeg || [ -x /opt/homebrew/bin/ffmpeg ] || [ -x /usr/local/bin/ffmpeg ]; then
+        if [ "$OS" = mac ]; then
+            ok "ffmpeg: Marvin can look through this computer's camera when asked (macOS asks once: allow your terminal)"
+        else
+            ok "ffmpeg: Marvin can look through this computer's camera when asked"
+        fi
+    else
+        note "no ffmpeg: Marvin cannot look through this computer's camera (the robot's still works)"
+        if [ "$OS" = mac ]; then fix "brew install ffmpeg, then ./marvin restart"; else fix "sudo apt install ffmpeg, then ./marvin restart"; fi
+    fi
+
     if [ "$FAILED" -gt 0 ]; then
         say "${R}$FAILED problem(s) to fix before ./marvin up${N}"
         return 1
