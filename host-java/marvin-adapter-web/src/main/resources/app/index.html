@@ -534,6 +534,7 @@
               <div class="device-status"><span class="pill" id="device-pill">–</span><p id="device-line">–</p></div>
               <div class="system-item"><div><h3>Room sensors</h3><p id="sensors-line">Lidar, presence and breathing</p></div><a class="button small-button" href="#marvin/robot">Inspect</a></div>
               <div class="system-item"><div><h3>Voice</h3><p id="system-voice-line">–</p></div><a class="button small-button" href="#marvin/voice">Manage</a></div>
+              <div class="system-item"><div><h3>Camera</h3><p id="camera-line">–</p></div><a class="button small-button" href="#marvin/voice">Test</a></div>
               <div class="system-item"><div><h3>System</h3><p id="system-line">Services, models, storage and the log</p></div><a class="button small-button" href="#marvin/system">Open</a></div>
             </section>
             <section class="panel" aria-labelledby="soul-h">
@@ -663,6 +664,30 @@
             <div class="actions"><span class="saved muted" id="voice-saved" role="status"></span><button type="submit" class="primary">Apply</button></div>
           </form>
           <div class="stack">
+            <form class="panel form" id="camera-form" aria-labelledby="camera-h">
+              <div class="panel-head"><h3 id="camera-h">Camera</h3><span class="pill" id="camera-pill">–</span></div>
+              <p class="hint">Marvin looks only when you ask (“Marvin, qu’est-ce que tu vois ?”): one picture, the camera’s light on for about a second. The picture is described on this computer, then dropped.</p>
+              <fieldset class="fields" id="camera-fields">
+                <legend class="sr">Camera</legend>
+                <fieldset class="field">
+                  <legend>Which camera</legend>
+                  <div class="segmented">
+                    <label><input type="radio" name="cam" value="auto"><span>Auto</span></label>
+                    <label><input type="radio" name="cam" value="computer"><span>This computer</span></label>
+                    <label><input type="radio" name="cam" value="robot"><span>Robot</span></label>
+                    <label><input type="radio" name="cam" value="off"><span>Off</span></label>
+                  </div>
+                  <p class="hint" id="camera-hint">Auto: the robot’s camera when a robot with one is connected, else this computer’s.</p>
+                </fieldset>
+              </fieldset>
+              <ul class="model-list camera-sources" id="camera-sources" aria-label="Cameras"></ul>
+              <figure class="camera-shot" id="camera-shot" hidden>
+                <img id="camera-img" alt="The picture the camera just took">
+                <figcaption class="small muted" id="camera-meta"></figcaption>
+              </figure>
+              <p class="form-error" id="camera-error" role="alert" hidden></p>
+              <div class="actions"><span class="saved muted" id="camera-saved" role="status"></span><button type="button" id="camera-test">Test camera</button><button type="submit" class="primary">Apply</button></div>
+            </form>
             <section class="panel" aria-labelledby="ollama-h">
               <div class="panel-head"><h3 id="ollama-h">Ollama</h3><span class="pill" id="ollama-pill">–</span></div>
               <p class="small muted" id="ollama-line">Checking…</p>

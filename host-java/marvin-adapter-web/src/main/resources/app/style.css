@@ -640,6 +640,14 @@ dialog .field > label:not(.check) { margin: 0 0 7px; font-size: 13px; font-weigh
 .model-list { display: grid; gap: 6px; margin-top: 12px; font-size: 13px; }
 .model-list li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .model-list li:last-child { border: 0; }
+.camera-sources { margin-top: 18px; }
+.camera-sources li { align-items: center; }
+.camera-sources .small { display: block; margin-top: 2px; }
+.camera-sources .state-pill { flex: none; }
+.camera-shot { margin: 18px 0 0; }
+.camera-shot[hidden] { display: none; }
+.camera-shot img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: contain; background: var(--soft); border: 1px solid var(--line); border-radius: 14px; }
+.camera-shot figcaption { margin-top: 8px; overflow-wrap: anywhere; }
 .log-scroll { max-height: min(640px, 70vh); overflow-y: auto; scrollbar-width: thin; }
 .log-search { margin: 0 0 10px; }
 .worker-lines code { font-size: 12px; overflow-wrap: anywhere; text-align: right; }

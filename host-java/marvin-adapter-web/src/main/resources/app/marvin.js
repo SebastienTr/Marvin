@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Marvin: the companion's capabilities and setup. An overview (robot and voice, Soul and connections as honest
 // "later" entries, preferences), the robot (devices with their link and firmware, the robot's own screen, lidar
-// top view, radar, vital signs; offline and stale shown as such), voice and models (the voice's settings, Ollama,
-// memory's models), and the preferences (breaks, quiet hours, clock, sounds, appearance, Home layout, language,
+// top view, radar, vital signs; offline and stale shown as such), voice and models (the voice's settings, the camera
+// (camera.js), Ollama, memory's models), and the preferences (breaks, quiet hours, clock, sounds, appearance, Home layout, language,
 // tools and home place). System is system.js.
 
 import { $, app, el, api, post, on, emit, cssVar, canvas2d, toast } from "./core.js";
 import { earcons } from "./talk.js";
+import * as camera from "./camera.js";
 
 let devices = [];
 let scene = null;
@@ -687,6 +688,7 @@ function setupVoiceForm() {
 // ------------------------------------------------------------------ setup
 
 export function setup() {
+  camera.setup();
   setupSettings();
   setupVoiceForm();
   setupMemoryModels();

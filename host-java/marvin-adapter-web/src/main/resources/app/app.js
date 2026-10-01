@@ -144,7 +144,7 @@ function connect() {
     setState(s);
     setConnection(s.online ? "live" : "offline");
   });
-  for (const name of ["today", "event", "settings", "voice", "level", "utterance", "partial", "say", "log", "devices", "memory"]) {
+  for (const name of ["today", "event", "settings", "voice", "level", "utterance", "partial", "say", "log", "devices", "memory", "camera"]) {
     es.addEventListener(name, (m) => emit(name, json(m)));
   }
   es.addEventListener("transcript", (m) => emit("transcript", { entry: json(m), fresh: true }));
