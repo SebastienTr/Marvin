@@ -162,7 +162,11 @@ def record_images(req):
 
 def answer(req):
     msgs = req.get("messages", [])
-    if record_images(req):
+    has_image = record_images(req)
+    if has_image and msgs and str(msgs[0].get("content", "")).startswith("You are the eyes of Marvin"):
+        # the look tool's picture, described for the conversation's model
+        return [chunk("A test pattern: "), chunk("coloured bars and a gradient, sharp and well lit."), chunk(done=True)]
+    if has_image:
         return [chunk("I can see the picture you showed me: "), chunk("a small test card with a few coloured shapes. "),
                 chunk("What would you like to know about it?"), chunk(done=True)]
     said_last = next((m.get("content", "") for m in reversed(msgs) if m.get("role") == "user"), "")
@@ -171,6 +175,10 @@ def answer(req):
     if ("weather" in last_user or "météo" in last_user) and not has_tool and req.get("tools"):
         return [chunk(tool_calls=[{"function": {"name": "get_weather", "arguments": {"place": "Nice"}}}]), chunk(done=True)]
     offered = {t.get("function", {}).get("name") for t in req.get("tools") or []}
+    seeing = re.search(r"qu'est-ce que tu vois|what do you see|je tiens quoi|what am i holding", last_user)
+    if seeing and "look" in offered and not has_tool:
+        return [chunk(tool_calls=[{"function": {"name": "look", "arguments": {"question": seeing.group(0)}}}]),
+                chunk(done=True)]
     # the question, not the memory section's heading ("What you remember that may matter here ...")
     said = next((m for m in reversed(list(re.finditer(r"remember that ([^\n.?!]+)", last_user)))
                  if not m.group(1).startswith("may matter")), None)
@@ -187,6 +195,14 @@ def answer(req):
         return [chunk(tool_calls=[{"function": {"name": "recall", "arguments": {"query": about.group(1).strip()}}}]),
                 chunk(done=True)]
     called = msgs[-2]["tool_calls"][0]["function"]["name"] if has_tool and msgs[-2].get("tool_calls") else ""
+    if called == "look":
+        try:
+            seen = json.loads(msgs[-1].get("content", "") or "{}")
+        except ValueError:
+            seen = {}
+        if "seen" in seen:
+            return [chunk("I see "), chunk(seen["seen"][:1].lower() + seen["seen"][1:200]), chunk(done=True)]
+        return [chunk("I cannot see right now: "), chunk(str(seen.get("error", "no picture"))[:200]), chunk(done=True)]
     if called == "remember":
         return [chunk("Noted, "), chunk("I will remember it."), chunk(done=True)]
     if called == "forget":
