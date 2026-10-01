@@ -49,36 +49,63 @@ message CoreToVoice {
     Filler filler = 10;             // a short sentence while a tool runs ("Let me check.")
     RobotLink robot_link = 11;      // a robot with audio connected or left
     Ask ask = 12;                   // a typed question: answered like a heard one (Heard, source "typed")
+    Earcon earcon = 13;             // play a short sound on the voice's device (the core decides when)
   }
 }
 
 // The voice's settings: the keys of voice.json that the sidecar uses (docs/voice.md).
+//
+// Contract version 2: the core is the single source of every value (host-java VoiceSettings). It sends
+// each field with its actual value, defaults included, and chooses the audio device itself (`device`):
+// the sidecar never fills a default in nor decides the route. A new Configure that only changes `device`
+// swaps the microphone and the speaker under the running voice (no models are reloaded).
 message Configure {
-  uint32 contract_version = 1;                 // 1
+  uint32 contract_version = 1;                 // 2
   VoiceSettings settings = 2;
-  AudioRoute route = 3;
+  AudioRoute route = 3;                        // the same choice as device.kind (kept for version 1 readers)
+  AudioDeviceProfile device = 4;               // version 2: where the voice hears and speaks, and how
+}
+
+// One audio device: a microphone and a speaker that go together (the computer's, or one robot's), with what
+// the voice needs to know to listen and speak on it without hearing itself.
+message AudioDeviceProfile {
+  string kind = 1;                  // computer | robot
+  string robot = 2;                 // with robot: the robot's device name (RobotLink.device)
+  bool duplex = 3;                  // keep listening while speaking (only with echo cancellation or a headset)
+  double echo_tail_s = 4;           // half duplex: still deaf this long after the speaker really stopped
+  double output_latency_s = 5;      // from queuing a sample to hearing it, added to the tail (0: the sink's own)
+  double vad_min_dbfs = 6;          // a 20 ms frame quieter than this is never speech
+  double speech_min_dbfs = 7;       // an utterance whose loudest half is quieter than this is "too quiet"
+  uint32 vad_aggressiveness = 8;    // WebRTC VAD 0..3
+  bool has_earcons = 9;             // it can play the voice's short sounds (Earcon)
+  bool has_aec = 10;                // it cancels its own echo (none does yet)
+  string input_device = 11;         // computer: PortAudio input; empty: the system default
+  string output_device = 12;        // computer: PortAudio output
 }
 
 message VoiceSettings {
   string stt = 1;                   // auto | mlx | faster-whisper
   string stt_model = 2;             // tiny ... large-v3, turbo
-  string tts = 3;                   // auto | say | piper | espeak
-  string tts_voice = 4;             // empty: the default for the language
+  string tts = 3;                   // auto | qwen | say | piper | espeak
+  string tts_voice = 4;             // empty: the default for the engine (qwen: marvin)
   string language = 5;              // empty: auto; fr | en
   string default_language = 6;
   bool wake = 7;                    // wait for "Marvin"
-  bool duplex = 8;
-  double echo_tail_s = 9;
+  bool duplex = 8;                  // version 1 only: version 2 reads AudioDeviceProfile.duplex
+  double echo_tail_s = 9;           // version 1 only: AudioDeviceProfile.echo_tail_s
   double follow_up_s = 10;
   double listen_window_s = 11;
   bool speculative_stt = 12;
-  double end_silence_ms = 13;       // 0: the default
-  bool chime = 14;                  // the listening chime on the speaker
-  string input_device = 15;         // local audio only; empty: the system default
-  string output_device = 16;
-  // one thought, one question (docs/voice.md): unset means the sidecar's default
+  double end_silence_ms = 13;       // version 1: 0 is the default; version 2: the value
+  bool chime = 14;                  // version 1: the sidecar's own listening chime; version 2: unused (Earcon)
+  string input_device = 15;         // version 1 only: AudioDeviceProfile.input_device
+  string output_device = 16;        // version 1 only
+  // one thought, one question (docs/voice.md): version 1, unset means the sidecar's default; version 2: always set
   optional double continue_grace_s = 17;       // speech resuming this soon after a question, before its answer is heard, continues it; 0: never
   optional double end_silence_long_ms = 18;    // the end-of-question silence when the words so far announce more ("..., et"); 0: never longer
+  // version 2: always sent
+  double continue_join_s = 19;                 // a question interrupting the answer (barge-in, Talk now) this soon after the one it cut joins it; 0: never
+  double speculate_after_s = 20;               // start recognition after this much silence inside an utterance
 }
 
 // Where the voice hears and speaks.
@@ -104,9 +131,17 @@ message ReplyStart {
 
 message TextPiece {
   uint64 reply_id = 1;
-  string text = 2;                  // the answer's text as the model streams it, reasoning and tool
-                                    // payloads already removed by the core: the sidecar splits it
-                                    // into sentences (first clause early) and cleans it for speech
+  string text = 2;                  // version 1: the answer's text as the model streams it, which the sidecar
+                                    // splits into sentences. Version 2 (clause = true): one clause, cut and
+                                    // cleaned for speech by the core, spoken as it is
+  string language = 3;              // version 2: the clause's language (fr | en), tagged by the core
+  bool clause = 4;                  // version 2: always true
+}
+
+// One piece of speech in one language (version 2).
+message Clause {
+  string text = 1;
+  string language = 2;
 }
 
 message ReplyEnd {
@@ -121,6 +156,7 @@ message Say {
   string language = 3;
   bool force = 4;                   // speak even while muted or in quiet hours
   bool proactive = 5;
+  repeated Clause clauses = 6;      // version 2: `text` cut and tagged by the core, spoken in this order
 }
 
 message ListenNow {
@@ -138,6 +174,12 @@ message Filler {
   uint64 reply_id = 1;
   string text = 2;
   string language = 3;
+}
+
+// A short sound on the voice's device: the computer's speaker plays the sidecar's own tones, a robot its
+// built-in SOUND. The microphone ignores it (it never starts an utterance), and it never interrupts speech.
+message Earcon {
+  string sound = 1;                 // wake (listening opens), done (it closes), error
 }
 
 // A question typed in the app: the sidecar stops what it says, then treats it as heard, in
@@ -192,6 +234,9 @@ message Status {
   optional double listen_s = 7;     // with LISTENING: seconds left in the listening window, when sent
   bool hearing = 8;                 // someone is talking (or their words are being understood): the listening
                                     // window waits, listen_s is not sent; a Status follows when they are done
+  bool asked = 9;                   // with LISTENING: the window was asked for (Talk now, "Marvin." alone), not the
+                                    // follow-up window after an answer
+  string device = 10;               // the device it hears and speaks with: computer, or the robot's name
 }
 
 message Heard {
@@ -269,8 +314,10 @@ message Interrupted {
 
 message ReplySpoken {
   uint64 reply_id = 1;
-  map<string, double> latency = 2;  // first_chunk, tts, audio_start, filler_start, total (seconds,
-                                    // measured from the end of the question for audio_start and total)
+  map<string, double> latency = 2;  // first_chunk, tts, first_audio (its first sound synthesised),
+                                    // audio_start (queued on the speaker), playback_start (heard),
+                                    // filler_start, total (seconds, measured from the end of the question
+                                    // for first_audio, audio_start, playback_start and total)
   bool interrupted = 3;
   string text = 4;                  // what was actually said, cleaned for speech
   uint64 utterance_uid = 5;         // the question it answered (Heard.uid), 0 if none
@@ -313,7 +360,7 @@ message Backend {
 
 message VoiceChoice {
   string id = 1;                    // e.g. fr_FR-siwis-medium, or a macOS voice name
-  string engine = 2;                // piper | say | espeak
+  string engine = 2;                // piper | say | espeak | qwen
   string language = 3;
   bool installed = 4;
   string locale = 5;                // e.g. fr_FR (macOS voices), empty when unknown
