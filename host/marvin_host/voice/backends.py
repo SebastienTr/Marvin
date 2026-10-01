@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 STT_CHOICES = ("auto", "mlx", "faster-whisper")
-TTS_CHOICES = ("auto", "say", "piper", "espeak")
+TTS_CHOICES = ("auto", "qwen", "say", "piper", "espeak")
 STT_MODELS = ("tiny", "base", "small", "medium", "large-v3", "turbo")
 # Piper voices offered for download (rhasspy/piper-voices); installed ones are listed too
 PIPER_VOICES = ("fr_FR-siwis-medium", "fr_FR-tom-medium", "fr_FR-upmc-medium", "fr_FR-gilles-low",
@@ -64,7 +64,8 @@ def piper_voices() -> list[dict]:
 
 def tts_available() -> dict[str, bool]:
     """Which speech synthesis backends can run here."""
-    return {"auto": True, "say": sys.platform == "darwin" and bool(shutil.which("say")),
+    from .qwen_tts import qwen_available
+    return {"auto": True, "qwen": qwen_available() is not None, "say": sys.platform == "darwin" and bool(shutil.which("say")),
             "piper": importlib.util.find_spec("piper") is not None,
             "espeak": bool(shutil.which("espeak-ng") or shutil.which("espeak"))}
 

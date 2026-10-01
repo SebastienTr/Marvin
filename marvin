@@ -300,6 +300,24 @@ venv_ok() {
 
 VOICE_PACKAGES="sounddevice webrtcvad grpc grpc_health"
 
+# Marvin's own voice (Qwen3-TTS) runs through MLX on Apple Silicon (docs/voice.md, "Marvin's voice")
+apple_silicon() {
+    [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]
+}
+
+qwen_installed() {
+    "$VENV/bin/python" -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('mlx_audio') else 1)" 2>/dev/null
+}
+
+# the voice model's weights, downloaded once (about 1.5 GB) so the first answer does not wait for them
+ensure_qwen_weights() {
+    apple_silicon && qwen_installed || return 0
+    "$VENV/bin/python" -m marvin_host.voice.qwen_tts --check >/dev/null 2>&1 && return 0
+    step "Downloading Marvin's voice (Qwen3-TTS, about 1.5 GB, once) ..."
+    (cd "$ROOT/host" && "$VENV/bin/python" -m marvin_host.voice.qwen_tts --prefetch) ||
+        warn "could not download Marvin's voice (offline?): it speaks with the system voice until ./marvin restart"
+}
+
 # the voice's packages are installed (not imported: sounddevice needs PortAudio to import, which
 # the sidecar reports in the app with its fix)
 voice_installed() {
@@ -332,13 +350,14 @@ ensure_venv() {
             "$VENV/bin/python" -m pip install -q -e "$ROOT/host" || { warn "pip install failed (offline?)"; return 1; }
         fi
     fi
-    if [ "$extra" = voice ] && ! voice_installed; then
-        step "Adding the voice to host/.venv (a few minutes) ..."
+    if [ "$extra" = voice ] && { ! voice_installed || { apple_silicon && ! qwen_installed; }; }; then
+        step "Adding the voice to host/.venv (a few minutes; Marvin's own voice comes with it on Apple Silicon) ..."
         "$VENV/bin/python" -m pip install -q -e "$ROOT/host[sidecar,voice]" || {
             warn "could not install the voice's packages (offline?): Marvin starts without its voice; ./marvin restart later"
             return 1
         }
     fi
+    [ "$extra" = voice ] && ensure_qwen_weights
     return 0
 }
 
@@ -687,6 +706,17 @@ cmd_doctor() {
             ok "Python environment: host/.venv"
             if voice_installed; then
                 ok "the voice's Python packages are installed (voice sidecar)"
+                if apple_silicon; then
+                    if ! qwen_installed; then
+                        note "Marvin's own voice (Qwen3-TTS, mlx-audio) is not installed: it speaks with the system voice"
+                        fix "./marvin restart installs it"
+                    elif q=$(cd "$ROOT/host" && "$VENV/bin/python" -m marvin_host.voice.qwen_tts --check 2>/dev/null); then
+                        ok "Marvin's own voice: $q"
+                    else
+                        note "Marvin's own voice: ${q:-the model is not downloaded yet}"
+                        fix "./marvin restart downloads it (about 1.5 GB, once)"
+                    fi
+                fi
                 if [ "$OS" = linux ] && ! "$VENV/bin/python" -c 'import sounddevice' >/dev/null 2>&1; then
                     note "PortAudio is missing: the voice cannot use this computer's microphone"
                     fix "sudo apt install libportaudio2"

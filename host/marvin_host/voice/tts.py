@@ -2,6 +2,8 @@
 the robot's speaker later).
 
 Backends (all local):
+- `QwenTTS` (qwen_tts.py): Marvin's own voice, Qwen3-TTS cloning a reference recording, one voice
+  for French and English, streamed; on Apple Silicon through MLX (`pip install mlx-audio`).
 - `MacSayTTS`: macOS `say`, nothing to install. Picks a voice for the language (Thomas for French,
   Daniel for English; the enhanced/premium versions if you downloaded them in System Settings).
 - `PiperTTS`: Piper neural voices (`pip install piper-tts`), better than `say` on Linux and close
@@ -34,7 +36,8 @@ log = logging.getLogger("marvin.voice.tts")
 
 # Words a voice mispronounces, respelled for that voice's language. A French voice reads "Marvin"
 # the French way (/maʁ.vɛ̃/, "Marv-un"); the robot's name is English (/ˈmɑːr.vɪn/), which a French
-# voice gets closest to from "Marvine".
+# voice gets closest to from "Marvine". Only for the voices that need it (a TTS with `respells`
+# False, Qwen3-TTS, reads the name as its reference says it).
 PRONUNCIATIONS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     "fr": [(re.compile(r"\bMarvin\b", re.IGNORECASE), "Marvine")],
 }
@@ -48,6 +51,10 @@ def pronounce(text: str, language: str) -> str:
 
 
 class TTS(Protocol):
+    """Optional attributes: `multilingual` (one voice reads every language: each clause is said in
+    its own), `respells` (False: no `pronounce()`), `stream(text, language)` (the clause in pieces,
+    as they are made)."""
+
     def synthesize(self, text: str, language: str = "fr") -> tuple[np.ndarray, int]:
         """-> (mono int16 PCM, sample rate)."""
         ...
@@ -145,6 +152,33 @@ class FallbackTTS:
         self.primary, self.fallback = primary, fallback
         self._failed = False
 
+    @property
+    def active(self):
+        return self.fallback if self._failed else self.primary
+
+    @property
+    def multilingual(self) -> bool:
+        return getattr(self.active, "multilingual", False)
+
+    @property
+    def respells(self) -> bool:
+        return getattr(self.active, "respells", True)
+
+    def stream(self, text: str, language: str = "fr"):
+        """The primary's pieces when it streams; if it fails before its first piece, the fallback."""
+        if not self._failed and hasattr(self.primary, "stream"):
+            started = False
+            try:
+                for piece in self.primary.stream(text, language):
+                    started = True
+                    yield piece
+                return
+            except Exception as e:                          # noqa: BLE001
+                if started:
+                    raise
+                self._fail(e)
+        yield self.synthesize(text, language)
+
     def warm(self, language: str = "fr") -> None:
         """Loads (and downloads if needed) the primary voice now rather than at the first answer."""
         try:
@@ -240,7 +274,7 @@ class FakeTTS:
         return (np.sin(2 * np.pi * 220 * t) * 3000).astype(np.int16), 16000
 
 
-BACKENDS = ("auto", "say", "piper", "espeak")
+BACKENDS = ("auto", "qwen", "say", "piper", "espeak")
 
 
 PIPER_NAME = re.compile(r"^[a-z]{2,3}_[A-Z]{2}-[\w]+-(x_low|low|medium|high)$")
@@ -282,6 +316,9 @@ def voices_for(kind: str, voice: str | None, language: str | None,
     out: dict[str, dict[str, str] | None] = {"piper": None, "say": None, "espeak": None}
     if not voice:
         return out
+    from .qwen_tts import voices as qwen_voices
+    if kind == "qwen" or voice in qwen_voices():
+        return out                                  # a Qwen3-TTS voice: the others keep their defaults
     lang = voice_language(voice, say_voices) or language or "fr"
     if kind in ("piper", "say", "espeak"):
         owner = kind
@@ -297,11 +334,32 @@ def voices_for(kind: str, voice: str | None, language: str | None,
 
 
 def make_tts(kind: str = "auto", voice: str | None = None, language: str | None = None) -> TTS:
-    """'say', 'piper', 'espeak' or 'auto' (Piper if installed, else say on macOS, else espeak-ng).
-    `voice` (a `say` voice name, a Piper voice name or .onnx path, an espeak voice) replaces the
-    default voice of the language it speaks (`language` if that cannot be told), see `voices_for`."""
+    """'qwen', 'say', 'piper', 'espeak' or 'auto' (Qwen3-TTS where it runs about in real time, else
+    Piper if installed, else say on macOS, else espeak-ng; the next one is the fallback if the first
+    fails). `voice` (a Qwen3-TTS voice: "marvin"; a `say` voice name, a Piper voice name or .onnx
+    path, an espeak voice) replaces the default voice of the language it speaks (`language` if that
+    cannot be told), see `voices_for`."""
     if kind not in BACKENDS:
         raise ValueError(f"unknown TTS backend {kind!r}, expected one of {BACKENDS}")
+    if kind in ("qwen", "auto"):
+        from .qwen_tts import QwenTTS, fast_enough, qwen_available
+        if kind == "qwen" or fast_enough(qwen_available()):
+            try:
+                qwen = QwenTTS(voice)
+            except Exception as e:                          # noqa: BLE001 - not installed, no weights, no network
+                if kind == "qwen":
+                    raise
+                log.warning("Qwen3-TTS failed to load (%s): using the other voices", e)
+            else:
+                try:
+                    return FallbackTTS(qwen, _classic("auto", None, language))
+                except RuntimeError:
+                    return qwen
+    return _classic(kind, voice, language)
+
+
+def _classic(kind: str, voice: str | None, language: str | None) -> TTS:
+    """say, Piper, espeak-ng; "auto": the best of them here."""
     v = voices_for(kind, voice, language, _say_voices() if voice else [])
     if kind == "say":
         return MacSayTTS(v["say"])

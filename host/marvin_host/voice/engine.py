@@ -1194,6 +1194,9 @@ def load_tts(c: VoiceConfig) -> TTS:
         log.info("tip: pip install piper-tts for ~5x faster speech (Marvin uses it automatically)")
     try:
         tts.synthesize("Bonjour." if language == "fr" else "Hello.", language)
+        if getattr(tts, "multilingual", False):         # one voice for both: warm the other language too
+            other = "en" if language == "fr" else "fr"
+            tts.synthesize("Hello." if other == "en" else "Bonjour.", other)
         log.info("speech synthesis ready in %.1f s", time.monotonic() - t)
     except Exception as e:
         log.warning("speech synthesis failed to start: %s", e)

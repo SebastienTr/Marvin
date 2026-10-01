@@ -120,6 +120,11 @@ def options() -> pb.VoiceOptions:
     tts = backends.tts_available()
     for name, ok in tts.items():
         out.tts.add(name=name, installed=ok, why="" if ok else _why_not("tts", name))
+    if tts["qwen"]:
+        from ...voice import qwen_tts
+        backend = qwen_tts.qwen_available()
+        for name in qwen_tts.voices():
+            out.voices.add(id=name, engine="qwen", language="", installed=qwen_tts.weights_downloaded(backend))
     if tts["piper"]:
         for v in backends.piper_voices():
             out.voices.add(id=v["name"], engine="piper", language=v["name"][:2], installed=v["installed"])
@@ -133,6 +138,7 @@ def _why_not(kind: str, name: str) -> str:
         ("stt", "auto"): 'no speech recognition installed: pip install -e ".[voice]"',
         ("stt", "mlx"): "needs an Apple Silicon Mac and mlx-whisper",
         ("stt", "faster-whisper"): "pip install faster-whisper",
+        ("tts", "qwen"): "Apple Silicon: pip install mlx-audio (./marvin up does it); elsewhere: pip install qwen-tts",
         ("tts", "say"): "macOS only",
         ("tts", "piper"): "pip install piper-tts",
         ("tts", "espeak"): "install espeak-ng",
