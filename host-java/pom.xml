@@ -37,6 +37,7 @@
     <module>marvin-adapter-persistence</module>
     <module>marvin-adapter-llm</module>
     <module>marvin-adapter-sidecar</module>
+    <module>marvin-adapter-camera</module>
     <module>marvin-app</module>
   </modules>
 
@@ -99,6 +100,11 @@
       <dependency>
         <groupId>marvin.host</groupId>
         <artifactId>marvin-adapter-sidecar</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>marvin.host</groupId>
+        <artifactId>marvin-adapter-camera</artifactId>
         <version>${project.version}</version>
       </dependency>
       <!-- third party -->

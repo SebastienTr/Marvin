@@ -13,6 +13,7 @@ import marvin.host.application.memory.port.out.MemoryListener;
 import marvin.host.application.presence.port.out.PresenceHistoryListener;
 import marvin.host.application.settings.port.out.SettingsListener;
 import marvin.host.application.system.port.out.HostLogListener;
+import marvin.host.application.vision.port.out.CameraListener;
 import marvin.host.domain.presence.history.StoredEvent;
 import marvin.host.domain.settings.AppSettings;
 import marvin.host.domain.system.LogEntry;
@@ -22,7 +23,7 @@ import marvin.host.domain.system.LogEntry;
  * bounded queue: a stuck client misses messages, it never blocks the brain.
  */
 public final class EventHub implements PresenceHistoryListener, HostLogListener, SettingsListener, VoiceListener,
-        MemoryListener {
+        MemoryListener, CameraListener {
     static final int QUEUE = 256;
 
     /** One message: an SSE event name and its payload (serialized when sent). */
@@ -85,6 +86,12 @@ public final class EventHub implements PresenceHistoryListener, HostLogListener,
         m.put("kind", kind);
         m.putAll(payload);
         publish("memory", m);
+    }
+
+    /** A camera took a picture ({@code camera} messages: which camera, why, its size, when; never the picture). */
+    @Override
+    public void pictureTaken(Map<String, Object> picture) {
+        publish("camera", picture);
     }
 
     public void devicesChanged(List<Map<String, Object>> devices) {

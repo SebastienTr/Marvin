@@ -56,6 +56,7 @@ class ArchitectureTest {
             .adapter("persistence", "marvin.host.adapter.persistence..")
             .adapter("llm", "marvin.host.adapter.llm..")
             .adapter("sidecar", "marvin.host.adapter.sidecar..")
+            .adapter("camera", "marvin.host.adapter.camera..")
             .withOptionalLayers(true)
             .ignoreDependency(resideIn("marvin.host.app.."), DescribedPredicate.alwaysTrue());
 

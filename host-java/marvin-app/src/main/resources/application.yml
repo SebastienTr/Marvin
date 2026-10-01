@@ -64,6 +64,15 @@ marvin:
     # the memory worker (idle and nightly passes); its models and hours are the owner's memory settings
     worker: ${MARVIN_MEMORY_WORKER:true}
     tick-s: 30
+  camera:
+    # Marvin's eyes (docs/vision.md): which camera is the voice setting "camera" (auto, computer, robot, off).
+    # The computer's camera is opened by ffmpeg for one picture; empty: ffmpeg from the PATH, then Homebrew's places
+    ffmpeg: ${MARVIN_FFMPEG:}
+    # macOS: avfoundation's index or name (0: the built-in camera); Linux: a V4L2 device (/dev/video0)
+    device: ${MARVIN_CAMERA_DEVICE:}
+    video-size: ${MARVIN_CAMERA_SIZE:1280x720}
+    # ffmpeg input arguments instead of a camera, e.g. a test pattern: -f lavfi -i testsrc2=size=1280x720:rate=30
+    input: ${MARVIN_CAMERA_INPUT:}
   db:
     # external: the PostgreSQL at spring.datasource.url (Docker); embedded: started by the host
     mode: ${MARVIN_DB_MODE:external}
