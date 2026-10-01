@@ -75,7 +75,7 @@ public class VoiceWiring {
         voice.setCamera(camera);                            // the look tool, while a camera can take a picture
         voice.addListener(hub);
         voice.addListener((kind, payload) -> logLine(hostLog, kind, payload));
-        voice.addListener(new VoiceChimes(chimes));        // the voice's moments on the bench board's buzzer
+        voice.addListener(new VoiceChimes(chimes, voice::earcon));      // the voice's earcons, on one device
         bus.subscribe(voice::onPresenceEvent);
         return voice;
     }

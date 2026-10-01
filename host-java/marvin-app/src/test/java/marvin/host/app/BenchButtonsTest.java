@@ -91,41 +91,60 @@ class BenchButtonsTest {
     }
 
     private static Map<String, Object> voiceState(String state, String status, boolean muted, boolean chime) {
+        return voiceState(state, status, muted, chime, false, "buzzer");
+    }
+
+    private static Map<String, Object> voiceState(String state, String status, boolean muted, boolean chime, boolean asked,
+                                                  String earcons) {
         Map<String, Object> m = new HashMap<>();
         m.put("state", state);
         m.put("status", status);
         m.put("muted", muted);
         m.put("chime", chime);
         m.put("listen_s", null);
+        m.put("asked", asked);
+        m.put("earcons", chime ? earcons : "none");
         return m;
+    }
+
+    private static Map<String, Object> asked(String earcons) {
+        return voiceState("on", "listening", false, true, true, earcons);
     }
 
     @Test
     void chimesFollowTheVoice() {
-        assertThat(VoiceChimes.chime(voiceState("on", "idle", false, true), voiceState("on", "listening", false, true)))
-                .isEqualTo("wake");
+        Map<String, Object> idle = voiceState("on", "idle", false, true);
+        assertThat(VoiceChimes.chime(idle, asked("buzzer"))).isEqualTo("wake");
+        assertThat(VoiceChimes.chime(voiceState("on", "speaking", false, true), asked("buzzer")))
+                .as("Talk now while it speaks").isEqualTo("wake");
         assertThat(VoiceChimes.chime(voiceState("on", "speaking", false, true), voiceState("on", "listening", false, true)))
                 .as("the follow-up window after an answer").isNull();
-        assertThat(VoiceChimes.chime(voiceState("on", "listening", false, true), voiceState("on", "thinking", false, true)))
-                .isEqualTo("done");
-        assertThat(VoiceChimes.chime(voiceState("on", "listening", false, true), voiceState("on", "idle", false, true)))
-                .isEqualTo("done");
-        assertThat(VoiceChimes.chime(voiceState("on", "idle", false, true), voiceState("error", "off", false, true)))
-                .isEqualTo("error");
-        assertThat(VoiceChimes.chime(voiceState("on", "idle", false, true), voiceState("on", "idle", true, true)))
-                .isEqualTo("done");
-        assertThat(VoiceChimes.chime(voiceState("on", "idle", true, true), voiceState("on", "idle", false, true)))
-                .isEqualTo("wake");
+        assertThat(VoiceChimes.chime(voiceState("on", "listening", false, true), idle))
+                .as("the follow-up window closing").isNull();
+        assertThat(VoiceChimes.chime(asked("buzzer"), voiceState("on", "thinking", false, true))).isEqualTo("done");
+        assertThat(VoiceChimes.chime(asked("buzzer"), idle)).isEqualTo("done");
+        assertThat(VoiceChimes.chime(idle, voiceState("error", "off", false, true))).isEqualTo("error");
+        assertThat(VoiceChimes.chime(idle, voiceState("on", "idle", true, true))).isEqualTo("done");
+        assertThat(VoiceChimes.chime(voiceState("on", "idle", true, true), idle)).isEqualTo("wake");
         assertThat(VoiceChimes.chime(null, voiceState("on", "idle", true, true))).isNull();
-        assertThat(VoiceChimes.chime(voiceState("on", "idle", false, true), voiceState("on", "listening", false, false)))
+        assertThat(VoiceChimes.chime(idle, voiceState("on", "listening", false, false, true, "none")))
                 .as("chime setting off").isNull();
 
-        VoiceChimes listener = new VoiceChimes(chimes);
-        listener.onVoice("voice", voiceState("on", "idle", false, true));
+        List<String> device = new ArrayList<>();
+        VoiceChimes listener = new VoiceChimes(chimes, sound -> device.add(sound));
+        listener.onVoice("voice", idle);
         listener.onVoice("transcript", Map.of("kind", "heard"));
-        listener.onVoice("voice", voiceState("on", "listening", false, true));
+        listener.onVoice("voice", asked("buzzer"));                    // the voice's device has none: the buzzer
         listener.onVoice("voice", voiceState("on", "thinking", false, true));
         listener.onVoice("voice", voiceState("on", "speaking", false, true));
         assertThat(chimed).containsExactly("wake", "done");
+        listener.onVoice("voice", voiceState("on", "speaking", false, true, false, "device"));
+        listener.onVoice("voice", asked("device"));                    // the computer's speaker: never both
+        assertThat(device).containsExactly("wake");
+        assertThat(chimed).containsExactly("wake", "done");
+        VoiceChimes refused = new VoiceChimes(chimes, sound -> false);   // the voice could not play it
+        refused.onVoice("voice", idle);
+        refused.onVoice("voice", asked("device"));
+        assertThat(chimed).containsExactly("wake", "done", "wake");
     }
 }

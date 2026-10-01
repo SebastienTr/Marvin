@@ -17,7 +17,6 @@ const chat = new ConvoBuilder();
 const ids = new Set();
 let lastReply = null;
 let follow = true;
-let talkNowAt = 0;
 
 const live = {
   levels: new Array(WAVE_BARS).fill(0),
@@ -258,13 +257,13 @@ function updateLive(v) {
   live.mode = mode;
   if (was !== "listening" && mode === "listening") {
     live.windowKind = was === "speaking" || was === "thinking" ? "follow-up" : "asked";
-    // the voice chimes on the computer's speaker when a window opens; the browser adds its own note only when
-    // this page pressed Talk now, or when the voice's chime is off
-    if (live.windowKind === "asked" && (performance.now() - talkNowAt < 3000 || v.chime === false)) earcons.play("open");
+    // the voice's earcons play on one device (its own, or a bench board's buzzer: v.earcons); this page plays its own
+    // note only when none does, so a moment never chimes twice
+    if (live.windowKind === "asked" && v.earcons === "none") earcons.play("open");
   }
   if (was === "listening" && mode === "idle") {
     live.closingUntil = performance.now() + 1600;
-    if (live.windowKind === "asked" && performance.now() - earcons.lastMiss > 800) earcons.play("close");
+    if (live.windowKind === "asked" && v.earcons === "none" && performance.now() - earcons.lastMiss > 800) earcons.play("close");
   }
   if (mode !== "idle") live.closingUntil = 0;
   $("listen").dataset.mode = mode;
@@ -437,7 +436,8 @@ async function voiceCommand(path, body) {
 // ------------------------------------------------------------------ sounds (earcons)
 // Short notes synthesised by this browser (WebAudio, no files): listening opens (two rising notes), closes
 // without a question (two falling notes), not understood while listening (a low blip), an answer starts (a
-// faint tick). Off in Marvin > Preferences. Nothing plays before a first click or key press on the page.
+// faint tick). Off in Marvin > Preferences. Nothing plays before a first click or key press on the page. Opening and
+// closing are the voice's own earcons: this page plays them only when no device of the voice does (v.earcons "none").
 
 const earcons = {
   ctx: null,
@@ -576,7 +576,6 @@ export function setup() {
     const v = app.voice;
     if (!v || v.state !== "on") return;
     const stop = v.status === "listening";
-    if (!stop) talkNowAt = performance.now();
     emit("voice", { ...v, status: stop ? "idle" : "listening", muted: false, listen_s: stop ? null : 6 });
     voiceCommand("/api/voice/listen", { on: !stop });
   });
