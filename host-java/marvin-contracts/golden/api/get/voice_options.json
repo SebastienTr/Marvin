@@ -53,7 +53,8 @@
     ],
     "voices": {
       "piper": [],
-      "say": []
+      "say": [],
+      "qwen": []
     },
     "languages": [
       "auto",
@@ -91,7 +92,8 @@
     ],
     "voices": {
       "piper": [],
-      "say": []
+      "say": [],
+      "qwen": []
     },
     "languages": [
       "string"

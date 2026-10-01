@@ -112,7 +112,7 @@ class VoiceServiceTest {
                     List.of(new Backend("auto", true, ""), new Backend("say", false, "macOS only"),
                             new Backend("piper", true, ""), new Backend("espeak", false, "install espeak-ng")),
                     List.of(new Voice("fr_FR-siwis-medium", "piper", "fr", "", true),
-                            new Voice("Thomas", "say", "fr", "fr_FR", true))));
+                            new Voice("Thomas", "say", "fr", "fr_FR", true), new Voice("marvin", "qwen", "", "", false))));
         }
 
         <T extends Command> List<T> sent(Class<T> type) {
@@ -761,7 +761,8 @@ class VoiceServiceTest {
         assertThat(o.get("llm_models")).isEqualTo(List.of("qwen3:4b-instruct"));
         assertThat(o.get("platform")).isEqualTo("linux");
         assertThat(o.get("voices")).isEqualTo(Map.of("piper", List.of(Map.of("name", "fr_FR-siwis-medium", "installed", true)),
-                "say", List.of(Map.of("name", "Thomas", "locale", "fr_FR"))));
+                "say", List.of(Map.of("name", "Thomas", "locale", "fr_FR")),
+                "qwen", List.of(Map.of("name", "marvin", "installed", false))));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tools = (List<Map<String, Object>>) o.get("tools");
         assertThat(tools).extracting(t -> t.get("name")).containsExactly("get_weather");

@@ -422,7 +422,7 @@ function setupSettings() {
 // ------------------------------------------------------------------ voice settings
 
 const STT_LABELS = { auto: "Auto", mlx: "MLX (Apple GPU)", "faster-whisper": "faster-whisper (CPU)" };
-const TTS_LABELS = { auto: "Auto (best available)", say: "macOS say", piper: "Piper", espeak: "espeak-ng" };
+const TTS_LABELS = { auto: "Auto (best available)", qwen: "Marvin’s voice (Qwen3-TTS)", say: "macOS say", piper: "Piper", espeak: "espeak-ng" };
 
 function fillSelect(sel, options, value) {
   sel.replaceChildren();
@@ -444,8 +444,15 @@ function fillVoices() {
   const tts = $("v-tts").value;
   const cur = app.voiceSettings ? app.voiceSettings.tts_voice : null;
   const opts = [{ value: "", label: "Default" }];
-  const o = voiceOptions || { voices: { piper: [], say: [] }, tts_backends: [] };
+  const o = voiceOptions || { voices: { piper: [], say: [], qwen: [] }, tts_backends: [] };
   const piperOk = (o.tts_backends.find((b) => b.name === "piper") || {}).available;
+  const qwenOk = (o.tts_backends.find((b) => b.name === "qwen") || {}).available;
+  // Marvin's own voice reads French and English alike; the other engines have a voice per language
+  if (tts === "qwen" || (tts === "auto" && qwenOk)) {
+    for (const v of o.voices.qwen || []) opts.push({ value: v.name, label: v.name === "marvin" ? `Marvin${v.installed ? "" : " (downloads once)"}` : v.name });
+    fillSelect($("v-voice"), opts, cur || "");
+    return;
+  }
   if (tts === "piper" || (tts === "auto" && piperOk)) for (const v of o.voices.piper) opts.push({ value: v.name, label: v.installed ? v.name : `${v.name} (downloads once)` });
   if (tts === "say" || (tts === "auto" && !piperOk)) for (const v of o.voices.say) opts.push({ value: v.name, label: `${v.name} (${v.locale})` });
   fillSelect($("v-voice"), opts, cur || "");

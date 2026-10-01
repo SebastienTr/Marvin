@@ -1729,6 +1729,7 @@ public final class VoiceService implements VoiceControl {
         List<Map<String, Object>> tts = new ArrayList<>();
         List<Map<String, Object>> piper = new ArrayList<>();
         List<Map<String, Object>> say = new ArrayList<>();
+        List<Map<String, Object>> qwen = new ArrayList<>();
         boolean piperOk = false;
         if (o != null) {
             for (VoiceSidecar.Backend b : o.tts()) {
@@ -1740,6 +1741,8 @@ public final class VoiceService implements VoiceControl {
                     piper.add(ordered("name", v.id(), "installed", v.installed()));
                 } else if ("say".equals(v.engine())) {
                     say.add(ordered("name", v.id(), "locale", v.locale().isEmpty() ? v.language() : v.locale()));
+                } else if ("qwen".equals(v.engine())) {
+                    qwen.add(ordered("name", v.id(), "installed", v.installed()));
                 }
             }
         } else {
@@ -1750,6 +1753,7 @@ public final class VoiceService implements VoiceControl {
         Map<String, Object> voices = new LinkedHashMap<>();
         voices.put("piper", piperOk ? piper : List.of());
         voices.put("say", say);
+        voices.put("qwen", qwen);
         List<String> sttModels = new ArrayList<>(List.of("auto"));
         sttModels.addAll(VoiceSettings.STT_MODELS);
         List<Map<String, Object>> catalog = new ArrayList<>();

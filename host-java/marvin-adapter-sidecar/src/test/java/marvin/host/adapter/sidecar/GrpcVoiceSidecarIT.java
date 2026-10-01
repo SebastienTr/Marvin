@@ -129,7 +129,7 @@ class GrpcVoiceSidecarIT {
         assertThat(signals).anyMatch(s -> s instanceof VoiceSidecar.Status st && st.state().equals("speaking"));
 
         VoiceSidecar.Options o = voice.options().orElseThrow();
-        assertThat(o.tts()).extracting(VoiceSidecar.Backend::name).contains("auto", "say", "piper", "espeak");
+        assertThat(o.tts()).extracting(VoiceSidecar.Backend::name).contains("auto", "qwen", "say", "piper", "espeak");
         assertThat(o.sttModels()).contains("auto", "turbo");
     }
 
