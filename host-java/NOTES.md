@@ -2164,3 +2164,124 @@ describes it, and the conversation's model answers from the description (docs/vi
 - Not run against the real robot's camera (the firmware's `/capture` and `/stream` are from its source).
 - The first look after start pays the vision model's loading when it is not the voice's model.
 - A look is one picture: no follow-up "look closer", no crop.
+
+## Marvin's own voice, and the voice's plumbing (2026-10-01)
+
+The owner chose a voice for Marvin ("Malicieux", made with Qwen3-TTS VoiceDesign) and asked for the plumbing around
+the voice to be straightened out first: a read-only audit had found Talk-now races, duplicated defaults and decisions
+between Java and Python, three earcon systems, and a voice that could change language mid-reply. The Python host's
+conversation, kept until now as a tool, is retired (the owner approved it).
+
+### What exists
+
+- **Contract version 2** (`voice.proto`, fields only added): `Configure.device` (`AudioDeviceProfile`: kind, robot,
+  duplex, echo tail, output latency, VAD floor, "too quiet", VAD aggressiveness, earcons, AEC, PortAudio devices),
+  every setting sent with its value (`continue_join_s`, `speculate_after_s` added; nothing means "the sidecar's
+  default" any more), `TextPiece.language` and `clause`, `Say.clauses`, the `Earcon` command, `Status.asked` and
+  `Status.device`. The sidecar refuses another contract version with a fix (`./marvin restart`).
+- **Java decides, once**: `VoiceSettings` holds every default (`FOLLOW_UP_S` ... `CONTINUE_JOIN_S`) and the two device
+  profiles (`AudioDeviceProfile.COMPUTER_DEFAULT`, `ROBOT_DEFAULT`; `devices` in `voice.json`, the old top-level
+  `duplex`/`echo_tail_s`/`input_device`/`output_device` still set the computer's). `VoiceSidecar.Settings.of(config,
+  device)`; `VoiceService.sidecarSettings` chooses the device (`audio_route`, and `VoiceRobotAudio.audioRobot()`: the
+  first connected robot with audio, in link order); `robotAudioChanged` re-sends only when the device changed.
+  `golden/voice/configure_defaults.json` is written by `GrpcVoiceSidecarTest` (`-Dmarvin.contract.write=true`) and the
+  Python tests check the sidecar's own copies against it.
+- **One splitter, one cleaner, the language per clause**: `AnswerLoop` cuts sentences (as before), `VoiceService` cleans
+  them (`SpeechText.cleanForSpeech`) and tags clauses (`SpeechLanguage`: French/English/neither per word; a run of 3+
+  words of the other language with none of the reply's is cut out; a sentence with none of the reply's language is the
+  other's). Proactive `Say` carries its clauses; a typed `Ask` its guessed language; a failed answer with nothing said
+  gets the persona's sentence as a clause (the sidecar has no words of its own).
+- **Python audio half** (`voice/`): `device.py` (`DeviceProfile`, `AudioDevice`: source, sink, profile, the
+  computer's earcon tones, `stop_playback` that waits for real silence), `engine.py` takes a device:
+  `swap_device` (the capture thread moves to the new source, the gate and the VAD follow the profile, models and state
+  stay), `earcon`, `listen_asked`; `echo.EchoGate` is three-state (open, mask, closed) with tokens and `cut()`;
+  `Segmenter.feed(frame, masked)`; `filters.speech_evidence(seg, min_dbfs)`; `SpeakerSink.stop` stays busy until the
+  device played out its buffer, `playback_started`; `RobotSpeakerSink.stop` busy for 60 ms. `backends.py` (preflight,
+  what can run) replaces `control.py`'s part the sidecar used.
+- **Races fixed** (`engine.py`): the cancel check, "speaking" and `sink.play` are one step under `_lock`, so nothing of a
+  cut answer plays or sets the status after the cut; `_interrupt` stops the sink, then a short thread waits for the
+  speaker to be silent and `gate.cut(0.1)`; Talk now while speaking softens the gate (masked, not deaf: the pre-roll is
+  kept) and sets `_listen_from` 0.5 s before the press; the mouth thread no longer moves `_listen_from` for a cut job;
+  `_busy()` ignores a cut job still finishing (the next words in the window need no name); a cut answer does not wait
+  for a synthesis still running; speculation runs while busy when a barge-in is possible (duplex) or a window is open;
+  the long endpoint starts its own transcription when there is no speculative one.
+- **Talk now while thinking** (`VoiceService.answer`): a turn cut before any word (`interrupted` and nothing said)
+  leaves no reply entry and is not remembered; the joined question's heard entry then `replaces` it.
+- **Earcons**: `VoiceChimes` (app module) is the one decider (wake when a window the owner asked for opens, from any
+  state; done when it closes; mute/unmute; error), and routes each sound to the voice's device
+  (`VoiceService.earcon` → `Earcon` → the sidecar plays its tones, or the robot's `SOUND`, masking the microphone) or,
+  when the voice cannot, to the bench boards' buzzers. The snapshot has `asked`, `device`, `earcons`
+  (`device`|`buzzer`|`none`); the app plays its open/close notes only with `none`. The Python chime is gone.
+- **Qwen3-TTS** (`voice/qwen_tts.py`, `voices/marvin/`): `QwenTTS` (`multilingual`, `respells` False, `stream`), MLX
+  backend (mlx-audio 0.5.7: `load_model("mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16")`, `generate(text, ref_audio,
+  ref_text, lang_code="french"|"english", stream=True, streaming_interval=0.32)`, the reference loaded once; its codes
+  are cached by mlx-audio), PyTorch backend (qwen-tts 0.1.1: `create_voice_clone_prompt` once, cached in
+  `~/.local/share/marvin/voices/<voice>-<model>-qwen-tts-<v>-torch-<v>.pt`; `generate_voice_clone(..., language=...)`).
+  `make_tts("auto")` prefers it where it is fast (MLX, or CUDA/MPS), inside a `FallbackTTS` (stream, `multilingual`
+  and `respells` follow the active engine). `load_tts` warms both languages. `python -m marvin_host.voice.qwen_tts
+  --check | --prefetch | --say`. pyproject: `mlx-audio>=0.5.7` in `voice` on darwin arm64, a `qwen` extra.
+  `./marvin up`/`restart` install it and download the weights (`ensure_qwen_weights`), `doctor` reports it. Options and
+  the app: `tts` "qwen", voices `qwen: [{name: marvin, installed}]`, **Marvin's voice (Qwen3-TTS)**.
+- **Latency**: `first_audio`, `playback_start` (the sound card's first callback after a silence, or the play call,
+  plus the output latency) next to `first_chunk`, `tts`, `audio_start`; `first_word_s` uses `playback_start`;
+  `VoiceService.latencyLine` logs one line per answer, the sidecar logs its part; the inspector's **Speaker** stage.
+  Thinking was already off for every request (`think: false`, checked by `OllamaLanguageModelTest`).
+- **Retired** (Python): `voice/assistant.py`, `llm.py`, `tools/`, `proactive.py`, `control.py`, `cli.py` (`talk`,
+  `run --voice`), `persona.py` (its context lines kept as `ui/demo_prompt.py`, demo data only), `buttons.py`, the Python
+  app's voice routes (it says the voice is the Java host's). `ui/demo.py` writes today's scripted conversation
+  (`seed_today`) without a controller; `demo_seed.py` uses it. Contracts: `api_snapshots.py` and
+  `conversation_vectors.py` deleted; `golden/api` and `golden/conversation` are hand-kept specifications (README).
+
+### Decisions and deviations
+
+1. **The route and the defaults are Java's only.** The sidecar gets a robot name it may never have seen a `RobotLink`
+   for (`RobotRelay.device(name)`): the core relays only what it chose. Python's dataclass defaults stay for tests and
+   tools, checked against the golden file, so they cannot drift silently.
+2. **Swap, not rebuild**: a `Configure` whose settings are equal and only the device differs swaps the device; any other
+   change rebuilds the engine with the cached models (as before).
+3. **Masked, not deaf**: a three-state gate keeps the earcon and the moment after Talk now in the pre-roll without letting
+   them start an utterance; only Marvin's own speech (and its tail) closes the microphone.
+4. **One voice per reply** for engines with a voice per language (the first clause's language); Qwen3-TTS reads each
+   clause in its own language with the same cloned voice.
+5. **Earcon routing in the app module**, where the conversation and robot contexts already meet (`VoiceChimes`), rather
+   than a new port on the conversation side.
+6. **The reference is committed, the clone prompt is not**: the wav (545 kB) and its transcript are the voice; the
+   encoded prompt depends on the model and the package versions and is remade on first use (torch) or held in memory
+   (mlx).
+7. **The API spec was patched by hand** (voice snapshot: `hearing`, `asked`, `device`, `earcons`; settings: `vision_model`,
+   `camera`; voice options: `qwen`): the recorder needed the Python app's voice, which is gone.
+
+### Verified
+
+- Python: `python -m pytest -q` (host): 313 passed, 2 skipped. New: `test_voice_races.py` (Talk now during a held
+  synthesis plays nothing after and stays listening; Talk now while speaking with a synthesis still running hears the
+  next question whole and joins it; Stop reopens the microphone only once the sink is silent; Talk now while thinking
+  leaves no reply and the next question continues it; the long endpoint without speculation; the device swapped under a
+  running voice; earcons on the computer and the robot; one voice per reply vs a multilingual engine; streaming pieces
+  and the new latencies), `test_voice_qwen.py` (fake mlx-audio and qwen-tts: languages per clause, the reference, the
+  cached clone prompt, auto vs a slow backend, the fallback before the first sound, the options), sidecar tests for
+  contract 2 (defaults equal the golden, the robot device chosen by the core, the swap back to the computer without
+  STARTING, the robot's earcon, an older core refused). `voicekit.py` replaces the in-process assistant in the engine
+  tests.
+- Java: `mvn -o clean verify` (Temurin 25): all green, `GrpcVoiceSidecarIT` against the real Python sidecar in its test
+  mode (3 tests: answer, robot route with the swap and the earcon, restart). New: `SpeechLanguageTest`,
+  `VoiceServiceTest` +4 (clauses and languages, Talk now while thinking, earcons and the typed question's language,
+  the first word and the latency line), `GrpcVoiceSidecarTest` (contract 2, the defaults' specification),
+  `BenchButtonsTest` (the earcon rules and routing). Docker is not available: the Testcontainers ITs (`ApiContractIT`,
+  `VoiceEndToEndIT`) did not run.
+- Qwen3-TTS for real, once, on this container's CPU (qwen-tts 0.1.1, PyTorch 2.14 CPU, the 1.7B Base already
+  downloaded): "C'est une bonne idée, Marvin est content." 2.24 s of speech in 103 s (the clone prompt made and cached
+  on the way); faster-whisper `small` heard French (p=0.91). The MLX path was not run (no Apple GPU here).
+  English with the cached clone prompt: 2.32 s of speech in about 60 s, transcribed word for word.
+- e2e (`e2e.py p1`, `./marvin demo --voice` with the fake sidecar and a stub model server): 55/56. Every voice check
+  passed (voice on, typed question, Talk now, mute, stop, settings, the inspector with the Speaker stage). The one
+  failure, "Home layout reset", is older than this work: the check's expected list lacks the `room` module that
+  `index.html` already had.
+
+### Known gaps
+
+- The MLX backend never ran here (no Apple GPU): the first `./marvin up` on the Mac is its first real run. If
+  mlx-audio and mlx-whisper disagree on a shared dependency, pip says so then.
+- The PyTorch backend fails with `HF_HUB_OFFLINE=1` (transformers asks the hub for model info); online it works.
+- The robot profile's values (echo tail 0.5 s, output latency 50 ms, VAD floors) are estimates, not measured on the robot.
+- The Testcontainers ITs (`ApiContractIT`, `VoiceEndToEndIT`) did not run (no Docker).
