@@ -140,6 +140,10 @@ class SidecarVoice(VoiceEngine):
         finally:
             self._forget(job.uid, reply.reply_id)
         lat["total"] = time.monotonic() - job.t_heard
+        if "playback_start" in lat:
+            log.info("first sound %.2f s after the question: reply %.2f, first clause %.2f, synthesis %.2f, speaker %.2f",
+                     lat["playback_start"], lat.get("reply_start", 0.0), lat.get("first_chunk", 0.0), lat.get("tts", 0.0),
+                     lat["playback_start"] - lat.get("audio_start", lat["playback_start"]))
         if job.cancel.is_set():
             self._interrupted(reply.reply_id, job.cancel_reason or "stop", job.uid)
         elif answer:

@@ -18,7 +18,8 @@ const STAGES = [
   { key: "tools", label: "Tools", hint: "running the tools the model asked for", tool: true },
   { key: "llm_first_token_2", label: "Model (again)", hint: "until the model's first word, with the tools' results" },
   { key: "first_chunk", label: "First sentence", hint: "until the model finished a first clause" },
-  { key: "tts", label: "Synthesis", hint: "turning it into speech" },
+  { key: "tts", label: "Synthesis", hint: "turning it into speech (its first sound)" },
+  { key: "speaker", label: "Speaker", hint: "until the speaker played it" },
 ];
 const SECTION_NAMES = { now: "Now", today: "Today so far", facts: "Facts" };
 
@@ -36,6 +37,7 @@ export function timingSegments(e) {
   const before = (lat.llm_first_token || 0) + (lat.tools || 0) + (lat.llm_first_token_2 || 0);
   if (lat.first_chunk != null) add("first_chunk", lat.first_chunk - before);
   add("tts", lat.tts);
+  if (lat.playback_start != null && lat.audio_start != null) add("speaker", lat.playback_start - lat.audio_start);
   return out;
 }
 

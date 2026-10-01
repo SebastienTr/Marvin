@@ -1379,6 +1379,7 @@ public final class VoiceService implements VoiceControl {
         String said = out.saidAnswer();
         Map<String, Double> lat = latency(h.latency(), out.latency(), spoken.latency());
         lat.forEach((k, v) -> span.attribute("marvin.latency." + k, v));
+        log.info(latencyLine(lat));
         span.attribute("marvin.language", lang);
         span.attribute("marvin.interrupted", Boolean.toString(turn.cancelled || spoken.interrupted()));
         if (out.failure() != null) {
@@ -1427,6 +1428,39 @@ public final class VoiceService implements VoiceControl {
         }
     }
 
+    /**
+     * When the first word was heard after the person stopped talking (seconds, 2 decimals): the end of speech plus
+     * the time to the answer's first sound on the speaker (the speaker's own start when the voice measured it, else
+     * when the sound was queued); {@code null} when nothing was said.
+     */
+    static Double firstWord(Map<String, Double> lat) {
+        Double heard = lat.containsKey("playback_start") ? lat.get("playback_start") : lat.get("audio_start");
+        return heard == null ? null : PyNumbers.round(lat.getOrDefault("endpoint", 0.0) + heard, 2);
+    }
+
+    /**
+     * Where the time went, one line for the log: end of speech, recognition, the model's first token, the first clause,
+     * its synthesis, the speaker.
+     */
+    static String latencyLine(Map<String, Double> lat) {
+        StringBuilder b = new StringBuilder();
+        Double first = firstWord(lat);
+        b.append("first word ").append(first == null ? "-" : String.format(java.util.Locale.ROOT, "%.2f s", first))
+                .append(" after the end of speech:");
+        String[][] stages = {{"endpoint", "end of speech"}, {"stt", "recognition"}, {"llm_first_token", "model first token"},
+                {"tools", "tools"}, {"first_chunk", "first clause"}, {"tts", "synthesis"}};
+        for (String[] st : stages) {
+            if (lat.containsKey(st[0])) {
+                b.append(' ').append(st[1]).append(String.format(java.util.Locale.ROOT, " %.2f,", lat.get(st[0])));
+            }
+        }
+        if (lat.containsKey("playback_start") && lat.containsKey("audio_start")) {
+            b.append(String.format(java.util.Locale.ROOT, " speaker %.2f,", lat.get("playback_start") - lat.get("audio_start")));
+        }
+        String line = b.toString().replaceAll(",$", "");
+        return lat.getOrDefault("speculative", 0.0) > 0 ? line + " (recognition started during the pause)" : line;
+    }
+
     /** {@code text} as the voice says it: its sentences, each cut where it changes language. */
     static List<SpeechLanguage.Clause> clauses(String text, String language) {
         List<SpeechLanguage.Clause> out = new ArrayList<>();
@@ -1463,8 +1497,7 @@ public final class VoiceService implements VoiceControl {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("language", lang);
         d.put("latency", lat);
-        d.put("first_word_s", lat.containsKey("audio_start")
-                ? PyNumbers.round(lat.getOrDefault("endpoint", 0.0) + lat.get("audio_start"), 2) : null);
+        d.put("first_word_s", firstWord(lat));
         d.put("interrupted", interrupted);
         d.put("proactive", false);
         d.put("error", failure);

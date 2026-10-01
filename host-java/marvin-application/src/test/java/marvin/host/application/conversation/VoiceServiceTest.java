@@ -443,6 +443,25 @@ class VoiceServiceTest {
     }
 
     @Test
+    void theFirstWordIsWhenTheSpeakerPlayedIt() {
+        Map<String, Double> lat = new LinkedHashMap<>();
+        lat.put("endpoint", 0.55);
+        lat.put("stt", 0.12);
+        lat.put("speculative", 1.0);
+        lat.put("llm_first_token", 0.31);
+        lat.put("first_chunk", 0.52);
+        lat.put("tts", 0.09);
+        lat.put("audio_start", 0.68);
+        assertThat(VoiceService.firstWord(lat)).isEqualTo(1.23);
+        lat.put("playback_start", 0.81);
+        assertThat(VoiceService.firstWord(lat)).isEqualTo(1.36);
+        assertThat(VoiceService.latencyLine(lat)).isEqualTo("first word 1.36 s after the end of speech: end of speech 0.55,"
+                + " recognition 0.12, model first token 0.31, first clause 0.52, synthesis 0.09, speaker 0.13"
+                + " (recognition started during the pause)");
+        assertThat(VoiceService.firstWord(Map.of("endpoint", 0.5))).isNull();
+    }
+
+    @Test
     void anAnswerThatChangesLanguageIsSentInClausesTaggedWithTheirLanguage() throws InterruptedException {
         FakeModel model = FakeModel.of("w", "w", "C'est une bonne idée, let me know when it's done. À plus tard !");
         started(model);
