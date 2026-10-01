@@ -1,16 +1,18 @@
 """The voice's audio machine: hears "Marvin, ...", decides what is a question, and speaks answers.
 
-    source -> [capture thread: echo gate] -> VAD segmenter -> wake word / Whisper -> question
-           -> answer text (a subclass decides it) -> [speaker thread: TTS -> sink]
+    device.source -> [capture thread: echo gate] -> VAD segmenter -> wake word / Whisper -> question
+           -> answer clauses (a subclass decides them) -> [speaker thread: TTS -> device.sink]
 
 States: idle -> listening -> thinking -> speaking -> (listening for a follow-up) -> idle.
 
 - "Marvin, what time is it?" in one breath: the name is stripped, the rest is the question.
-- "Marvin." alone: a soft chime, then the next utterance within `listen_window_s` is the question.
+- "Marvin." alone: the next utterance within `listen_window_s` is the question (the core plays
+  the earcon: `earcon()`).
 - After an answer, a follow-up question needs no name for `follow_up_s`.
-- Barge-in: saying "Marvin" while it thinks stops it. While it speaks, only in `duplex` mode
+- Barge-in: saying "Marvin" while it thinks stops it. While it speaks, only on a duplex device
   (half duplex does not hear anything while it speaks), and never while its own reply contains
-  the name.
+  the name. Talk now (`listen_now`) stops it on any device: the speaker is stopped, and the
+  microphone reopens as soon as it is really silent, keeping what was said meanwhile as pre-roll.
 - One thought, one question: speech that resumes within `continue_grace_s` of the end of a
   question, before Marvin's first word, continues it. Marvin holds its answer while the person
   talks; if they did say something, the pending answer is cancelled and the two texts go as one
@@ -30,14 +32,23 @@ Control from code (the app uses these): `ask(text)` (a typed question, answered 
 listeners can follow the conversation with `add_listener(fn)`: `fn(kind, data)` receives
 "status", "heard", "reply", "ignored" and "muted" (see `add_listener`).
 
-It never answers itself (echo.py): in half duplex (the default) the microphone is muted from the
-first word until `echo_tail_s` after the speaker has played the last one, and whatever is heard in
-any state is ignored if it repeats what Marvin said recently.
+It never answers itself (echo.py): on a half-duplex device (all of them today) the microphone is
+muted from the first word until the device's echo tail after the speaker has played the last one,
+and whatever is heard in any state is ignored if it repeats what Marvin said recently.
+
+One device at a time (device.py): its source, its sink and its profile (duplex, echo tail, VAD
+floor, "too quiet"). `swap_device()` moves the running voice to another one (a robot linked or
+left): models, the conversation's state and the listening thread stay.
+
+State: `_lock` guards the status, the jobs and their cancellation, and every sound that starts
+playing: a cancelled answer can never play a sentence or set "speaking" after the cut (Talk now,
+barge-in, Stop), and a cut waits for the speaker to be silent before the microphone reopens.
 
 Threads: a capture thread reads the source as it comes and applies the echo gate at capture
 time; `run()` does the listening (VAD, Whisper) in the caller's thread (or a background one with
 `start()`); a mouth thread runs the answers and a speaker thread synthesises and plays, so the
-first clause is heard while the rest of the answer is still being written. Listening decisions use
+first clause is heard while the rest of the answer is still being written (a speech synthesis that
+streams starts playing a clause before it is fully synthesised). Listening decisions use
 audio time (seconds of audio captured), so a recording replays the same way at any speed.
 
 SPDX-License-Identifier: MIT
@@ -57,11 +68,12 @@ from typing import Callable
 
 import numpy as np
 
-from ..audio import FRAME_MS, SAMPLE_RATE, AudioSink, AudioSource
+from ..audio import FRAME_MS
 from . import filters
-from .echo import EchoFilter, EchoGate
+from .device import AudioDevice
+from .echo import CLOSED, MASK, EchoFilter, EchoGate
 from .stt import STT, Transcript
-from .text import clean_for_speech, guess_language
+from .text import guess_language
 from .tts import TTS, pronounce
 from .vad import Segment, Segmenter, SegmenterConfig, Vad, make_vad
 from .wake import TranscriptWakeWord, WakeMatch, WakeWordDetector, match_wake_word
@@ -78,6 +90,8 @@ class Status(str, Enum):
 
 @dataclass
 class VoiceConfig:
+    """The voice's settings. The Java host sends every one of them (contract version 2): these
+    defaults are its defaults, for tests and tools (a test keeps them equal, see device.py)."""
     # languages
     language: str | None = None             # force one language (STT and replies); None = follow the speaker
     languages: tuple[str, ...] = ("fr", "en")   # languages the speaker is expected to use
@@ -85,7 +99,7 @@ class VoiceConfig:
     # models (used when the components are not passed in)
     stt: str = "auto"                       # auto (MLX on Apple Silicon if installed), mlx, faster-whisper
     stt_model: str | None = None            # None: the backend's default (turbo on MLX, small on CPU)
-    tts: str = "auto"                       # auto, say, piper, espeak
+    tts: str = "auto"                       # auto, qwen, say, piper, espeak
     tts_voice: str | None = None
     vad: str = "auto"                       # auto, webrtc, energy
     # behaviour
@@ -93,10 +107,7 @@ class VoiceConfig:
     listen_window_s: float = 6.0            # after "Marvin." alone
     follow_up_s: float = 5.0                # after an answer, a question without the name
     barge_in: bool = True
-    chime: bool = True                      # soft chime when listening after "Marvin."
-    # echo and latency
-    duplex: bool = False                    # True: keep listening while speaking (headset, echo-cancelling robot)
-    echo_tail_s: float = 0.8                # half duplex: still deaf this long after the speaker stops
+    # latency
     speculative_stt: bool = True            # start Whisper during the pause that may end the question
     speculate_after_s: float = 0.25         # ...after this much silence
     # one thought, one question (see the module docstring)
@@ -120,6 +131,9 @@ class _Job:
     continues: tuple[int, ...] = ()         # the earlier questions (uids) this one continues
     audible: bool = False                   # its first sound was played (answer or filler)
     done: bool = False                      # finished (answered, failed or cancelled)
+    gate_token: int = 0                     # the echo gate's token of its speech (0: no sound yet)
+    voice_language: str = ""                # the voice it is said with (one voice per reply)
+    clauses: list = field(default_factory=list)     # "say": (text, language) pieces, as the core cut them
 
 
 @dataclass
@@ -133,16 +147,6 @@ class _Asked:
     job: _Job
 
 
-def chime(rate: int = SAMPLE_RATE) -> np.ndarray:
-    """Two soft notes, rising: "I'm listening"."""
-    out = []
-    for f in (587.3, 880.0):                # D5, A5
-        t = np.arange(int(0.09 * rate)) / rate
-        env = np.minimum(1, t / 0.01) * np.exp(-t / 0.05)
-        out.append(np.sin(2 * np.pi * f * t) * env * 2500)
-    return np.concatenate(out).astype(np.int16)
-
-
 _DONE = object()
 
 
@@ -154,14 +158,15 @@ class _Filler(str):
 class VoiceEngine:
     """See the module docstring. Components not passed in are built from `config`."""
 
-    def __init__(self, source: AudioSource, sink: AudioSink, config: VoiceConfig | None = None, *,
+    def __init__(self, device: AudioDevice, config: VoiceConfig | None = None, *,
                  stt: STT | None = None, tts: TTS | None = None,
                  vad: Vad | None = None, wake: WakeWordDetector | None = None,
+                 stt_lock: threading.Lock | None = None,
                  on_status: Callable[[str], None] | None = None,
                  on_transcript: Callable[[str], None] | None = None,
                  on_reply: Callable[[str], None] | None = None):
         self.config = c = config or VoiceConfig()
-        self.source, self.sink = source, sink
+        self.device = device
         languages = (c.language,) if c.language else c.languages
         self.language = c.language or c.default_language    # of the conversation
         if stt is None:
@@ -171,7 +176,9 @@ class VoiceEngine:
             tts = load_tts(c)
         self.stt, self.tts = stt, tts
         self.wake = wake or TranscriptWakeWord(stt)
-        self.segmenter = Segmenter(vad or make_vad(c.vad), c.segmenter)
+        self._own_vad = vad is None                          # made here: it follows the device's profile
+        p = device.profile
+        self.segmenter = Segmenter(vad or make_vad(c.vad, p.vad_aggressiveness, p.vad_min_dbfs), c.segmenter)
         self.segmenter.endpoint = self._endpoint
         self.on_status, self.on_transcript, self.on_reply = on_status, on_transcript, on_reply
         self._listeners: list[Callable[[str, dict], None]] = []
@@ -184,12 +191,17 @@ class VoiceEngine:
         self._utt: int | None = None                         # utterance being heard (its uid)
         self._seg_started: float | None = None               # start of the utterance being judged
         self._seg_dbfs: float | None = None                  # its loudness (for "ignored" events)
-        self.gate = EchoGate(sink, c.echo_tail_s, enabled=not c.duplex, clock=self._capture_time)
+        self.gate = EchoGate(p.echo_tail_s, enabled=not p.duplex, output_latency_s=device.output_latency_s,
+                             clock=self._capture_time)
         self._last_reply = ""                                # for "oui" / "non" follow-ups
         self.last_latency: dict[str, float] = {}             # of the last answer, seconds
         self._status = Status.IDLE
         self._lock = threading.RLock()
-        self._stt_lock = threading.Lock()
+        self._stt_lock = stt_lock or threading.Lock()
+        self._tts_lock = threading.Lock()                    # one synthesis at a time (a cut one may still run)
+        self._swap_gen = 0                                   # moves on when the device is swapped
+        self._first_play: float | None = None                # when the answer's first sound was queued
+        self._reset_segmenter = False
         self._listen_until: float | None = None              # audio time
         self._asked_to_listen = False    # the window was asked for (Talk now, "Marvin." alone): take what comes
         self._listen_from = 0.0                              # audio time: earlier utterances are not follow-ups
@@ -219,6 +231,20 @@ class VoiceEngine:
     @property
     def status(self) -> str:
         return self._status.value
+
+    @property
+    def source(self):
+        return self.device.source
+
+    @property
+    def sink(self):
+        return self.device.sink
+
+    @property
+    def listen_asked(self) -> bool:
+        """Listening because it was asked to (Talk now, "Marvin." alone), not the follow-up window."""
+        with self._lock:
+            return self._status == Status.LISTENING and self._asked_to_listen
 
     def run(self) -> None:
         """Listens until the source ends or `close()`; then finishes what it was saying."""
@@ -261,6 +287,37 @@ class VoiceEngine:
         if hasattr(self.sink, "close"):
             self.sink.close()
 
+    def swap_device(self, device: AudioDevice) -> None:
+        """Hears and speaks through `device` from now on (a robot linked or left). What is being said
+        on the old device stops; models, windows and the conversation's state stay."""
+        with self._lock:
+            if self._closed.is_set():
+                device.close()
+                return
+            old = self.device
+            if self.gate.speaking or self._pending > 0 or old.sink.busy:
+                self._interrupt("stop")
+            self.device = device
+            p = device.profile
+            self.gate.configure(p.echo_tail_s, not p.duplex, device.output_latency_s)
+            self.gate.cut()
+            if self._own_vad:
+                self.segmenter.vad = make_vad(self.config.vad, p.vad_aggressiveness, p.vad_min_dbfs)
+            self._swap_gen += 1
+            self._reset_segmenter = True
+        log.info("voice: now on %s", device.name)
+        old.close()                     # its source ends: the capture thread moves on to the new one
+
+    def earcon(self, sound: str) -> None:
+        """Plays a short sound on the device (wake, done, error), which the microphone ignores. The
+        core decides when (docs/voice.md, "Earcons")."""
+        with self._lock:
+            if self._closed.is_set():
+                return
+            seconds = self.device.earcon(sound)
+        if seconds:
+            self.gate.mask(seconds + 0.05)
+
     @property
     def closed(self) -> bool:
         return self._closed.is_set()
@@ -281,13 +338,14 @@ class VoiceEngine:
         """A conversation is going on: proactive speech waits (see `say`)."""
         return self._status != Status.IDLE or self._pending > 0 or self.segmenter.in_speech
 
-    def say(self, text: str, language: str | None = None, force: bool = False, *, reply_id: int = 0) -> bool:
-        """Speaks `text` (proactive speech). Skipped, returning False, while a conversation is going
-        on, unless `force`."""
+    def say(self, text: str, language: str | None = None, force: bool = False, *, reply_id: int = 0,
+            clauses: list | None = None) -> bool:
+        """Speaks `text` (proactive speech), or its `clauses` ((text, language) pieces). Skipped,
+        returning False, while a conversation is going on, unless `force`."""
         with self._lock:
             if not force and self.busy():
                 return False
-            self._enqueue(_Job("say", text, language or self.language, reply_id=reply_id))
+            self._enqueue(_Job("say", text, language or self.language, reply_id=reply_id, clauses=list(clauses or [])))
         return True
 
     def ask(self, text: str, language: str | None = None) -> None:
@@ -299,23 +357,32 @@ class VoiceEngine:
             return
         c = self.config
         lang = language or c.language or guess_language(text, c.languages) or self.language
-        if self._pending > 0 or self._status in (Status.THINKING, Status.SPEAKING):
-            self._interrupt()
+        with self._lock:
+            if self._pending > 0 or self._status in (Status.THINKING, Status.SPEAKING):
+                self._interrupt()
         self._submit(text, lang, source="typed")
+
+    TALK_NOW_LEAD_S = 0.5       # Talk now: what was said this long before the press counts
 
     def listen_now(self) -> bool:
         """Opens a listening window without the wake word, as if "Marvin." had been said alone: the
-        next utterance within `listen_window_s` is the question. Stops what Marvin is saying and
-        unmutes the microphone. False once closed."""
+        next utterance within `listen_window_s` is the question. Stops what Marvin is saying or
+        thinking (a question that follows may continue the one it cuts, see `_joinable`) and
+        unmutes the microphone. The microphone is not deaf meanwhile: it is masked (kept for the
+        pre-roll) until the speaker is really silent, then open. False once closed."""
         if self._closed.is_set():
             return False
-        if self._pending > 0 or self._status in (Status.THINKING, Status.SPEAKING):
-            self._interrupt("barge-in")         # what comes next may continue the question it cuts
-        if self._muted:
-            self.mute(False)
-        # from what the listening has reached (it may lag behind the capture while Whisper works),
-        # so the window is never already over when it opens
-        self._listen(max(self._audio_now, self._capture_time() - 0.3), with_chime=self.config.chime)
+        with self._lock:
+            start = self._capture_time() - self.TALK_NOW_LEAD_S
+            if self._pending > 0 or self._status in (Status.THINKING, Status.SPEAKING):
+                if self.gate.speaking:
+                    self.gate.soften()
+                self._interrupt("barge-in", listen_from=start)
+            if self._muted:
+                self.mute(False)
+            # from what the listening has reached (it may lag behind the capture while Whisper works),
+            # so the window is never already over when it opens
+            self._listen(max(self._audio_now, self._capture_time() - 0.3))
         return True
 
     def stop_listening(self) -> bool:
@@ -413,29 +480,44 @@ class VoiceEngine:
         return self._cap_n * FRAME_MS / 1000
 
     def _capture_loop(self) -> None:
-        """Reads the source at its own pace, so the echo gate is applied when the sound is captured,
-        however far behind the listening (Whisper) is."""
+        """Reads the device's source at its own pace, so the echo gate is applied when the sound is
+        captured, however far behind the listening (Whisper) is. A swapped device's source ends: the
+        loop goes on with the new one; a source that ends by itself ends the listening."""
         try:
-            for frame in self.source.frames():
-                if self._closed.is_set():
+            while not self._closed.is_set():
+                gen = self._swap_gen
+                source = self.device.source
+                try:
+                    for frame in source.frames():
+                        if self._closed.is_set() or gen != self._swap_gen:
+                            break
+                        state = CLOSED if self._muted else self.gate.state()   # judged at the frame's start time
+                        self._cap_n += 1
+                        self._frames.put((frame, state, time.monotonic()))
+                except Exception:
+                    if gen == self._swap_gen:
+                        log.exception("audio source failed")
+                        break
+                if gen == self._swap_gen:
                     break
-                gated = self._muted or self.gate.closed()     # judged at the frame's start time
-                self._cap_n += 1
-                self._frames.put((frame, gated, time.monotonic()))
-        except Exception:
-            log.exception("audio source failed")
         finally:
             self._frames.put(None)
 
     # ------------------------------------------------------------ listening
 
-    def _hear(self, frame: np.ndarray, gated: bool, t_cap: float) -> None:
+    def _hear(self, frame: np.ndarray, state: str, t_cap: float) -> None:
+        if self._reset_segmenter:             # another device: what the old one was hearing is gone
+            self._reset_segmenter = False
+            self.segmenter.reset()
+            self._spec = None
+            self._utterance_done()
+        gated = state == CLOSED
         if gated:
             self.segmenter.advance()          # deaf: time goes on, a started utterance is dropped
             self._spec = None
             self._utterance_done()
         else:
-            seg = self.segmenter.feed(frame)
+            seg = self.segmenter.feed(frame, masked=state == MASK)
             if seg is not None:
                 self._utterance("end", seg.uid)
                 try:
@@ -502,9 +584,17 @@ class VoiceEngine:
         would wait for it anyway, so asking costs nothing when the question is over."""
         c, sg = self.config, self.segmenter
         long_s = c.segmenter.end_silence_long_s
-        spec = self._spec
-        if long_s <= c.segmenter.end_silence_s or spec is None or spec[:2] != sg.utterance_key:
+        if long_s <= c.segmenter.end_silence_s:
             return None
+        spec = self._spec
+        if spec is None or spec[:2] != sg.utterance_key:
+            # no speculation (turned off, or skipped): transcribe now, the end of the question would
+            # wait for it anyway, and the transcript is used if the question does end here
+            pend = sg.pending()
+            if pend is None or not self._may_matter() or not self._worth_transcribing(pend):
+                return None
+            fut = self._spec_pool.submit(self._transcribe, pend.pcm)
+            spec = self._spec = (pend.uid, pend.voiced, fut)
         try:
             tr = spec[2].result(timeout=self.ENDPOINT_WAIT_S)
         except Exception:                               # noqa: BLE001 - a timeout or a failed transcription
@@ -531,7 +621,7 @@ class VoiceEngine:
             log.info("barge-in")
             self._interrupt("barge-in")
             self._reply_language(tr)
-            self._listen(seg.t_end, with_chime=self.config.chime)
+            self._listen(seg.t_end)
             return
         text = text if rest is None else rest.strip()
         why = filters.hallucination_reason(text)
@@ -595,18 +685,40 @@ class VoiceEngine:
         c, sg = self.config, self.segmenter
         if not c.speculative_stt or not sg.in_speech or sg.silence_s < c.speculate_after_s:
             return
-        if self._pending > 0 and self._audio_ok.is_set():   # busy: only a barge-in could come, no need to hurry
-            return                                            # (unless it may continue the question)
+        if not self._may_matter():
+            return
         if self._spec is not None and self._spec[:2] == sg.utterance_key:
             return
         pend = sg.pending()
-        if pend is None or filters.speech_evidence(pend) is not None:
-            return
-        if isinstance(self.wake, TranscriptWakeWord) and not self.wake.candidate(pend.pcm) and c.wake:
+        if pend is None or not self._worth_transcribing(pend):
             return
         fut = self._spec_pool.submit(self._transcribe, pend.pcm)
         self._spec = (pend.uid, pend.voiced, fut)
         fut.add_done_callback(lambda f, uid=pend.uid: self._partial(uid, f))
+
+    def _may_matter(self) -> bool:
+        """Whether the utterance going on may be worth understanding early: not while Marvin is busy
+        with an answer, unless it may be a barge-in (a duplex device) or continue the question."""
+        c = self.config
+        if not self._busy() or not self._audio_ok.is_set() or self._listen_until is not None:
+            return True
+        return self.device.profile.duplex and c.wake and c.barge_in and not self.echo.current_has_wake_word()
+
+    def _worth_transcribing(self, seg: Segment) -> bool:
+        """Speech, and (when only the name counts) maybe the name."""
+        if filters.speech_evidence(seg, self.device.profile.speech_min_dbfs) is not None:
+            return False
+        window = self._listen_until is not None
+        return not (self.config.wake and not window and isinstance(self.wake, TranscriptWakeWord)
+                    and not self.wake.candidate(seg.pcm))
+
+    def _busy(self) -> bool:
+        """Thinking or speaking an answer that is still wanted (a cut one finishing does not count)."""
+        with self._lock:
+            if self._status in (Status.THINKING, Status.SPEAKING):
+                return True
+            cur = self._current
+            return (cur is not None and not cur.cancel.is_set()) or not self._jobs.empty()
 
     def _partial(self, uid: int, fut: concurrent.futures.Future) -> None:
         """What was understood so far of the utterance being heard, shown live in the app."""
@@ -722,12 +834,12 @@ class VoiceEngine:
         t0 = t_cap                              # when the end of the question was captured
         self._seg_started = t_cap - max(0.0, now_audio - seg.t_start)   # when it began (monotonic)
         with self._lock:
-            busy = self._status in (Status.THINKING, Status.SPEAKING) or self._pending > 0
+            busy = self._busy()
             late = seg.t_start < self._listen_from - 0.05   # captured while it was speaking
             window = (self._listen_until is not None and not late and seg.t_start <= self._listen_until)
 
         no_name = not c.wake or window          # no wake word will confirm it is for Marvin
-        weak = filters.speech_evidence(seg)
+        weak = filters.speech_evidence(seg, self.device.profile.speech_min_dbfs)
         if weak:
             self._spec = None
             self._ignored("", weak, quiet=not (no_name and not busy and not late))
@@ -819,15 +931,13 @@ class VoiceEngine:
             self._submit(query, self._reply_language(tr), tr, t0, lat, seg=seg)
         else:
             self._reply_language(tr)
-            self._listen(seg.t_end, with_chime=self.config.chime)
+            self._listen(seg.t_end)
 
-    def _listen(self, t_audio: float, with_chime: bool = False) -> None:
+    def _listen(self, t_audio: float) -> None:
         with self._lock:
             self._asked_to_listen = True
             self._listen_until = t_audio + self.config.listen_window_s
             self._set_status(Status.LISTENING)
-        if with_chime:
-            self.sink.play(chime())
 
     def _submit(self, text: str, language: str, tr: Transcript | None = None, t0: float | None = None,
                 lat: dict | None = None, source: str = "voice", *, seg: Segment | None = None,
@@ -869,9 +979,12 @@ class VoiceEngine:
             self._pending += 1
             self._jobs.put(job)
 
-    def _interrupt(self, reason: str = "stop") -> None:
-        """Stops what is being said and drops what was queued."""
+    def _interrupt(self, reason: str = "stop", listen_from: float | None = None) -> None:
+        """Stops what is being said and drops what was queued. Utterances that started before
+        `listen_from` (audio time; default: now) were heard while it spoke. The microphone, deaf
+        while it spoke (half duplex), reopens once the speaker is really silent."""
         with self._lock:
+            speaking = self.gate.speaking or bool(getattr(self.sink, "busy", False))
             job = self._current
             if job is not None:
                 job.cancel_reason = job.cancel_reason or reason
@@ -888,7 +1001,17 @@ class VoiceEngine:
                 j.cancel_reason = j.cancel_reason or reason
                 j.cancel.set()
                 self._dropped(j)
-            self.sink.stop()
+            self._listen_from = self._capture_time() if listen_from is None else listen_from
+            device = self.device
+            device.sink.stop()
+        if not speaking:
+            self.gate.cut()
+            return
+
+        def reopen():
+            device.stop_playback()
+            self.gate.cut(mask_s=0.1)       # what the room still echoes is not speech
+        threading.Thread(target=reopen, name="marvin-voice-cut", daemon=True).start()
 
     def _dropped(self, job: _Job) -> None:
         """A queued job was dropped before it started (interrupted). Nothing by default."""
@@ -916,8 +1039,11 @@ class VoiceEngine:
                     self._pending -= 1
                     if self._pending == 0 and self._status in (Status.THINKING, Status.SPEAKING):
                         c = self.config
-                        # anything captured before now (plus the echo tail) is not a follow-up
-                        self._listen_from = self._capture_time() + (0.0 if c.duplex else c.echo_tail_s)
+                        if not job.cancel.is_set():
+                            # anything captured before now (plus the echo tail) is not a follow-up; a cut
+                            # job's interruption already said from when to listen
+                            self._listen_from = self._capture_time() + (0.0 if not self.gate.enabled
+                                                                        else self.gate.tail_s)
                         if job.kind == "ask" and not job.cancel.is_set() and c.wake and c.follow_up_s > 0:
                             self._listen_until = self._listen_from + c.follow_up_s
                             self._asked_to_listen = False
@@ -932,43 +1058,68 @@ class VoiceEngine:
         raise NotImplementedError
 
     def _speaker(self, job: _Job, sentences: queue.Queue, lat: dict) -> None:
-        """Speaker thread of one reply: synthesises each chunk and queues it on the sink, in order,
-        while the model keeps writing."""
+        """Speaker thread of one reply: synthesises each clause and queues it on the sink, in order,
+        while the answer is still being written. One voice per reply: a backend with a voice per
+        language (say, Piper) keeps the voice of the reply's first clause; a multilingual one
+        (Qwen3-TTS: one voice, every language) reads each clause in its own language."""
         first = True
         while True:
-            s = sentences.get()
-            if s is _DONE or job.cancel.is_set():
+            item = sentences.get()
+            if item is _DONE or job.cancel.is_set():
                 return
-            filler = isinstance(s, _Filler)
-            text = clean_for_speech(s)
+            text, language = item
+            filler = isinstance(text, _Filler)
+            text = str(text).strip()
             if not text:
                 continue
+            language = language or job.language
+            if not job.voice_language:
+                job.voice_language = language
+            voice_language = language if getattr(self.tts, "multilingual", False) else job.voice_language
+            spoken = pronounce(text, voice_language) if getattr(self.tts, "respells", True) else text
             t = time.monotonic()
-            try:
-                # the voice follows the language actually written: a model that answers in English
-                # despite the instruction is still spoken with an English voice, not a French accent
-                voice_language = guess_language(text, self.config.languages) or job.language
-                pcm, rate = self.tts.synthesize(pronounce(text, voice_language), voice_language)
-            except Exception:                               # noqa: BLE001 - never kill the speaker thread
-                log.exception("speech synthesis failed for %r", text)
-                continue
-            if job.cancel.is_set() or not self._first_sound(job):
-                return
-            if filler:
-                lat.setdefault("filler_start", time.monotonic() - job.t_heard)
-                self.gate.speaking(True)
-                self._set_status(Status.SPEAKING)
-            elif first:
-                lat["tts"] = time.monotonic() - t
-                lat["audio_start"] = time.monotonic() - job.t_heard
-                self.gate.speaking(True)
-                self._set_status(Status.SPEAKING)
-                first = False
-            self.sink.play(pcm, rate)
-            if self._listeners:
+            pieces: list[np.ndarray] = []
+            rate = 0
+            with self._tts_lock:
+                try:
+                    for pcm, rate in self._synthesis(spoken, voice_language):
+                        if not len(pcm):
+                            continue
+                        if job.cancel.is_set() or not self._first_sound(job):
+                            return
+                        with self._lock:
+                            if job.cancel.is_set():
+                                return          # cut meanwhile: never a sound, nor "speaking", after the cut
+                            now = time.monotonic()
+                            if filler:
+                                lat.setdefault("filler_start", now - job.t_heard)
+                            elif first:
+                                lat["tts"] = now - t
+                                lat["first_audio"] = now - job.t_heard
+                                lat["audio_start"] = now - job.t_heard
+                                first = False
+                                self._first_play = now
+                            if not job.gate_token:
+                                job.gate_token = self.gate.speak()
+                            self._set_status(Status.SPEAKING)
+                            self.sink.play(pcm, rate)
+                        pieces.append(pcm)
+                except Exception:                               # noqa: BLE001 - never kill the speaker thread
+                    log.exception("speech synthesis failed for %r", text)
+                    continue
+            if pieces and self._listeners:
+                pcm = np.concatenate(pieces)
                 extra = {"reply_id": job.reply_id} if job.reply_id else {}
                 self._emit("say", text=text, seconds=round(len(pcm) / rate, 3), envelope=envelope(pcm, rate),
                            **extra)
+
+    def _synthesis(self, text: str, language: str):
+        """The clause as (pcm, rate) pieces: as they come from a backend that streams, else whole."""
+        stream = getattr(self.tts, "stream", None)
+        if stream is not None:
+            yield from stream(text, language)
+        else:
+            yield self.tts.synthesize(text, language)
 
     def _first_sound(self, job: _Job) -> bool:
         """Before the first sound of an answer: waits while the person goes on talking right after
@@ -987,20 +1138,21 @@ class VoiceEngine:
             self._audio_ok.wait(0.02)
         return not job.cancel.is_set()
 
-    def _speak_all(self, job: _Job, produce: Callable[[Callable[[str], None]], None], lat: dict) -> str:
-        """Runs `produce(emit)` (which calls emit(chunk) as text becomes available, and
+    def _speak_all(self, job: _Job, produce: Callable[[Callable[..., None]], None], lat: dict) -> str:
+        """Runs `produce(emit)` (which calls emit(clause, language) as the answer comes, and
         emit.filler(text) for a few words said while a tool runs) with a speaker thread, waits until
         everything is played, and returns what was said."""
         sentences: queue.Queue = queue.Queue()
         said: list[str] = []
 
-        def emit(chunk: str) -> None:
-            said.append(chunk)
+        def emit(chunk: str, language: str | None = None) -> None:
+            said.append(str(chunk))
             self.echo.speaking(" ".join(said))      # filter it before it is even played
-            sentences.put(chunk)
+            sentences.put((chunk, language))
 
-        emit.filler = lambda text: emit(_Filler(text))
+        emit.filler = lambda text, language=None: emit(_Filler(text), language)
 
+        self._first_play = None
         spk = threading.Thread(target=self._speaker, args=(job, sentences, lat), name="marvin-voice-speaker",
                                daemon=True)
         spk.start()
@@ -1008,15 +1160,22 @@ class VoiceEngine:
             produce(emit)
         finally:
             sentences.put(_DONE)
-            spk.join()
+            # a cut answer does not wait for a synthesis still running (it is never played)
+            spk.join(None if not job.cancel.is_set() else 0.05)
             if not job.cancel.is_set():
                 self.sink.wait()
-            self.gate.speaking(False)
+                if self._first_play is not None and "audio_start" in lat:
+                    # when the speaker started playing it (a sink that knows says so), plus its latency
+                    began = getattr(self.sink, "playback_started", None)
+                    began = began if began is not None and began >= self._first_play else self._first_play
+                    lat["playback_start"] = began - job.t_heard + self.device.output_latency_s
+                self.gate.done(job.gate_token)
             self.echo.said(" ".join(said))
-        return clean_for_speech(" ".join(said))
+        return " ".join(" ".join(said).split())
 
     def _say(self, job: _Job) -> None:
-        text = self._speak_all(job, lambda emit: emit(job.text), {})
+        clauses = job.clauses or [(job.text, job.language)]
+        text = self._speak_all(job, lambda emit: [emit(t, lang) for t, lang in clauses], {})
         if not job.cancel.is_set():
             self._emit("reply", text=text, language=job.language, latency={}, interrupted=False,
                        proactive=True, error=None, hint="")

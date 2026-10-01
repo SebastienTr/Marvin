@@ -5,6 +5,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import marvin.host.domain.conversation.AudioDeviceProfile;
+import marvin.host.domain.conversation.SpeechLanguage;
+import marvin.host.domain.conversation.VoiceSettings;
+
 /**
  * The voice: the real-time audio loop in its own process (the voice sidecar, docs/design.md 4.3). It hears,
  * recognises and speaks; the conversation service decides what to say. One session at a time: while it is
@@ -28,21 +32,34 @@ public interface VoiceSidecar {
     Optional<Options> options();
 
     /**
-     * The voice's settings (the {@code voice.json} keys the audio uses). {@code robot}: hear and speak through the robot.
-     * {@code continueGraceS} and {@code endSilenceLongMs}: {@code null} for the sidecar's default, 0 to turn them off.
+     * Everything the voice is built from (contract version 2: every value is sent, defaults included, so the voice
+     * has none of its own), and the audio device the route chose, with its profile.
+     *
+     * @param endSilenceLongMs 0: never longer than {@code endSilenceMs}
+     * @param continueGraceS   0: a question that goes on is never joined to the one before
+     * @param continueJoinS    0: a question that interrupts an answer never joins the question it cut
      */
     record Settings(String stt, String sttModel, String tts, String ttsVoice, String language, String defaultLanguage,
-                    boolean wake, boolean duplex, double echoTailS, double followUpS, double listenWindowS,
-                    boolean speculativeStt, double endSilenceMs, boolean chime, String inputDevice,
-                    String outputDevice, boolean robot, Double continueGraceS, Double endSilenceLongMs) {
+                    boolean wake, double followUpS, double listenWindowS, boolean speculativeStt, double speculateAfterS,
+                    double endSilenceMs, double endSilenceLongMs, double continueGraceS, double continueJoinS,
+                    AudioDeviceProfile device) {
 
-        /** With the sidecar's defaults for a question that goes on. */
-        public Settings(String stt, String sttModel, String tts, String ttsVoice, String language, String defaultLanguage,
-                        boolean wake, boolean duplex, double echoTailS, double followUpS, double listenWindowS,
-                        boolean speculativeStt, double endSilenceMs, boolean chime, String inputDevice,
-                        String outputDevice, boolean robot) {
-            this(stt, sttModel, tts, ttsVoice, language, defaultLanguage, wake, duplex, echoTailS, followUpS, listenWindowS,
-                    speculativeStt, endSilenceMs, chime, inputDevice, outputDevice, robot, null, null);
+        /** The configuration's settings, on {@code device}. */
+        public static Settings of(VoiceSettings.VoiceConfig c, AudioDeviceProfile device) {
+            return new Settings(c.stt(), c.sttModel(), c.tts(), c.ttsVoice(), c.language(), c.defaultLanguage(), c.wake(),
+                    c.followUpS(), c.listenWindowS(), c.speculativeStt(), c.speculateAfterS(), c.endSilenceMs(),
+                    c.endSilenceLongMs(), c.continueGraceS(), c.continueJoinS(), device);
+        }
+
+        /** On the robot's microphone and speaker. */
+        public boolean robot() {
+            return AudioDeviceProfile.ROBOT.equals(device.kind());
+        }
+
+        /** The same settings on another device. */
+        public Settings on(AudioDeviceProfile other) {
+            return new Settings(stt, sttModel, tts, ttsVoice, language, defaultLanguage, wake, followUpS, listenWindowS,
+                    speculativeStt, speculateAfterS, endSilenceMs, endSilenceLongMs, continueGraceS, continueJoinS, other);
         }
     }
 
@@ -62,9 +79,16 @@ public interface VoiceSidecar {
      * @param listenS seconds left to talk without the name, in a listening window; else {@code null}
      * @param hearing someone talks in the listening window (or their words are being understood): it waits for them,
      *                {@code listenS} is {@code null} meanwhile
+     * @param asked   listening because it was asked to (Talk now, "Marvin." alone), not the follow-up window
+     * @param device  the device it hears and speaks with: {@code computer}, a robot's name, or empty when not running
      */
     record Status(String state, boolean muted, String error, String fix, String stt, String tts, Double listenS,
-                  boolean hearing) implements Signal {
+                  boolean hearing, boolean asked, String device) implements Signal {
+
+        public Status(String state, boolean muted, String error, String fix, String stt, String tts, Double listenS,
+                      boolean hearing) {
+            this(state, muted, error, fix, stt, tts, listenS, hearing, false, "");
+        }
 
         public Status(String state, boolean muted, String error, String fix, String stt, String tts, Double listenS) {
             this(state, muted, error, fix, stt, tts, listenS, false);
@@ -129,16 +153,25 @@ public interface VoiceSidecar {
     record ReplyStart(long replyId, String language, boolean proactive, long utteranceUid) implements Command {
     }
 
-    /** A piece of the answer, reasoning and tool payloads removed. */
-    record Text(long replyId, String text) implements Command {
+    /** One clause of the answer, cleaned for speech, and the language to read it in. */
+    record Text(long replyId, String text, String language) implements Command {
     }
 
     /** The answer is complete; {@code error} ({@code llm_down}, {@code error} or empty) if it failed. */
     record ReplyEnd(long replyId, String error) implements Command {
     }
 
-    /** Speak a whole text now. */
-    record Say(long replyId, String text, String language, boolean force, boolean proactive) implements Command {
+    /** Speak a whole text now, cut into clauses tagged with their language. */
+    record Say(long replyId, String text, String language, boolean force, boolean proactive, List<SpeechLanguage.Clause> clauses)
+            implements Command {
+
+        public Say {
+            clauses = clauses == null ? List.of() : List.copyOf(clauses);
+        }
+    }
+
+    /** A short sound on the voice's device: {@code wake}, {@code done} or {@code error}. */
+    record Earcon(String sound) implements Command {
     }
 
     /** A few words while a tool runs. */
@@ -166,7 +199,7 @@ public interface VoiceSidecar {
     record Backend(String name, boolean installed, String why) {
     }
 
-    /** {@code engine}: piper, say or espeak; {@code locale}: e.g. fr_FR. */
+    /** {@code engine}: qwen, piper, say or espeak; {@code locale}: e.g. fr_FR. */
     record Voice(String id, String engine, String language, String locale, boolean installed) {
     }
 }

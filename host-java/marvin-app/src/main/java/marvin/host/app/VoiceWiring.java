@@ -69,7 +69,7 @@ public class VoiceWiring {
                                      HostLog hostLog, PresenceEventBus bus, ObjectProvider<Tracer> tracer,
                                      BuzzerChimeService chimes, RobotLinkQuery robot, Camera camera) {
         VoiceService voice = new VoiceService(sidecar, model, settingsFile, fetch, store, presence, clocks, days,
-                platform(), sidecar::robotWithAudio);
+                platform(), sidecar::audioRobot);
         tracer.ifAvailable(t -> voice.setTracing(new MicrometerTracing(t)));
         voice.setRoom(robot::room);                         // the room sensors' readings in the question's context
         voice.setCamera(camera);                            // the look tool, while a camera can take a picture

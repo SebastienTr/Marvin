@@ -6,7 +6,8 @@ The Java core owns the robot's UDP socket. It relays each AUDIO_IN to the sideca
 `RobotRelay` stands in for the receiver of robot_audio.py, so the robot's microphone
 (`RobotMicSource`: gap filling, restarts, the MIC_START keepalive) and speaker
 (`RobotSpeakerSink`: 150 ms lead pacing, stream ids, PLAY_STOP) are the same code as in the
-Python host.
+Python host's tools. Which robot the voice uses is the core's choice (`Configure.device`):
+`device(name)` gives it; `RobotLink` only keeps the relay's list of linked robots up to date.
 
 SPDX-License-Identifier: MIT
 """
@@ -66,13 +67,16 @@ class RobotRelay:
             self.devices[name] = RobotDevice(name, has_audio)
             return True
 
-    def audio_device(self) -> RobotDevice | None:
-        """The first linked robot with a microphone and a speaker."""
+    def device(self, name: str) -> RobotDevice:
+        """The robot the core chose for the voice (known from a RobotLink or not: the core knows)."""
         with self._lock:
-            return next((d for d in self.devices.values() if d.has_audio), None)
+            dev = self.devices.get(name)
+            if dev is None or not dev.has_audio:
+                dev = self.devices[name] = RobotDevice(name, True)
+            return dev
 
     def on_frame(self, frame: pb.AudioFrame) -> None:
-        """A relayed AUDIO_IN."""
+        """A relayed AUDIO_IN (the core relays only the robot the voice uses)."""
         with self._lock:
             dev = self.devices.get(frame.device)
             listeners = list(self._audio_listeners)

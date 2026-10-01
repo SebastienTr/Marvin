@@ -8,7 +8,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -35,6 +34,7 @@ import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import io.grpc.stub.StreamObserver;
 import marvin.host.application.conversation.port.out.VoiceRobotAudio;
 import marvin.host.application.conversation.port.out.VoiceSidecar;
+import marvin.host.domain.conversation.AudioDeviceProfile;
 import marvin.host.contracts.voice.v1.AudioFrame;
 import marvin.host.contracts.voice.v1.AudioRoute;
 import marvin.host.contracts.voice.v1.Configure;
@@ -70,7 +70,8 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
     private final String token = HexFormat.of().formatHex(new SecureRandom().generateSeed(16));
     private final SupervisedProcess process;
     private final Object lock = new Object();
-    private final Map<String, Boolean> robots = new ConcurrentHashMap<>();
+    /** The connected robots and whether each has audio, in the order they connected. */
+    private final Map<String, Boolean> robots = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>());
     private volatile RobotSpeaker robotAudio;
     private volatile ManagedChannel channel;
     private volatile int port;
@@ -275,7 +276,11 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
             session = obs;
         }
         send(CoreToVoice.newBuilder().setConfigure(configure(s)).build());
-        robots.forEach((device, audio) -> send(CoreToVoice.newBuilder()
+        Map<String, Boolean> linked;
+        synchronized (robots) {
+            linked = new java.util.LinkedHashMap<>(robots);
+        }
+        linked.forEach((device, audio) -> send(CoreToVoice.newBuilder()
                 .setRobotLink(RobotLink.newBuilder().setDevice(device).setConnected(true).setHasAudio(audio)).build()));
     }
 
@@ -322,22 +327,32 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
         }
     }
 
+    /** The contract version this host speaks (voice.proto). */
+    static final int CONTRACT_VERSION = 2;
+
     static Configure configure(Settings s) {
         VoiceSettings.Builder b = VoiceSettings.newBuilder()
                 .setStt(nz(s.stt())).setSttModel(nz(s.sttModel())).setTts(nz(s.tts())).setTtsVoice(nz(s.ttsVoice()))
                 .setLanguage(nz(s.language())).setDefaultLanguage(nz(s.defaultLanguage()))
-                .setWake(s.wake()).setDuplex(s.duplex()).setEchoTailS(s.echoTailS()).setFollowUpS(s.followUpS())
-                .setListenWindowS(s.listenWindowS()).setSpeculativeStt(s.speculativeStt())
-                .setEndSilenceMs(s.endSilenceMs()).setChime(s.chime())
-                .setInputDevice(nz(s.inputDevice())).setOutputDevice(nz(s.outputDevice()));
-        if (s.continueGraceS() != null) {
-            b.setContinueGraceS(s.continueGraceS());
-        }
-        if (s.endSilenceLongMs() != null) {
-            b.setEndSilenceLongMs(s.endSilenceLongMs());
-        }
-        return Configure.newBuilder().setContractVersion(1).setSettings(b)
-                .setRoute(s.robot() ? AudioRoute.AUDIO_ROUTE_ROBOT : AudioRoute.AUDIO_ROUTE_LOCAL).build();
+                .setWake(s.wake()).setFollowUpS(s.followUpS()).setListenWindowS(s.listenWindowS())
+                .setSpeculativeStt(s.speculativeStt()).setSpeculateAfterS(s.speculateAfterS())
+                .setEndSilenceMs(s.endSilenceMs()).setEndSilenceLongMs(s.endSilenceLongMs())
+                .setContinueGraceS(s.continueGraceS()).setContinueJoinS(s.continueJoinS());
+        AudioDeviceProfile d = s.device();
+        // version 1 fields, for a reader that still looks at them
+        b.setDuplex(d.duplex()).setEchoTailS(d.echoTailS()).setInputDevice(d.inputDevice())
+                .setOutputDevice(d.outputDevice());
+        return Configure.newBuilder().setContractVersion(CONTRACT_VERSION).setSettings(b)
+                .setRoute(s.robot() ? AudioRoute.AUDIO_ROUTE_ROBOT : AudioRoute.AUDIO_ROUTE_LOCAL)
+                .setDevice(device(d)).build();
+    }
+
+    static marvin.host.contracts.voice.v1.AudioDeviceProfile device(AudioDeviceProfile d) {
+        return marvin.host.contracts.voice.v1.AudioDeviceProfile.newBuilder()
+                .setKind(d.kind()).setRobot(d.robot()).setDuplex(d.duplex()).setEchoTailS(d.echoTailS())
+                .setOutputLatencyS(d.outputLatencyS()).setVadMinDbfs(d.vadMinDbfs()).setSpeechMinDbfs(d.speechMinDbfs())
+                .setVadAggressiveness(d.vadAggressiveness()).setHasEarcons(d.hasEarcons()).setHasAec(d.hasAec())
+                .setInputDevice(d.inputDevice()).setOutputDevice(d.outputDevice()).build();
     }
 
     private static String nz(String s) {
@@ -351,11 +366,18 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
             case ReplyStart r -> b.setReplyStart(marvin.host.contracts.voice.v1.ReplyStart.newBuilder()
                     .setReplyId(r.replyId()).setLanguage(nz(r.language())).setProactive(r.proactive())
                     .setUtteranceUid(r.utteranceUid()));
-            case Text t -> b.setText(marvin.host.contracts.voice.v1.TextPiece.newBuilder().setReplyId(t.replyId()).setText(t.text()));
+            case Text t -> b.setText(marvin.host.contracts.voice.v1.TextPiece.newBuilder().setReplyId(t.replyId())
+                    .setText(t.text()).setLanguage(nz(t.language())).setClause(true));
             case ReplyEnd e -> b.setReplyEnd(marvin.host.contracts.voice.v1.ReplyEnd.newBuilder().setReplyId(e.replyId())
                     .setError(nz(e.error())));
-            case Say s -> b.setSay(marvin.host.contracts.voice.v1.Say.newBuilder().setReplyId(s.replyId()).setText(s.text())
-                    .setLanguage(nz(s.language())).setForce(s.force()).setProactive(s.proactive()));
+            case Say s -> {
+                var say = marvin.host.contracts.voice.v1.Say.newBuilder().setReplyId(s.replyId()).setText(s.text())
+                        .setLanguage(nz(s.language())).setForce(s.force()).setProactive(s.proactive());
+                s.clauses().forEach(c -> say.addClauses(marvin.host.contracts.voice.v1.Clause.newBuilder()
+                        .setText(c.text()).setLanguage(nz(c.language()))));
+                b.setSay(say);
+            }
+            case Earcon e -> b.setEarcon(marvin.host.contracts.voice.v1.Earcon.newBuilder().setSound(e.sound()));
             case Filler f -> b.setFiller(marvin.host.contracts.voice.v1.Filler.newBuilder().setReplyId(f.replyId())
                     .setText(f.text()).setLanguage(nz(f.language())));
             case ListenNow l -> b.setListenNow(marvin.host.contracts.voice.v1.ListenNow.newBuilder().setOn(l.on()));
@@ -380,10 +402,12 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
                 .setHasAudio(hasAudio)).build());
     }
 
-    /** Whether a robot with a microphone and a speaker is connected. */
+    /** The first connected robot with a microphone and a speaker: the one the voice uses on the robot route. */
     @Override
-    public boolean robotWithAudio() {
-        return robots.containsValue(true);
+    public Optional<String> audioRobot() {
+        synchronized (robots) {
+            return robots.entrySet().stream().filter(Map.Entry::getValue).map(Map.Entry::getKey).findFirst();
+        }
     }
 
     /** A robot's {@code AUDIO_IN}, relayed as it came (same samples, sample index and robot clock). */
@@ -529,7 +553,7 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
                     state = "starting";
                 }
                 yield new Status(state, s.getMuted(), s.getError(), s.getFix(), s.getStt(), s.getTts(),
-                        s.hasListenS() ? s.getListenS() : null, s.getHearing());
+                        s.hasListenS() ? s.getListenS() : null, s.getHearing(), s.getAsked(), s.getDevice());
             }
             case HEARD -> {
                 var h = m.getHeard();

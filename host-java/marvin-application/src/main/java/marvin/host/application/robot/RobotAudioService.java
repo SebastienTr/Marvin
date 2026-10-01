@@ -29,7 +29,7 @@ public final class RobotAudioService implements RobotAudioIn, LinkNoticeListener
     private final VoiceRobotAudio voice;
     private final Runnable changed;
 
-    /** {@code changed}: a robot with audio connected or the last one left. */
+    /** {@code changed}: the voice's robot changed (a robot with audio connected, the one in use left). */
     public RobotAudioService(RobotOutbound out, RobotLinkQuery devices, VoiceRobotAudio voice, Runnable changed) {
         this.out = out;
         this.devices = devices;
@@ -55,9 +55,9 @@ public final class RobotAudioService implements RobotAudioIn, LinkNoticeListener
     }
 
     private void linked(String name, boolean connected, boolean audio) {
-        boolean before = voice.robotWithAudio();
+        var before = voice.audioRobot();
         voice.robotLink(name, connected, audio);
-        if (before != voice.robotWithAudio()) {
+        if (!before.equals(voice.audioRobot())) {
             changed.run();
         }
     }

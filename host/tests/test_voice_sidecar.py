@@ -30,8 +30,8 @@ from marvin_host.sidecar.voice.contract import voice_pb2 as pb  # noqa: E402
 from marvin_host.sidecar.voice.contract import voice_pb2_grpc as pb_grpc  # noqa: E402
 from marvin_host.sidecar.voice.relay import RobotRelay  # noqa: E402
 from marvin_host.sidecar.voice.server import serve  # noqa: E402
-from marvin_host.sidecar.voice.session import EngineFactory, settings_dict, voice_config  # noqa: E402
-from marvin_host.sidecar.voice.engine import _phrase  # noqa: E402
+from marvin_host.sidecar.voice.session import EngineFactory, device_profile, voice_config  # noqa: E402
+from marvin_host.voice.device import COMPUTER_PROFILE, ROBOT_PROFILE  # noqa: E402
 
 HOST = Path(__file__).resolve().parents[1]
 ROBOT = "marvin-a1b2c3"
@@ -40,14 +40,27 @@ ROBOT = "marvin-a1b2c3"
 # ---------------------------------------------------------------- a fake core
 
 def settings(**kw) -> pb.VoiceSettings:
-    """The Python defaults (proto3 would make every bool false)."""
-    values = dict(stt="auto", tts="auto", wake=True, follow_up_s=0.0, speculative_stt=True, chime=True)
+    """The voice's defaults as the core sends them (every value), with no follow-up window."""
+    values = dict(stt="auto", tts="auto", default_language="fr", wake=True, follow_up_s=0.0, listen_window_s=6.0,
+                  speculative_stt=True, speculate_after_s=0.25, end_silence_ms=550.0, end_silence_long_ms=1100.0,
+                  continue_grace_s=1.5, continue_join_s=6.0)
     values.update(kw)
     return pb.VoiceSettings(**values)
 
 
-def configure(route=pb.AUDIO_ROUTE_LOCAL, **kw) -> dict:
-    return {"configure": pb.Configure(contract_version=1, settings=settings(**kw), route=route)}
+def profile(robot: str = "", **kw) -> pb.AudioDeviceProfile:
+    p = ROBOT_PROFILE if robot else COMPUTER_PROFILE
+    values = dict(kind=p.kind, robot=robot, duplex=p.duplex, echo_tail_s=p.echo_tail_s,
+                  output_latency_s=p.output_latency_s, vad_min_dbfs=p.vad_min_dbfs, speech_min_dbfs=p.speech_min_dbfs,
+                  vad_aggressiveness=p.vad_aggressiveness, has_earcons=p.has_earcons, has_aec=p.has_aec)
+    values.update(kw)
+    return pb.AudioDeviceProfile(**values)
+
+
+def configure(robot: str = "", version: int = 2, **kw) -> dict:
+    route = pb.AUDIO_ROUTE_ROBOT if robot else pb.AUDIO_ROUTE_LOCAL
+    return {"configure": pb.Configure(contract_version=version, settings=settings(**kw), route=route,
+                                      device=profile(robot))}
 
 
 class FakeCore:
@@ -109,8 +122,8 @@ class FakeCore:
 
     def reply(self, reply_id: int, uid: int, *pieces: str, language: str = "fr", error: str = "") -> None:
         self.send(reply_start=pb.ReplyStart(reply_id=reply_id, language=language, utterance_uid=uid))
-        for p in pieces:
-            self.send(text=pb.TextPiece(reply_id=reply_id, text=p))
+        for p in pieces:                            # one clause each, as the core cuts them
+            self.send(text=pb.TextPiece(reply_id=reply_id, text=p, language=language, clause=True))
         self.send(reply_end=pb.ReplyEnd(reply_id=reply_id, error=error))
 
     def close(self) -> None:
@@ -161,12 +174,28 @@ def test_contract_is_generated_from_the_proto():
 
 
 def test_settings_from_the_core():
-    d = settings_dict(settings(language="en", end_silence_ms=0, echo_tail_s=0.5, stt_model=""))
-    assert d["language"] == "en" and d["echo_tail_s"] == 0.5
-    assert "end_silence_ms" not in d and "stt_model" not in d and d["follow_up_s"] == 0.0
-    c = voice_config({**d, "end_silence_ms": 700, "chime": False})
+    from marvin_host.voice.engine import VoiceConfig
+    assert voice_config(settings(follow_up_s=5.0)) == VoiceConfig()       # the defaults, sent whole
+    c = voice_config(settings(language="en", end_silence_ms=700, stt_model="", continue_join_s=0.0))
     assert c.language == "en" and c.default_language == "en" and c.segmenter.end_silence_s == 0.7
-    assert c.wake and not c.chime and c.echo_tail_s == 0.5
+    assert c.stt_model is None and c.continue_join_s == 0.0 and c.wake
+    assert device_profile(profile()) == COMPUTER_PROFILE
+    p = device_profile(profile(ROBOT, duplex=True))
+    assert p.name == ROBOT and p.duplex and p.speech_min_dbfs == ROBOT_PROFILE.speech_min_dbfs
+
+
+def test_the_defaults_are_the_java_hosts():
+    """The voice's defaults are written once, in the Java host (VoiceSettings): this side's copies,
+    used only by its tests and tools, are the same (marvin-contracts golden/voice)."""
+    import json
+    from marvin_host.voice.engine import VoiceConfig
+    spec = json.loads((HOST.parent / "host-java" / "marvin-contracts" / "golden" / "voice" /
+                       "configure_defaults.json").read_text())
+    s = pb.VoiceSettings(**spec["settings"])
+    assert voice_config(s) == VoiceConfig(follow_up_s=s.follow_up_s)
+    assert VoiceConfig().follow_up_s == s.follow_up_s
+    assert device_profile(pb.AudioDeviceProfile(**spec["devices"]["computer"])) == COMPUTER_PROFILE
+    assert device_profile(pb.AudioDeviceProfile(**spec["devices"]["robot"])) == ROBOT_PROFILE
 
 
 def test_fake_script_and_whisper():
@@ -187,9 +216,8 @@ def test_fake_script_and_whisper():
 def test_relay_translates_what_robot_audio_sends():
     sent = []
     relay = RobotRelay(sent.append)
-    assert relay.audio_device() is None
     assert relay.link(ROBOT, True, True) and not relay.link(ROBOT, True, True)
-    dev = relay.audio_device()
+    dev = relay.device(ROBOT)
     relay.send(dev, protocol.AUDIO_CTRL, protocol.audio_ctrl(protocol.AUDIO_MIC_START))
     relay.send(dev, protocol.AUDIO_OUT, protocol.AudioOut(9, 640, np.arange(480, dtype=np.int16)).encode())
     relay.send(dev, protocol.SOUND, protocol.sound("wake"))
@@ -203,7 +231,8 @@ def test_relay_translates_what_robot_audio_sends():
     relay.on_frame(pb.AudioFrame(device=ROBOT, sample_index=320, robot_time_us=20000, pcm=bytes(640)))
     relay.on_frame(pb.AudioFrame(device="stranger", sample_index=0, pcm=bytes(640)))
     assert heard == [(ROBOT, 20000, 320, 320)]
-    assert relay.link(ROBOT, False, False) and relay.audio_device() is None
+    assert relay.link(ROBOT, False, False) and ROBOT not in relay.devices
+    assert relay.device("marvin-ffeedd").has_audio          # the core's choice, linked or not
 
 
 # ---------------------------------------------------------------- over gRPC
@@ -235,18 +264,18 @@ def test_a_heard_question_goes_to_the_core_and_its_answer_is_spoken(sidecar, cor
     assert core.wait("status").state == pb.Status.STARTING      # the stream is up before Configure
     core.send(**configure())
     ready = core.ready()
-    assert ready.stt == "fake" and ready.tts == "fake" and not ready.muted
+    assert ready.stt == "fake" and ready.tts == "fake" and not ready.muted and ready.device == "computer"
     heard = core.wait("heard")
     assert (heard.text, heard.raw, heard.language, heard.source) == \
         ("quelle heure est-il ?", "Marvin, quelle heure est-il ?", "fr", "voice")
     assert heard.uid > 0 and heard.wall_time > 1e9
     assert {"endpoint", "queue", "stt"} <= set(heard.latency)
     core.wait("status", lambda s: s.state == pb.Status.THINKING)
-    core.reply(41, heard.uid, "Il est midi. Bon", " appétit, si c'est l'heure.")
+    core.reply(41, heard.uid, "Il est midi.", "Bon appétit, si c'est l'heure.")
     spoken = core.wait("spoken")
     assert spoken.reply_id == 41 and spoken.utterance_uid == heard.uid and not spoken.interrupted
     assert spoken.text == "Il est midi. Bon appétit, si c'est l'heure."
-    assert {"first_chunk", "tts", "audio_start", "total"} <= set(spoken.latency)
+    assert {"first_chunk", "tts", "first_audio", "audio_start", "playback_start", "total"} <= set(spoken.latency)
     says = core.of("say")
     assert [s.text for s in says] == ["Il est midi.", "Bon appétit, si c'est l'heure."]
     assert all(s.reply_id == 41 and s.seconds > 0 and len(s.envelope) == int(s.seconds * 20) for s in says)
@@ -270,9 +299,10 @@ def test_typed_question_filler_and_a_failed_answer(sidecar, cores):
     assert (heard.source, heard.language) == ("typed", "en")
     core.send(reply_start=pb.ReplyStart(reply_id=5, language="en", utterance_uid=heard.uid))
     core.send(filler=pb.Filler(reply_id=5, text="Let me check.", language="en"))
+    core.send(text=pb.TextPiece(reply_id=5, text="I can't reach my language model.", language="en", clause=True))
     core.send(reply_end=pb.ReplyEnd(reply_id=5, error="llm_down"))
     spoken = core.wait("spoken")
-    assert spoken.text == "Let me check. " + _phrase("llm_down", "en")
+    assert spoken.text == "Let me check. I can't reach my language model."
     assert "filler_start" in spoken.latency and not spoken.interrupted
     core.send(ask=pb.Ask(text="Et demain ?", language="fr"))
     assert core.wait("heard", lambda h: h.uid != heard.uid).language == "fr"
@@ -309,8 +339,8 @@ def test_proactive_speech_waits_for_the_conversation(sidecar, cores):
     core.send(say=pb.Say(reply_id=3, text="Tu es assis depuis une heure.", language="fr"))
     assert core.wait("spoken", lambda m: m.reply_id == 3).text == "Tu es assis depuis une heure."
     core.send(reply_start=pb.ReplyStart(reply_id=4, language="fr", proactive=True))    # streamed
-    core.send(text=pb.TextPiece(reply_id=4, text="Re-bonjour ! Tu étais parti "))
-    core.send(text=pb.TextPiece(reply_id=4, text="longtemps."))
+    core.send(text=pb.TextPiece(reply_id=4, text="Re-bonjour !", language="fr", clause=True))
+    core.send(text=pb.TextPiece(reply_id=4, text="Tu étais parti longtemps.", language="fr", clause=True))
     core.send(reply_end=pb.ReplyEnd(reply_id=4))
     s4 = core.wait("spoken", lambda m: m.reply_id == 4)
     assert s4.text == "Re-bonjour ! Tu étais parti longtemps." and s4.utterance_uid == 0
@@ -332,7 +362,7 @@ def test_mute_and_talk_now(sidecar, cores):
     assert core.ready().muted
     core.send(listen_now=pb.ListenNow(on=True))             # unmutes, like the app's Talk now
     listening = core.wait("status", lambda s: s.state == pb.Status.LISTENING)
-    assert not listening.muted and 5.0 < listening.listen_s <= 6.0
+    assert not listening.muted and 5.0 < listening.listen_s <= 6.0 and listening.asked
     core.send(listen_now=pb.ListenNow(on=False))
     last = core.wait("status", lambda s: s.state == pb.Status.IDLE and not s.HasField("listen_s")
                      and s is core.of("status")[-1])
@@ -376,11 +406,9 @@ def test_the_listening_window_waits_while_someone_talks(sidecar, cores):
 def test_robot_audio_through_the_core(sidecar, cores):
     port, _ = sidecar([(1000.0, "Marvin, allume la lumière.")])   # phrase 0, said by the robot below
     core = cores(port)
-    core.send(**configure(route=pb.AUDIO_ROUTE_ROBOT))
-    err = core.wait("status", lambda s: s.state == pb.Status.ERROR)
-    assert "No robot" in err.error and err.fix
-    core.send(robot_link=pb.RobotLink(device=ROBOT, connected=True, has_audio=True))
-    core.ready()
+    core.send(**configure(robot=ROBOT))                  # the core chose the robot
+    ready = core.ready()
+    assert ready.device == ROBOT
     start = core.wait("ctrl", lambda c: c.command == protocol.AUDIO_MIC_START)
     assert start.device == ROBOT
     # the robot's microphone: "Marvin, ..." as phrase 0 of the fake Whisper, in 20 ms AUDIO_IN
@@ -415,9 +443,34 @@ def test_robot_audio_through_the_core(sidecar, cores):
     span = frames[-1][0] - frames[0][0]
     assert span > seconds - 0.25 and frames[0][0] >= t_reply
     assert spoken.text == "D'accord, c'est fait." and "audio_start" in spoken.latency
-    core.send(robot_link=pb.RobotLink(device=ROBOT, connected=False))
+    # an earcon on the robot is its own built-in sound
+    core.send(earcon=pb.Earcon(sound="wake"))
+    assert core.wait("sound").id == protocol.SOUNDS["wake"][0]
+    # the robot leaves: the core moves the voice back to the computer, without restarting it
+    n_status = len(core.of("status"))
+    core.send(**configure())
     core.wait("ctrl", lambda c: c.command == protocol.AUDIO_MIC_STOP)
-    core.wait("status", lambda s: s.state == pb.Status.ERROR and s is core.of("status")[-1])
+    back = core.wait("status", lambda s: s.device == "computer")
+    assert back.state == pb.Status.IDLE
+    assert pb.Status.STARTING not in [s.state for s in core.of("status")[n_status:]]
+
+
+def test_an_older_core_is_told_to_restart(sidecar, cores):
+    port, _ = sidecar()
+    core = cores(port)
+    core.send(**configure(version=1))
+    err = core.wait("status", lambda s: s.state == pb.Status.ERROR)
+    assert "version 1" in err.error and "./marvin restart" in err.fix
+
+
+def test_a_robot_route_without_a_robot(sidecar, cores):
+    port, _ = sidecar()
+    core = cores(port)
+    core.send(**configure(robot=""))
+    core.send(configure=pb.Configure(contract_version=2, settings=settings(), route=pb.AUDIO_ROUTE_ROBOT,
+                                     device=profile(kind="robot")))
+    err = core.wait("status", lambda s: s.state == pb.Status.ERROR)
+    assert "No robot" in err.error and err.fix
 
 
 def test_a_new_session_replaces_the_old_one(sidecar, cores):
@@ -449,7 +502,7 @@ def test_no_answer_from_the_core_is_said(sidecar, cores):
     core.ready()
     core.send(ask=pb.Ask(text="Tu es là ?"))
     spoken = core.wait("spoken")
-    assert spoken.text == _phrase("error", "fr") and spoken.reply_id == 0
+    assert spoken.text == "" and spoken.reply_id == 0       # the error earcon, no words of its own
 
 
 def test_token(sidecar, cores):

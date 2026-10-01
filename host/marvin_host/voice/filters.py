@@ -40,14 +40,15 @@ MIN_VOICED_RATIO = 0.25     # of the utterance (pre-roll and trailing silence in
 MIN_DBFS = -50.0            # level of the loudest half of the utterance
 
 
-def speech_evidence(seg: Segment) -> str | None:
-    """None if the utterance looks like speech, else why not."""
+def speech_evidence(seg: Segment, min_dbfs: float = MIN_DBFS) -> str | None:
+    """None if the utterance looks like speech, else why not. `min_dbfs`: the device's "too quiet"
+    (device.py)."""
     voiced_s = seg.voiced * FRAME_MS / 1000
     if seg.voiced and voiced_s < MIN_VOICED_S:
         return f"only {voiced_s:.2f} s of speech"
     if seg.voiced and seg.duration > 0 and voiced_s / seg.duration < MIN_VOICED_RATIO:
         return f"mostly silence ({voiced_s:.2f} of {seg.duration:.2f} s voiced)"
-    if loud_dbfs(seg.pcm) < MIN_DBFS:
+    if loud_dbfs(seg.pcm) < min_dbfs:
         return f"too quiet ({loud_dbfs(seg.pcm):.0f} dBFS)"
     return None
 

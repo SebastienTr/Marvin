@@ -15,9 +15,23 @@ import java.util.Map;
  * @param hearing someone talks in the listening window: it waits for them ({@code listenS} is {@code null})
  * @param image   the image waiting to go with the next question (what is known of it, never the image), or
  *                {@code null}: the key is then left out, as before images existed
+ * @param asked   listening because it was asked to (Talk now, "Marvin." alone), not the follow-up window after an
+ *                answer
+ * @param device  the device the voice hears and speaks with: {@code computer}, a robot's name, or {@code ""} when it
+ *                does not run
+ * @param earcons where the voice's earcons play: {@code device} (its device), {@code buzzer} (a bench board's buzzer:
+ *                the voice's device has none, or it does not run), {@code none} (turned off). The app's own sounds
+ *                stand in for them only with {@code none}, so a moment never chimes twice
  */
 public record VoiceSnapshot(String state, String status, boolean muted, String error, String fix, String model,
-                            boolean wake, boolean chime, Double listenS, boolean hearing, Map<String, Object> image) {
+                            boolean wake, boolean chime, Double listenS, boolean hearing, Map<String, Object> image,
+                            boolean asked, String device, String earcons) {
+
+    public VoiceSnapshot(String state, String status, boolean muted, String error, String fix, String model,
+                         boolean wake, boolean chime, Double listenS, boolean hearing, Map<String, Object> image) {
+        this(state, status, muted, error, fix, model, wake, chime, listenS, hearing, image, false, "",
+                chime ? "buzzer" : "none");
+    }
 
     public VoiceSnapshot(String state, String status, boolean muted, String error, String fix, String model,
                          boolean wake, boolean chime, Double listenS, boolean hearing) {
@@ -40,6 +54,9 @@ public record VoiceSnapshot(String state, String status, boolean muted, String e
         if (image != null) {
             m.put("image", image);
         }
+        m.put("asked", asked);
+        m.put("device", device);
+        m.put("earcons", earcons);
         return m;
     }
 }

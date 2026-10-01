@@ -4028,7 +4028,7 @@
         "in": {
           "tts": "festival"
         },
-        "error": "tts must be one of auto, say, piper, espeak"
+        "error": "tts must be one of auto, qwen, say, piper, espeak"
       },
       {
         "in": {

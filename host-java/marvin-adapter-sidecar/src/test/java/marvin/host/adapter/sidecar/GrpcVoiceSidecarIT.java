@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
@@ -15,6 +16,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import marvin.host.application.conversation.port.out.VoiceSidecar;
+import marvin.host.domain.conversation.AudioDeviceProfile;
+import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.robot.HostMessages;
 
 /**
@@ -75,9 +78,9 @@ class GrpcVoiceSidecarIT {
         }
     }
 
-    static VoiceSidecar.Settings settings(boolean robot) {
-        return new VoiceSidecar.Settings("auto", "", "auto", "", "", "fr", true, false, 0, 5, 0, true, 0, true, "", "",
-                robot);
+    static VoiceSidecar.Settings settings(String robot) {
+        return VoiceSidecar.Settings.of(VoiceSettings.config(Map.of()), robot == null ? AudioDeviceProfile.COMPUTER_DEFAULT
+                : AudioDeviceProfile.ROBOT_DEFAULT.forRobot(robot));
     }
 
     <T extends VoiceSidecar.Signal> T await(Class<T> type, Predicate<T> p, long ms) throws InterruptedException {
@@ -104,7 +107,7 @@ class GrpcVoiceSidecarIT {
     @Test
     void aHeardQuestionIsAnsweredWithStreamedText() throws InterruptedException {
         start(List.of("--fake", "--say", "1:Marvin, quelle heure est-il ?", "--fake-speed", "1"));
-        voice.open(settings(false), signals::add);
+        voice.open(settings(null), signals::add);
         await(VoiceSidecar.Status.class, s -> s.state().equals("idle"), 20_000);
         VoiceSidecar.Heard h = await(VoiceSidecar.Heard.class, x -> true, 20_000);
         assertThat(h.text()).isEqualTo("quelle heure est-il ?");
@@ -112,8 +115,8 @@ class GrpcVoiceSidecarIT {
         assertThat(h.language()).isEqualTo("fr");
         assertThat(h.latency()).containsKey("endpoint");
         voice.send(new VoiceSidecar.ReplyStart(41, "fr", false, h.uid()));
-        voice.send(new VoiceSidecar.Text(41, "Il est neuf heures.\n"));
-        voice.send(new VoiceSidecar.Text(41, "Bonne journée.\n"));
+        voice.send(new VoiceSidecar.Text(41, "Il est neuf heures.", "fr"));
+        voice.send(new VoiceSidecar.Text(41, "Bonne journée.", "fr"));
         voice.send(new VoiceSidecar.ReplyEnd(41, ""));
         VoiceSidecar.ReplySpoken r = await(VoiceSidecar.ReplySpoken.class, x -> x.replyId() == 41, 20_000);
         assertThat(r.text()).isEqualTo("Il est neuf heures. Bonne journée.");
@@ -133,11 +136,11 @@ class GrpcVoiceSidecarIT {
     @Test
     void theRobotRouteHearsTheRelayedMicrophoneAndSpeaksThroughTheRobot() throws InterruptedException {
         start(List.of("--fake", "--say", "300:Marvin, quelle heure est-il ?"));
-        voice.open(settings(true), signals::add);
-        VoiceSidecar.Status err = await(VoiceSidecar.Status.class, s -> s.state().equals("error"), 20_000);
-        assertThat(err.error()).isEqualTo("No robot with a microphone and a speaker is connected");
         voice.robotLink("marvin-a1b2c3", true, true);
-        await(VoiceSidecar.Status.class, s -> s.state().equals("idle"), 20_000);
+        assertThat(voice.audioRobot()).contains("marvin-a1b2c3");
+        voice.open(settings("marvin-a1b2c3"), signals::add);            // the core chose the robot
+        VoiceSidecar.Status idle = await(VoiceSidecar.Status.class, s -> s.state().equals("idle"), 20_000);
+        assertThat(idle.device()).isEqualTo("marvin-a1b2c3");
         waitFor(() -> robotOut.contains("ctrl marvin-a1b2c3 " + HostMessages.AUDIO_MIC_START), 5000);
         // the robot's microphone: quiet, phrase 0 (a tone at 110 Hz with its harmonics), quiet again
         long index = 0;
@@ -164,22 +167,27 @@ class GrpcVoiceSidecarIT {
         VoiceSidecar.Heard h = await(VoiceSidecar.Heard.class, x -> true, 20_000);
         assertThat(h.text()).isEqualTo("quelle heure est-il ?");
         voice.send(new VoiceSidecar.ReplyStart(7, "fr", false, h.uid()));
-        voice.send(new VoiceSidecar.Text(7, "Neuf heures.\n"));
+        voice.send(new VoiceSidecar.Text(7, "Neuf heures.", "fr"));
         voice.send(new VoiceSidecar.ReplyEnd(7, ""));
         await(VoiceSidecar.ReplySpoken.class, x -> x.replyId() == 7, 20_000);
         assertThat(robotOut).anyMatch(s -> s.startsWith("speaker marvin-a1b2c3 "));
+        voice.send(new VoiceSidecar.Earcon("wake"));
+        waitFor(() -> robotOut.contains("sound marvin-a1b2c3 3"), 5000);           // the robot's own earcon
         int before = signals.size();
         voice.robotLink("marvin-a1b2c3", false, false);
-        waitFor(() -> signals.subList(before, signals.size()).stream()
-                .anyMatch(s -> s instanceof VoiceSidecar.Status st && st.state().equals("error")), 20_000);
         assertThat(voice.robotWithAudio()).isFalse();
-        assertThat(robotOut).contains("ctrl marvin-a1b2c3 " + HostMessages.AUDIO_MIC_STOP);
+        voice.open(settings(null), signals::add);                     // the core moves the voice back to the computer
+        waitFor(() -> signals.subList(before, signals.size()).stream()
+                .anyMatch(s -> s instanceof VoiceSidecar.Status st && "computer".equals(st.device())), 20_000);
+        assertThat(signals.subList(before, signals.size())).noneMatch(s -> s instanceof VoiceSidecar.Status st
+                && st.state().equals("starting"));                  // swapped, not restarted
+        waitFor(() -> robotOut.contains("ctrl marvin-a1b2c3 " + HostMessages.AUDIO_MIC_STOP), 5000);
     }
 
     @Test
     void theSessionComesBackWhenTheSidecarRestarts() throws InterruptedException {
         start(List.of("--fake"));
-        voice.open(settings(false), signals::add);
+        voice.open(settings(null), signals::add);
         await(VoiceSidecar.Status.class, s -> s.state().equals("idle"), 20_000);
         int before = signals.size();
         ProcessHandle.of(voice.process().pid()).orElseThrow().destroyForcibly();

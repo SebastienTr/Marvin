@@ -6,6 +6,7 @@ SPDX-License-Identifier: MIT
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 import threading
 import time
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from marvin_host.audio import FRAME_SAMPLES, SAMPLE_RATE
+from marvin_host.voice.device import COMPUTER_PROFILE, AudioDevice
 from marvin_host.voice.engine import VoiceConfig, VoiceEngine
 from marvin_host.voice.io import NullSink
 from marvin_host.voice.stt import FakeSTT
@@ -80,7 +82,7 @@ class ScriptedVoice(VoiceEngine):
                     return
                 lat.setdefault("first_chunk", time.monotonic() - t)
                 answer.append(s)
-                emit(s)
+                emit(s, job.language)
 
         said = self._speak_all(job, produce, lat)
         lat["total"] = time.monotonic() - job.t_heard
@@ -161,7 +163,17 @@ class OnceBlockingSink(BlockingSink):
             super().wait()
 
 
-def make(script, stt_script, replies=("D'accord.",), sink=None, tts=None, **cfg):
+def device(source, sink, duplex: bool = False, echo_tail_s: float | None = None, **profile) -> AudioDevice:
+    """An `AudioDevice` with the computer's profile, changed by `duplex`, `echo_tail_s`... (the
+    tests' sinks report no output latency)."""
+    p = COMPUTER_PROFILE
+    changes = {"duplex": duplex, **profile}
+    if echo_tail_s is not None:
+        changes["echo_tail_s"] = echo_tail_s
+    return AudioDevice(source, sink, replace(p, **changes))
+
+
+def make(script, stt_script, replies=("D'accord.",), sink=None, tts=None, duplex=False, echo_tail_s=None, **cfg):
     """A `ScriptedVoice` hearing `script`, its Whisper answering `stt_script` in turn."""
     config = VoiceConfig(**{"follow_up_s": 0.0, **cfg})
     src = ScriptSource(script)
@@ -170,7 +182,8 @@ def make(script, stt_script, replies=("D'accord.",), sink=None, tts=None, **cfg)
     tts = tts or FakeTTS()
     sink = sink or NullSink()
     log = {"status": [], "transcript": [], "reply": []}
-    va = ScriptedVoice(src, sink, config, stt=stt, tts=tts, vad=EnergyVad(), replies=replies,
+    va = ScriptedVoice(device(src, sink, duplex, echo_tail_s), config, stt=stt, tts=tts, vad=EnergyVad(),
+                       replies=replies,
                        on_status=log["status"].append, on_transcript=log["transcript"].append,
                        on_reply=log["reply"].append)
     src.assistant = va

@@ -240,10 +240,15 @@ class RobotSpeakerSink:
         while self.busy:
             time.sleep(0.01)
 
+    STOP_S = 0.06                                 # PLAY_STOP: one Wi-Fi hop and the DMA queue (docs/audio.md)
+
     def stop(self) -> None:
+        """Drops what is queued and stops the robot's speaker; `busy` until the stop has taken effect."""
         with self._cond:
+            playing = bool(len(self._pending)) or time.monotonic() < max(self._play_end, self._sound_end)
             self._pending = np.empty(0, dtype=np.int16)
-            self._play_end = self._sound_end = 0.0
+            self._play_end = time.monotonic() + self.STOP_S if playing else 0.0
+            self._sound_end = 0.0
             self._new_stream()
         ctrl = protocol.audio_ctrl(protocol.AUDIO_PLAY_STOP)
         self.rx.send(self.dev, protocol.AUDIO_CTRL, ctrl)

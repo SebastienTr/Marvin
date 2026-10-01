@@ -24,8 +24,8 @@ from marvin_host.voice.stt import FakeSTT, Transcript
 from marvin_host.voice.tts import FakeTTS
 from marvin_host.voice.vad import EnergyVad, Segmenter, SegmenterConfig
 from marvin_host.voice.wake import TranscriptWakeWord, is_wake_word, match_wake_word
-from voicekit import (BlockingSink, OnceBlockingSink, Replies, ScriptedVoice, ScriptSource, make, silence,
-                      voice)
+from voicekit import (BlockingSink, OnceBlockingSink, Replies, ScriptedVoice, ScriptSource, device, make,
+                      silence, voice)
 
 
 # ---------------------------------------------------------------- synthetic audio
@@ -187,7 +187,7 @@ def test_name_then_question():
     va.run()
     assert t.log["status"][:2] == ["listening", "thinking"]
     assert t.asked[0] == "Tu peux me rappeler de boire de l'eau ?"
-    assert len(t.sink.played) == 3                       # the chime, then the answer in two chunks
+    assert len(t.sink.played) == 2                       # the answer in two chunks (the core plays the earcon)
     assert [s for s, _ in t.tts.said] == ["Je n'ai pas de rappels.", "Hélas."]
 
 
@@ -327,7 +327,7 @@ def dominant_hz(pcm):
 REPLY = "I am running smoothly. The evening light is pleasant on my sensors, and I am content to sit here with you."
 
 
-def loop(script, questions, replies, delay_s=0.3, **cfg):
+def loop(script, questions, replies, delay_s=0.3, duplex=False, **cfg):
     """An assistant in the room above. Whisper is faked: the user's voice (140 Hz) gives the next
     question, Marvin's (FakeTTS, 220 Hz) gives back what it said, as the real Whisper does."""
     sink = LoopSink()
@@ -342,7 +342,7 @@ def loop(script, questions, replies, delay_s=0.3, **cfg):
 
     stt = FakeSTT(whisper)
     turns = []
-    va = ScriptedVoice(src, sink, VoiceConfig(**cfg), stt=stt, tts=tts, vad=EnergyVad(),
+    va = ScriptedVoice(device(src, sink, duplex), VoiceConfig(**cfg), stt=stt, tts=tts, vad=EnergyVad(),
                        replies=Replies(list(replies)), on_transcript=turns.append)
     src.assistant = va
     return va, SimpleNamespace(stt=stt, tts=tts, sink=sink, turns=turns, asked=va.asked)
@@ -419,22 +419,36 @@ def test_echo_filter_only_near_the_reply():
 
 
 def test_echo_gate():
-    from marvin_host.voice.echo import EchoGate
+    from marvin_host.voice.echo import CLOSED, MASK, OPEN, EchoGate
     now = [0.0]
-    sink = SimpleNamespace(busy=False, output_latency=0.1)
-    g = EchoGate(sink, tail_s=0.8, clock=lambda: now[0])
-    assert not g.closed()
-    g.speaking(True)
+    g = EchoGate(tail_s=0.8, output_latency_s=0.1, clock=lambda: now[0])
+    assert g.state() == OPEN
+    token = g.speak()
     now[0] = 5
     assert g.closed()
-    g.speaking(False)
+    g.done(token)
     now[0] = 5.85
     assert g.closed()                                    # tail = 0.8 s + 0.1 s output latency
     now[0] = 5.95
-    assert not g.closed()
-    g.speaking(False)                                    # not speaking: no new tail
-    assert not g.closed()
-    assert not EchoGate(sink, enabled=False).closed()
+    assert g.state() == OPEN
+    g.done(token)                                        # not speaking: no new tail
+    assert g.state() == OPEN
+    # a cut (Talk now, barge-in) makes the speaking thread's late done() harmless
+    token = g.speak()
+    g.soften()
+    assert g.state() == MASK                             # Talk now: kept for the pre-roll meanwhile
+    g.cut(mask_s=0.1)
+    assert g.state() == MASK
+    now[0] += 0.2
+    g.done(token)
+    assert g.state() == OPEN
+    g.mask(0.3)                                          # an earcon
+    assert g.state() == MASK
+    now[0] += 0.4
+    assert EchoGate(enabled=False).state() == OPEN
+    g.configure(0.5, enabled=False)
+    g.speak()
+    assert g.state() == OPEN                             # duplex: never deaf
 
 
 def test_say_is_skipped_during_a_conversation():
@@ -480,7 +494,7 @@ def test_whisper_tiny_hears_marvin(tmp_path):
         pytest.skip(f"whisper tiny unavailable: {e}")
     audio = np.concatenate([silence(0.5), speech, silence(1.0)])
     src = ArraySource(audio)
-    va = ScriptedVoice(src, NullSink(), VoiceConfig(follow_up_s=0), stt=stt, tts=FakeTTS())
+    va = ScriptedVoice(device(src, NullSink()), VoiceConfig(follow_up_s=0), stt=stt, tts=FakeTTS())
     va.run()
     assert len(va.asked) == 1, "wake word not heard"
     assert len(va.asked[0]) > 5

@@ -116,7 +116,7 @@ class VoiceMemoryTest {
             }
         };
         VoiceService v = new VoiceService(sidecar, model, settings, (url, params, t) -> Map.of(), store, presence, clock,
-                new LocalDays(ZoneId.of("Europe/Paris")), "linux", () -> false);
+                new LocalDays(ZoneId.of("Europe/Paris")), "linux", java.util.Optional::empty);
         v.setMemory(memory);
         v.addListener((kind, payload) -> {
             if (kind.equals("transcript")) {

@@ -72,11 +72,12 @@ class EnergyVad:
         return speech
 
 
-def make_vad(kind: str = "auto", aggressiveness: int = 2) -> Vad:
-    """'webrtc', 'energy', or 'auto' (webrtc if installed)."""
+def make_vad(kind: str = "auto", aggressiveness: int = 2, min_dbfs: float = -60.0) -> Vad:
+    """'webrtc', 'energy', or 'auto' (webrtc if installed). `aggressiveness` and `min_dbfs`: the
+    device's (device.py)."""
     if kind in ("auto", "webrtc"):
         try:
-            return WebRtcVad(aggressiveness)
+            return WebRtcVad(aggressiveness, min_dbfs)
         except ImportError:
             if kind == "webrtc":
                 raise
@@ -182,9 +183,11 @@ class Segmenter:
         self._n += 1
         self.reset()
 
-    def feed(self, frame: np.ndarray) -> Segment | None:
+    def feed(self, frame: np.ndarray, masked: bool = False) -> Segment | None:
+        """`masked`: the frame is kept (pre-roll, the utterance going on) but never counts as speech
+        (Marvin's own earcon, see echo.EchoGate)."""
         c = self.config
-        voiced = self.vad.is_speech(frame)
+        voiced = self.vad.is_speech(frame) and not masked
         self._n += 1
         if not self._in_speech:
             self._ring.append((frame, voiced))

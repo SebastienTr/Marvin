@@ -254,8 +254,9 @@ def test_speaker_stop_and_new_stream(rig):
     spk.play(ramp(0, SAMPLE_RATE * 2), rate=SAMPLE_RATE)
     time.sleep(0.2)
     spk.stop()
-    assert not spk.busy
-    time.sleep(0.1)
+    assert spk.busy                                 # until the stop has reached the robot...
+    time.sleep(RobotSpeakerSink.STOP_S + 0.04)
+    assert not spk.busy                             # ...about one Wi-Fi hop and the DMA queue later
     first = [protocol.AudioOut.decode(p) for _, _, p in robot.of_type(protocol.AUDIO_OUT)]
     assert 0 < len(first) < 40                      # stopped well before the 2 s were sent
     stops = [ctrl(p) for _, _, p in robot.of_type(protocol.AUDIO_CTRL)]

@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,7 +24,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -43,6 +43,7 @@ import marvin.host.application.conversation.tools.WeatherTool;
 import marvin.host.application.presence.port.in.PresenceQuery;
 import marvin.host.application.system.port.out.Tracing;
 import marvin.host.application.vision.port.in.Camera;
+import marvin.host.domain.conversation.AudioDeviceProfile;
 import marvin.host.domain.conversation.ChatMessage;
 import marvin.host.domain.conversation.ContextAssembler;
 import marvin.host.domain.conversation.ConversationEntry;
@@ -50,6 +51,8 @@ import marvin.host.domain.conversation.ConversationMemory;
 import marvin.host.domain.conversation.ImageAttachment;
 import marvin.host.domain.conversation.Persona;
 import marvin.host.domain.conversation.ProactiveSpeech;
+import marvin.host.domain.conversation.SentenceSplitter;
+import marvin.host.domain.conversation.SpeechLanguage;
 import marvin.host.domain.conversation.SpeechText;
 import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.conversation.VoiceSettings.VoiceConfig;
@@ -142,7 +145,7 @@ public final class VoiceService implements VoiceControl {
     private final Clocks clocks;
     private final LocalDays days;
     private final String platform;
-    private final BooleanSupplier robotAudio;
+    private final Supplier<Optional<String>> audioRobot;
     private final AnswerLoop loop;
     private final List<VoiceListener> listeners = new CopyOnWriteArrayList<>();
     private final ExecutorService control = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("marvin-voice-control").factory());
@@ -217,11 +220,11 @@ public final class VoiceService implements VoiceControl {
 
     /**
      * @param platform   {@code darwin}, {@code linux} ... (the settings panel offers {@code say} voices on a Mac)
-     * @param robotAudio whether a robot with a microphone and a speaker is connected (for the {@code auto} route)
+     * @param audioRobot the connected robot with a microphone and a speaker the robot route uses, if any
      */
     public VoiceService(VoiceSidecar voice, LanguageModel model, VoiceSettingsStore settingsStore, JsonFetcher fetch,
                         ConversationStore store, PresenceQuery presence, Clocks clocks, LocalDays days,
-                        String platform, BooleanSupplier robotAudio) {
+                        String platform, Supplier<Optional<String>> audioRobot) {
         this.voice = Objects.requireNonNull(voice, "voice");
         this.model = Objects.requireNonNull(model, "model");
         this.settingsStore = settingsStore;
@@ -231,7 +234,7 @@ public final class VoiceService implements VoiceControl {
         this.clocks = clocks;
         this.days = days;
         this.platform = platform;
-        this.robotAudio = robotAudio;
+        this.audioRobot = audioRobot;
         this.loop = new AnswerLoop(model, clocks::monotonicSeconds);
         VoiceConfig c = VoiceSettings.config(settings());
         this.memory = new ConversationMemory(c.memoryTurns(), c.memoryResetS(), HISTORY_TOKENS,
@@ -570,24 +573,60 @@ public final class VoiceService implements VoiceControl {
         setState(ERROR);
     }
 
+    /**
+     * What the voice is built from, and where it hears and speaks: decided here, once (the voice sidecar is given the
+     * device). {@code robot}: the robot's microphone and speaker (none chosen yet when no robot with audio is there:
+     * the voice then says so); {@code auto}: the robot's when one is connected, else the computer's.
+     */
     VoiceSidecar.Settings sidecarSettings(VoiceConfig c) {
-        boolean robot = "robot".equals(c.audioRoute()) || "auto".equals(c.audioRoute()) && robotAudio.getAsBoolean();
-        return new VoiceSidecar.Settings(c.stt(), c.sttModel(), c.tts(), c.ttsVoice(), c.language(),
-                c.defaultLanguage(), c.wake(), c.duplex(), c.echoTailS(), c.followUpS(), c.listenWindowS(),
-                c.speculativeStt(), c.endSilenceMs(), c.chime(), c.inputDevice(), c.outputDevice(), robot,
-                c.continueGraceS(), c.endSilenceLongMs());
+        Optional<String> robot = audioRobot.get();
+        AudioDeviceProfile device = "robot".equals(c.audioRoute()) || "auto".equals(c.audioRoute()) && robot.isPresent()
+                ? c.robot().forRobot(robot.orElse("")) : c.computer();
+        return VoiceSidecar.Settings.of(c, device);
     }
 
-    /** A robot with audio connected or left: with the {@code auto} route, the voice moves to it or back. */
+    /**
+     * A robot with audio connected, or the one in use left: on the {@code auto} and {@code robot} routes the voice moves
+     * to it, or back (only its device changes: the voice keeps running).
+     */
     public void robotAudioChanged() {
         VoiceConfig c = config;
-        if (opened && c != null && "auto".equals(c.audioRoute())) {
+        if (opened && c != null && !"computer".equals(c.audioRoute())) {
             control.execute(() -> {
                 if (opened) {
-                    voice.open(sidecarSettings(c), this::onSignal);
+                    VoiceSidecar.Settings wanted = sidecarSettings(c);
+                    if (!wanted.equals(openedWith)) {
+                        log.info("voice: now on " + wanted.device().name());
+                        voice.open(wanted, this::onSignal);
+                        openedWith = wanted;
+                    }
                 }
             });
         }
+    }
+
+    /**
+     * Plays an earcon ({@code wake}, {@code done}, {@code error}) on the voice's device, when it runs and has some (see
+     * {@link VoiceSnapshot#earcons()}); false when it cannot.
+     */
+    public boolean earcon(String sound) {
+        if (!opened || !ON.equals(state) || !"device".equals(earcons())) {
+            return false;
+        }
+        voice.send(new VoiceSidecar.Earcon(sound));
+        return true;
+    }
+
+    /** Where the voice's earcons play: {@code device} (its device has some), {@code buzzer} (it has none), {@code none} (off). */
+    private String earcons() {
+        Map<String, Object> s = settings();
+        if (Boolean.FALSE.equals(s.getOrDefault("chime", true))) {
+            return "none";
+        }
+        VoiceSidecar.Settings w = openedWith;
+        VoiceSidecar.Status st = status;
+        boolean running = ON.equals(state) && st != null && RUNNING.contains(st.state());
+        return running && w != null && w.device().hasEarcons() ? "device" : "buzzer";
     }
 
     /**
@@ -801,7 +840,10 @@ public final class VoiceService implements VoiceControl {
             attachImage(image);
         }
         long seq = statusSeq;
-        voice.send(new VoiceSidecar.Ask(t, ""));
+        VoiceConfig c = config;
+        String lang = c != null && c.language() != null ? c.language()
+                : SpeechText.guessLanguage(t, c != null ? c.languages() : List.of("fr", "en"));
+        voice.send(new VoiceSidecar.Ask(t, lang == null ? "" : lang));
         awaitStatus(seq, 0.3);
     }
 
@@ -934,10 +976,12 @@ public final class VoiceService implements VoiceControl {
         boolean on = ON.equals(state);
         String model = s.get("llm_model") instanceof String m && !m.isEmpty() ? m : VoiceSettings.DEFAULT_MODEL;
         PendingImage image = on ? waitingImage() : null;
-        return new VoiceSnapshot(state, on && st != null && RUNNING.contains(st.state()) ? st.state() : "off", muted,
+        boolean running = on && st != null && RUNNING.contains(st.state());
+        return new VoiceSnapshot(state, running ? st.state() : "off", muted,
                 error, fix, model, !Boolean.FALSE.equals(s.getOrDefault("wake", true)),
                 !Boolean.FALSE.equals(s.getOrDefault("chime", true)), on ? listenLeft(st) : null,
-                on && st != null && st.hearing() && "listening".equals(st.state()), image == null ? null : image.info());
+                on && st != null && st.hearing() && "listening".equals(st.state()), image == null ? null : image.info(),
+                running && st.asked() && "listening".equals(st.state()), running ? st.device() : "", earcons());
     }
 
     /**
@@ -1297,8 +1341,8 @@ public final class VoiceService implements VoiceControl {
                 c.maxToolRounds(), MODEL_TIMEOUT_S, () -> turn.cancelled, new AnswerLoop.Speaker() {
                     @Override
                     public void say(String sentence) {
-                        if (!SpeechText.cleanForSpeech(sentence).isEmpty()) {     // the voice would not say it
-                            voice.send(new VoiceSidecar.Text(turn.replyId, sentence + "\n"));
+                        for (SpeechLanguage.Clause cl : SpeechLanguage.clauses(SpeechText.cleanForSpeech(sentence), lang)) {
+                            voice.send(new VoiceSidecar.Text(turn.replyId, cl.text(), cl.language()));
                         }
                     }
 
@@ -1308,6 +1352,11 @@ public final class VoiceService implements VoiceControl {
                     }
                 }, () -> toolSupport.put(key, false), toolContext);
         Map<String, Object> usage = usage(out, previous, messages, lang, span);
+        if (out.failure() != null && out.saidAnswer().isEmpty() && !turn.cancelled) {
+            // nothing was said: the voice says why, in a sentence of the persona's (it has no words of its own)
+            String why = Persona.phrase("llm_down".equals(out.failure()) ? "llm_down" : "error", lang);
+            voice.send(new VoiceSidecar.Text(turn.replyId, why, lang));
+        }
         voice.send(new VoiceSidecar.ReplyEnd(turn.replyId, out.failure() == null ? "" : out.failure()));
 
         VoiceSidecar.ReplySpoken spoken = awaitSpoken(turn);
@@ -1316,9 +1365,10 @@ public final class VoiceService implements VoiceControl {
         }
         boolean interrupted = turn.cancelled || spoken.interrupted();
         int joined = h.continues().isEmpty() ? 0 : h.continues().size() + 1;
-        if (turn.merged()) {
-            // the owner went on talking: the question that continues this one is answered instead, this one is not
-            // remembered, and shows only if Marvin had started saying something
+        if (turn.merged() || interrupted && SpeechText.cleanForSpeech(spoken.text()).isEmpty()) {
+            // the owner went on talking (merged), or cut it before Marvin said a word (Talk now or Stop while it
+            // thought): this one is not remembered, and shows only if Marvin had started saying something. A question
+            // that continues it replaces its bubble (nothing was answered in between)
             if (!SpeechText.cleanForSpeech(spoken.text()).isEmpty()) {
                 reply(spoken.text(), lang, latency(h.latency(), out.latency(), spoken.latency()), true, out, context, user,
                         modelName, image, null, "", asm.report(profile, usage), joined);
@@ -1375,6 +1425,15 @@ public final class VoiceService implements VoiceControl {
                 return null;
             }
         }
+    }
+
+    /** {@code text} as the voice says it: its sentences, each cut where it changes language. */
+    static List<SpeechLanguage.Clause> clauses(String text, String language) {
+        List<SpeechLanguage.Clause> out = new ArrayList<>();
+        for (String sentence : SentenceSplitter.split(SpeechText.cleanForSpeech(text))) {
+            out.addAll(SpeechLanguage.clauses(sentence, language));
+        }
+        return out;
     }
 
     /** The latency breakdown: listening stages, then the model's, then the speaking stages (seconds, 3 decimals). */
@@ -1641,7 +1700,7 @@ public final class VoiceService implements VoiceControl {
         }
         long id = replyIds.getAndIncrement();
         proactiveReplies.put(id, lang);
-        voice.send(new VoiceSidecar.Say(id, text, lang, false, true));
+        voice.send(new VoiceSidecar.Say(id, text, lang, false, true, clauses(text, lang)));
         p.spoken(now);
     }
 

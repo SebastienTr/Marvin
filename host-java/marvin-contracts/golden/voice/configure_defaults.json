@@ -1,0 +1,55 @@
+{
+  "about": "The voice's defaults as the Java host sends them (Configure, contract version 2): the settings and the two devices' profiles. Kept by GrpcVoiceSidecarTest; the Python sidecar's own defaults must equal them.",
+  "settings": {
+    "stt": "auto",
+    "stt_model": "",
+    "tts": "auto",
+    "tts_voice": "",
+    "language": "",
+    "default_language": "fr",
+    "wake": true,
+    "duplex": false,
+    "echo_tail_s": 0.8,
+    "follow_up_s": 5.0,
+    "listen_window_s": 6.0,
+    "speculative_stt": true,
+    "end_silence_ms": 550.0,
+    "chime": false,
+    "input_device": "",
+    "output_device": "",
+    "continue_grace_s": 1.5,
+    "end_silence_long_ms": 1100.0,
+    "continue_join_s": 6.0,
+    "speculate_after_s": 0.25
+  },
+  "devices": {
+    "computer": {
+      "kind": "computer",
+      "robot": "",
+      "duplex": false,
+      "echo_tail_s": 0.8,
+      "output_latency_s": 0.0,
+      "vad_min_dbfs": -60.0,
+      "speech_min_dbfs": -50.0,
+      "vad_aggressiveness": 2,
+      "has_earcons": true,
+      "has_aec": false,
+      "input_device": "",
+      "output_device": ""
+    },
+    "robot": {
+      "kind": "robot",
+      "robot": "",
+      "duplex": false,
+      "echo_tail_s": 0.5,
+      "output_latency_s": 0.05,
+      "vad_min_dbfs": -55.0,
+      "speech_min_dbfs": -45.0,
+      "vad_aggressiveness": 3,
+      "has_earcons": true,
+      "has_aec": false,
+      "input_device": "",
+      "output_device": ""
+    }
+  }
+}

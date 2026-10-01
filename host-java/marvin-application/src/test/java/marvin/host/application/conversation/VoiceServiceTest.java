@@ -9,10 +9,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.BooleanSupplier;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +23,7 @@ import marvin.host.application.conversation.port.out.VoiceSettingsStore;
 import marvin.host.application.conversation.port.out.VoiceSidecar;
 import marvin.host.application.presence.port.in.PresenceQuery;
 import marvin.host.domain.conversation.ConversationEntry;
+import marvin.host.domain.conversation.AudioDeviceProfile;
 import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.presence.event.EventKind;
 import marvin.host.domain.presence.event.PresenceEvent;
@@ -191,10 +192,10 @@ class VoiceServiceTest {
             false, 1);
 
     VoiceService service(FakeModel model) {
-        return service(model, () -> false);
+        return service(model, java.util.Optional::empty);
     }
 
-    VoiceService service(FakeModel model, BooleanSupplier robotAudio) {
+    VoiceService service(FakeModel model, java.util.function.Supplier<java.util.Optional<String>> robotAudio) {
         PresenceQuery presence = new PresenceQuery() {
             @Override
             public PresenceState state() {
@@ -342,7 +343,8 @@ class VoiceServiceTest {
         assertThat(start.language()).isEqualTo("fr");
         assertThat(start.proactive()).isFalse();
         assertThat(sidecar.sent(VoiceSidecar.Text.class)).extracting(VoiceSidecar.Text::text)
-                .containsExactly("La capitale de la France,\n", "c'est Paris.\n", "Elle est grande.\n");
+                .containsExactly("La capitale de la France,", "c'est Paris.", "Elle est grande.");
+        assertThat(sidecar.sent(VoiceSidecar.Text.class)).extracting(VoiceSidecar.Text::language).containsOnly("fr");
         assertThat(sidecar.sent(VoiceSidecar.ReplyEnd.class).get(0).error()).isEmpty();
 
         Map<String, Object> heard = kinds("heard").get(0);
@@ -407,6 +409,9 @@ class VoiceServiceTest {
         sidecar.signals.signal(new VoiceSidecar.Heard(1, "Bonjour ?", "", "fr", "typed", Map.of(), 0));
         waitFor(() -> kinds("reply").size() == 1);
         assertThat(sidecar.sent(VoiceSidecar.ReplyEnd.class).get(0).error()).isEqualTo("llm_down");
+        // the voice has no words of its own: the sentence that says why is the persona's, sent like the answer
+        assertThat(sidecar.sent(VoiceSidecar.Text.class)).extracting(VoiceSidecar.Text::text)
+                .containsExactly(marvin.host.domain.conversation.Persona.phrase("llm_down", "fr"));
         Map<String, Object> reply = kinds("reply").get(0);
         assertThat(reply).containsEntry("error", "llm_down");
         assertThat((String) reply.get("hint")).contains("Connection refused");
@@ -435,6 +440,59 @@ class VoiceServiceTest {
         Thread.sleep((long) (VoiceService.SPOKEN_GRACE_S * 1000) + 600);
         assertThat(kinds("reply")).hasSize(1);
         assertThat(kinds("heard")).hasSize(2);
+    }
+
+    @Test
+    void anAnswerThatChangesLanguageIsSentInClausesTaggedWithTheirLanguage() throws InterruptedException {
+        FakeModel model = FakeModel.of("w", "w", "C'est une bonne idée, let me know when it's done. À plus tard !");
+        started(model);
+        waitFor(() -> model.calls.size() == 2);
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Je lance le build ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> kinds("reply").size() == 1);
+        assertThat(sidecar.sent(VoiceSidecar.Text.class)).extracting(t -> t.language() + ":" + t.text())
+                .containsExactly("fr:C'est une bonne idée,", "en:let me know when it's done.", "fr:À plus tard !");
+        assertThat(kinds("reply").get(0).get("text")).isEqualTo(
+                "C'est une bonne idée, let me know when it's done. À plus tard !");
+    }
+
+    @Test
+    void talkNowWhileItThinksLeavesNoEmptyReplyAndTheNextQuestionReplacesIt() throws InterruptedException {
+        FakeModel model = FakeModel.of("w", "w", "Il est midi.", "À Tokyo, il est dix-neuf heures.");
+        started(model);
+        waitFor(() -> model.calls.size() == 2);
+        sidecar.autoSpeak = false;
+        sidecar.signals.signal(new VoiceSidecar.Heard(1, "Quelle heure est-il ?", "", "fr", "voice", Map.of(), 0));
+        waitFor(() -> !sidecar.sent(VoiceSidecar.ReplyEnd.class).isEmpty());
+        long rid = sidecar.sent(VoiceSidecar.ReplyStart.class).get(0).replyId();
+        // Talk now before the first word: the voice cuts it (barge-in) having said nothing
+        sidecar.signals.signal(new VoiceSidecar.Interrupted(rid, "barge-in", 1));
+        sidecar.signals.signal(new VoiceSidecar.ReplySpoken(rid, 1, "", true, Map.of("total", 0.4)));
+        sidecar.autoSpeak = true;
+        sidecar.signals.signal(new VoiceSidecar.Heard(2, "Quelle heure est-il ? À Tokyo.", "", "fr", "voice", Map.of(), 0,
+                List.of(1L)));
+        waitFor(() -> kinds("reply").size() == 1);
+        assertThat(kinds("reply")).extracting(e -> e.get("text")).containsExactly("À Tokyo, il est dix-neuf heures.");
+        long first = ((Number) kinds("heard").get(0).get("id")).longValue();
+        assertThat(kinds("heard").get(1)).containsEntry("replaces", List.of(first)).containsEntry("continues", List.of());
+    }
+
+    @Test
+    void earconsPlayOnTheVoicesDeviceAndTypedQuestionsSayTheirLanguage() throws InterruptedException {
+        VoiceService v = started(FakeModel.of("w", "w"));
+        waitFor(() -> v.snapshot().state().equals("on"));
+        assertThat(v.snapshot().earcons()).isEqualTo("device");
+        assertThat(v.snapshot().device()).isEmpty();                  // the fake voice does not say
+        assertThat(v.earcon("wake")).isTrue();
+        assertThat(sidecar.sent(VoiceSidecar.Earcon.class)).extracting(VoiceSidecar.Earcon::sound).containsExactly("wake");
+        sidecar.signals.signal(new VoiceSidecar.Status("listening", false, "", "", "fake", "fake", 6.0, false, true,
+                "computer"));
+        assertThat(v.snapshot().asked()).isTrue();
+        assertThat(v.snapshot().toMap()).containsEntry("device", "computer").containsEntry("earcons", "device");
+        v.ask("What time is it in Tokyo?");
+        assertThat(sidecar.sent(VoiceSidecar.Ask.class).getLast().language()).isEqualTo("en");
+        settings.values.put("chime", false);
+        assertThat(v.snapshot().earcons()).isEqualTo("none");
+        assertThat(v.earcon("done")).isFalse();
     }
 
     @Test
@@ -567,12 +625,17 @@ class VoiceServiceTest {
     @Test
     void theSettingsForAQuestionThatGoesOnReachTheVoice() throws InterruptedException {
         started(FakeModel.of("w", "w"));
-        assertThat(sidecar.opened.getLast().continueGraceS()).isNull();
-        assertThat(sidecar.opened.getLast().endSilenceLongMs()).isNull();
-        VoiceSettings.VoiceConfig c = VoiceSettings.config(Map.of("continue_grace_s", 1.2, "end_silence_long_ms", 0));
+        // every value is sent, defaults included: the voice has none of its own
+        assertThat(sidecar.opened.getLast().continueGraceS()).isEqualTo(VoiceSettings.CONTINUE_GRACE_S);
+        assertThat(sidecar.opened.getLast().endSilenceLongMs()).isEqualTo(VoiceSettings.END_SILENCE_LONG_MS);
+        assertThat(sidecar.opened.getLast().continueJoinS()).isEqualTo(VoiceSettings.CONTINUE_JOIN_S);
+        VoiceSettings.VoiceConfig c = VoiceSettings.config(Map.of("continue_grace_s", 1.2, "end_silence_long_ms", 0,
+                "continue_join_s", 0, "end_silence_ms", 0));
         assertThat(c.continueGraceS()).isEqualTo(1.2);
         assertThat(c.endSilenceLongMs()).isEqualTo(0.0);
-        assertThat(VoiceSettings.FILE_KEYS).contains("continue_grace_s", "end_silence_long_ms");
+        assertThat(c.continueJoinS()).isEqualTo(0.0);
+        assertThat(c.endSilenceMs()).as("0 was the default before").isEqualTo(VoiceSettings.END_SILENCE_MS);
+        assertThat(VoiceSettings.FILE_KEYS).contains("continue_grace_s", "end_silence_long_ms", "continue_join_s");
     }
 
     @Test
@@ -667,16 +730,24 @@ class VoiceServiceTest {
 
     @Test
     void theRobotRouteFollowsTheSettingAndTheRobot() throws InterruptedException {
-        boolean[] robot = {true};
+        String[] robot = {"marvin-a1b2c3"};
         settings.values.put("audio_route", "auto");
-        VoiceService v = service(FakeModel.of("w", "w"), () -> robot[0]);
+        VoiceService v = service(FakeModel.of("w", "w"), () -> java.util.Optional.ofNullable(robot[0]));
         v.start();
         waitFor(() -> v.snapshot().state().equals("on"));
         assertThat(sidecar.opened.get(0).robot()).isTrue();
-        robot[0] = false;
+        assertThat(sidecar.opened.get(0).device()).isEqualTo(AudioDeviceProfile.ROBOT_DEFAULT.forRobot("marvin-a1b2c3"));
+        robot[0] = null;
         v.robotAudioChanged();
         waitFor(() -> sidecar.opened.size() == 2);
         assertThat(sidecar.opened.get(1).robot()).isFalse();
+        assertThat(sidecar.opened.get(1).device()).isEqualTo(AudioDeviceProfile.COMPUTER_DEFAULT);
+        // only the device changed: the same settings otherwise
+        assertThat(sidecar.opened.get(1).on(sidecar.opened.get(0).device())).isEqualTo(sidecar.opened.get(0));
+        robot[0] = null;
+        v.robotAudioChanged();                                  // nothing changed: nothing sent
+        Thread.sleep(100);
+        assertThat(sidecar.opened).hasSize(2);
     }
 
     @Test

@@ -14,6 +14,7 @@ SPDX-License-Identifier: MIT
 from __future__ import annotations
 
 import concurrent.futures
+import dataclasses
 import hmac
 import logging
 import queue
@@ -28,7 +29,8 @@ from ...voice import backends
 from ...voice.backends import VoiceUnavailable
 from .contract import voice_pb2 as pb
 from .contract import voice_pb2_grpc as pb_grpc
-from .session import EngineFactory, VoiceSession, voice_config
+from ...voice.engine import VoiceConfig
+from .session import EngineFactory, VoiceSession
 
 log = logging.getLogger("marvin.sidecar.voice")
 
@@ -85,10 +87,9 @@ class VoiceService(pb_grpc.VoiceServicer):
         if len(request.pcm) % 2:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "pcm must be 16-bit samples")
         s = self._session
-        settings = dict(s._settings or {}) if s is not None else {}
+        c = s.config if s is not None and s.config is not None else VoiceConfig()   # the session's recognition
         if request.language:
-            settings["language"] = request.language
-        c = voice_config(settings)
+            c = dataclasses.replace(c, language=request.language)
         try:
             if not self.factory.fake:
                 backends.audio_preflight(microphone=False)

@@ -318,6 +318,8 @@ class SpeakerSink:
         self._drained = threading.Event()
         self._drained.set()
         self._tail = 0                  # callbacks still to run before the last samples are heard
+        self.playback_started: float | None = None     # when samples left for the device after a silence
+        self._from_silence = False
         self._stream = sd.OutputStream(device=device, channels=1, dtype="int16", samplerate=self.rate,
                                        callback=self._callback, latency=latency)
         self._stream.start()
@@ -334,6 +336,9 @@ class SpeakerSink:
                 out[filled:filled + n] = chunk[self._pos:self._pos + n]
                 filled += n
                 self._pos += n
+                if self._from_silence:
+                    self._from_silence = False
+                    self.playback_started = time.monotonic()
                 if self._pos >= len(chunk):
                     self._chunks.popleft()
                     self._pos = 0
@@ -351,6 +356,8 @@ class SpeakerSink:
         if len(pcm) == 0:
             return
         with self._lock:
+            if self._drained.is_set():
+                self._from_silence = True
             self._chunks.append(pcm)
             self._drained.clear()
 
@@ -358,16 +365,21 @@ class SpeakerSink:
         self._drained.wait()
 
     def stop(self) -> None:
+        """Drops what is queued; `busy` until the device has played out the little it already had
+        (half duplex reopens the microphone only then)."""
         with self._lock:
             self._chunks.clear()
             self._pos = 0
-            self._drained.set()
+            if not self._drained.is_set():
+                self._tail = 2
 
     @property
     def busy(self) -> bool:
         return not self._drained.is_set()
 
     def close(self) -> None:
-        self.stop()
+        with self._lock:
+            self._chunks.clear()
+            self._drained.set()
         self._stream.stop()
         self._stream.close()

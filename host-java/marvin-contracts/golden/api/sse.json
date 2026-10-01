@@ -190,7 +190,11 @@
             "model": "qwen3:4b-instruct",
             "wake": true,
             "chime": true,
-            "listen_s": null
+            "listen_s": null,
+            "hearing": false,
+            "asked": false,
+            "device": "",
+            "earcons": "buzzer"
           },
           "shapes": [
             {
@@ -202,7 +206,11 @@
               "model": "string",
               "wake": "boolean",
               "chime": "boolean",
-              "listen_s": "null"
+              "listen_s": "null",
+              "hearing": "boolean",
+              "asked": "boolean",
+              "device": "string",
+              "earcons": "string"
             },
             {
               "state": "string",
@@ -213,7 +221,11 @@
               "model": "string",
               "wake": "boolean",
               "chime": "boolean",
-              "listen_s": "number"
+              "listen_s": "number",
+              "hearing": "boolean",
+              "asked": "boolean",
+              "device": "string",
+              "earcons": "string"
             }
           ]
         },

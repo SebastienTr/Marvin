@@ -21,7 +21,11 @@
       "model": "qwen3:4b-instruct",
       "wake": true,
       "chime": true,
-      "listen_s": null
+      "listen_s": null,
+      "hearing": false,
+      "asked": false,
+      "device": "",
+      "earcons": "buzzer"
     },
     "settings": {
       "llm_model": "qwen3:4b-instruct",
@@ -36,7 +40,9 @@
       "internet": true,
       "home_place": "",
       "reminders": true,
-      "welcome_back": false
+      "welcome_back": false,
+      "vision_model": "",
+      "camera": "auto"
     },
     "transcript": [
       {
@@ -168,7 +174,11 @@
       "model": "string",
       "wake": "boolean",
       "chime": "boolean",
-      "listen_s": "null"
+      "listen_s": "null",
+      "hearing": "boolean",
+      "asked": "boolean",
+      "device": "string",
+      "earcons": "string"
     },
     "settings": {
       "llm_model": "string",
@@ -183,7 +193,9 @@
       "internet": "boolean",
       "home_place": "string",
       "reminders": "boolean",
-      "welcome_back": "boolean"
+      "welcome_back": "boolean",
+      "vision_model": "string",
+      "camera": "string"
     },
     "transcript": [
       {

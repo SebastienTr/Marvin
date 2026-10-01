@@ -1,15 +1,17 @@
 """The voice engine of the sidecar: the shared audio machine, answering with the core's words.
 
 `SidecarVoice` is `VoiceEngine` (voice/engine.py: capture, echo gate, VAD, wake word, listening
-windows, speculative STT and its filters, chunking, synthesis, playback, barge-in) whose answers
-come from Marvin's core instead of a model in this process:
+windows, speculative STT and its filters, synthesis, playback, barge-in) whose answers come from
+Marvin's core:
 
 1. a question is decided: `Heard` goes to the core (uid, text, language, source, the latency so
    far), and the voice is "thinking";
 2. the core answers with `ReplyStart` (for that uid), then `TextPiece`s as its model writes, maybe
-   a `Filler` while a tool runs, then `ReplyEnd`;
-3. the pieces are split into sentences and spoken as they come (first clause early), exactly as
-   the in-process assistant speaks its model's stream; `SayProgress` follows each piece;
+   a `Filler` while a tool runs, then `ReplyEnd`. Each piece is one clause, already cut, cleaned
+   for speech and tagged with its language by the core (contract version 2): it is spoken as it
+   is, in that order (the first clause early). If the answer failed, the core sends the sentence
+   that says so;
+3. `SayProgress` follows each clause as it is queued on the speaker;
 4. at the end `ReplySpoken` (text said, latencies: first_chunk, tts, audio_start, filler_start,
    total), or `Interrupted` (+ `ReplySpoken` with interrupted) after a barge-in or Stop.
 
@@ -17,8 +19,10 @@ One thought, one question: when the person goes on right after a question (befor
 heard), or cuts the answer to go on, the pending question is cancelled (`Interrupted` "merged", or
 "barge-in") and a `Heard` with both texts follows, listing the questions it `continues`.
 
-Proactive speech: `Say` (a whole text), or a `ReplyStart` without a question (streamed); both are
+Proactive speech: `Say` (its clauses), or a `ReplyStart` without a question (streamed); both are
 skipped with `Interrupted` "busy" while a conversation is going on, unless forced.
+
+Earcons: `Earcon` plays a short sound on the device (the core decides when, docs/voice.md).
 
 Every live signal of the engine (status, level, utterance, partial, say, ignored, muted) becomes
 its `VoiceToCore` message. Messages are handed to `send`, from the engine's threads.
@@ -34,7 +38,6 @@ import time
 from typing import Callable
 
 from ...voice.engine import Status, VoiceEngine, _Job
-from ...voice.text import SentenceSplitter, clean_for_speech
 from .contract import voice_pb2 as pb
 
 log = logging.getLogger("marvin.sidecar.voice")
@@ -42,17 +45,6 @@ log = logging.getLogger("marvin.sidecar.voice")
 STATES = {Status.IDLE.value: pb.Status.IDLE, Status.LISTENING.value: pb.Status.LISTENING,
           Status.THINKING.value: pb.Status.THINKING, Status.SPEAKING.value: pb.Status.SPEAKING}
 UTTERANCE = {"start": pb.Utterance.START, "end": pb.Utterance.END, "done": pb.Utterance.DONE}
-
-
-# said when an answer failed and nothing was said of it (version 1 of the contract; version 2 cores send
-# their own sentence)
-_PHRASES = {"llm_down": {"fr": "Je n'arrive pas à joindre mon modèle de langage. Ollama est-il lancé ?",
-                         "en": "I can't reach my language model. Is Ollama running?"},
-            "error": {"fr": "Désolé, quelque chose s'est mal passé.", "en": "Sorry, something went wrong."}}
-
-
-def _phrase(key: str, language: str) -> str:
-    return _PHRASES[key].get(language, _PHRASES[key]["en"])
 
 
 class _Reply:
@@ -98,16 +90,17 @@ class SidecarVoice(VoiceEngine):
                 self._interrupted(m.reply_id, "busy", 0)
 
     def text(self, m: pb.TextPiece) -> None:
-        self._put(m.reply_id, ("text", m.text))
+        self._put(m.reply_id, ("text", (m.text, m.language or None)))
 
     def filler(self, m: pb.Filler) -> None:
-        self._put(m.reply_id, ("filler", m.text))
+        self._put(m.reply_id, ("filler", (m.text, m.language or None)))
 
     def reply_end(self, m: pb.ReplyEnd) -> None:
         self._put(m.reply_id, ("end", m.error))
 
     def say_now(self, m: pb.Say) -> None:
-        if not self.say(m.text, m.language or None, m.force, reply_id=m.reply_id):
+        clauses = [(c.text, c.language or m.language or None) for c in m.clauses] or [(m.text, m.language or None)]
+        if not self.say(m.text, m.language or None, m.force, reply_id=m.reply_id, clauses=clauses):
             self._interrupted(m.reply_id, "busy", 0)
 
     def _put(self, reply_id: int, item: tuple) -> None:
@@ -162,7 +155,8 @@ class SidecarVoice(VoiceEngine):
             if reply is not None:
                 text, _ = self._speak_reply(job, reply, lat, wait_start=False)
             else:
-                text = self._speak_all(job, lambda emit: emit(job.text), lat)
+                clauses = job.clauses or [(job.text, job.language)]
+                text = self._speak_all(job, lambda emit: [emit(t, lang) for t, lang in clauses], lat)
         finally:
             self._forget(reply_id=job.reply_id)
         lat["total"] = time.monotonic() - job.t_heard
@@ -177,12 +171,13 @@ class SidecarVoice(VoiceEngine):
         answer: list[str] = []
 
         def produce(emit):
-            def say(s: str) -> None:
+            def say(s: str, language: str | None) -> None:
+                if not s.strip():
+                    return
                 lat.setdefault("first_chunk", time.monotonic() - t)
                 answer.append(s)
-                emit(s)
+                emit(s, language)
 
-            splitter = SentenceSplitter()
             started = not wait_start
             last = time.monotonic()
             while not job.cancel.is_set():
@@ -191,7 +186,7 @@ class SidecarVoice(VoiceEngine):
                 except queue.Empty:
                     if time.monotonic() - last > self.reply_timeout_s:
                         log.warning("no answer from the core after %.0f s", self.reply_timeout_s)
-                        emit(_phrase("error", job.language))
+                        self.earcon("error")
                         return
                     continue
                 last = time.monotonic()
@@ -203,19 +198,14 @@ class SidecarVoice(VoiceEngine):
                 elif not started:
                     continue
                 elif kind == "text":
-                    for s in splitter.feed(value):
-                        say(s)
+                    say(*value)
                 elif kind == "filler":
-                    emit.filler(value)
+                    emit.filler(*value)
                 elif kind == "end":
-                    for s in splitter.flush():
-                        say(s)
-                    if value and not clean_for_speech(" ".join(answer)):
-                        emit(_phrase("llm_down" if value == "llm_down" else "error", job.language))
                     return
 
         text = self._speak_all(job, produce, lat)
-        return text, bool(clean_for_speech(" ".join(answer)))
+        return text, bool(" ".join(answer).strip())
 
     # ------------------------------------------------------------ to the core
 
@@ -229,7 +219,8 @@ class SidecarVoice(VoiceEngine):
 
     def status_message(self) -> pb.VoiceToCore:
         s = pb.Status(state=STATES[self.status], muted=self.muted, stt=self.names.get("stt", ""),
-                      tts=self.names.get("tts", ""), hearing=self.status == Status.LISTENING.value and self.hearing)
+                      tts=self.names.get("tts", ""), hearing=self.status == Status.LISTENING.value and self.hearing,
+                      asked=self.listen_asked, device=self.device.name)
         left = self.listen_remaining()
         if left is not None:
             s.listen_s = round(left, 3)

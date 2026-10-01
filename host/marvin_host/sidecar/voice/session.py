@@ -1,10 +1,15 @@
 """One live session with the core (Voice.Session): configuration, commands, and the engine's life.
 
-The core opens the stream and sends `Configure` first, then again whenever the settings change.
-`VoiceSession` builds the engine for them (in the background: loading Whisper and a voice takes
-seconds) and rebuilds it when the settings, the audio route or the robot change; loaded models are
-kept when their own settings did not change. Until an engine runs, `Status` says STARTING, or ERROR
-with what is missing and how to fix it, and commands are answered as the voice being off.
+The core opens the stream and sends `Configure` first, then again whenever the settings or the
+audio device change. Contract version 2: the core sends every value (it is the single source of
+the voice's settings and defaults, host-java `VoiceSettings`) and the device to use with its
+profile (device.py): this side never fills in a default nor decides the route.
+
+`VoiceSession` builds the engine for them in the background (loading Whisper and a voice takes
+seconds). A new device alone (a robot linked or left) is swapped under the running engine; other
+changes rebuild it, keeping the loaded models whose own settings did not change. Until an engine
+runs, `Status` says STARTING, or ERROR with what is missing and how to fix it, and commands are
+answered as the voice being off.
 
 `EngineFactory` makes the components: the computer's microphone and speakers (voice/io.py) or the
 robot's, relayed by the core (relay.py and robot_audio.py); Whisper and the speech synthesis the
@@ -17,10 +22,13 @@ from __future__ import annotations
 
 import logging
 import threading
+from dataclasses import astuple
 from typing import Callable
 
 from ...voice.backends import VoiceUnavailable, audio_preflight, device_index
+from ...voice.device import COMPUTER, ROBOT, AudioDevice, DeviceProfile
 from ...voice.engine import VoiceConfig, load_tts
+from ...voice.vad import SegmenterConfig
 from .contract import voice_pb2 as pb
 from .engine import SidecarVoice
 from .fake import Script, ScriptedMic, ScriptedWhisper
@@ -28,50 +36,28 @@ from .relay import RobotRelay
 
 log = logging.getLogger("marvin.sidecar.voice")
 
-CONTRACT_VERSION = 1
-LOCAL, ROBOT = pb.AUDIO_ROUTE_LOCAL, pb.AUDIO_ROUTE_ROBOT
+CONTRACT_VERSION = 2
 
 
-def settings_dict(s: pb.VoiceSettings) -> dict:
-    """`VoiceSettings` as voice.json keys (voice/cli.py). Proto3 cannot tell 0 from unset: empty
-    strings and a 0 for echo_tail_s, listen_window_s or end_silence_ms mean "the default"
-    (follow_up_s 0 means no follow-up window, as in voice.json); continue_grace_s and
-    end_silence_long_ms are optional: unset is the default, 0 turns them off."""
-    out = {"stt": s.stt or "auto", "tts": s.tts or "auto", "wake": s.wake, "duplex": s.duplex,
-           "follow_up_s": s.follow_up_s, "speculative_stt": s.speculative_stt, "chime": s.chime}
-    for key in ("stt_model", "tts_voice", "language", "default_language", "input_device", "output_device"):
-        v = getattr(s, key)
-        if v:
-            out[key] = v
-    for key in ("echo_tail_s", "listen_window_s", "end_silence_ms"):
-        v = getattr(s, key)
-        if v > 0:
-            out[key] = v
-    for key in ("continue_grace_s", "end_silence_long_ms"):
-        if s.HasField(key):
-            out[key] = max(0.0, getattr(s, key))
-    return out
+def voice_config(s: pb.VoiceSettings) -> VoiceConfig:
+    """The voice's settings as the core sends them (version 2: every value is there)."""
+    language = s.language or None
+    return VoiceConfig(
+        language=language, default_language=language or s.default_language or "fr",
+        stt=s.stt, stt_model=s.stt_model or None, tts=s.tts, tts_voice=s.tts_voice or None,
+        wake=s.wake, listen_window_s=s.listen_window_s, follow_up_s=s.follow_up_s,
+        speculative_stt=s.speculative_stt, speculate_after_s=s.speculate_after_s,
+        continue_grace_s=s.continue_grace_s, continue_join_s=s.continue_join_s,
+        segmenter=SegmenterConfig(end_silence_s=s.end_silence_ms / 1000,
+                                  end_silence_long_s=s.end_silence_long_ms / 1000))
 
 
-# settings key -> VoiceConfig attribute
-_ATTRS = {"stt": "stt", "stt_model": "stt_model", "tts": "tts", "tts_voice": "tts_voice", "language": "language",
-          "default_language": "default_language", "wake": "wake", "duplex": "duplex", "echo_tail_s": "echo_tail_s",
-          "follow_up_s": "follow_up_s", "listen_window_s": "listen_window_s", "speculative_stt": "speculative_stt",
-          "continue_grace_s": "continue_grace_s", "chime": "chime"}
-
-
-def voice_config(settings: dict) -> VoiceConfig:
-    c = VoiceConfig()
-    for key, v in settings.items():
-        if key == "end_silence_ms":
-            c.segmenter.end_silence_s = float(v) / 1000
-        elif key == "end_silence_long_ms":
-            c.segmenter.end_silence_long_s = float(v) / 1000
-        elif key in _ATTRS and v is not None:
-            setattr(c, _ATTRS[key], type(getattr(c, _ATTRS[key]) if getattr(c, _ATTRS[key]) is not None else "")(v))
-    if c.language:
-        c.default_language = c.language
-    return c
+def device_profile(d: pb.AudioDeviceProfile) -> DeviceProfile:
+    return DeviceProfile(kind=ROBOT if d.kind == ROBOT else COMPUTER, robot=d.robot, duplex=d.duplex,
+                         echo_tail_s=d.echo_tail_s, output_latency_s=d.output_latency_s,
+                         vad_min_dbfs=d.vad_min_dbfs, speech_min_dbfs=d.speech_min_dbfs,
+                         vad_aggressiveness=d.vad_aggressiveness, has_earcons=d.has_earcons, has_aec=d.has_aec,
+                         input_device=d.input_device, output_device=d.output_device)
 
 
 def stt_name(stt, config: VoiceConfig) -> str:
@@ -86,12 +72,12 @@ def tts_name(tts) -> str:
     names = {"MacSayTTS": "say", "PiperTTS": "piper", "EspeakTTS": "espeak", "FakeTTS": "fake"}
     if kind == "FallbackTTS":
         return f"{tts_name(tts.primary)} (else {tts_name(tts.fallback)})"
-    return names.get(kind, kind)
+    return getattr(tts, "name", None) or names.get(kind, kind)
 
 
 class EngineFactory:
-    """Builds `SidecarVoice`s; keeps the loaded speech recognition and synthesis between builds.
-    `script`: test mode (fake.py), with the scripted microphone played at `speed`."""
+    """Builds `SidecarVoice`s and their devices; keeps the loaded speech recognition and synthesis
+    between builds. `script`: test mode (fake.py), with the scripted microphone played at `speed`."""
 
     def __init__(self, script: Script | None = None, speed: float = 1.0, reply_timeout_s: float = 30.0):
         self.script = script
@@ -131,42 +117,45 @@ class EngineFactory:
                 self._tts = (key, tts)
             return self._tts[1]
 
-    def build(self, settings: dict, route: int, relay: RobotRelay,
-              send: Callable[[pb.VoiceToCore], None]) -> SidecarVoice:
-        """Raises VoiceUnavailable when something is missing."""
-        c = voice_config(settings)
-        if route == ROBOT:
-            dev = relay.audio_device()
-            if dev is None:
+    def device(self, profile: DeviceProfile, relay: RobotRelay) -> AudioDevice:
+        """The microphone and speaker of `profile`. Raises VoiceUnavailable when they cannot open."""
+        if profile.kind == ROBOT:
+            if not profile.robot:
                 raise VoiceUnavailable("No robot with a microphone and a speaker is connected",
                                        "Turn the robot on, or choose the computer's microphone.")
             if not self.fake:
                 audio_preflight(microphone=False)
             from ...robot_audio import RobotMicSource, RobotSpeakerSink
-            source, sink = RobotMicSource(relay, dev), RobotSpeakerSink(relay, dev)
-        elif self.fake:
+            dev = relay.device(profile.robot)
+            return AudioDevice(RobotMicSource(relay, dev), RobotSpeakerSink(relay, dev), profile)
+        if self.fake:
             from ...voice.io import NullSink
-            source, sink = ScriptedMic(self.script, self.speed), NullSink(realtime=True)
-        else:
-            audio_preflight(settings.get("input_device"), microphone=True)
-            from ...voice import io
-            source = io.MicSource(device_index(settings.get("input_device")))
-            sink = io.SpeakerSink(device_index(settings.get("output_device")))
+            return AudioDevice(ScriptedMic(self.script, self.speed), NullSink(realtime=True), profile)
+        audio_preflight(profile.input_device, microphone=True)
+        from ...voice import io
+        source = io.MicSource(device_index(profile.input_device))
         try:
-            stt, tts = self.stt(c), self.tts(c)
+            sink = io.SpeakerSink(device_index(profile.output_device))
+        except BaseException:
+            source.close()
+            raise
+        return AudioDevice(source, sink, profile)
+
+    def build(self, config: VoiceConfig, profile: DeviceProfile, relay: RobotRelay,
+              send: Callable[[pb.VoiceToCore], None]) -> SidecarVoice:
+        """Raises VoiceUnavailable when something is missing."""
+        device = self.device(profile, relay)
+        try:
+            stt, tts = self.stt(config), self.tts(config)
             vad = None
             if self.fake:
                 from ...voice.vad import EnergyVad
                 vad = EnergyVad()
-            eng = SidecarVoice(source, sink, c, stt=stt, tts=tts, vad=vad, send=send,
-                               names={"stt": stt_name(stt, c), "tts": tts_name(tts)},
-                               reply_timeout_s=self.reply_timeout_s)
-            eng._stt_lock = self.stt_lock
-            return eng
+            return SidecarVoice(device, config, stt=stt, tts=tts, vad=vad, stt_lock=self.stt_lock, send=send,
+                                names={"stt": stt_name(stt, config), "tts": tts_name(tts)},
+                                reply_timeout_s=self.reply_timeout_s)
         except BaseException:
-            source.close()
-            if hasattr(sink, "close"):
-                sink.close()
+            device.close()
             raise
 
 
@@ -183,9 +172,9 @@ class VoiceSession:
         self.state = pb.Status.STARTING
         self.error = self.fix = ""
         self.muted = False
-        self._settings: dict | None = None
-        self._route = LOCAL
-        self._built_for: tuple | None = None
+        self.config: VoiceConfig | None = None
+        self.profile: DeviceProfile | None = None
+        self._built_for: tuple | None = None        # (config, profile) of the engine, or of the failure
         self._wanted = threading.Event()
         self._closed = False
         self._worker = threading.Thread(target=self._build_loop, name="marvin-sidecar-build", daemon=True)
@@ -203,8 +192,7 @@ class VoiceSession:
             self._configure(m.configure)
         elif kind == "robot_link":
             r = m.robot_link
-            if self.relay.link(r.device, r.connected, r.has_audio) and self._route == ROBOT:
-                self._rebuild()
+            self.relay.link(r.device, r.connected, r.has_audio)     # what is known; the core chooses the device
         elif kind == "mute":
             self.muted = m.mute.muted
             eng = self.engine
@@ -212,7 +200,7 @@ class VoiceSession:
                 eng.mute(self.muted)
             else:
                 self._status()
-        elif kind in ("reply_start", "text", "filler", "reply_end", "say", "ask", "listen_now", "stop"):
+        elif kind in ("reply_start", "text", "filler", "reply_end", "say", "ask", "listen_now", "stop", "earcon"):
             self._command(kind, getattr(m, kind))
         elif kind is None:
             log.warning("empty message from the core")
@@ -224,7 +212,7 @@ class VoiceSession:
                 self._out(pb.VoiceToCore(ignored=pb.Ignored(text=m.text, reason="the voice is not running")))
             elif kind in ("reply_start", "say"):
                 self._out(pb.VoiceToCore(interrupted=pb.Interrupted(reply_id=m.reply_id, reason="off")))
-            else:
+            elif kind != "earcon":
                 self._status()
             return
         if kind == "reply_start":
@@ -249,26 +237,22 @@ class VoiceSession:
             self._out(eng.status_message())        # listen_s changed, maybe not the state
         elif kind == "stop":
             eng.stop_speaking()
+        elif kind == "earcon":
+            eng.earcon(m.sound)
 
     def _configure(self, c: pb.Configure) -> None:
-        if c.contract_version not in (0, CONTRACT_VERSION):
-            log.warning("the core speaks contract version %d, this sidecar %d", c.contract_version, CONTRACT_VERSION)
+        if c.contract_version != CONTRACT_VERSION:
+            log.error("the core speaks contract version %d, this sidecar %d", c.contract_version, CONTRACT_VERSION)
+            self._set_state(pb.Status.ERROR, f"The core speaks voice contract version {c.contract_version}, "
+                                             f"this voice sidecar version {CONTRACT_VERSION}",
+                            "./marvin restart (the host and its voice must come from the same checkout)")
+            return
         with self._lock:
-            self._settings = settings_dict(c.settings)
-            self._route = c.route if c.route != pb.AUDIO_ROUTE_UNSPECIFIED else LOCAL
-        self._rebuild()
-
-    # ------------------------------------------------------------ the engine's life
-
-    def _rebuild(self) -> None:
+            self.config = voice_config(c.settings)
+            self.profile = device_profile(c.device)
         self._wanted.set()
 
-    def _target(self) -> tuple | None:
-        with self._lock:
-            if self._settings is None:
-                return None
-            dev = self.relay.audio_device() if self._route == ROBOT else None
-            return (tuple(sorted(self._settings.items())), self._route, dev.name if dev else None)
+    # ------------------------------------------------------------ the engine's life
 
     def _build_loop(self) -> None:
         while True:
@@ -276,14 +260,22 @@ class VoiceSession:
             self._wanted.clear()
             if self._closed:
                 return
-            target = self._target()
-            if target is None or target == self._built_for:
+            with self._lock:
+                config, profile = self.config, self.profile
+            if config is None or profile is None:
+                continue
+            target = (astuple(config), profile)
+            built = self._built_for
+            if target == built:
+                continue
+            eng = self.engine
+            if eng is not None and not eng.closed and built is not None and built[0] == target[0]:
+                self._swap(eng, profile, target)       # only the device changed: models and state stay
                 continue
             self._stop_engine()
             self._set_state(pb.Status.STARTING)
-            settings, route = dict(target[0]), target[1]
             try:
-                eng = self.factory.build(settings, route, self.relay, self._out)
+                eng = self.factory.build(config, profile, self.relay, self._out)
             except VoiceUnavailable as e:
                 self._built_for = target
                 self._set_state(pb.Status.ERROR, str(e), e.fix)
@@ -303,9 +295,21 @@ class VoiceSession:
                 self._built_for = target
                 self.error = self.fix = ""
             eng.start()
-            log.info("voice ready (%s, %s; %s)", eng.names.get("stt"), eng.names.get("tts"),
-                     "robot" if route == ROBOT else "computer")
+            log.info("voice ready (%s, %s; %s)", eng.names.get("stt"), eng.names.get("tts"), profile.name)
             self._out(eng.status_message())
+
+    def _swap(self, eng: SidecarVoice, profile: DeviceProfile, target: tuple) -> None:
+        try:
+            device = self.factory.device(profile, self.relay)
+        except VoiceUnavailable as e:
+            self._built_for = target
+            self._stop_engine()
+            self._set_state(pb.Status.ERROR, str(e), e.fix)
+            return
+        eng.swap_device(device)
+        with self._lock:
+            self._built_for = target
+        self._out(eng.status_message())
 
     def _stop_engine(self) -> None:
         with self._lock:
