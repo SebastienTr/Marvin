@@ -157,7 +157,8 @@ flowchart TB
 | Out | `EventLog`, `MemoryStore`, `TaskStore`, ... | JDBC, Flyway, pgvector | Repositories per module |
 | Out | `ConnectorClient` | Spring AI MCP client | Plus native adapters where MCP lacks incremental sync |
 | Out | `Notifier` | SSE to the app, robot speech/earcon, optional push | |
-| Out | `AudioDevices`, `Camera` | inside the sidecars | The core never opens a sound card or a camera |
+| Out | `AudioDevices` | inside the sidecars | The core never opens a sound card |
+| Out | `FrameSource` (vision) | an `ffmpeg` process for one picture (the computer's camera); HTTP to the robot's MJPEG camera | The core never opens a camera: a process does, for one picture on demand ([vision.md](vision.md)) |
 | Out | `SecretStore` | macOS Keychain, file with 0600, Docker/Kubernetes secrets | Never the database, never logs, never prompts |
 | Out | `Clock` | system clock; device clock for sensor time | Tests inject a fake clock; replays use the robot's clock as today |
 
@@ -194,6 +195,7 @@ host-java/
 ├── marvin-adapter-persistence/     # JDBC, Flyway migrations, pgvector
 ├── marvin-adapter-llm/             # Spring AI: Ollama chat and embeddings, optional cloud
 ├── marvin-adapter-sidecar/         # gRPC clients, process supervisor, health checks
+├── marvin-adapter-camera/          # one picture: ffmpeg (the computer's camera), HTTP (the robot's MJPEG)
 ├── marvin-adapter-mcp/             # Spring AI MCP client, native connector adapters
 ├── marvin-adapter-notify/          # notification channels
 ├── marvin-app/                     # Spring Boot main, configuration, wiring, scheduler

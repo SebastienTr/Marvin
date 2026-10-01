@@ -331,9 +331,9 @@ draining bar); if nothing was asked, it goes on with at least the time it had le
 
 ## Showing Marvin an image
 
-With the Java host, the owner can show Marvin a photo in Talk and ask about it. Marvin still cannot
-look through its own camera: the photo is the only image it sees, and only with the question it came
-with.
+With the Java host, the owner can show Marvin a photo in Talk and ask about it: the photo is seen only
+with the question it came with. (Marvin can also look through a camera when asked, with the `look`
+tool: [vision.md](vision.md).)
 
 - **In the app**: the image button beside the text box (on a phone: **Take a photo** or **Choose a
   photo**), or drop a picture on the conversation, or paste one into the text box. The page makes it
@@ -369,9 +369,9 @@ with.
   415 for another type, 400 for what is not an image, 422 when the model cannot see, 409 when the voice
   is off. The voice's state has `image` while one waits.
 
-Later, a `look` tool could let Marvin take a picture with the robot's camera when a question needs it
-(the same path: an image on the question's message only). It is not built: the camera is not
-connected to the conversation yet.
+Marvin looking through a camera itself (the robot's or the computer's) is the `look` tool, described in
+[vision.md](vision.md): the same model for images and the same checks, but the picture goes to that
+model in a request of its own, and the conversation gets its description.
 
 ## The room
 
@@ -567,9 +567,10 @@ process, as before.
   `end_silence_ms` if you speak slowly. In half duplex, once Marvin speaks it hears nothing: press
   Talk now to go on (the rest is joined within 6 s of the question).
 - One speaker at a time, no speaker identification.
-- One tool so far (the weather). No calendar, no reminders, no web search.
-- Images: one per question, shown from the app (Java host only); Marvin cannot look through its own
-  camera yet.
+- Few tools: the weather, memory's, and `look` when a camera can take a picture (Java host only,
+  [vision.md](vision.md)). No calendar, no reminders, no web search.
+- Images: one per question, shown from the app (Java host only); `look` takes one picture per call,
+  never a continuous view.
 - How well a model calls tools varies: small models (1.7-4B) sometimes call the weather when they
   should not, or not when they should. Watch the inspector.
 

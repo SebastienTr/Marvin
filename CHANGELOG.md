@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Marvin looks when asked (2026-10-01)
+- The `look` tool (Java host, `docs/vision.md`): asked what it sees, what you hold or to read your screen, Marvin takes one picture, the model for images describes it in a request of its own, and the answer comes from that description. Offered only while a camera can take a picture, with a persona that says so; without one, Marvin still says it cannot look. The picture is never kept and never leaves the computer.
+- Two interchangeable cameras behind one port (`FrameSource`, new `vision` context and `marvin-adapter-camera`): the computer's camera through an `ffmpeg` process started for one picture (AVFoundation on macOS, V4L2 on Linux; the first frames dropped while the exposure settles), and the robot's MJPEG camera (`/capture`, or the first picture of `/stream`). Both give a JPEG of at most 1280 px, as an image shown in Talk.
+- The voice setting `camera` (`auto`: the robot's when one with a camera is connected, else the computer's; `computer`; `robot`; `off`), in both hosts and the conversation vectors (the Python host keeps it and ignores it).
+- The app: Marvin > Voice & models > **Camera** (which camera, what each can do now and how to fix it, **Test camera** with its picture in the panel), the camera on the Overview, a note each time Marvin takes a picture, and the line in the Log panel. API: `GET /api/camera`, `POST /api/camera/snapshot`, a `camera` event.
+- `./marvin doctor` checks for ffmpeg (`brew install ffmpeg`). `e2e/camera.py` walks it in the app with ffmpeg's test pattern as the camera.
+
 ### Room sensors on the bench board (2026-09-30)
 - `firmware/src/room/` (`MARVIN_HAS_ROOM_SENSORS`, envs `esp32dev` and `esp32s3`): an HC-SR501 PIR (a minute's warm-up, debounced, motion start and end sent at once), a DHT11 read every 5 s in its own task (its own small driver: checksum and range checked, retried, invalid within 12 s when unplugged) and a light sensor (`MARVIN_HAS_LDR`, off until the module is wired). Unity tests in `test/test_room`.
 - Protocol v1, without a version bump: `ENVIRONMENT` (0x08, robot → host, 12 bytes: which sensors, motion, warming up, temperature, humidity, light, seconds since the last motion) and `HELLO` flag bit 6 (room sensors). Python and Java hosts and the protocol vectors updated together.

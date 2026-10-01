@@ -10,7 +10,7 @@ Marvin sits on a desk and faces a seated person 0.65–1.1 m away.
 
 | Sensor | What it brings | Limits | Used today | Verdict |
 |---|---|---|---|---|
-| **Camera** (OV3660) | The richest signal: who you are, where you look (screen, robot, away), posture, facial expression. It is also the teacher that labels data for the other sensors. | Blind in the dark; the most privacy-sensitive | Streamed, not analysed | Essential |
+| **Camera** (OV3660) | The richest signal: who you are, where you look (screen, robot, away), posture, facial expression. It is also the teacher that labels data for the other sensors. | Blind in the dark; the most privacy-sensitive | One picture on demand: the `look` tool ([vision.md](vision.md)); the computer's camera stands in until the robot is built | Essential |
 | **Microphone** (PDM) | Voice, plus the sound scene: a call in progress, silence, music, a door. | One microphone, so no direction | Voice (computer mic for now) | Essential |
 | **60 GHz radar** (MR60BHA2) | Breathing and heart rate at exactly the desk distance. | Ruined by movement (typing hurts heart rate most). The kit reports processed values only, no raw phase signal, so no heart-rate variability. | Yes, with a reliability gate | The core, but imperfect |
 | **24 GHz radar** (HLK-LD2450) | Arrivals, departures, someone approaching. Low power, works in the dark, sees no faces. | ±60° in front, 3 targets | Yes, drives the brain | The always-on trigger |
@@ -90,6 +90,7 @@ Data comes first: nothing at level 2 or 3 is possible without weeks of recording
 
 - [ ] Recordings: add camera keyframes and audio features (not raw audio) to `.mvrec` as new record kinds, plus a label stream (brain events and your feedback). Unknown kinds are already skipped, so the format stays version 1.
 - [ ] First build: measure lidar noise and vibration at the desk, and MR60BHA2 heart-rate quality while typing.
+- [x] Look on demand: one picture from the robot's or the computer's camera, described by the local vision model ([vision.md](vision.md)).
 - [ ] Level 1 vision: face recognition and pose on the MJPEG stream, as new brain inputs.
 - [ ] Level 1 sound: sound-event classifier; "on a call" detection (voices heard, one person seen).
 - [ ] Lidar: background model of the room, tracking behind the robot, "I was moved" event.

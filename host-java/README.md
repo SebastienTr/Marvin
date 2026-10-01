@@ -51,9 +51,9 @@ flowchart LR
     subgraph core["The core (plain Java, no framework)"]
         direction TB
         subgraph app["application: use cases"]
-            pin(["port.in<br/>ManageSettings · VoiceControl<br/>RobotInbound · PresenceQuery<br/>RecallMemory · ManageFacts …"])
-            svc["RobotLinkService · PresenceService<br/>VoiceService · ConversationService<br/>MemoryWorker · MemoryRecallService<br/>SettingsService · HealthService"]
-            pout(["port.out<br/>LanguageModel · ConversationStore<br/>RobotOutbound · VoiceSidecar<br/>EventLog · FactStore · MemoryModel · Embedder …"])
+            pin(["port.in<br/>ManageSettings · VoiceControl<br/>RobotInbound · PresenceQuery<br/>RecallMemory · ManageFacts · Camera …"])
+            svc["RobotLinkService · PresenceService<br/>VoiceService · ConversationService<br/>MemoryWorker · MemoryRecallService<br/>SettingsService · HealthService · CameraService"]
+            pout(["port.out<br/>LanguageModel · ConversationStore<br/>RobotOutbound · VoiceSidecar · FrameSource<br/>EventLog · FactStore · MemoryModel · Embedder …"])
             pin --> svc --> pout
         end
         dom["domain<br/>protocol v1 · presence brain<br/>persona · tools · face<br/>memory rules · retrieval scoring"]
@@ -65,6 +65,7 @@ flowchart LR
         llm["adapter-llm<br/>Spring AI · JDK HTTP"]
         udp_out["adapter-robot<br/>UdpRobotLink"]
         side["adapter-sidecar<br/>gRPC client · supervisor"]
+        cam["adapter-camera<br/>ffmpeg · robot MJPEG"]
     end
 
     subgraph driven["What Marvin drives"]
@@ -73,6 +74,7 @@ flowchart LR
         meteo["Open-Meteo"]
         robot_out["🤖 The robot<br/>face · speaker"]
         voice_out["🎙️ Voice sidecar"]
+        cams["📷 Computer's camera<br/>robot's camera"]
     end
 
     phone --> web --> pin
@@ -83,6 +85,7 @@ flowchart LR
     llm --> meteo
     pout --> udp_out --> robot_out
     pout --> side --> voice_out
+    pout --> cam --> cams
 ```
 
 The dependency always points **inward**: an adapter knows the port, the port never knows the
@@ -103,6 +106,7 @@ flowchart BT
     persistence["marvin-adapter-persistence"]
     llm["marvin-adapter-llm"]
     sidecar["marvin-adapter-sidecar"]
+    camera["marvin-adapter-camera"]
     contracts["marvin-contracts<br/><i>voice.proto · golden files</i>"]
     appm["marvin-app<br/><i>Spring Boot main, wiring, ArchitectureTest</i>"]
 
@@ -113,11 +117,13 @@ flowchart BT
     llm --> application
     sidecar --> application
     sidecar --> contracts
+    camera --> application
     appm --> web
     appm --> robot
     appm --> persistence
     appm --> llm
     appm --> sidecar
+    appm --> camera
 ```
 
 No arrow between two adapters: `adapter-web` cannot call `adapter-persistence`, it goes through a
@@ -374,10 +380,11 @@ stand-in for Ollama; they are skipped when the sidecar cannot run.
 | `marvin-adapter-persistence` | `marvin.host.adapter.persistence` | PostgreSQL, one schema and one Flyway history per context | application |
 | `marvin-adapter-llm` | `marvin.host.adapter.llm` | Spring AI's Ollama client (streamed chat, models), the tools' HTTPS requests; memory's model and embeddings (the JDK's HTTP client, so that a cancelled call really stops) | application |
 | `marvin-adapter-sidecar` | `marvin.host.adapter.sidecar` | The voice sidecar over gRPC, the process supervisor, the demo's simulator | application, contracts |
+| `marvin-adapter-camera` | `marvin.host.adapter.camera` | One picture on demand: the computer's camera through an `ffmpeg` process, the robot's MJPEG camera over HTTP ([docs/vision.md](../docs/vision.md)) | application |
 | `marvin-app` | `marvin.host.app` | Spring Boot main, wiring; `ArchitectureTest` | everything |
 | `marvin-contracts` | `marvin.host.contracts.voice.v1` (generated) | Golden files from the Python host, `voice.proto` ([README](marvin-contracts/README.md)) | protobuf, gRPC |
 
-Bounded contexts today: `robot`, `presence`, `conversation`, `settings`, `system`, `face`, `memory`. A context
+Bounded contexts today: `robot`, `presence`, `conversation`, `settings`, `system`, `face`, `memory`, `vision`. A context
 reaches another only through its application ports (`application.<context>.port.in|out`) and its
 domain events (`domain.<context>.event`); `domain.shared` is the shared kernel. Each context owns a
 PostgreSQL schema of the same name.

@@ -94,6 +94,7 @@ The 24 GHz radar sits below the 60 GHz one, not above it: the 60 GHz beam leaves
 - [x] Firmware: audio, MJPEG camera, OTA (untested on hardware)
 - [x] Host: voice (local), the app, recording and replay, lidar calibration
 - [x] Host: presence events (brain) and the face, on simulated data
+- [x] Host: Marvin looks on demand, through the robot's camera or the computer's ([vision.md](vision.md))
 - [ ] Host: camera/lidar extrinsic calibration
 - [ ] Companion: tested daily on the real robot, voice through the robot
 - [ ] Companion: perception and learning, see [intelligence.md](intelligence.md)

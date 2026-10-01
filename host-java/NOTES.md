@@ -2075,3 +2075,92 @@ presence of a board whose radar is simulated, the readings go to the app and to 
 
 - The PIR does not move the eyes (no position), and the break timer does not run on a PIR alone (no sitting).
 - The light sensor has no auto-detection of an empty pin: it is a build flag.
+
+## Marvin looks through a camera (2026-10-01)
+
+The owner asked to try vision with the MacBook's camera before the robot is built. The `look` tool takes one picture
+with the camera the `camera` setting chooses (the computer's or the robot's, interchangeable), the model for images
+describes it, and the conversation's model answers from the description (docs/vision.md).
+
+### What exists
+
+- **A `vision` bounded context.** Domain: `CameraChoice` (the setting `auto` / `computer` / `robot` / `off`, and which
+  camera it picks given what each one says of itself, with the reason and the fix when none can be used) and, in its
+  published language `domain.vision.event`, `Frame` (a JPEG of at most 1280 px a side, the size the app gives an image
+  shown in Talk; `describe()` never holds the bytes). Application: `Camera` (port in: `status()`, `available()`,
+  `take(purpose)`, `NoPicture` with its fix), `FrameSource` (port out: one camera, `availability()` and
+  `capture(timeout)`), `CameraListener` (port out: told of each picture, never the picture), `CameraService` (one
+  picture at a time, 10 s at most, the last picture's metadata for the app).
+- **`marvin-adapter-camera`** (a new adapter module): `FfmpegCamera` (an ffmpeg process for one picture:
+  `-f avfoundation -framerate 30 -video_size 1280x720 -i 0:none` on macOS, V4L2 on Linux, the first 15 frames dropped
+  while the exposure settles, one MJPEG frame on stdout; asked again without the size when the camera refuses that
+  mode; errors read from ffmpeg's last lines: the macOS permission, no camera, busy, the first-time prompt's
+  timeout), `RobotCamera` (the robot whose `HELLO` has the camera flag, online, a real one before a simulated one:
+  `GET :81/capture`, else the first part of `/stream`; no proxy), `Jpegs` (the first whole JPEG by its segments, the
+  size from the header, made smaller with Java2D only when larger than 1280 px), `ProcessRunner` (both pipes read on
+  virtual threads, the process and its children killed on timeout), `CameraProperties` (`marvin.camera.*`:
+  `MARVIN_FFMPEG`, `MARVIN_CAMERA_DEVICE`, `MARVIN_CAMERA_SIZE`, `MARVIN_CAMERA_INPUT` for a test pattern).
+- **Conversation**: `Look` (domain: the spec, offline, a filler; the vision model's system prompt; the result
+  `{camera, picture, seen}`), `LookTool` (the picture through `ImageAttachment.of`, so the same checks and metadata
+  removal as an image shown in Talk), `VoiceService.setCamera` and `describe` (the model for images, `canSee` as for
+  Talk; one request of its own, no tools; `SpeechText.stripThinking`). The registry offers `look` only while
+  `Camera.available()`; `currentTools()` remakes it when that changes (checked at each question and warm-up), and
+  `Persona.systemPrompt(..., camera, ...)` swaps the persona's blind camera sentence (`BLIND`) for `CAMERA`. Without
+  a camera the system prompt is byte-identical to before (the conversation vectors still hold).
+- **Settings**: `camera` in `voice.json` and `VoiceSettings.APP_KEYS` (default `auto`), validated in both hosts
+  (`control.py` too; `cli.py` knows the key), the conversation vectors regenerated (`settings.ok/bad/app_defaults`).
+- **Web**: `CameraController` (`GET /api/camera`, `POST /api/camera/snapshot`: the picture as a `data:` URL, which
+  the page's policy allows; 409 no camera, 502 failed, with `fix`), `EventHub` as `CameraListener` (the `camera`
+  event). App: `camera.js` (Marvin > Voice & models > Camera: segmented choice, both cameras with a state pill, Test
+  camera and its picture in a `figure`; the Overview's Camera line; a toast when Marvin took a picture), Day and
+  Night through the existing tokens only.
+- **Boot module**: `CameraWiring` (the two cameras, `CameraService` with the setting read from `voice.json`, the hub,
+  a Log panel line under Voice per picture); `VoiceWiring` gives the voice the camera.
+- `./marvin doctor` checks ffmpeg; `e2e/camera.py`, and `stub_ollama.py` answers `look`.
+
+### Decisions and deviations
+
+1. **ffmpeg per picture, not OpenCV in the voice sidecar.** The design says the core never opens a camera; an ffmpeg
+   process does, for about a second, like a one-shot sidecar. No Python dependency (OpenCV is a large wheel), no
+   `voice.proto` change, and the camera works when the voice sidecar is not running (the camera test). macOS asks
+   for the camera on behalf of the app that started `./marvin` (the host and ffmpeg are its descendants): the
+   prompt, the timeout and the error say so.
+2. **On demand only, no low-rate perception toggle.** Nothing consumes continuous frames yet, and the camera light
+   would stay on. It comes with the vision sidecar (faces, pose), off by default.
+3. **The picture is described in a request of its own**, not added to the conversation's request: the conversation
+   keeps working with a model that cannot see (a separate model for images), the history and its cache never carry
+   the picture, and the description is what the inspector shows. Cost: with the same model for words and pictures
+   and one Ollama slot, the answer after a look reads the conversation's prompt again (docs/vision.md says how to
+   avoid it). Sending the frame to the answering model directly is the alternative if that proves slow.
+4. **The setting is a voice setting** (`voice.json`, Apply restarts the voice) because the tools and the persona
+   change with it; the camera context reads it through a supplier. Its status and test are their own routes.
+5. **The Python host keeps the setting and ignores it** (no camera, no images); the `look` tool and the persona's
+   camera sentence are Java-only, like the memory tools.
+6. **API snapshots not regenerated**: `golden/api` has no camera routes, and its voice settings predate
+   `vision_model` and `camera` (both hosts now give `camera`, so a fresh `api_snapshots.py` run records it).
+   `ApiContractIT` needs Docker and was not run.
+7. `Frame` lives in `domain.vision.event`: the conversation's `LookTool` may use the vision context's published
+   language and ports only (ArchUnit caught the first version).
+
+### Verified
+
+- `mvn -o clean verify` (Temurin 25): all green. New: `CameraChoiceTest` 4, `LookTest` 3, `CameraServiceTest` 4,
+  `LookToolTest` 2, `VoiceServiceTest` +2 (the look through the answer loop, the picture only in the describe request
+  and never stored, the camera going away; no camera, and a model that cannot see), `JpegsTest` 2, `FfmpegCameraTest`
+  7 (commands, the mode fallback, errors, a fake ffmpeg script through the real runner and its timeout, and the real
+  ffmpeg with its test pattern when installed), `RobotCameraTest` 5 (an HTTP server as the robot: `/capture`, the
+  `/stream` fallback, no robot, unreachable), `CameraApiTest` 3 behind the real `AccessFilter`; `ArchitectureTest`
+  with the new adapter and context. Docker is not available: the Testcontainers ITs did not run.
+- Python: `pytest -q` green (+1: the camera setting).
+- The host as a normal user on the embedded PostgreSQL, `stub_ollama.py`, the voice sidecar in its test mode,
+  `llm_model` `qwen3.8:27b-mlx`, `MARVIN_CAMERA_INPUT="-f lavfi -i testsrc2=size=1280x720:rate=30"`: `e2e/camera.py`
+  passed for Day and Night at 1440 and 390 wide (test picture 0.2-0.4 s, the answer from the description, one picture
+  in the describe request only, no console error, no sideways scroll).
+
+### Known gaps
+
+- Not run on a Mac: the AVFoundation command, the permission prompt and the built-in camera's modes are from
+  ffmpeg's documentation; `MARVIN_CAMERA_DEVICE` and the mode fallback are there if the defaults do not fit.
+- Not run against the real robot's camera (the firmware's `/capture` and `/stream` are from its source).
+- The first look after start pays the vision model's loading when it is not the voice's model.
+- A look is one picture: no follow-up "look closer", no crop.
