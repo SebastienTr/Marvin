@@ -35,6 +35,7 @@ import io.grpc.stub.StreamObserver;
 import marvin.host.application.conversation.port.out.VoiceRobotAudio;
 import marvin.host.application.conversation.port.out.VoiceSidecar;
 import marvin.host.domain.conversation.AudioDeviceProfile;
+import marvin.host.domain.conversation.Voiceprint;
 import marvin.host.contracts.voice.v1.AudioFrame;
 import marvin.host.contracts.voice.v1.AudioRoute;
 import marvin.host.contracts.voice.v1.Configure;
@@ -338,6 +339,15 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
                 .setSpeculativeStt(s.speculativeStt()).setSpeculateAfterS(s.speculateAfterS())
                 .setEndSilenceMs(s.endSilenceMs()).setEndSilenceLongMs(s.endSilenceLongMs())
                 .setContinueGraceS(s.continueGraceS()).setContinueJoinS(s.continueJoinS());
+        Ears e = s.ears();
+        b.setVad(nz(e.vad())).setTurn(nz(e.turn())).setTurnCheckMs(e.turnCheckMs()).setTurnMaxMs(e.turnMaxMs())
+                .addAllVocabulary(e.vocabulary()).setKnownVoicesOnly(e.knownVoicesOnly())
+                .setSpeakerThreshold(e.speakerThreshold());
+        for (Voiceprint v : e.voiceprints()) {
+            var p = marvin.host.contracts.voice.v1.Voiceprint.newBuilder().setName(v.name()).setModel(v.model());
+            v.embedding().forEach(x -> p.addEmbedding(x.floatValue()));
+            b.addVoiceprints(p);
+        }
         AudioDeviceProfile d = s.device();
         // version 1 fields, for a reader that still looks at them
         b.setDuplex(d.duplex()).setEchoTailS(d.echoTailS()).setInputDevice(d.inputDevice())
@@ -352,7 +362,7 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
                 .setKind(d.kind()).setRobot(d.robot()).setDuplex(d.duplex()).setEchoTailS(d.echoTailS())
                 .setOutputLatencyS(d.outputLatencyS()).setVadMinDbfs(d.vadMinDbfs()).setSpeechMinDbfs(d.speechMinDbfs())
                 .setVadAggressiveness(d.vadAggressiveness()).setHasEarcons(d.hasEarcons()).setHasAec(d.hasAec())
-                .setInputDevice(d.inputDevice()).setOutputDevice(d.outputDevice()).build();
+                .setInputDevice(d.inputDevice()).setOutputDevice(d.outputDevice()).setVadThreshold(d.vadThreshold()).build();
     }
 
     private static String nz(String s) {
@@ -384,6 +394,8 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
             case Mute m -> b.setMute(marvin.host.contracts.voice.v1.Mute.newBuilder().setMuted(m.muted()));
             case StopSpeaking s -> b.setStop(marvin.host.contracts.voice.v1.StopSpeaking.getDefaultInstance());
             case Ask a -> b.setAsk(marvin.host.contracts.voice.v1.Ask.newBuilder().setText(a.text()).setLanguage(nz(a.language())));
+            case Enroll e -> b.setEnroll(marvin.host.contracts.voice.v1.Enroll.newBuilder().setAction(nz(e.action()))
+                    .setName(nz(e.name())).addAllSentences(e.sentences()).setNoiseS(e.noiseS()));
         }
         send(b.build());
     }
@@ -441,7 +453,8 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
                     List.copyOf(o.getSttModelsList()),
                     o.getTtsList().stream().map(b -> new Backend(b.getName(), b.getInstalled(), b.getWhy())).toList(),
                     o.getVoicesList().stream().map(v -> new Voice(v.getId(), v.getEngine(), v.getLanguage(),
-                            v.getLocale(), v.getInstalled())).toList()));
+                            v.getLocale(), v.getInstalled())).toList(),
+                    o.getEarsList().stream().map(b -> new Backend(b.getName(), b.getInstalled(), b.getWhy())).toList()));
         } catch (StatusRuntimeException e) {
             log.debug("voice options: {}", e.getMessage());
             return Optional.empty();
@@ -558,7 +571,8 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
             case HEARD -> {
                 var h = m.getHeard();
                 yield new Heard(h.getUid(), h.getText(), h.getRaw(), h.getLanguage(), h.getSource(),
-                        new LinkedHashMap<>(h.getLatencyMap()), h.getWallTime(), h.getContinuesList());
+                        new LinkedHashMap<>(h.getLatencyMap()), h.getWallTime(), h.getContinuesList(), h.getSpeaker(),
+                        h.hasSpeakerScore() ? h.getSpeakerScore() : null);
             }
             case IGNORED -> {
                 var i = m.getIgnored();
@@ -582,6 +596,27 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
                 var r = m.getSpoken();
                 yield new ReplySpoken(r.getReplyId(), r.getUtteranceUid(), r.getText(), r.getInterrupted(),
                         new LinkedHashMap<>(r.getLatencyMap()));
+            }
+            case ENROLL -> {
+                var e = m.getEnroll();
+                EnrollResult result = null;
+                if (e.hasResult()) {
+                    var r = e.getResult();
+                    Voiceprint print = null;
+                    if (r.hasVoiceprint() && r.getVoiceprint().getEmbeddingCount() > 0) {
+                        List<Double> v = new ArrayList<>(r.getVoiceprint().getEmbeddingCount());
+                        for (float f : r.getVoiceprint().getEmbeddingList()) {
+                            v.add((double) f);
+                        }
+                        print = new Voiceprint(r.getVoiceprint().getName(), v, r.getVoiceprint().getModel(), "",
+                                r.getDevice().getKind());
+                    }
+                    result = new EnrollResult(r.getName(), r.getDevice().getKind(), r.getDevice().getRobot(),
+                            r.getNoiseDbfs(), r.getSpeechDbfs(), r.getVadMinDbfs(), r.getSpeechMinDbfs(),
+                            r.getVadThreshold(), print, r.getWarningsList(), r.getTranscriptsList());
+                }
+                yield new EnrollProgress(e.getState(), e.getIndex(), e.getText(), e.getMatch(), e.getDbfs(),
+                        e.getMessage(), e.getSeconds(), result);
             }
             default -> null;
         };

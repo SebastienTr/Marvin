@@ -12,7 +12,12 @@ import java.util.regex.Pattern;
  */
 public final class VoiceSettings {
 
-    public static final List<String> STT_CHOICES = List.of("auto", "mlx", "faster-whisper");
+    /** Speech recognition: Parakeet where it runs (else Whisper), Parakeet, Whisper on the Apple GPU, Whisper on the CPU. */
+    public static final List<String> STT_CHOICES = List.of("auto", "parakeet", "mlx", "faster-whisper");
+    /** Voice activity: Silero when its model is downloaded (else WebRTC), or one. */
+    public static final List<String> VAD_CHOICES = List.of("auto", "silero", "webrtc", "energy");
+    /** The end of a question: Smart Turn when its model is downloaded (else silence), or one. */
+    public static final List<String> TURN_CHOICES = List.of("auto", "smart-turn", "silence");
     /** Speech synthesis: the best available (Qwen3-TTS where it runs fast enough, else Piper, else say), or one. */
     public static final List<String> TTS_CHOICES = List.of("auto", "qwen", "say", "piper", "espeak");
     /** Qwen3-TTS's voices: Marvin's own, cloned from a reference recording (host/marvin_host/voice/voices/). */
@@ -27,13 +32,15 @@ public final class VoiceSettings {
     public static final List<String> CAMERAS = List.of("auto", "computer", "robot", "off");
     /** The settings the app edits. */
     public static final List<String> APP_KEYS = List.of("llm_model", "stt", "stt_model", "tts", "tts_voice", "language",
-            "wake", "follow_up_s", "reminders", "welcome_back", "tools", "internet", "home_place", "vision_model", "camera");
+            "wake", "follow_up_s", "reminders", "welcome_back", "tools", "internet", "home_place", "vision_model", "camera",
+            "vocabulary", "known_voices_only");
     /** Every key of voice.json. */
     public static final List<String> FILE_KEYS = List.of("stt", "stt_model", "llm_model", "ollama_host", "tts",
             "tts_voice", "language", "default_language", "wake", "duplex", "echo_tail_s", "follow_up_s",
             "listen_window_s", "speculative_stt", "end_silence_ms", "reminders", "welcome_back", "tools", "internet",
             "home_place", "chime", "audio_route", "input_device", "output_device", "continue_grace_s",
-            "end_silence_long_ms", "vision_model", "camera", "continue_join_s", "speculate_after_s", "devices");
+            "end_silence_long_ms", "vision_model", "camera", "continue_join_s", "speculate_after_s", "devices", "vad", "turn",
+            "turn_check_ms", "turn_max_ms", "vocabulary", "known_voices_only", "speaker_threshold");
     public static final int MAX_HOME_PLACE = 80;
     public static final String DEFAULT_MODEL = "qwen3:4b-instruct";
     public static final String DEFAULT_OLLAMA = "http://localhost:11434";
@@ -47,6 +54,13 @@ public final class VoiceSettings {
     public static final double END_SILENCE_LONG_MS = 1100.0;
     public static final double CONTINUE_GRACE_S = 1.5;
     public static final double CONTINUE_JOIN_S = 6.0;
+    public static final double TURN_CHECK_MS = 200.0;
+    public static final double TURN_MAX_MS = 2000.0;
+    public static final double SPEAKER_THRESHOLD = 0.45;
+    /** Names and terms speech recognition must get right; the owner adds theirs (people, places, projects). */
+    public static final List<String> VOCABULARY = List.of("Marvin");
+    public static final int MAX_TERMS = 40;
+    public static final int MAX_TERM = 40;
 
     private static final Pattern MODEL = Pattern.compile("[\\w.:/@+-]{1,120}", Pattern.UNICODE_CHARACTER_CLASS);
     private static final Pattern STT_MODEL = Pattern.compile("[\\w.:/@+-]{1,160}", Pattern.UNICODE_CHARACTER_CLASS);
@@ -96,7 +110,7 @@ public final class VoiceSettings {
                 case "stt_model" -> {
                     v = v == null || "".equals(v) || "auto".equals(v) ? null : v;
                     if (v != null && (!(v instanceof String s) || !STT_MODEL.matcher(s).matches())) {
-                        throw bad("stt_model must be a Whisper model name (tiny, small, turbo...) or auto");
+                        throw bad("stt_model must be a Whisper model name (tiny, small, turbo...), a Parakeet repo, or auto");
                     }
                 }
                 case "tts" -> {
@@ -127,7 +141,8 @@ public final class VoiceSettings {
                     }
                     v = t;
                 }
-                case "wake", "reminders", "welcome_back", "tools", "internet" -> {
+                case "vocabulary" -> v = vocabulary(v);
+                case "wake", "reminders", "welcome_back", "tools", "internet", "known_voices_only" -> {
                     if (!(v instanceof Boolean)) {
                         throw bad(key + " must be true or false");
                     }
@@ -143,6 +158,43 @@ public final class VoiceSettings {
             out.put(key, v);
         }
         return out;
+    }
+
+    /**
+     * The vocabulary as the app sends it: a list of names and terms, or one string with commas or new lines between
+     * them; each stripped, printable, at most {@link #MAX_TERM} characters, duplicates removed, at most
+     * {@link #MAX_TERMS}.
+     */
+    static List<String> vocabulary(Object v) {
+        List<?> items;
+        if (v instanceof String s) {
+            items = List.of(s.split("[,\\n]"));
+        } else if (v instanceof List<?> l) {
+            items = l;
+        } else {
+            throw bad("vocabulary must be a list of names and words, e.g. [\"Marvin\", \"Aashma\"]");
+        }
+        List<String> out = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Object o : items) {
+            if (!(o instanceof String s)) {
+                throw bad("vocabulary must be a list of names and words");
+            }
+            String t = String.join(" ", SPACES.split(s.strip()));
+            if (t.isEmpty()) {
+                continue;
+            }
+            if (t.codePointCount(0, t.length()) > MAX_TERM || !printable(t) || t.chars().anyMatch(c -> "{}<>[]\\\"`".indexOf(c) >= 0)) {
+                throw bad("each word of the vocabulary must be at most " + MAX_TERM + " printable characters");
+            }
+            if (seen.add(t.toLowerCase(java.util.Locale.ROOT))) {
+                out.add(t);
+            }
+        }
+        if (out.size() > MAX_TERMS) {
+            throw bad("the vocabulary holds at most " + MAX_TERMS + " names and words");
+        }
+        return List.copyOf(out);
     }
 
     private static InvalidVoiceSettingException bad(String message) {
@@ -180,6 +232,8 @@ public final class VoiceSettings {
         out.put("welcome_back", false);
         out.put("vision_model", "");
         out.put("camera", "auto");
+        out.put("vocabulary", VOCABULARY);
+        out.put("known_voices_only", false);
         for (String k : APP_KEYS) {
             if (settings.containsKey(k)) {
                 out.put(k, settings.get(k));
@@ -228,7 +282,27 @@ public final class VoiceSettings {
                 bool(settings, "tools", true), bool(settings, "internet", true),
                 str(settings, "home_place", "").strip(), bool(settings, "reminders", true),
                 bool(settings, "welcome_back", false), route(str(settings, "audio_route", "computer")),
-                computer, robot, str(settings, "vision_model", "").strip(), camera(str(settings, "camera", "auto")));
+                computer, robot, str(settings, "vision_model", "").strip(), camera(str(settings, "camera", "auto")),
+                choice(str(settings, "vad", "auto"), VAD_CHOICES), choice(str(settings, "turn", "auto"), TURN_CHOICES),
+                positive(settings, "turn_check_ms", TURN_CHECK_MS), positive(settings, "turn_max_ms", TURN_MAX_MS),
+                terms(settings.get("vocabulary")), bool(settings, "known_voices_only", false),
+                positive(settings, "speaker_threshold", SPEAKER_THRESHOLD));
+    }
+
+    private static String choice(String s, List<String> choices) {
+        return choices.contains(s) ? s : "auto";
+    }
+
+    /** voice.json's vocabulary, or the default when it is missing or not a list of words. */
+    private static List<String> terms(Object v) {
+        if (v == null) {
+            return VOCABULARY;
+        }
+        try {
+            return vocabulary(v);
+        } catch (InvalidVoiceSettingException e) {
+            return VOCABULARY;
+        }
     }
 
     private static double positive(Map<String, Object> m, String k, double dflt) {
@@ -304,6 +378,13 @@ public final class VoiceSettings {
      * @param robot            a robot's audio device (its name filled in when one is chosen)
      * @param visionModel      the model for questions with an image; empty: the voice's model ({@link #imageModel()})
      * @param camera           which camera the {@code look} tool uses: {@code auto}, {@code computer}, {@code robot}, {@code off}
+     * @param vad              voice activity: {@code auto}, {@code silero}, {@code webrtc}, {@code energy}
+     * @param turn             the end of a question: {@code auto}, {@code smart-turn}, {@code silence}
+     * @param turnCheckMs      Smart Turn judges the turn after this much silence
+     * @param turnMaxMs        a turn it finds unfinished ends after this much silence
+     * @param vocabulary       names and terms speech recognition must get right
+     * @param knownVoicesOnly  questions from voices Marvin does not know are ignored
+     * @param speakerThreshold the similarity from which a voice is recognised
      */
     public record VoiceConfig(String llmModel, String ollamaHost, String language, String defaultLanguage,
                               String stt, String sttModel, String tts, String ttsVoice, boolean wake,
@@ -311,7 +392,9 @@ public final class VoiceSettings {
                               double endSilenceMs, double endSilenceLongMs, double continueGraceS, double continueJoinS,
                               boolean chime, boolean tools, boolean internet, String homePlace, boolean reminders,
                               boolean welcomeBack, String audioRoute, AudioDeviceProfile computer,
-                              AudioDeviceProfile robot, String visionModel, String camera) {
+                              AudioDeviceProfile robot, String visionModel, String camera, String vad, String turn,
+                              double turnCheckMs, double turnMaxMs, List<String> vocabulary, boolean knownVoicesOnly,
+                              double speakerThreshold) {
 
         /** The model that answers a question with an image: the vision model, or the voice's when there is none. */
         public String imageModel() {

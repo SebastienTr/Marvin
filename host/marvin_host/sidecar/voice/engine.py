@@ -38,6 +38,7 @@ import time
 from typing import Callable
 
 from ...voice.engine import Status, VoiceEngine, _Job
+from ...voice.speaker import Voiceprint
 from .contract import voice_pb2 as pb
 
 log = logging.getLogger("marvin.sidecar.voice")
@@ -251,10 +252,41 @@ class SidecarVoice(VoiceEngine):
                 ig.dbfs = d["dbfs"]
             msg = pb.VoiceToCore(ignored=ig)
         elif kind == "heard":
-            msg = pb.VoiceToCore(heard=pb.Heard(
-                uid=d["uid"], text=d["text"], raw=d.get("raw", ""), language=d["language"],
-                source=d.get("source", "voice"), wall_time=d["t"], continues=d.get("continues", ()),
-                latency={k: round(float(v), 4) for k, v in self.last_latency.items()}))
+            h = pb.Heard(uid=d["uid"], text=d["text"], raw=d.get("raw", ""), language=d["language"],
+                         source=d.get("source", "voice"), wall_time=d["t"], continues=d.get("continues", ()),
+                         latency={k: round(float(v), 4) for k, v in self.last_latency.items()},
+                         speaker=d.get("speaker", ""))
+            if d.get("speaker_score") is not None:
+                h.speaker_score = d["speaker_score"]
+            msg = pb.VoiceToCore(heard=h)
+        elif kind == "enroll":
+            msg = pb.VoiceToCore(enroll=enroll_progress(d))
         else:
             return
         self._send(msg)
+
+
+def enroll_progress(d: dict) -> pb.EnrollProgress:
+    """An "enroll" event of the engine (voice/enroll.py) as the contract's message; "done" carries
+    the device's thresholds and the voiceprint (the mean of the sentences' embeddings)."""
+    state = d["state"]
+    m = pb.EnrollProgress(state=state, index=int(d.get("index", 0) or 0), message=d.get("message", ""),
+                          seconds=float(d.get("seconds", 0.0) or 0.0))
+    if state in ("sentence", "heard"):
+        m.text = d.get("text", "")
+    if state == "heard":
+        m.match, m.dbfs = float(d.get("match", 0.0)), float(d.get("dbfs", 0.0))
+    if state == "done":
+        cal, p = d["calibration"], d["device"]
+        r = m.result
+        r.name = d.get("name", "")
+        r.device.kind, r.device.robot = p.kind, p.robot
+        r.noise_dbfs, r.speech_dbfs = cal.noise_dbfs, cal.speech_dbfs
+        r.vad_min_dbfs, r.speech_min_dbfs, r.vad_threshold = cal.vad_min_dbfs, cal.speech_min_dbfs, cal.vad_threshold
+        r.warnings.extend(cal.warnings)
+        r.transcripts.extend(d.get("transcripts", []))
+        if d.get("embeddings") and r.name:
+            vp = Voiceprint.of(r.name, d["embeddings"], d.get("model", ""))
+            r.voiceprint.name, r.voiceprint.model = vp.name, vp.model
+            r.voiceprint.embedding.extend(float(x) for x in vp.embedding)
+    return m

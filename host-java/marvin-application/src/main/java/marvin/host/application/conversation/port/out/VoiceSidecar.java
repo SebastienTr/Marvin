@@ -8,6 +8,7 @@ import java.util.Optional;
 import marvin.host.domain.conversation.AudioDeviceProfile;
 import marvin.host.domain.conversation.SpeechLanguage;
 import marvin.host.domain.conversation.VoiceSettings;
+import marvin.host.domain.conversation.Voiceprint;
 
 /**
  * The voice: the real-time audio loop in its own process (the voice sidecar, docs/design.md 4.3). It hears,
@@ -38,17 +39,37 @@ public interface VoiceSidecar {
      * @param endSilenceLongMs 0: never longer than {@code endSilenceMs}
      * @param continueGraceS   0: a question that goes on is never joined to the one before
      * @param continueJoinS    0: a question that interrupts an answer never joins the question it cut
+     * @param ears             the ears: the VAD, the end of a question, the vocabulary, the people it knows
      */
     record Settings(String stt, String sttModel, String tts, String ttsVoice, String language, String defaultLanguage,
                     boolean wake, double followUpS, double listenWindowS, boolean speculativeStt, double speculateAfterS,
                     double endSilenceMs, double endSilenceLongMs, double continueGraceS, double continueJoinS,
-                    AudioDeviceProfile device) {
+                    AudioDeviceProfile device, Ears ears) {
+
+        public Settings {
+            ears = ears == null ? Ears.DEFAULT : ears;
+        }
+
+        public Settings(String stt, String sttModel, String tts, String ttsVoice, String language, String defaultLanguage,
+                        boolean wake, double followUpS, double listenWindowS, boolean speculativeStt,
+                        double speculateAfterS, double endSilenceMs, double endSilenceLongMs, double continueGraceS,
+                        double continueJoinS, AudioDeviceProfile device) {
+            this(stt, sttModel, tts, ttsVoice, language, defaultLanguage, wake, followUpS, listenWindowS, speculativeStt,
+                    speculateAfterS, endSilenceMs, endSilenceLongMs, continueGraceS, continueJoinS, device, Ears.DEFAULT);
+        }
 
         /** The configuration's settings, on {@code device}. */
         public static Settings of(VoiceSettings.VoiceConfig c, AudioDeviceProfile device) {
+            return of(c, device, List.of());
+        }
+
+        /** The configuration's settings, on {@code device}, knowing these people's voices. */
+        public static Settings of(VoiceSettings.VoiceConfig c, AudioDeviceProfile device, List<Voiceprint> voiceprints) {
             return new Settings(c.stt(), c.sttModel(), c.tts(), c.ttsVoice(), c.language(), c.defaultLanguage(), c.wake(),
                     c.followUpS(), c.listenWindowS(), c.speculativeStt(), c.speculateAfterS(), c.endSilenceMs(),
-                    c.endSilenceLongMs(), c.continueGraceS(), c.continueJoinS(), device);
+                    c.endSilenceLongMs(), c.continueGraceS(), c.continueJoinS(), device,
+                    new Ears(c.vad(), c.turn(), c.turnCheckMs(), c.turnMaxMs(), c.vocabulary(), voiceprints,
+                            c.knownVoicesOnly(), c.speakerThreshold()));
         }
 
         /** On the robot's microphone and speaker. */
@@ -59,7 +80,33 @@ public interface VoiceSidecar {
         /** The same settings on another device. */
         public Settings on(AudioDeviceProfile other) {
             return new Settings(stt, sttModel, tts, ttsVoice, language, defaultLanguage, wake, followUpS, listenWindowS,
-                    speculativeStt, speculateAfterS, endSilenceMs, endSilenceLongMs, continueGraceS, continueJoinS, other);
+                    speculativeStt, speculateAfterS, endSilenceMs, endSilenceLongMs, continueGraceS, continueJoinS, other,
+                    ears);
+        }
+    }
+
+    /**
+     * The ears' settings (docs/voice.md, "Ears"): voice activity, the end of a question, the vocabulary, and the
+     * people whose voice Marvin knows.
+     *
+     * @param vad              {@code auto}, {@code silero}, {@code webrtc}, {@code energy}
+     * @param turn             {@code auto}, {@code smart-turn}, {@code silence}
+     * @param turnCheckMs      Smart Turn judges the turn after this much silence
+     * @param turnMaxMs        a turn it finds unfinished ends after this much silence
+     * @param vocabulary       names and terms speech recognition must get right
+     * @param voiceprints      the people whose voice it knows
+     * @param knownVoicesOnly  questions from voices it does not know are ignored
+     * @param speakerThreshold the similarity from which a voice is recognised
+     */
+    record Ears(String vad, String turn, double turnCheckMs, double turnMaxMs, List<String> vocabulary,
+                List<Voiceprint> voiceprints, boolean knownVoicesOnly, double speakerThreshold) {
+
+        public static final Ears DEFAULT = new Ears("auto", "auto", VoiceSettings.TURN_CHECK_MS, VoiceSettings.TURN_MAX_MS,
+                VoiceSettings.VOCABULARY, List.of(), false, VoiceSettings.SPEAKER_THRESHOLD);
+
+        public Ears {
+            vocabulary = vocabulary == null ? List.of() : List.copyOf(vocabulary);
+            voiceprints = voiceprints == null ? List.of() : List.copyOf(voiceprints);
         }
     }
 
@@ -101,15 +148,50 @@ public interface VoiceSidecar {
      * they were cancelled (before their answer was heard, or cut by this one).
      */
     record Heard(long uid, String text, String raw, String language, String source, Map<String, Double> latency,
-                 double wallTime, List<Long> continues) implements Signal {
+                 double wallTime, List<Long> continues, String speaker, Double speakerScore) implements Signal {
 
         public Heard {
             continues = continues == null ? List.of() : List.copyOf(continues);
+            speaker = speaker == null ? "" : speaker;
+        }
+
+        public Heard(long uid, String text, String raw, String language, String source, Map<String, Double> latency,
+                     double wallTime, List<Long> continues) {
+            this(uid, text, raw, language, source, latency, wallTime, continues, "", null);
         }
 
         public Heard(long uid, String text, String raw, String language, String source, Map<String, Double> latency,
                      double wallTime) {
             this(uid, text, raw, language, source, latency, wallTime, List.of());
+        }
+
+        /** A person Marvin knows said it (not {@code unknown}, not untold). */
+        public boolean knownSpeaker() {
+            return !speaker.isEmpty() && !"unknown".equals(speaker);
+        }
+    }
+
+    /**
+     * How a calibration goes ({@link Enroll}): {@code noise} (stay quiet {@code seconds}), {@code sentence} (read
+     * sentence {@code index}: {@code text}), {@code heard} (what was heard of it: {@code text}, {@code match},
+     * {@code dbfs}), {@code retry} ({@code message}), {@code done} ({@code result}), {@code failed} ({@code message}),
+     * {@code cancelled}.
+     */
+    record EnrollProgress(String state, int index, String text, double match, double dbfs, String message, double seconds,
+                          EnrollResult result) implements Signal {
+    }
+
+    /**
+     * What a calibration measured on a device ({@code kind}: computer or robot) and, with a speaker model, the person's
+     * voiceprint ({@code null} without).
+     */
+    record EnrollResult(String name, String kind, String robot, double noiseDbfs, double speechDbfs, double vadMinDbfs,
+                        double speechMinDbfs, double vadThreshold, Voiceprint voiceprint, List<String> warnings,
+                        List<String> transcripts) {
+
+        public EnrollResult {
+            warnings = warnings == null ? List.of() : List.copyOf(warnings);
+            transcripts = transcripts == null ? List.of() : List.copyOf(transcripts);
         }
     }
 
@@ -192,8 +274,27 @@ public interface VoiceSidecar {
     record Ask(String text, String language) implements Command {
     }
 
-    /** The voice's options on this computer. */
-    record Options(List<Backend> stt, List<String> sttModels, List<Backend> tts, List<Voice> voices) {
+    /**
+     * Calibrate the voice's device and learn {@code name}'s voice from the {@code sentences} read aloud
+     * ({@code action} {@code start}), or stop ({@code cancel}).
+     */
+    record Enroll(String action, String name, List<String> sentences, double noiseS) implements Command {
+
+        public Enroll {
+            sentences = sentences == null ? List.of() : List.copyOf(sentences);
+        }
+    }
+
+    /** The voice's options on this computer; {@code ears}: the ears' models, and whether each is here. */
+    record Options(List<Backend> stt, List<String> sttModels, List<Backend> tts, List<Voice> voices, List<Backend> ears) {
+
+        public Options {
+            ears = ears == null ? List.of() : List.copyOf(ears);
+        }
+
+        public Options(List<Backend> stt, List<String> sttModels, List<Backend> tts, List<Voice> voices) {
+            this(stt, sttModels, tts, voices, List.of());
+        }
     }
 
     record Backend(String name, boolean installed, String why) {

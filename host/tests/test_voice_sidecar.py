@@ -43,7 +43,8 @@ def settings(**kw) -> pb.VoiceSettings:
     """The voice's defaults as the core sends them (every value), with no follow-up window."""
     values = dict(stt="auto", tts="auto", default_language="fr", wake=True, follow_up_s=0.0, listen_window_s=6.0,
                   speculative_stt=True, speculate_after_s=0.25, end_silence_ms=550.0, end_silence_long_ms=1100.0,
-                  continue_grace_s=1.5, continue_join_s=6.0)
+                  continue_grace_s=1.5, continue_join_s=6.0, vad="auto", turn="auto", turn_check_ms=200.0,
+                  turn_max_ms=2000.0, vocabulary=["Marvin"], speaker_threshold=0.45, known_voices_only=False)
     values.update(kw)
     return pb.VoiceSettings(**values)
 
@@ -52,7 +53,8 @@ def profile(robot: str = "", **kw) -> pb.AudioDeviceProfile:
     p = ROBOT_PROFILE if robot else COMPUTER_PROFILE
     values = dict(kind=p.kind, robot=robot, duplex=p.duplex, echo_tail_s=p.echo_tail_s,
                   output_latency_s=p.output_latency_s, vad_min_dbfs=p.vad_min_dbfs, speech_min_dbfs=p.speech_min_dbfs,
-                  vad_aggressiveness=p.vad_aggressiveness, has_earcons=p.has_earcons, has_aec=p.has_aec)
+                  vad_aggressiveness=p.vad_aggressiveness, vad_threshold=p.vad_threshold, has_earcons=p.has_earcons,
+                  has_aec=p.has_aec)
     values.update(kw)
     return pb.AudioDeviceProfile(**values)
 
@@ -552,3 +554,90 @@ def test_saying_marvin_while_it_thinks_is_a_barge_in(sidecar, cores):
     assert gone.reason == "barge-in"
     assert core.wait("spoken", lambda m: m.utterance_uid == first.uid).interrupted
     core.wait("status", lambda s: s.state == pb.Status.LISTENING and s.listen_s > 0)
+
+
+# ---------------------------------------------------------------- the ears: calibration, voices, vocabulary
+
+def test_the_ears_settings_from_the_core():
+    from marvin_host.voice.engine import VoiceConfig
+    s = settings(vocabulary=["Marvin", "Aashma"], turn="silence", turn_max_ms=2500.0, known_voices_only=True,
+                 voiceprints=[pb.Voiceprint(name="Ana", embedding=[0.6, 0.8], model="m"),
+                              pb.Voiceprint(name="", embedding=[1.0], model="m")])
+    c = voice_config(s)
+    assert c.vocabulary == ("Marvin", "Aashma") and c.turn == "silence" and c.turn_max_s == 2.5
+    assert c.voiceprints == (("Ana", (0.6, 0.8), "m"),) and c.known_voices_only     # a print without a name is dropped
+    old = voice_config(pb.VoiceSettings(stt="auto", tts="auto", wake=True))        # an older core: same defaults
+    d = VoiceConfig()
+    assert (old.vad, old.turn, old.turn_check_s, old.turn_max_s, old.speaker_threshold) == \
+        (d.vad, d.turn, d.turn_check_s, d.turn_max_s, d.speaker_threshold)
+    assert device_profile(profile(vad_threshold=0.7)).vad_threshold == 0.7
+    assert device_profile(profile(vad_threshold=0.0)).vad_threshold == 0.5
+
+
+def test_options_list_the_ears(sidecar):
+    port, _ = sidecar()
+    ch = grpc.insecure_channel(f"127.0.0.1:{port}")
+    opts = pb_grpc.VoiceStub(ch).Options(pb.OptionsRequest(), timeout=10)
+    assert [e.name for e in opts.ears] == ["silero-vad", "smart-turn", "speaker", "parakeet"]
+    assert all(e.installed or e.why for e in opts.ears) and "parakeet" in [b.name for b in opts.stt]
+    ch.close()
+
+
+def _fake_speaker(monkeypatch):
+    from marvin_host.voice.speaker import FakeEncoder
+    monkeypatch.setattr(EngineFactory, "encoder", lambda self: FakeEncoder())
+
+
+def test_calibration_and_enrollment_over_the_session(sidecar, cores, monkeypatch):
+    _fake_speaker(monkeypatch)
+    port, _ = sidecar([(3.0, "Bonjour Marvin, je m'appelle Ana."), (6.0, "Hey Marvin, what is the weather like today?")],
+                      speed=1.0)
+    core = cores(port)
+    core.send(**configure())
+    core.ready()
+    core.send(enroll=pb.Enroll(action="start", name="Ana", noise_s=1.0,
+                               sentences=["Bonjour Marvin, je m'appelle {name}.",
+                                          "Hey Marvin, what's the weather like today?"]))
+    done = core.wait("enroll", lambda e: e.state in ("done", "failed"), timeout=20)
+    assert done.state == "done", done.message
+    states = [e.state for e in core.of("enroll")]
+    assert states == ["noise", "sentence", "heard", "sentence", "heard", "done"]
+    first = core.of("enroll")[1]
+    assert first.text == "Bonjour Marvin, je m'appelle Ana."
+    heard = [e for e in core.of("enroll") if e.state == "heard"]
+    assert heard[0].text == "Bonjour Marvin, je m'appelle Ana." and heard[0].match == 1.0 and heard[0].dbfs < 0
+    r = done.result
+    assert r.name == "Ana" and r.device.kind == "computer" and list(r.transcripts) == [h.text for h in heard]
+    assert r.noise_dbfs < r.vad_min_dbfs < r.speech_min_dbfs < r.speech_dbfs and r.vad_threshold == 0.5
+    assert r.voiceprint.name == "Ana" and len(r.voiceprint.embedding) == 16 and r.voiceprint.model
+    assert core.of("heard") == []                                 # nothing was answered meanwhile
+
+
+def test_enrollment_while_off_and_cancelled(sidecar, cores):
+    port, _ = sidecar()
+    core = cores(port)
+    core.send(enroll=pb.Enroll(action="start", name="Ana"))
+    assert core.wait("enroll").state == "failed"
+    core.send(**configure())
+    core.ready()
+    core.send(enroll=pb.Enroll(action="start", name="Ana", noise_s=5.0))
+    core.wait("enroll", lambda e: e.state == "noise")
+    core.send(enroll=pb.Enroll(action="cancel"))
+    core.wait("enroll", lambda e: e.state == "cancelled")
+
+
+def test_the_core_hears_who_speaks_and_strangers_can_be_ignored(sidecar, cores, monkeypatch):
+    from marvin_host.voice.speaker import MODEL_ID, FakeEncoder
+    _fake_speaker(monkeypatch)
+    ana = [float(x) for x in FakeEncoder().embed(fake.speech(0, 1.5))]
+    port, _ = sidecar([(0.8, "Marvin, quelle heure est-il ?"), (5.0, "Marvin, tu m'entends ?")])
+    core = cores(port)
+    core.send(**configure(voiceprints=[pb.Voiceprint(name="Ana", embedding=ana, model=MODEL_ID)],
+                          known_voices_only=True))
+    core.ready()
+    heard = core.wait("heard")
+    assert heard.speaker == "Ana" and heard.speaker_score > 0.9 and "speaker" in heard.latency
+    core.reply(1, heard.uid, "Il est midi.")
+    ignored = core.wait("ignored", lambda i: i.reason.startswith("unknown voice"))
+    assert ignored.text == "tu m'entends ?" or "entends" in ignored.text
+    assert len(core.of("heard")) == 1

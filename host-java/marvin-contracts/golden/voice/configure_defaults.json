@@ -20,7 +20,17 @@
     "continue_grace_s": 1.5,
     "end_silence_long_ms": 1100.0,
     "continue_join_s": 6.0,
-    "speculate_after_s": 0.25
+    "speculate_after_s": 0.25,
+    "vad": "auto",
+    "turn": "auto",
+    "turn_check_ms": 200.0,
+    "turn_max_ms": 2000.0,
+    "vocabulary": [
+      "Marvin"
+    ],
+    "voiceprints": [],
+    "known_voices_only": false,
+    "speaker_threshold": 0.45
   },
   "devices": {
     "computer": {
@@ -35,7 +45,8 @@
       "has_earcons": true,
       "has_aec": false,
       "input_device": "",
-      "output_device": ""
+      "output_device": "",
+      "vad_threshold": 0.5
     },
     "robot": {
       "kind": "robot",
@@ -49,7 +60,8 @@
       "has_earcons": true,
       "has_aec": false,
       "input_device": "",
-      "output_device": ""
+      "output_device": "",
+      "vad_threshold": 0.5
     }
   }
 }

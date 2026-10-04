@@ -79,6 +79,59 @@ class GrpcVoiceSidecarTest {
         assertThat(st.device()).isEqualTo("marvin-a1b2c3");
     }
 
+    @Test
+    void theEarsAndTheVoicesMarvinKnowsAreSent() {
+        var c = VoiceSettings.config(Map.of("vocabulary", List.of("Marvin", "Aashma"), "known_voices_only", true,
+                "turn", "silence", "devices", Map.of("computer", Map.of("vad_threshold", 0.7, "speech_min_dbfs", -42.0))));
+        var print = new marvin.host.domain.conversation.Voiceprint("Sébastien", List.of(0.6, 0.8), "wespeaker-ecapa512",
+                "2026-10-04T10:00", "computer");
+        var cfg = GrpcVoiceSidecar.configure(VoiceSidecar.Settings.of(c, c.computer(), List.of(print)));
+        var s = cfg.getSettings();
+        assertThat(s.getVocabularyList()).containsExactly("Marvin", "Aashma");
+        assertThat(s.getKnownVoicesOnly()).isTrue();
+        assertThat(s.getTurn()).isEqualTo("silence");
+        assertThat(List.of(s.getTurnCheckMs(), s.getTurnMaxMs(), s.getSpeakerThreshold())).containsExactly(200.0, 2000.0, 0.45);
+        assertThat(s.getVoiceprints(0).getName()).isEqualTo("Sébastien");
+        assertThat(s.getVoiceprints(0).getEmbeddingList()).containsExactly(0.6f, 0.8f);
+        assertThat(cfg.getDevice().getVadThreshold()).isEqualTo(0.7);
+        assertThat(cfg.getDevice().getSpeechMinDbfs()).isEqualTo(-42.0);
+    }
+
+    @Test
+    void whoSpokeAndTheCalibrationComeBack() {
+        var h = (VoiceSidecar.Heard) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setHeard(Heard.newBuilder()
+                .setUid(9).setText("Bonjour.").setSpeaker("Sébastien").setSpeakerScore(0.82)).build());
+        assertThat(h.speaker()).isEqualTo("Sébastien");
+        assertThat(h.speakerScore()).isEqualTo(0.82);
+        assertThat(h.knownSpeaker()).isTrue();
+        var untold = (VoiceSidecar.Heard) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setHeard(Heard.newBuilder()
+                .setUid(10).setText("Oui.")).build());
+        assertThat(untold.speaker()).isEmpty();
+        assertThat(untold.speakerScore()).isNull();
+        var r = marvin.host.contracts.voice.v1.EnrollResult.newBuilder().setName("Ana").setNoiseDbfs(-70).setSpeechDbfs(-28)
+                .setVadMinDbfs(-64).setSpeechMinDbfs(-46).setVadThreshold(0.5).addWarnings("noisy").addTranscripts("Bonjour")
+                .setDevice(marvin.host.contracts.voice.v1.AudioDeviceProfile.newBuilder().setKind("robot").setRobot("marvin-a1"))
+                .setVoiceprint(marvin.host.contracts.voice.v1.Voiceprint.newBuilder().setName("Ana").setModel("m")
+                        .addEmbedding(0.5f).addEmbedding(-0.25f));
+        var p = (VoiceSidecar.EnrollProgress) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setEnroll(
+                marvin.host.contracts.voice.v1.EnrollProgress.newBuilder().setState("done").setResult(r)).build());
+        assertThat(p.state()).isEqualTo("done");
+        assertThat(p.result().kind()).isEqualTo("robot");
+        assertThat(p.result().robot()).isEqualTo("marvin-a1");
+        assertThat(p.result().speechMinDbfs()).isEqualTo(-46.0);
+        assertThat(p.result().voiceprint().embedding()).containsExactly(0.5, -0.25);
+        assertThat(p.result().warnings()).containsExactly("noisy");
+        var heard = (VoiceSidecar.EnrollProgress) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setEnroll(
+                marvin.host.contracts.voice.v1.EnrollProgress.newBuilder().setState("heard").setIndex(1).setText("Hey")
+                        .setMatch(0.9).setDbfs(-27)).build());
+        assertThat(heard.result()).isNull();
+        assertThat(heard.match()).isEqualTo(0.9);
+        var noPrint = (VoiceSidecar.EnrollProgress) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setEnroll(
+                marvin.host.contracts.voice.v1.EnrollProgress.newBuilder().setState("done")
+                        .setResult(r.clearVoiceprint())).build());
+        assertThat(noPrint.result().voiceprint()).as("no speaker model: calibration only").isNull();
+    }
+
     static final Path SPEC = Path.of("../marvin-contracts/golden/voice/configure_defaults.json");
 
     /** JSON as Python's json.dumps(indent=2) writes it, for these flat values. */
@@ -94,6 +147,17 @@ class GrpcVoiceSidecarTest {
                 b.append(++i < m.size() ? ",\n" : "\n");
             }
             return b.append(indent).append("}").toString();
+        }
+        if (v instanceof List<?> l) {
+            if (l.isEmpty()) {
+                return "[]";
+            }
+            StringBuilder b = new StringBuilder("[\n");
+            int i = 0;
+            for (Object o : l) {
+                b.append(indent).append("  ").append(json(o, indent + "  ")).append(++i < l.size() ? ",\n" : "\n");
+            }
+            return b.append(indent).append("]").toString();
         }
         if (v instanceof String str) {
             return "\"" + str.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";

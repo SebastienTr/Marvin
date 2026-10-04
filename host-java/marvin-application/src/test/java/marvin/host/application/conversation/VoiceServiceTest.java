@@ -774,7 +774,7 @@ class VoiceServiceTest {
         VoiceService v = service(FakeModel.of());
         Map<String, Object> o = v.options();
         assertThat(new ArrayList<>(o.keySet())).containsExactly("llm_models", "ollama", "stt_backends", "stt_models",
-                "tts_backends", "voices", "languages", "platform", "tools", "vision");
+                "tts_backends", "voices", "languages", "platform", "tools", "vision", "ears");
         assertThat(o.get("vision")).isEqualTo(Map.of("model", "qwen3:4b-instruct", "own_model", false, "sees", false,
                 "error", "This model cannot see images; choose a vision model in Marvin > Voice"));
         assertThat(o.get("llm_models")).isEqualTo(List.of("qwen3:4b-instruct"));

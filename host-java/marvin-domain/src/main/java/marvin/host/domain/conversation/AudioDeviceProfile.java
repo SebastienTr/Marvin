@@ -16,6 +16,8 @@ import java.util.Map;
  * @param vadMinDbfs        a 20 ms frame quieter than this is never speech
  * @param speechMinDbfs     an utterance whose loudest half is quieter than this is "too quiet"
  * @param vadAggressiveness WebRTC VAD, 0 to 3
+ * @param vadThreshold      Silero VAD: a frame is speech from this probability (0.5; the voice calibration may raise it
+ *                          in a room whose noise sounds like speech)
  * @param hasEarcons        it can play the voice's short sounds (the computer's speaker, the robot's built-in ones)
  * @param hasAec            it cancels its own echo (none does yet)
  * @param inputDevice       computer: the microphone ({@code ""}: the system's default)
@@ -23,7 +25,7 @@ import java.util.Map;
  */
 public record AudioDeviceProfile(String kind, String robot, boolean duplex, double echoTailS, double outputLatencyS,
                                  double vadMinDbfs, double speechMinDbfs, int vadAggressiveness, boolean hasEarcons,
-                                 boolean hasAec, String inputDevice, String outputDevice) {
+                                 boolean hasAec, String inputDevice, String outputDevice, double vadThreshold) {
 
     public static final String COMPUTER = "computer";
     public static final String ROBOT = "robot";
@@ -33,7 +35,7 @@ public record AudioDeviceProfile(String kind, String robot, boolean duplex, doub
      * (0.8 s, plus what the speaker reports as its output latency).
      */
     public static final AudioDeviceProfile COMPUTER_DEFAULT = new AudioDeviceProfile(COMPUTER, "", false, 0.8, 0.0,
-            -60.0, -50.0, 2, true, false, "", "");
+            -60.0, -50.0, 2, true, false, "", "", 0.5);
     /**
      * The robot's defaults (docs/audio.md): the speaker sits in the same body as the microphone and nothing cancels
      * the echo, so half duplex; the robot's player reports its own end, so a shorter tail (0.5 s) and only the
@@ -42,13 +44,22 @@ public record AudioDeviceProfile(String kind, String robot, boolean duplex, doub
      * tune on the hardware.
      */
     public static final AudioDeviceProfile ROBOT_DEFAULT = new AudioDeviceProfile(ROBOT, "", false, 0.5, 0.05,
-            -55.0, -45.0, 3, true, false, "", "");
+            -55.0, -45.0, 3, true, false, "", "", 0.5);
 
     public AudioDeviceProfile {
         robot = robot == null ? "" : robot;
         inputDevice = inputDevice == null ? "" : inputDevice;
         outputDevice = outputDevice == null ? "" : outputDevice;
         vadAggressiveness = Math.max(0, Math.min(3, vadAggressiveness));
+        vadThreshold = vadThreshold > 0 ? Math.max(0.3, Math.min(0.95, vadThreshold)) : 0.5;
+    }
+
+    /** The profile without Silero's threshold (as before the voice calibration). */
+    public AudioDeviceProfile(String kind, String robot, boolean duplex, double echoTailS, double outputLatencyS,
+                              double vadMinDbfs, double speechMinDbfs, int vadAggressiveness, boolean hasEarcons,
+                              boolean hasAec, String inputDevice, String outputDevice) {
+        this(kind, robot, duplex, echoTailS, outputLatencyS, vadMinDbfs, speechMinDbfs, vadAggressiveness, hasEarcons,
+                hasAec, inputDevice, outputDevice, 0.5);
     }
 
     /** {@code computer}, or the robot's name. */
@@ -59,14 +70,15 @@ public record AudioDeviceProfile(String kind, String robot, boolean duplex, doub
     /** This profile for that robot. */
     public AudioDeviceProfile forRobot(String name) {
         return new AudioDeviceProfile(kind, name, duplex, echoTailS, outputLatencyS, vadMinDbfs, speechMinDbfs,
-                vadAggressiveness, hasEarcons, hasAec, inputDevice, outputDevice);
+                vadAggressiveness, hasEarcons, hasAec, inputDevice, outputDevice, vadThreshold);
     }
 
     /**
      * {@code base} with what {@code m} (a {@code voice.json} {@code devices} entry) changes: {@code duplex},
      * {@code echo_tail_s}, {@code output_latency_s}, {@code vad_min_dbfs}, {@code speech_min_dbfs},
-     * {@code vad_aggressiveness}, {@code earcons}, {@code input_device}, {@code output_device}. Values of the wrong type
-     * are ignored.
+     * {@code vad_aggressiveness}, {@code vad_threshold}, {@code earcons}, {@code input_device}, {@code output_device} (the
+     * voice calibration writes {@code vad_min_dbfs}, {@code speech_min_dbfs}, {@code vad_threshold} and a
+     * {@code calibration} record, which the profile does not use). Values of the wrong type are ignored.
      */
     public static AudioDeviceProfile with(AudioDeviceProfile base, Map<?, ?> m) {
         if (m == null || m.isEmpty()) {
@@ -81,7 +93,8 @@ public record AudioDeviceProfile(String kind, String robot, boolean duplex, doub
                 (int) num(m.get("vad_aggressiveness"), base.vadAggressiveness(), 0, 3),
                 m.get("earcons") instanceof Boolean b ? b : base.hasEarcons(), base.hasAec(),
                 m.get("input_device") != null ? text(m.get("input_device")) : base.inputDevice(),
-                m.get("output_device") != null ? text(m.get("output_device")) : base.outputDevice());
+                m.get("output_device") != null ? text(m.get("output_device")) : base.outputDevice(),
+                num(m.get("vad_threshold"), base.vadThreshold(), 0.3, 0.95));
     }
 
     /** A device as voice.json names it: its PortAudio number (written 2, never 2.0) or its name. */

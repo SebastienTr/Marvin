@@ -50,6 +50,7 @@ message CoreToVoice {
     RobotLink robot_link = 11;      // a robot with audio connected or left
     Ask ask = 12;                   // a typed question: answered like a heard one (Heard, source "typed")
     Earcon earcon = 13;             // play a short sound on the voice's device (the core decides when)
+    Enroll enroll = 14;             // calibrate the device and learn a person's voice (or cancel)
   }
 }
 
@@ -81,11 +82,12 @@ message AudioDeviceProfile {
   bool has_aec = 10;                // it cancels its own echo (none does yet)
   string input_device = 11;         // computer: PortAudio input; empty: the system default
   string output_device = 12;        // computer: PortAudio output
+  double vad_threshold = 13;        // Silero VAD: speech from this probability (0.5; the calibration may raise it)
 }
 
 message VoiceSettings {
-  string stt = 1;                   // auto | mlx | faster-whisper
-  string stt_model = 2;             // tiny ... large-v3, turbo
+  string stt = 1;                   // auto | parakeet | mlx | faster-whisper
+  string stt_model = 2;             // empty: the engine's default; Whisper: tiny ... large-v3, turbo; Parakeet: a repo
   string tts = 3;                   // auto | qwen | say | piper | espeak
   string tts_voice = 4;             // empty: the default for the engine (qwen: marvin)
   string language = 5;              // empty: auto; fr | en
@@ -106,6 +108,24 @@ message VoiceSettings {
   // version 2: always sent
   double continue_join_s = 19;                 // a question interrupting the answer (barge-in, Talk now) this soon after the one it cut joins it; 0: never
   double speculate_after_s = 20;               // start recognition after this much silence inside an utterance
+  // the ears (docs/voice.md, "Ears"): always sent by a core that knows them; a sidecar reading an older core's
+  // Configure (these unset) uses the same defaults
+  string vad = 21;                             // auto (Silero when downloaded) | silero | webrtc | energy
+  string turn = 22;                            // end of a question: auto (Smart Turn when downloaded) | smart-turn | silence
+  double turn_check_ms = 23;                   // Smart Turn judges the turn after this much silence (200)
+  double turn_max_ms = 24;                     // ...and a turn it finds unfinished ends after this much silence (2000)
+  repeated string vocabulary = 25;             // names and terms speech recognition must get right ("Marvin", ...)
+  repeated Voiceprint voiceprints = 26;        // the people whose voice Marvin knows
+  bool known_voices_only = 27;                 // ignore questions from voices it does not know
+  double speaker_threshold = 28;               // cosine similarity from which a voice is recognised (0.45)
+}
+
+// A person's voice: the mean speaker embedding of their enrollment sentences (Enroll), kept by the core on this
+// computer only, under their name.
+message Voiceprint {
+  string name = 1;
+  repeated float embedding = 2;
+  string model = 3;                 // the speaker model it was made with (a print of another model is ignored)
 }
 
 // Where the voice hears and speaks.
@@ -182,6 +202,17 @@ message Earcon {
   string sound = 1;                 // wake (listening opens), done (it closes), error
 }
 
+// Calibration and enrollment (docs/voice.md, "Your voice"): on the voice's current device, a quiet moment, then
+// the person reads `sentences`; the sidecar reports EnrollProgress, answers nothing meanwhile, and ends with the
+// device's thresholds and the person's voiceprint (state "done"), which the core stores and sends back in
+// Configure.
+message Enroll {
+  string action = 1;                // start | cancel
+  string name = 2;                  // whose voice (empty: calibrate the device only)
+  repeated string sentences = 3;    // what to read, in order ("{name}" is replaced by the name)
+  double noise_s = 4;               // the quiet part (0: 1.5 s)
+}
+
 // A question typed in the app: the sidecar stops what it says, then treats it as heard, in
 // `language` (empty: the forced language, else guessed from the text, else the conversation's).
 message Ask {
@@ -211,6 +242,7 @@ message VoiceToCore {
     RobotSound sound = 10;          // SOUND for the robot (earcons)
     Utterance utterance = 11;       // someone started / stopped talking
     ReplySpoken spoken = 12;        // an answer has been said entirely, with its timings
+    EnrollProgress enroll = 13;     // the calibration goes on (Enroll)
   }
 }
 
@@ -250,6 +282,34 @@ message Heard {
   repeated uint64 continues = 8;    // earlier questions (their Heard.uid) this one continues: their text starts
                                     // `text`; they were cancelled (Interrupted "merged" before their answer was
                                     // heard, or "barge-in" when this one cut it); the core answers this one only
+  string speaker = 9;               // whose voice: a Voiceprint's name, "unknown", or empty (nobody enrolled, too
+                                    // short to tell, or typed)
+  optional double speaker_score = 10;   // the best similarity with a voiceprint (-1..1), when judged
+}
+
+// How a calibration goes (Enroll).
+message EnrollProgress {
+  string state = 1;                 // noise | sentence | heard | retry | done | failed | cancelled
+  uint32 index = 2;                 // sentence, retry, heard: which sentence
+  string text = 3;                  // sentence: what to read; heard: what speech recognition heard
+  double match = 4;                 // heard: how close it is to the sentence, 0..1
+  double dbfs = 5;                  // heard: the voice's level
+  string message = 6;               // retry, failed: why
+  EnrollResult result = 7;          // done
+  double seconds = 8;               // noise: how long to stay quiet
+}
+
+message EnrollResult {
+  string name = 1;
+  AudioDeviceProfile device = 2;    // the device it was measured on (its kind, its robot), as it was
+  double noise_dbfs = 3;            // the room's noise through it
+  double speech_dbfs = 4;           // the person's voice through it
+  double vad_min_dbfs = 5;          // the thresholds measured: for AudioDeviceProfile
+  double speech_min_dbfs = 6;
+  double vad_threshold = 7;
+  Voiceprint voiceprint = 8;        // empty embedding: no speaker model here (calibration only)
+  repeated string warnings = 9;     // for the person ("the room is noisy for this microphone: ...")
+  repeated string transcripts = 10; // what was heard of each sentence
 }
 
 message Ignored {
@@ -350,6 +410,7 @@ message VoiceOptions {
   repeated Backend tts = 3;
   repeated VoiceChoice voices = 4;
   repeated string languages = 5;    // fr, en
+  repeated Backend ears = 6;        // the ears' models: silero-vad, smart-turn, speaker, parakeet (installed: downloaded)
 }
 
 message Backend {

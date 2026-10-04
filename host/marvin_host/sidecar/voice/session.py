@@ -40,8 +40,10 @@ CONTRACT_VERSION = 2
 
 
 def voice_config(s: pb.VoiceSettings) -> VoiceConfig:
-    """The voice's settings as the core sends them (version 2: every value is there)."""
+    """The voice's settings as the core sends them (version 2: every value is there; the ears'
+    fields, added later, fall back to the same defaults when an older core leaves them unset)."""
     language = s.language or None
+    d = VoiceConfig()
     return VoiceConfig(
         language=language, default_language=language or s.default_language or "fr",
         stt=s.stt, stt_model=s.stt_model or None, tts=s.tts, tts_voice=s.tts_voice or None,
@@ -49,22 +51,42 @@ def voice_config(s: pb.VoiceSettings) -> VoiceConfig:
         speculative_stt=s.speculative_stt, speculate_after_s=s.speculate_after_s,
         continue_grace_s=s.continue_grace_s, continue_join_s=s.continue_join_s,
         segmenter=SegmenterConfig(end_silence_s=s.end_silence_ms / 1000,
-                                  end_silence_long_s=s.end_silence_long_ms / 1000))
+                                  end_silence_long_s=s.end_silence_long_ms / 1000),
+        vad=s.vad or d.vad, turn=s.turn or d.turn,
+        turn_check_s=s.turn_check_ms / 1000 if s.turn_check_ms > 0 else d.turn_check_s,
+        turn_max_s=s.turn_max_ms / 1000 if s.turn_max_ms > 0 else d.turn_max_s,
+        vocabulary=tuple(s.vocabulary),
+        voiceprints=tuple((v.name, tuple(round(float(x), 6) for x in v.embedding), v.model)
+                          for v in s.voiceprints if v.name and len(v.embedding)),
+        speaker_threshold=s.speaker_threshold if s.speaker_threshold > 0 else d.speaker_threshold,
+        known_voices_only=s.known_voices_only)
 
 
 def device_profile(d: pb.AudioDeviceProfile) -> DeviceProfile:
     return DeviceProfile(kind=ROBOT if d.kind == ROBOT else COMPUTER, robot=d.robot, duplex=d.duplex,
                          echo_tail_s=d.echo_tail_s, output_latency_s=d.output_latency_s,
                          vad_min_dbfs=d.vad_min_dbfs, speech_min_dbfs=d.speech_min_dbfs,
-                         vad_aggressiveness=d.vad_aggressiveness, has_earcons=d.has_earcons, has_aec=d.has_aec,
+                         vad_aggressiveness=d.vad_aggressiveness, vad_threshold=d.vad_threshold or 0.5,
+                         has_earcons=d.has_earcons, has_aec=d.has_aec,
                          input_device=d.input_device, output_device=d.output_device)
 
 
 def stt_name(stt, config: VoiceConfig) -> str:
+    stt = getattr(stt, "inner", stt)                   # LexiconSTT: the engine under the vocabulary
     kind = type(stt).__name__
-    backend = {"MlxWhisperSTT": "mlx", "WhisperSTT": "faster-whisper", "ScriptedWhisper": "fake"}.get(kind, kind)
+    backend = {"MlxWhisperSTT": "mlx", "WhisperSTT": "faster-whisper", "ScriptedWhisper": "fake",
+               "ParakeetSTT": f"parakeet ({getattr(stt, 'backend', '')})"}.get(kind, kind)
     model = getattr(stt, "model_name", None) or config.stt_model or ""
     return f"{backend} {model}".strip()
+
+
+def ears_name(engine) -> str:
+    """What the ears run with, for the log: the VAD, the end of turn, speaker recognition."""
+    vad = type(engine.segmenter.vad).__name__.replace("Vad", "").lower() or "vad"
+    turn = getattr(engine.turn, "name", None) or "silence"
+    spk = engine.speaker
+    who = "no speaker model" if spk is None else f"{len(spk.voiceprints)} voiceprint(s)"
+    return f"{vad} VAD, {turn} end of turn, {who}"
 
 
 def tts_name(tts) -> str:
@@ -87,12 +109,16 @@ class EngineFactory:
         self.stt_lock = threading.Lock()            # one recognition at a time: live loop and Transcribe
         self._stt: tuple[tuple, object] | None = None
         self._tts: tuple[tuple, object] | None = None
+        self._turn: tuple[str, object] | None = None
+        self._encoder: tuple[bool] | None = None        # (the speaker encoder or None,) once tried
 
     @property
     def fake(self) -> bool:
         return self.script is not None
 
     def stt(self, c: VoiceConfig):
+        """The speech recognition (kept while its own settings do not change), with the vocabulary
+        (applied without reloading the model)."""
         languages = (c.language,) if c.language else c.languages
         key = (c.stt, c.stt_model, languages)
         with self._lock:
@@ -103,7 +129,31 @@ class EngineFactory:
                     from ...voice.stt import make_stt
                     stt = make_stt(c.stt, c.stt_model, languages)
                 self._stt = (key, stt)
-            return self._stt[1]
+            stt = self._stt[1]
+        if self.fake:
+            return stt
+        from ...voice.stt import with_vocabulary
+        return with_vocabulary(stt, c.vocabulary)
+
+    def turn(self, c: VoiceConfig):
+        """Smart Turn (kept), or None for the silence timers (and in test mode)."""
+        if self.fake:
+            return None
+        with self._lock:
+            if self._turn is None or self._turn[0] != c.turn:
+                from ...voice.turn import make_turn
+                self._turn = (c.turn, make_turn(c.turn))
+            return self._turn[1]
+
+    def encoder(self):
+        """The speaker model (loaded once), or None when it is not here (and in test mode)."""
+        if self.fake:
+            return None
+        with self._lock:
+            if self._encoder is None or self._encoder[0] is None:
+                from ...voice.speaker import make_encoder
+                self._encoder = (make_encoder(),)
+            return self._encoder[0]
 
     def tts(self, c: VoiceConfig):
         key = (c.tts, c.tts_voice, c.language or c.default_language)
@@ -151,7 +201,8 @@ class EngineFactory:
             if self.fake:
                 from ...voice.vad import EnergyVad
                 vad = EnergyVad()
-            return SidecarVoice(device, config, stt=stt, tts=tts, vad=vad, stt_lock=self.stt_lock, send=send,
+            return SidecarVoice(device, config, stt=stt, tts=tts, vad=vad, turn=self.turn(config),
+                                speaker=self.encoder(), stt_lock=self.stt_lock, send=send,
                                 names={"stt": stt_name(stt, config), "tts": tts_name(tts)},
                                 reply_timeout_s=self.reply_timeout_s)
         except BaseException:
@@ -200,7 +251,8 @@ class VoiceSession:
                 eng.mute(self.muted)
             else:
                 self._status()
-        elif kind in ("reply_start", "text", "filler", "reply_end", "say", "ask", "listen_now", "stop", "earcon"):
+        elif kind in ("reply_start", "text", "filler", "reply_end", "say", "ask", "listen_now", "stop", "earcon",
+                      "enroll"):
             self._command(kind, getattr(m, kind))
         elif kind is None:
             log.warning("empty message from the core")
@@ -212,6 +264,9 @@ class VoiceSession:
                 self._out(pb.VoiceToCore(ignored=pb.Ignored(text=m.text, reason="the voice is not running")))
             elif kind in ("reply_start", "say"):
                 self._out(pb.VoiceToCore(interrupted=pb.Interrupted(reply_id=m.reply_id, reason="off")))
+            elif kind == "enroll" and m.action != "cancel":
+                self._out(pb.VoiceToCore(enroll=pb.EnrollProgress(state="failed",
+                                                                  message="The voice is not running: turn it on first.")))
             elif kind != "earcon":
                 self._status()
             return
@@ -239,6 +294,12 @@ class VoiceSession:
             eng.stop_speaking()
         elif kind == "earcon":
             eng.earcon(m.sound)
+        elif kind == "enroll":
+            if m.action == "cancel":
+                eng.enroll_cancel()
+            else:
+                from ...voice.enroll import NOISE_S
+                eng.enroll(m.name, list(m.sentences), m.noise_s if m.noise_s > 0 else NOISE_S)
 
     def _configure(self, c: pb.Configure) -> None:
         if c.contract_version != CONTRACT_VERSION:
@@ -295,7 +356,8 @@ class VoiceSession:
                 self._built_for = target
                 self.error = self.fix = ""
             eng.start()
-            log.info("voice ready (%s, %s; %s)", eng.names.get("stt"), eng.names.get("tts"), profile.name)
+            log.info("voice ready (%s, %s; %s; %s)", eng.names.get("stt"), eng.names.get("tts"), ears_name(eng),
+                     profile.name)
             self._out(eng.status_message())
 
     def _swap(self, eng: SidecarVoice, profile: DeviceProfile, target: tuple) -> None:

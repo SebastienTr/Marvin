@@ -346,6 +346,22 @@ public final class Persona {
     public static final String NOW_HEADING = "Context:";
 
     /**
+     * Whose voice asked (docs/voice.md, "Your voice"): a name the voice recognised from a voiceprint, {@code unknown}
+     * (people are enrolled, this voice is none of them), or empty ({@code null}: nothing to say).
+     */
+    public static String speakerFact(String speaker) {
+        if (speaker == null || speaker.isBlank()) {
+            return null;
+        }
+        if ("unknown".equals(speaker)) {
+            return "You do not recognise the voice asking (it matches none of the voices you know): it may not be your "
+                    + "owner, so do not attribute what it says to someone you know.";
+        }
+        return "The voice asking is " + speaker + "'s (you recognise it): what they tell you about themselves is about "
+                + speaker + ".";
+    }
+
+    /**
      * The "now" section's lines, each scored (docs/design.md 5.3): the clock first, then the sensors; the home place
      * matters only for the weather tool.
      */

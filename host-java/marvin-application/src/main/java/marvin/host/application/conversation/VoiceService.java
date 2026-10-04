@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -57,6 +58,7 @@ import marvin.host.domain.conversation.SpeechText;
 import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.conversation.VoiceSettings.VoiceConfig;
 import marvin.host.domain.conversation.VoiceSnapshot;
+import marvin.host.domain.conversation.Voiceprint;
 import marvin.host.domain.conversation.tool.Look;
 import marvin.host.domain.conversation.tool.ToolError;
 import marvin.host.domain.presence.event.PresenceEvent;
@@ -142,6 +144,10 @@ public final class VoiceService implements VoiceControl {
     private final ConversationStore store;
     private final PresenceQuery presence;
     private volatile Supplier<RoomState> room = () -> null;
+    /** The people whose voice Marvin knows, sent with the voice's settings (voice calibration). */
+    private volatile Supplier<List<Voiceprint>> voiceprints = List::of;
+    /** Where the voice calibration's progress goes ({@link VoiceEnrollmentService}). */
+    private volatile Consumer<VoiceSidecar.EnrollProgress> enrollment = p -> { };
     private final Clocks clocks;
     private final LocalDays days;
     private final String platform;
@@ -302,6 +308,25 @@ public final class VoiceService implements VoiceControl {
         tracing = Objects.requireNonNull(t, "tracing");
     }
 
+    /** The voiceprints the voice is given with its settings (the voice calibration's store). */
+    public void setVoiceprints(Supplier<List<Voiceprint>> v) {
+        voiceprints = Objects.requireNonNull(v, "voiceprints");
+    }
+
+    /** Receives the voice calibration's progress. */
+    public void setEnrollment(Consumer<VoiceSidecar.EnrollProgress> e) {
+        enrollment = Objects.requireNonNull(e, "enrollment");
+    }
+
+    /** Sends a calibration command to the running voice; false when it does not run. */
+    public boolean enroll(VoiceSidecar.Enroll command) {
+        if (!ON.equals(state) || !opened) {
+            return false;
+        }
+        voice.send(command);
+        return true;
+    }
+
     // ------------------------------------------------------------------ settings
 
     /** voice.json. */
@@ -320,15 +345,23 @@ public final class VoiceService implements VoiceControl {
         settingsStore.save(values);
         if (!values.isEmpty()) {
             capabilities.clear();               // a model may have been pulled again, or another chosen
-            boolean running = ON.equals(state) || STARTING.equals(state);
-            note("Voice settings saved" + (running ? ": restarting" : ""));
-            if (running) {
-                long gen = generation.incrementAndGet();
-                setState(STARTING);
-                control.execute(() -> doStart(gen));
-            }
+            reload("Voice settings saved");
         }
         return appSettings();
+    }
+
+    /**
+     * Applies what changed in {@code voice.json} or the voiceprints (the voice calibration): the running voice is
+     * given its settings again (it reloads only what changed).
+     */
+    public void reload(String why) {
+        boolean running = ON.equals(state) || STARTING.equals(state);
+        note(why + (running ? ": restarting" : ""));
+        if (running) {
+            long gen = generation.incrementAndGet();
+            setState(STARTING);
+            control.execute(() -> doStart(gen));
+        }
     }
 
     // ------------------------------------------------------------------ life
@@ -582,7 +615,7 @@ public final class VoiceService implements VoiceControl {
         Optional<String> robot = audioRobot.get();
         AudioDeviceProfile device = "robot".equals(c.audioRoute()) || "auto".equals(c.audioRoute()) && robot.isPresent()
                 ? c.robot().forRobot(robot.orElse("")) : c.computer();
-        return VoiceSidecar.Settings.of(c, device);
+        return VoiceSidecar.Settings.of(c, device, voiceprints.get());
     }
 
     /**
@@ -1068,6 +1101,7 @@ public final class VoiceService implements VoiceControl {
             case VoiceSidecar.SayProgress p -> live("say", "text", p.text(), "seconds", p.seconds(), "envelope", p.envelope());
             case VoiceSidecar.Interrupted i -> onInterrupted(i);
             case VoiceSidecar.ReplySpoken r -> onSpoken(r);
+            case VoiceSidecar.EnrollProgress p -> enrollment.accept(p);
         }
     }
 
@@ -1223,6 +1257,10 @@ public final class VoiceService implements VoiceControl {
         d.put("source", h.source().isEmpty() ? "voice" : h.source());
         if (h.raw() != null && !h.raw().isEmpty()) {
             d.put("raw", h.raw());
+        }
+        if (!h.speaker().isEmpty()) {
+            d.put("speaker", h.speaker());      // whose voice (a name, or unknown), and how sure
+            d.put("speaker_score", h.speakerScore());
         }
         if (image != null) {
             d.put("image", image.image().describe());      // what it was, never the image
@@ -1626,8 +1664,9 @@ public final class VoiceService implements VoiceControl {
         CompletableFuture<MemoryContext.Recollection> f = turn.recollection;
         if (f == null) {
             // no memory: the "now" section as it always was (no budget without the memory sections beside it)
-            return new Assembled(Persona.contextBlock(presence.state(), presence.recentEvents(), local, home, room()), List.of(), null, 0,
-                    false, List.of(), 0);
+            String speaker = Persona.speakerFact(turn.heard.speaker());
+            return new Assembled(Persona.contextBlock(presence.state(), presence.recentEvents(), local, home, room())
+                    + (speaker == null ? "" : "\n- " + speaker), List.of(), null, 0, false, List.of(), 0);
         }
         double t0 = clocks.monotonicSeconds();
         MemoryContext.Recollection r;
@@ -1646,8 +1685,12 @@ public final class VoiceService implements VoiceControl {
             r = MemoryContext.Recollection.EMPTY;
         }
         double waited = clocks.monotonicSeconds() - t0;
-        List<ContextAssembler.Item> nowItems = Persona.contextItems(presence.state(), presence.recentEvents(), local, home,
-                room());
+        List<ContextAssembler.Item> nowItems = new ArrayList<>(Persona.contextItems(presence.state(), presence.recentEvents(),
+                local, home, room()));
+        String speaker = Persona.speakerFact(turn.heard.speaker());
+        if (speaker != null) {
+            nowItems.add(ContextAssembler.Item.of("speaker", speaker, 0.95));     // whose voice: memory attributes by it
+        }
         ContextAssembler.Cut now = ContextAssembler.cut(new ContextAssembler.Section("now", Persona.NOW_HEADING,
                 ContextAssembler.NOW_BUDGET, nowItems), est);
         // the memory sections share one budget: it bounds what memory adds to every question's prompt evaluation
@@ -1804,6 +1847,8 @@ public final class VoiceService implements VoiceControl {
         out.put("platform", platform);
         out.put("tools", catalog);
         out.put("vision", vision(c, Boolean.TRUE.equals(ollama.get("ok"))));
+        out.put("ears", o == null ? List.of() : o.ears().stream()
+                .map(b -> ordered("name", b.name(), "installed", b.installed(), "why", b.why())).toList());
         return out;
     }
 

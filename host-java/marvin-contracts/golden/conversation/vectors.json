@@ -3985,6 +3985,68 @@
         "out": {
           "camera": "off"
         }
+      },
+      {
+        "in": {
+          "stt": "parakeet"
+        },
+        "out": {
+          "stt": "parakeet"
+        }
+      },
+      {
+        "in": {
+          "stt_model": "mlx-community/parakeet-tdt-0.6b-v3"
+        },
+        "out": {
+          "stt_model": "mlx-community/parakeet-tdt-0.6b-v3"
+        }
+      },
+      {
+        "in": {
+          "vocabulary": [
+            " Marvin ",
+            "Aashma",
+            "marvin",
+            "",
+            "Saint-Laurent  du Var"
+          ]
+        },
+        "out": {
+          "vocabulary": [
+            "Marvin",
+            "Aashma",
+            "Saint-Laurent du Var"
+          ]
+        }
+      },
+      {
+        "in": {
+          "vocabulary": "Marvin, Laurine\nBosco"
+        },
+        "out": {
+          "vocabulary": [
+            "Marvin",
+            "Laurine",
+            "Bosco"
+          ]
+        }
+      },
+      {
+        "in": {
+          "vocabulary": []
+        },
+        "out": {
+          "vocabulary": []
+        }
+      },
+      {
+        "in": {
+          "known_voices_only": true
+        },
+        "out": {
+          "known_voices_only": true
+        }
       }
     ],
     "bad": [
@@ -4010,19 +4072,19 @@
         "in": {
           "stt": "whisper"
         },
-        "error": "stt must be one of auto, mlx, faster-whisper"
+        "error": "stt must be one of auto, parakeet, mlx, faster-whisper"
       },
       {
         "in": {
           "stt_model": "a b"
         },
-        "error": "stt_model must be a Whisper model name (tiny, small, turbo...) or auto"
+        "error": "stt_model must be a Whisper model name (tiny, small, turbo...), a Parakeet repo, or auto"
       },
       {
         "in": {
           "stt_model": 5
         },
-        "error": "stt_model must be a Whisper model name (tiny, small, turbo...) or auto"
+        "error": "stt_model must be a Whisper model name (tiny, small, turbo...), a Parakeet repo, or auto"
       },
       {
         "in": {
@@ -4161,6 +4223,91 @@
           "camera": null
         },
         "error": "camera must be one of auto, computer, robot, off"
+      },
+      {
+        "in": {
+          "vocabulary": 3
+        },
+        "error": "vocabulary must be a list of names and words, e.g. [\"Marvin\", \"Aashma\"]"
+      },
+      {
+        "in": {
+          "vocabulary": [
+            "Marvin",
+            2
+          ]
+        },
+        "error": "vocabulary must be a list of names and words"
+      },
+      {
+        "in": {
+          "vocabulary": [
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ]
+        },
+        "error": "each word of the vocabulary must be at most 40 printable characters"
+      },
+      {
+        "in": {
+          "vocabulary": [
+            "<b>"
+          ]
+        },
+        "error": "each word of the vocabulary must be at most 40 printable characters"
+      },
+      {
+        "in": {
+          "vocabulary": [
+            "w0",
+            "w1",
+            "w2",
+            "w3",
+            "w4",
+            "w5",
+            "w6",
+            "w7",
+            "w8",
+            "w9",
+            "w10",
+            "w11",
+            "w12",
+            "w13",
+            "w14",
+            "w15",
+            "w16",
+            "w17",
+            "w18",
+            "w19",
+            "w20",
+            "w21",
+            "w22",
+            "w23",
+            "w24",
+            "w25",
+            "w26",
+            "w27",
+            "w28",
+            "w29",
+            "w30",
+            "w31",
+            "w32",
+            "w33",
+            "w34",
+            "w35",
+            "w36",
+            "w37",
+            "w38",
+            "w39",
+            "w40"
+          ]
+        },
+        "error": "the vocabulary holds at most 40 names and words"
+      },
+      {
+        "in": {
+          "known_voices_only": "yes"
+        },
+        "error": "known_voices_only must be true or false"
       }
     ],
     "app_defaults": {
@@ -4178,7 +4325,11 @@
       "reminders": true,
       "welcome_back": false,
       "vision_model": "",
-      "camera": "auto"
+      "camera": "auto",
+      "vocabulary": [
+        "Marvin"
+      ],
+      "known_voices_only": false
     }
   },
   "tools": {

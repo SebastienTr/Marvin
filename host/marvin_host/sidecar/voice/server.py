@@ -130,12 +130,15 @@ def options() -> pb.VoiceOptions:
             out.voices.add(id=v["name"], engine="piper", language=v["name"][:2], installed=v["installed"])
     for v in backends.say_voices():
         out.voices.add(id=v["name"], engine="say", language=v["locale"][:2], installed=True, locale=v["locale"])
+    for e in backends.ears_available():
+        out.ears.add(name=e["name"], installed=e["installed"], why=e["why"])
     return out
 
 
 def _why_not(kind: str, name: str) -> str:
     return {
         ("stt", "auto"): 'no speech recognition installed: pip install -e ".[voice]"',
+        ("stt", "parakeet"): "Apple Silicon: pip install parakeet-mlx (./marvin up does it); elsewhere: pip install onnx-asr",
         ("stt", "mlx"): "needs an Apple Silicon Mac and mlx-whisper",
         ("stt", "faster-whisper"): "pip install faster-whisper",
         ("tts", "qwen"): "Apple Silicon: pip install mlx-audio (./marvin up does it); elsewhere: pip install qwen-tts",

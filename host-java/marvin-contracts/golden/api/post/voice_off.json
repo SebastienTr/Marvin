@@ -43,7 +43,11 @@
       "reminders": true,
       "welcome_back": false,
       "vision_model": "",
-      "camera": "auto"
+      "camera": "auto",
+      "vocabulary": [
+        "Marvin"
+      ],
+      "known_voices_only": false
     }
   },
   "shape": {
@@ -77,7 +81,11 @@
       "reminders": "boolean",
       "welcome_back": "boolean",
       "vision_model": "string",
-      "camera": "string"
+      "camera": "string",
+      "vocabulary": [
+        "string"
+      ],
+      "known_voices_only": "boolean"
     }
   }
 }
