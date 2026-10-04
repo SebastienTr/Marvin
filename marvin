@@ -34,6 +34,8 @@
 # Memory: MARVIN_MEMORY_WORKER (false: nothing is consolidated), MARVIN_EMBEDDING_DIMENSIONS (1024, the
 # embedding model's size, fixed when memory's tables are made), MARVIN_EMBED_MODEL (what doctor checks; the
 # model itself is a memory setting in the app, qwen3-embedding:8b by default).
+# Background tasks: MARVIN_LLM_PARALLEL (1: the model server answers one request at a time and a task gives way to
+# the voice; 2 or more only for a model Ollama really runs in parallel: not Qwen3.8 today, see doctor).
 
 set -eu
 
@@ -822,6 +824,44 @@ embedded_as_root() {
     fi
 }
 
+# " (18.4 GB)": the size /api/tags gives a model, empty when it cannot be read
+model_size() {
+    have python3 || return 0
+    printf '%s' "$1" | python3 -c '
+import json, sys
+try:
+    for m in json.load(sys.stdin).get("models", []):
+        if m.get("name") in (sys.argv[1], sys.argv[1] + ":latest") and m.get("size"):
+            print(" (%.1f GB)" % (m["size"] / 1e9), end="")
+except ValueError:
+    pass' "$2" 2>/dev/null || true
+}
+
+# background tasks share the voice's model (docs/intelligence.md): whether Ollama can answer both at once
+check_parallel() {
+    par=${OLLAMA_NUM_PARALLEL:-}
+    if [ "$OS" = mac ] && [ -z "$par" ]; then
+        par=$(launchctl getenv OLLAMA_NUM_PARALLEL 2>/dev/null || true)
+    fi
+    case "$1" in
+        qwen3.8* | qwen3.5* | qwen3-next* | qwen3-vl* | *-mlx* | *mxfp8* | *nvfp4*)
+            ok "background tasks: Ollama runs $1 one request at a time${par:+ (whatever OLLAMA_NUM_PARALLEL=$par says)}, so a task pauses while you talk with Marvin and goes on after" ;;
+        *)
+            if [ "${par:-1}" -ge 2 ] 2>/dev/null; then
+                ok "background tasks: OLLAMA_NUM_PARALLEL=$par${MARVIN_LLM_PARALLEL:+, MARVIN_LLM_PARALLEL=$MARVIN_LLM_PARALLEL}"
+                [ "${MARVIN_LLM_PARALLEL:-1}" -ge 2 ] 2>/dev/null ||
+                    note "Marvin still pauses tasks while you talk; to run them beside the conversation: MARVIN_LLM_PARALLEL=$par ./marvin restart"
+            else
+                ok "background tasks: Ollama answers one request at a time, so a task pauses while you talk with Marvin"
+                if [ "$OS" = mac ]; then
+                    fix "to run them beside the conversation: launchctl setenv OLLAMA_NUM_PARALLEL 2, quit and reopen Ollama, then MARVIN_LLM_PARALLEL=2 ./marvin restart"
+                else
+                    fix "to run them beside the conversation: start Ollama with OLLAMA_NUM_PARALLEL=2, then MARVIN_LLM_PARALLEL=2 ./marvin restart"
+                fi
+            fi ;;
+    esac
+}
+
 cmd_doctor() {
     FAILED=0
     step "Marvin doctor"
@@ -974,9 +1014,10 @@ cmd_doctor() {
             [ -n "$m" ] && model=$m
         fi
         case "$tags" in
-            *"\"$model\""*) ok "model $model pulled" ;;
+            *"\"$model\""*) ok "model $model pulled$(model_size "$tags" "$model")" ;;
             *) note "model $model is not pulled"; fix "ollama pull $model" ;;
         esac
+        check_parallel "$model"
         # memory's embedding model (the owner's memory setting embed_model; qwen3-embedding:8b unless changed in the app)
         embed=${MARVIN_EMBED_MODEL:-qwen3-embedding:8b}
         case "$tags" in
