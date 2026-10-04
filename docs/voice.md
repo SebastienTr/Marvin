@@ -1,8 +1,10 @@
 # Voice
 
-Say "Marvin" and ask. Marvin listens with the computer's microphone (or the robot's), understands
-with Whisper, thinks with a local language model through Ollama, and answers aloud with its own
-voice: Qwen3-TTS cloning the voice chosen for it, in French and in English. **Nothing leaves the
+Say "Marvin" and ask. Marvin listens with the computer's microphone (or the robot's), hears when
+you have finished (Silero VAD and Smart Turn), understands with Parakeet (Whisper as the
+fallback), knows whose voice it is when it has learnt it, thinks with a local language model
+through Ollama, and answers aloud with its own voice: Qwen3-TTS cloning the voice chosen for it,
+in French and in English. **Nothing leaves the
 computer**: no cloud API, no account, no telemetry. Models are downloaded once, then everything
 works offline. The one exception is opt-out and explicit: online [tools](#tools) such as the
 weather send a place name to a free public service; the **Internet** switch turns them off.
@@ -10,7 +12,8 @@ weather send a place name to a free public service; the **Internet** switch turn
 ```mermaid
 flowchart LR
   subgraph Sidecar["Voice sidecar (Python)"]
-    MIC["Microphone<br/>(computer or robot)"] --> VAD["VAD<br/>utterances"] --> WAKE["Wake word<br/>'Marvin'"] --> STT["Whisper<br/>(MLX / faster-whisper)"]
+    MIC["Microphone<br/>(computer or robot)"] --> VAD["Silero VAD<br/>+ Smart Turn"] --> STT["Parakeet<br/>(else Whisper)"] --> WAKE["Wake word<br/>'Marvin'"]
+    VAD --> SPK2["Speaker<br/>(whose voice)"]
     TTS["Qwen3-TTS (MLX)<br/>else Piper / say"] --> SPK["Speaker<br/>(computer or robot)"]
   end
   subgraph Core["Java host"]
@@ -18,7 +21,7 @@ flowchart LR
     BRAIN["Brain, memory,<br/>tools"] -. context .-> LLM
     EAR["Earcons"]
   end
-  STT -- "Heard" --> LLM
+  WAKE -- "Heard (+ speaker)" --> LLM
   SPLIT -- "TextPiece (clause, fr | en)" --> TTS
   EAR -- "Earcon" --> SPK
 ```
@@ -27,30 +30,39 @@ flowchart LR
 the conversation (persona, context, model, tools, memory, settings, earcons) and decides where the
 voice hears and speaks; the audio loop runs in the **voice sidecar**, a Python process the Java host
 starts and watches ([The voice sidecar](#the-voice-sidecar)). The Python side keeps only the audio
-and the models: VAD, wake word, Whisper, the speech synthesis, the echo filters. (The Python host's
+and the models: VAD, end of turn, wake word, speech recognition, speaker recognition, the speech
+synthesis, the echo filters. (The Python host's
 own conversation, `marvin-host talk` and `run --voice`, was retired in October 2026.)
 
 ## Install (Mac)
 
 `./marvin up` installs all of this into `host/.venv` the first time (a few minutes;
-`./marvin up --no-voice` skips it) and downloads Marvin's voice model (about 1.5 GB, once, with a
-progress bar); only Ollama and its model are yours to install. `./marvin doctor` says what is there.
+`./marvin up --no-voice` skips it) and downloads, once and with their progress, Marvin's voice
+model (about 1.5 GB), Parakeet (2.5 GB on Apple Silicon) and the ears' small models (Silero VAD,
+Smart Turn, the speaker model: 36 MB); only Ollama and its model are yours to install.
+`./marvin doctor` says what is there.
 By hand:
 
 ```bash
 cd host
 pip install -e ".[sidecar,voice]"   # gRPC, sounddevice (PortAudio included), faster-whisper, webrtcvad,
-                                    # and on Apple Silicon mlx-whisper (Whisper on the GPU) and
-                                    # mlx-audio (Qwen3-TTS on the GPU)
+                                    # onnxruntime (Silero, Smart Turn, the speaker model), and on Apple
+                                    # Silicon parakeet-mlx, mlx-whisper and mlx-audio (Qwen3-TTS) on the
+                                    # GPU; elsewhere onnx-asr (Parakeet on the CPU)
 python -m marvin_host.voice.qwen_tts --prefetch   # Marvin's voice model, once
+python -m marvin_host.voice.stt --prefetch        # Parakeet, once (--check: is it here?)
+python -m marvin_host.voice.models --prefetch     # Silero VAD, Smart Turn, the speaker model (--check)
 brew install ollama                 # or the app from https://ollama.com/download
 ollama pull qwen3:4b-instruct       # 2.5 GB, the default model
 ```
 
-No Homebrew PortAudio is needed: the `sounddevice` wheel ships it. The first start downloads the
-Whisper model into `~/.cache/huggingface` (on Apple Silicon `mlx-community/whisper-large-v3-turbo`,
-1.6 GB; elsewhere `small`, 480 MB); after that it loads without touching the network. macOS asks
-once for microphone access for your terminal.
+No Homebrew PortAudio is needed: the `sounddevice` wheel ships it. Speech recognition's models live
+in `~/.cache/huggingface` (Parakeet: `mlx-community/parakeet-tdt-0.6b-v3` on Apple Silicon,
+`istupakov/parakeet-tdt-0.6b-v3-onnx`, int8 only, elsewhere; Whisper, when it is chosen or the
+fallback: `mlx-community/whisper-large-v3-turbo` or `small`, downloaded at its first use); the ears'
+small models in `~/.local/share/marvin/models/` (`MARVIN_MODELS_DIR`), from pinned revisions,
+checked against their SHA-256. After that nothing touches the network. macOS asks once for
+microphone access for your terminal.
 
 ## Marvin's voice
 
@@ -90,6 +102,141 @@ are downloaded on first use into `~/.local/share/marvin/piper`, 60 MB each). The
 improve a lot with the "Enhanced" versions of Thomas (French) and Daniel (English), in System
 Settings > Accessibility > Spoken Content > System Voice > Manage Voices.
 
+## The ears
+
+What Marvin hears, and how it decides you have finished, are four small pieces, each with a fallback
+that needs no model ([`vad.py`](../host/marvin_host/voice/vad.py),
+[`turn.py`](../host/marvin_host/voice/turn.py), [`stt.py`](../host/marvin_host/voice/stt.py),
+[`lexicon.py`](../host/marvin_host/voice/lexicon.py), [`speaker.py`](../host/marvin_host/voice/speaker.py),
+[`models.py`](../host/marvin_host/voice/models.py)):
+
+| Piece | Default | Licence | Without it |
+|---|---|---|---|
+| Voice activity | **Silero VAD v6.2** (2.3 MB ONNX, onnxruntime on the CPU, 32 ms chunks, under a millisecond each) | MIT | WebRTC VAD, then an energy threshold |
+| End of a question | **Smart Turn v3.2** (pipecat-ai, Whisper-Tiny encoder and a linear head, 8 MB int8 ONNX, 23 languages; 70 ms on a 2-core cloud CPU, a few tens of ms on a laptop) | BSD-2-Clause | silence timers and the word rules below |
+| Speech recognition | **Parakeet TDT 0.6B v3** (NVIDIA; parakeet-mlx on Apple Silicon, onnx-asr int8 elsewhere) | CC-BY-4.0 (model), Apache-2.0 (parakeet-mlx), MIT (onnx-asr) | Whisper large-v3-turbo (MLX) or `small` (CPU) |
+| Whose voice | **WeSpeaker ECAPA-TDNN 512**, trained on VoxCeleb2 (25 MB ONNX, 20-60 ms a question, beside speech recognition) | Apache-2.0 | no speaker recognition |
+
+`"vad": "auto" | "silero" | "webrtc" | "energy"` and `"turn": "auto" | "smart-turn" | "silence"` in
+`voice.json` choose; `auto` takes the model when its file is here. The status line of the voice
+sidecar's log says what runs: `voice ready (parakeet (mlx) ..., qwen ...; silero VAD, smart-turn end
+of turn, 1 voiceprint(s); computer)`.
+
+### When you have finished
+
+A fixed silence is a poor judge: too short and "Je voudrais... [thinks] un café" is cut in two, too
+long and every answer waits. With Smart Turn:
+
+1. Silero hears **0.2 s** of silence (`turn_check_ms`): Smart Turn reads the last 8 s of what you
+   said (words and intonation) and says whether the turn is complete.
+2. **Complete** (probability at least 0.5, the model's own threshold): the question ends now. The
+   end of speech costs 0.2 s plus the decision, instead of 0.55 s.
+3. **Not finished**: Marvin keeps listening; the question ends after **2 s** of silence
+   (`turn_max_ms`) unless you go on, and then the next pause is judged again on the longer
+   utterance.
+
+The decision's time is in each question's latency (`turn`, `turn_p`: its probability) and in the
+log line `first word ... (end of speech 0.21, end of turn 0.018, ...)`; a decision over its 50 ms
+budget is logged. **One thought, one question** (below) stays: when Smart Turn says "finished" too
+early and you go on before Marvin's first word, both parts are still joined (a test shows it). The
+word rules ("..., et", "parce que", a lone "OK") are only the fallback without Smart Turn: the model
+hears the same thing in the voice itself, without waiting for a transcript.
+
+### Speech recognition
+
+**Parakeet TDT 0.6B v3** is the default (`"stt": "auto"`, or `"parakeet"`): the best French word
+error rate of the open models of its size, punctuation and capitals included, and as a transducer it
+does not invent the subtitles Whisper hears in silence. It writes 25 European languages but does not
+say which one it heard: the turn's language is read from its words (`text.detect_language`: French
+and English function words, elisions and accents, contractions). A clear sentence switches the
+conversation's language; "Marvin ?" or "OK" keep it; a sentence in both is the language with the
+most words, with a lower confidence (the follow-up rule then asks for the name to switch). Forcing a
+language (`"language": "fr"`) still works. A transcript whose tokens' mean confidence is under 0.15
+is rejected as "low confidence" (MLX gives one; to tune on real use).
+
+- **Apple Silicon**: `parakeet-mlx`, `mlx-community/parakeet-tdt-0.6b-v3` (2.5 GB, loaded in bf16 on
+  the GPU, warmed up at start).
+- **Elsewhere**: `onnx-asr`, the int8 ONNX export (670 MB): measured here, 0.6 s for a 4 s question
+  on two cloud CPU cores, punctuation and capitals right in both languages ("Coucou, c'est moi,
+  Marvin, ton petit robot de bureau.").
+- **Whisper** stays selectable (`"stt": "mlx"` or `"faster-whisper"`, Marvin > Voice & models) and is
+  the fallback when Parakeet is missing or fails to load.
+
+### Names and words
+
+`"vocabulary": ["Marvin", "Aashma", "Laurine", "Bosco"]` (Marvin > Voice & models, **Names and
+words**): the people, places and projects speech recognition should spell right. Whisper is told
+them beforehand (hot words, or its initial prompt on MLX). Parakeet's MLX port has no context
+biasing (NVIDIA's NeMo has word boosting; it is not ported), so every engine's transcript is
+**corrected** after it: a word, or two words run apart ("Ash ma"), that sounds like a term is
+written as the term. "Sounds like" is a small French and English phonetic key (doubled letters,
+ph/f, c/k/qu, y/i, silent h and final e, "-ine"/"-in") and an edit distance: equal keys always
+count; a near key only for a capitalised word or a very close long one; common words never
+("marin", "martin", "matin" are not "Marvin"). "Marvine" becomes "Marvin", "Ashma" "Aashma",
+"Lorine" "Laurine", "Bosko" "Bosco". The correction runs before the wake word is looked for.
+
+### The wake word: no keyword model, on purpose
+
+The name is still found in the transcript ([`wake.py`](../host/marvin_host/voice/wake.py): fuzzy
+"Marvin" at the start or the end, French and English spellings: "Marvine", "Marveen", "Marvigne",
+"Mar vin"...). A dedicated keyword spotter was weighed and set aside:
+
+- **openWakeWord**'s code is Apache-2.0, but its pre-trained models are CC BY-NC-SA: they cannot
+  ship here. A "Marvin" model of our own needs tens of thousands of synthetic clips, negative audio
+  whose licences are mixed, and hours of training, per voice and accent; what it would decide is
+  what the transcript already says.
+- With Silero, an utterance exists only when there is speech (no keyboard, no fan), and Parakeet on
+  a 1-3 s utterance costs tens of milliseconds on the Mac's GPU; the transcript also gives the
+  question ("Marvin, quelle heure est-il ?") in the same pass.
+- The fuzzy matcher handles the French "Marvine" and English "Marvin" alike, and the vocabulary
+  correction catches the rest.
+
+`WakeWordDetector` stays the interface for a keyword model (`check(pcm) -> WakeMatch(query=None)`:
+the engine then transcribes the utterance itself), should a license-clean one appear.
+
+## Your voice
+
+At the first start with the voice on, the app offers once to learn your voice (also in Marvin >
+Voice & models, **Your voice**, **Calibrate a voice**; [ui.md](ui.md)). It takes about thirty
+seconds, through the device the voice is using (the computer's microphone, or the robot's):
+
+1. **The room**: you stay quiet for 1.5 s; Marvin measures the noise floor (and, with Silero, how
+   much the room's noise looks like speech to it).
+2. **Three sentences**, shown one at a time, in French and English: "Bonjour Marvin, je m'appelle
+   Sébastien.", "Hey Marvin, what's the weather like today?", "Marvin, rappelle-moi d'arroser les
+   plantes demain matin." Each is recognised and shown back ("I heard: ...", how close it is to the
+   text, its level): you see speech recognition work before relying on it. Too short or not
+   understood: read it again (three tries).
+3. **The device's thresholds** ([`enroll.py`](../host/marvin_host/voice/enroll.py), `calibrate`),
+   from the noise floor (90th percentile of the quiet part's 20 ms frames) and your voice's level
+   (median of its loud frames): the VAD's floor `vad_min_dbfs` = 6 dB above the noise but at least
+   25 dB under your voice; "too quiet" `speech_min_dbfs` = 18 dB under your voice (someone across
+   the room still counts) but at least 8 dB above the noise; Silero's `vad_threshold` = 0.5, or 0.1
+   above what the room's noise reached (a TV, music), up to 0.85. They are written to that device's
+   profile in `voice.json` (`devices.computer` or `devices.robot`, with a `calibration` record: when,
+   who, the levels, the warnings), and the voice restarts with them. Warnings: a voice that clips, a
+   voice very quiet, a room noisy for that microphone (under 15 dB of margin), a room whose noise
+   sounds like speech, a sentence misheard.
+4. **Your voiceprint** (with the speaker model): the mean of the three sentences' speaker
+   embeddings, under your name.
+
+At run time each question's speaker is recognised while its words are (cosine similarity with every
+voiceprint; from 0.45 it is that person; questions under 1 s are not judged). The core gets
+`speaker: Sébastien (0.82)` or `unknown` with the question (`Heard.speaker`), the conversation entry
+keeps it, and Marvin's context says it: "The voice asking is Sébastien's (you recognise it): what
+they tell you about themselves is about Sébastien." or that it does not recognise the voice, so
+memory attributes what it learns to the right person. **Only answer voices Marvin knows**
+(`known_voices_only`, off by default) ignores the others (`ignored: unknown voice (0.12, closest
+Sébastien)`); a short reply too brief to judge counts as the voice recognised in the last minute.
+Several people can be enrolled (up to 8; calibrating a known name again replaces their print).
+
+**Privacy**: voiceprints are kept in `voiceprints.json` next to `voice.json`, readable by you only,
+and go nowhere but to the voice sidecar on this computer; the app never shows the vectors.
+**Delete** in Your voice removes one at once (the voice restarts without it). The demo keeps its
+own, empty, file. API: `GET /api/voice/enroll` (the state, the sentences, what was heard, the
+people, each device's calibration, `first_run`), `POST /api/voice/enroll` `{"name"}` (409 while the
+voice is off), `POST /api/voice/enroll/cancel`, `POST /api/voice/people/forget` `{"name"}`.
+
 ## Use
 
 How to talk to it:
@@ -102,9 +249,10 @@ How to talk to it:
 - **Follow-up**: for 5 seconds after an answer, ask again without the name.
 - **Interrupt**: say "Marvin" while it thinks, or press Talk now. While it speaks, saying the name
   only works on a duplex device (see below).
-- **Take your time**: a short pause does not cut you off. If you go on right after a question,
-  before Marvin's first word, it waits and takes both as one question; a sentence that stops on
-  "et", "parce que", "and", a comma or a lone "OK" gets a longer pause. See
+- **Take your time**: a pause in the middle of a sentence does not cut you off: Smart Turn hears
+  that you have not finished and Marvin waits up to 2 s. If you go on right after a question,
+  before Marvin's first word, it waits and takes both as one question. See
+  [When you have finished](#when-you-have-finished) and
   [One thought, one question](#one-thought-one-question).
 - It answers in the language you speak (French and English are expected; French by default), and
   mixes them as you do.
@@ -126,9 +274,10 @@ extra, a microphone, Ollama, the model), the panel says what and how to fix it. 
 is remembered: it starts with the host next time.
 
 **Marvin > Voice & models** changes the model (from the list Ollama has), speech recognition, the
-speech engine and voice, the language, the wake word, the follow-up window, spoken break reminders,
-tools and the Internet switch, the home location for the weather, the model for images and the
-camera. They are saved to `voice.json` below, and the voice restarts with them.
+names and words it must get right, whether only known voices are answered, the speech engine and
+voice, the language, the wake word, the follow-up window, spoken break reminders, tools and the
+Internet switch, the home location for the weather, the model for images and the camera; **Your
+voice** calibrates the microphone and learns voices. They are saved to `voice.json` below, and the voice restarts with them.
 
 ### Your defaults
 
@@ -148,8 +297,13 @@ copies stay equal: `marvin-contracts/golden/voice/configure_defaults.json`). Exa
   "language": null,
   "audio_route": "auto",
   "end_silence_ms": 550,
+  "vocabulary": ["Marvin", "Aashma", "Laurine", "Bosco"],
+  "known_voices_only": false,
   "devices": {
-    "computer": {"duplex": false, "echo_tail_s": 0.8, "input_device": null, "output_device": null},
+    "computer": {"duplex": false, "echo_tail_s": 0.8, "input_device": null, "output_device": null,
+                 "vad_min_dbfs": -62.2, "speech_min_dbfs": -45.5, "vad_threshold": 0.5,
+                 "calibration": {"at": "2026-10-04T11:02:00", "name": "Sébastien", "noise_dbfs": -68.2,
+                                 "speech_dbfs": -27.5, "warnings": []}},
     "robot": {"echo_tail_s": 0.5, "speech_min_dbfs": -45}
   }
 }
@@ -161,7 +315,8 @@ Other keys: `ollama_host`, `default_language`, `wake`, `follow_up_s`, `listen_wi
 `end_silence_long_ms` (1100, 0 turns the longer pause off), `chime` (the earcons, default true),
 `tools` (default true), `internet` (online tools, default true), `home_place` (the weather's place
 when none is said, e.g. `"Nice"`), `reminders` (spoken break reminders, default true),
-`welcome_back` (default false), `vision_model`, `camera`. `devices` changes the two
+`welcome_back` (default false), `vision_model`, `camera`, `vad` and `turn` (`auto`), `turn_check_ms`
+(200) and `turn_max_ms` (2000), `speaker_threshold` (0.45). `devices` changes the two
 [audio devices'](#audio-devices) profiles; the older top-level `duplex`, `echo_tail_s`,
 `input_device` and `output_device` still set the computer's.
 
@@ -289,10 +444,13 @@ computer's), and sends it with its profile
 | Echo tail | 0.8 s + the speaker's latency | 0.5 s + 0.05 s | The robot's player says when it has really finished; the Mac's buffer adds its own latency |
 | VAD floor (`vad_min_dbfs`) | -60 dBFS | -55 dBFS | The robot's microphone has 12 dB of gain ([audio.md](audio.md)) and the lidar's motor turns a few centimetres away |
 | "Too quiet" (`speech_min_dbfs`) | -50 dBFS | -45 dBFS | Same |
-| VAD aggressiveness | 2 | 3 | Same |
+| VAD aggressiveness | 2 | 3 | Same (WebRTC only) |
+| Silero threshold (`vad_threshold`) | 0.5 | 0.5 | Raised by the calibration when the room's noise sounds like speech |
 | Earcons | the sidecar's tones on the speaker | the robot's built-in sounds (`SOUND`) | |
 
 The robot's values are starting points, to tune on the hardware (`devices.robot` in `voice.json`).
+The [voice calibration](#your-voice) measures them on the device itself (the floor, "too quiet",
+Silero's threshold) and writes them there.
 When a robot links or leaves, the Java host sends the new device and the running voice **swaps** it
 (`VoiceEngine.swap_device`): what was being said on the old speaker stops, the new microphone starts,
 and the models, the listening windows and the conversation stay; no restart. The sidecar never
@@ -319,11 +477,13 @@ around its state, so a cut is clean whatever it lands on:
 
 | Part | Default | Why | Alternatives |
 |---|---|---|---|
-| Speech to text, Apple Silicon | `mlx-community/whisper-large-v3-turbo` on the GPU (mlx-whisper) | Large-v3 quality for French at a fraction of the cost: a few hundred ms per question on an M-series GPU | `--stt-model small` / `medium` (`mlx-community/whisper-*-mlx`), any MLX Whisper repo |
-| Speech to text, elsewhere | Whisper `small`, int8, CPU (faster-whisper) | The smallest model with good French. `tiny` mishears names and short phrases. | `tiny`, `base` (faster), `turbo` / `large-v3` (better, 3-6x slower) |
+| Speech to text, Apple Silicon | Parakeet TDT 0.6B v3 on the GPU (parakeet-mlx, `mlx-community/parakeet-tdt-0.6b-v3`) | The best French of the open models of its size, punctuation and capitals, no inventions on silence | `"stt": "mlx"`: `mlx-community/whisper-large-v3-turbo` (or `small`, `medium`, any MLX Whisper repo) |
+| Speech to text, elsewhere | Parakeet TDT 0.6B v3, int8, CPU (onnx-asr) | 0.6 s for a 4 s question on two cores, better than Whisper `small` at 4-5 s | `"stt": "faster-whisper"`: Whisper `small` (`tiny`, `base`, `turbo`, `large-v3`) |
 | Language model | `qwen3:4b-instruct` (the owner runs `qwen3.8:27b-mlx`) | Qwen3 4B Instruct 2507: good French and English, non-thinking. Every request sends `think: false`, voice turns included, so thinking models answer at once too | see the table below |
 | Speech | Qwen3-TTS 0.6B Base cloning Marvin's voice, on the GPU through MLX (streamed) | One voice for both languages, close to real time on Apple Silicon, entirely local | the 1.7B model (`MARVIN_QWEN_TTS_SIZE=1.7b`); Piper `fr_FR-siwis-medium`, `en_GB-alan-medium`; macOS `say` (Thomas, Daniel); `espeak-ng` as a last resort |
-| Voice activity | WebRTC VAD | Tiny, fast, no model file | energy threshold (fallback when webrtcvad is missing) |
+| Voice activity | Silero VAD v6.2 (ONNX) | Tells speech from keyboard, fans and music; under a millisecond per 32 ms | WebRTC VAD, then an energy threshold |
+| End of a question | Smart Turn v3.2 (ONNX, int8) | Hears an unfinished sentence in the voice itself: short pauses end finished questions sooner, unfinished ones wait | silence timers and word rules |
+| Whose voice | WeSpeaker ECAPA-TDNN 512 (ONNX) | Small, Apache-2.0, good on short clips; runs beside speech recognition | none |
 
 Choosing the language model (rough expectations on Apple Silicon with Ollama, model loaded and
 system prompt cached; M1/M2 at the slow end, M3/M4 Pro/Max at the fast end):
@@ -362,8 +522,10 @@ answer ([`engine.py`](../host/marvin_host/voice/engine.py)):
    they are joined too, so the model gets the whole thought. What Marvin said stays in the
    conversation, marked interrupted; the cut turn leaves the model's history (the joined question
    says it all again).
-3. **The pause that ends a question adapts.** The speculative transcript (started after 0.25 s of
-   silence) is read when the pause reaches `end_silence_ms` (0.55 s): if it ends with a comma or an
+3. **The pause that ends a question adapts.** With Smart Turn, see
+   [When you have finished](#when-you-have-finished). Without it (the fallback): the speculative
+   transcript (started after 0.25 s of silence) is read when the pause reaches `end_silence_ms`
+   (0.55 s): if it ends with a comma or an
    ellipsis, a conjunction or connective ("et", "mais", "que", "parce que", "donc", "alors", "and",
    "but", "so", "because"...), a filler ("euh", "um") or is only a lead-in ("OK", "bon", "alors",
    "OK so"), the question ends after `end_silence_long_ms` (1.1 s) instead
@@ -469,8 +631,8 @@ What to expect on an Apple Silicon Mac (estimates; the log tells the truth):
 
 | Stage | Time | How it is kept short |
 |---|---|---|
-| End of speech | 0.55 s (1.1 s after "et", "parce que", a lone "OK"...) | Silence that ends a question (`end_silence_ms`); shorter cuts people off mid-sentence. Longer only when the words announce more |
-| Speech recognition | 0.1-0.7 s left to wait | MLX turbo on the GPU (0.2-0.5 s for a question); it starts speculatively after 0.25 s of silence, so part of it is already done when the question ends |
+| End of speech | 0.2 s + Smart Turn's decision (tens of ms) for a finished question; up to 2 s for an unfinished one. Without Smart Turn: 0.55 s (1.1 s after "et", "parce que", a lone "OK"...) | Silero's short silence, then the model; the decision is logged (`turn`), budget 50 ms |
+| Speech recognition | 0.1-0.4 s | Parakeet on the GPU (estimate, to measure on the Mac); the speaker's recognition runs beside it (`speaker` in the latency) |
 | Model, first token | 0.1-0.3 s (4B), about 1.4 s (27B, measured) | Model loaded and prompt cached at start-up, kept loaded, thinking off; the system prompt never changes (the live context is in the question), so Ollama reuses it |
 | First clause | + 0.1-0.4 s | The first clause (3 words, up to a comma) or the first sentence is spoken without waiting for the rest |
 | Synthesis, first sound | Qwen3-TTS on MLX: about 0.1-0.3 s to the first streamed piece (estimate, to measure); Piper 0.1-0.2 s; `say` 0.9-1.5 s (measured, M3 Max) | Clauses are synthesised by a separate thread and play while the model writes the rest; Qwen3-TTS streams within a clause |
@@ -497,8 +659,8 @@ réalisés par la communauté d'Amara.org"). Without a wake word to confirm it (
 
 | Layer | Rule |
 |---|---|
-| Speech evidence, before Whisper | at least 0.3 s of voiced frames, at least 25 % of the utterance voiced, loudest half above the device's "too quiet" (-50 dBFS on the computer, -45 on the robot) |
-| Decoder confidence, per Whisper segment | drop if `no_speech_prob` > 0.6 with `avg_logprob` < -1.0, or `compression_ratio` > 2.4 (repetition), or `avg_logprob` < -1.2; decoding at temperature 0 only, `condition_on_previous_text` off |
+| Speech evidence, before speech recognition | at least 0.3 s of voiced frames, at least 25 % of the utterance voiced, loudest half above the device's "too quiet" (-50 dBFS on the computer, -45 on the robot) |
+| Decoder confidence, per Whisper segment | drop if `no_speech_prob` > 0.6 with `avg_logprob` < -1.0, or `compression_ratio` > 2.4 (repetition), or `avg_logprob` < -1.2; decoding at temperature 0 only, `condition_on_previous_text` off. Parakeet: the tokens' mean confidence under 0.15 |
 | Known hallucinations | a list of English and French phrases, matched on the whole transcript (normalised, exact or 90 % similar), a few markers anywhere ("amara.org", "sous-titrage"...), no letters at all, runaway repetitions. Add new ones to `HALLUCINATIONS` |
 | Without a wake word | another language than the conversation's is ignored unless detected with probability >= 0.8 (MLX gives no probability: a switch then needs the name); at least two words, except a question word ("Pourquoi ?"), and "oui"/"non" when Marvin just asked a question; "merci", "ok", "thanks", "au revoir" end the conversation (no answer, no more listening) |
 
@@ -514,15 +676,21 @@ The audio half is in [`host/marvin_host/voice/`](../host/marvin_host/voice):
 | `engine.py` | `VoiceEngine`: the audio machine: the states (idle, listening, thinking, speaking) under one lock, wake word and listening windows, speculative recognition, the echo gate, speaking clause by clause (one voice per reply), cuts (Talk now, barge-in, Stop), the device swap, earcons, live signals, latencies |
 | `device.py` | `AudioDevice` (a source, a sink, their `DeviceProfile`), the computer's earcon tones |
 | `io.py` | `MicSource`, `SpeakerSink` (sounddevice), `WavSource`, `WavSink`, `NullSink`; resampling |
-| `vad.py` | WebRTC / energy VAD, `Segmenter`: 20 ms frames in, utterances out (300 ms pre-roll, ends after 0.55 s of silence); masked frames (earcons) are kept but never voice |
+| `vad.py` | Silero / WebRTC / energy VAD, `Segmenter`: 20 ms frames in, utterances out (300 ms pre-roll; the pause that ends one is asked of the engine); masked frames (earcons) are kept but never voice |
+| `turn.py` | `SmartTurn` (the end of a question), `make_turn` |
 | `wake.py` | `WakeWordDetector` interface, `TranscriptWakeWord`, fuzzy "Marvin" matching |
-| `stt.py` | `MlxWhisperSTT` (GPU), `WhisperSTT` (CPU, "Marvin" as a hotword), `make_stt`; language detection restricted to French and English |
+| `stt.py` | `ParakeetSTT` (MLX or onnxruntime), `MlxWhisperSTT` (GPU), `WhisperSTT` (CPU), `make_stt`, `with_vocabulary`; language detection restricted to French and English |
+| `lexicon.py` | The owner's names and words: phonetic correction of transcripts |
+| `speaker.py` | `WeSpeakerEncoder`, `Voiceprint`, `SpeakerId` (whose voice) |
+| `enroll.py` | `Enrollment` (the calibration's steps), `calibrate` (thresholds from the levels) |
+| `models.py` | The small models' files: pinned, checked, downloaded once (`--check`, `--prefetch`) |
+| `features.py` | Whisper's log-mel (Smart Turn) and Kaldi's filter bank (the speaker model), in numpy |
 | `tts.py` | `make_tts` (auto, qwen, say, piper, espeak), `MacSayTTS`, `PiperTTS`, `EspeakTTS`, `FallbackTTS` |
 | `qwen_tts.py` | `QwenTTS`: Marvin's voice, Qwen3-TTS through mlx-audio or qwen-tts, streamed; `--check`, `--prefetch`, `--say` |
 | `echo.py` | `EchoGate` (open, masked, closed; half duplex, cuts), `EchoFilter` (its own words) |
 | `filters.py` | What Whisper invents: speech evidence, decoder scores, known hallucinations, follow-up rules |
 | `backends.py` | What can run here (for the settings panel), and what is missing (`audio_preflight`) |
-| `text.py` | `guess_language` (the test mode's Whisper) |
+| `text.py` | `guess_language` (typed questions, the test mode), `detect_language` (Parakeet's turns) |
 | `net.py` | Verified HTTPS (certifi when installed) for downloads |
 
 The conversation half is the Java host's: `VoiceService` (turns, the transcript, the route, the
@@ -580,9 +748,18 @@ One turn, as the core sees it (contract version 2):
 | `Configure`: every setting the audio uses, with its value (defaults included), and the `device` with its profile | `Status` STARTING, then IDLE with the `device` it uses (or ERROR with a fix) |
 | the robot's `AUDIO_IN` as `AudioFrame`s (robot device) | `RobotAudioCtrl` MIC_START every second |
 | | `Level` (~16/s), `Utterance`, `Partial`, `Ignored` |
-| | `Heard` (uid, text, language, source, latency so far, `continues`: the questions it goes on from) and `Status` THINKING |
+| | `Heard` (uid, text, language, source, latency so far, `continues`: the questions it goes on from, `speaker` and `speaker_score`: whose voice) and `Status` THINKING |
 | `ReplyStart` (for that uid), one `TextPiece` per clause (cleaned, with its `language`), `Filler` while a tool runs, `ReplyEnd` | `SayProgress` per clause (text, seconds, mouth envelope), `SpeakerFrame`s paced for the robot (robot device), `Status` SPEAKING |
 | | `ReplySpoken` (text said; first_chunk, tts, first_audio, audio_start, playback_start, total) or `Interrupted` (barge-in, stop, merged: a `Heard` that continues it follows) |
+
+`Configure` also carries the ears' settings (`vad`, `turn`, `turn_check_ms`, `turn_max_ms`,
+`vocabulary`, the `voiceprints`, `known_voices_only`, `speaker_threshold`) and the device's Silero
+threshold (`AudioDeviceProfile.vad_threshold`); fields only added, the contract stays version 2 (a
+sidecar reading an older core's `Configure` uses the same defaults). `Enroll` (start, with the name
+and the sentences, or cancel) runs [the calibration](#your-voice) on the voice's device: the sidecar
+answers nothing meanwhile and reports `EnrollProgress` (noise, sentence, heard, retry, then done with
+an `EnrollResult`: the device's thresholds and the voiceprint, or failed, cancelled). `Options`
+lists the ears' models (`ears`: silero-vad, smart-turn, speaker, parakeet, and whether each is here).
 
 Commands: `Ask` (a typed question, answered like a heard one, with the language the core guessed),
 `ListenNow` (Talk now, or stop listening), `Mute`, `StopSpeaking`, `Say` (proactive speech, its
@@ -633,16 +810,21 @@ speaker is connected, else the computer's). See [Audio devices](#audio-devices).
 - **No echo cancellation**: half duplex (saying "Marvin" cannot interrupt it while it speaks; Talk
   now can); a headset and a duplex device for a real conversation. `"wake": false` really wants a
   headset.
-- **The wake word costs a Whisper run** per utterance that is loud and long enough. Fine at a
-  desk; in a room full of conversation it keeps the GPU (or a CPU core) busy.
+- **The wake word costs a speech recognition run** per utterance Silero calls speech (tens of ms
+  with Parakeet on the GPU). Fine at a desk; in a room full of conversation it keeps the GPU busy.
 - The name must be at the start ("Marvin, ...", "Hey Marvin ...", "Dis Marvin ...") or at the end
   ("..., Marvin?"). In the middle of a sentence it is ignored: talking *about* Marvin is not
   talking *to* it.
-- A pause longer than 0.55 s in the middle of a question ends it (1.1 s after a word that announces
-  more); if you go on within 1.5 s, before Marvin's first word, both parts are joined. Raise
-  `end_silence_ms` if you speak slowly. In half duplex, once Marvin speaks it hears nothing: press
+- With Smart Turn, a question it judges unfinished waits 2 s of silence (`turn_max_ms`); one it
+  judges finished too early is joined to what follows within 1.5 s, before Marvin's first word.
+  Without it, a pause longer than 0.55 s in the middle of a question ends it (1.1 s after a word
+  that announces more); raise `end_silence_ms` if you speak slowly. Smart Turn's accuracy on the
+  owner's mixed French and English is to be checked on the Mac (pipecat's benchmark: about 94 % for
+  each language). In half duplex, once Marvin speaks it hears nothing: press
   Talk now to go on (the rest is joined within 6 s of the question).
-- One speaker at a time, no speaker identification.
+- One speaker at a time: speaker recognition names who asked, it does not separate two people
+  talking at once. A print made through the computer's microphone is less sure through the
+  robot's: calibrate on each.
 - Few tools: the weather, memory's, and `look` when a camera can take a picture
   ([vision.md](vision.md)). No calendar, no reminders, no web search.
 - Images: one per question, shown from the app; `look` takes one picture per call, never a
@@ -653,13 +835,11 @@ speaker is connected, else the computer's). See [Audio devices](#audio-devices).
 - How well a model calls tools varies: small models (1.7-4B) sometimes call the weather when they
   should not, or not when they should. Watch the inspector.
 
-## Future: a real wake-word model
+## Future: a keyword model on the robot
 
-Whisper as a wake-word detector is a pragmatic first step. A dedicated keyword spotter would be
-cheaper (always on, a few milliseconds per frame, could even run on the ESP32-S3), more robust
-to accents, and would not need to transcribe everything to find the name. Google's Speech
-Commands dataset contains about 2 000 recordings of the word "marvin" among 35 words, which
-makes it a good ML project: a small CNN on log-mel features, trained on Speech Commands plus a
-few hundred recordings of your own voice, then exported to ONNX. It only has to implement
-`WakeWordDetector.check(pcm) -> WakeMatch | None`; returning `WakeMatch(query=None)` tells the
-engine to transcribe the utterance itself.
+A keyword spotter could still earn its place on the robot itself (the ESP32-S3 listening without
+streaming the microphone). Google's Speech Commands dataset (CC-BY-4.0) contains about 2 000
+recordings of the word "marvin": a small CNN on log-mel features, trained on it plus recordings of
+the owner's voice (the calibration's sentences are a start), exported to ONNX or TFLite, would
+implement `WakeWordDetector.check(pcm) -> WakeMatch(query=None)`. See
+[The wake word](#the-wake-word-no-keyword-model-on-purpose) for why the computer does not need one.

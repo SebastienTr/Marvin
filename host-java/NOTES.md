@@ -2352,3 +2352,95 @@ CP2102 adapter (HW-598A) at `/dev/cu.usbserial-0001`. Goal: its scan live in the
   reset once at probe time.
 - The lidar's yaw on the desk is the robot's calibration (`calibrate lidar`); a lidar lying loose on a desk may need
   `marvin-host calibrate lidar` for "up" to be its front.
+
+## New ears and the voice calibration (2026-10-04)
+
+P2 "new ears": the end of a question, speech recognition, the wake word and names, and the owner's request "at init Marvin
+learns my voice by having me say one or two sentences". docs/voice.md, "The ears" and "Your voice".
+
+### What exists
+
+- **Models** (`voice/models.py`): Silero VAD v6.2 (GitHub tag v6.2.1, MIT), Smart Turn v3.2 CPU int8 (pipecat-ai/smart-turn-v3
+  at a pinned revision, BSD-2-Clause), WeSpeaker ECAPA-TDNN 512 VoxCeleb2 (Apache-2.0); 36 MB in all, SHA-256 checked, in
+  `~/.local/share/marvin/models` (`MARVIN_MODELS_DIR`); `--check`, `--prefetch`. Nothing downloads at run time. Their
+  features in numpy (`voice/features.py`): Whisper's log-mel (identical to pipecat's vendored transformers extractor, 0.0
+  difference) and Kaldi's fbank (within 2e-4 of kaldi-native-fbank).
+- **Turn-taking** (`turn.py`, `engine._turn_endpoint`): with Smart Turn the segmenter ends a pause at `turn_check_s` (0.2 s)
+  and asks the engine; complete (p >= 0.5) ends it, else `turn_max_s` (2 s). The existing endpoint hook carries it: no new
+  segmenter state. `lat["turn"]`, `lat["turn_p"]`; over 50 ms is logged. Without the model the old rule (0.55 s, 1.1 s after
+  `announces_more`) is unchanged.
+- **Silero VAD** (`vad.SileroVad`): 20 ms frames buffered into 512-sample chunks with the 64-sample context, hysteresis
+  (threshold, threshold - 0.15), the device's dBFS floor kept; sessions shared per file. `vad_threshold` in the profile.
+- **Parakeet** (`stt.ParakeetSTT`): parakeet-mlx 0.5.3 (`from_pretrained(local snapshot)`, `get_logmel`, `generate`, tokens'
+  confidence) or onnx-asr 0.12 (`load_model("nemo-parakeet-tdt-0.6b-v3", folder, quantization="int8")`, int8 files only).
+  Language: `text.detect_language` (confident: share >= 0.7 and two words). `make_stt("auto")`: Parakeet, else MLX Whisper,
+  else faster-whisper; a Whisper size given with Parakeet is ignored. `python -m marvin_host.voice.stt --check|--prefetch`.
+- **Vocabulary** (`lexicon.py`, `stt.with_vocabulary`): Whisper hot words / initial prompt from it, every transcript corrected
+  (`LexiconSTT`), without reloading the model when it changes (the factory caches the engine, wraps it per build).
+- **Speaker** (`speaker.py`): `SpeakerId.identify` in its own thread from the end of the utterance; `_submit` waits for it (at
+  most 1 s, normally done before the transcript); `Heard.speaker`/`speaker_score`, `lat["speaker"]`; `known_voices_only`
+  ignores unknown voices (also as barge-in), a reply too short to judge passes within 60 s of a known voice.
+- **Calibration** (`enroll.py`, `engine.enroll`): its own permissive segmenter (no floor), quiet part, sentences with retries
+  and a timeout, thresholds (`calibrate`), the voiceprint; the engine answers nothing meanwhile, a device swap cancels it.
+- **Contract** (fields only added, still version 2): `VoiceSettings` 21-28, `Voiceprint`, `AudioDeviceProfile.vad_threshold`,
+  `Heard.speaker`/`speaker_score`, `Enroll`, `EnrollProgress`/`EnrollResult`, `VoiceOptions.ears`. The golden defaults
+  regenerated (`-Dmarvin.contract.write=true`); the conversation vectors' settings rules and the API snapshots' settings
+  patched by hand (`vocabulary`, `known_voices_only`, `parakeet`).
+- **Java**: `VoiceSettings` (keys, defaults, `vocabulary` validation), `AudioDeviceProfile.vadThreshold`, `Voiceprint`,
+  `VoiceSidecar.Ears`, `EnrollProgress`, `Enroll`; `VoiceService` (small hunks: `setVoiceprints`, `setEnrollment`, `enroll`,
+  `reload`, the speaker in the heard entry and the context, `options.ears`); `Persona.speakerFact`;
+  `VoiceEnrollmentService` (keeps the device's thresholds in `voice.json` `devices.<kind>` with a `calibration` record, the
+  voiceprint in `VoiceprintStore`, then `reload`); `VoiceprintsFile` (`voiceprints.json`, 0600); `VoiceEnrollmentController`.
+- **App** (`ears.js`): Your voice panel, the calibration dialog (polls `GET /api/voice/enroll` every 400 ms, the live level from
+  the `level` events), offered once (`localStorage`) when the voice is on and `first_run`; names and words, known voices only.
+- **Launcher**: Parakeet and onnxruntime installed with the voice, `ensure_ear_models`, doctor lines.
+
+### Decisions and deviations
+
+1. **Smart Turn v3.2, not v3.1**: the same family, file format and licence, newer; pipecat's own default. Its benchmark:
+   French 94.1 %, English 94.3 % (v3.1: 94.9 %, 90.7 %). The file is a setting away (`models.py`).
+2. **2 s for an unfinished turn** (the brief said 2-3 s): a false "unfinished" costs that wait on every such question.
+3. **Kept**: joining a question that goes on (a test shows it still rescues a too-early "finished"); **fallback only**: the
+   word rules (`announces_more`), since Smart Turn hears the same in the voice without waiting for a transcript.
+4. **Wake word: no keyword model.** openWakeWord's pre-trained models are CC BY-NC-SA (not shippable); training a clean
+   "Marvin" needs synthetic data, negatives of mixed licences and hours per voice. With Silero only speech becomes an
+   utterance, Parakeet transcribes it in tens of ms on the GPU and gives the question in the same pass; the fuzzy matcher
+   gained Parakeet's spellings of a French "Marvine". `WakeWordDetector` stays for a future model.
+5. **Speaker model: WeSpeaker ECAPA-TDNN 512** (Apache-2.0 per its model card, 25 MB) rather than SpeechBrain (needs PyTorch)
+   or NeMo TitaNet (needs NeMo), and not the "-LM" variants (CC-BY-4.0). VoxCeleb2, its training data, is CC-BY-4.0 too.
+   Threshold 0.45, from measurements here: same speaker 0.75 (3 s) / 0.6 (2 s) / 0.4 (1 s), another voice 0.15-0.3; questions
+   under 1 s are not judged.
+6. **Parakeet has no context biasing in MLX**: a phonetic post-correction instead (and Whisper keeps its biasing).
+7. **onnx-asr for Parakeet outside Apple Silicon** (not in the brief): measured better and faster than Whisper `small` on a CPU.
+8. **The core keeps voiceprints** (`voiceprints.json`), the sidecar only computes them: the Java host owns persistence;
+   prints go to the sidecar in `Configure` (a change rebuilds the voice with the cached models).
+9. **CPU only** for the small models (CoreML execution provider not used): int8 Smart Turn on CoreML is not a sure win and
+   the GPU is busy with Parakeet and Qwen3-TTS; to measure on the Mac.
+
+### Verified
+
+- Python: `pytest -q` 386 passed, 8 skipped. New `test_voice_ears.py` (48 with the real models: Silero on Marvin's
+  reference and on noise, Smart Turn complete 0.97 vs cut 0.01, the speaker model one voice across languages vs a shifted
+  voice, Parakeet int8 on the CPU word for word in French and English, the fbank against kaldi-native-fbank; skipped without
+  the files: `MARVIN_TEST_MODELS_DIR`, `MARVIN_TEST_PARAKEET_ONNX`), sidecar tests over gRPC (calibration and enrollment
+  end to end in test mode, whose voice, unknown voices ignored, the ears' settings, options). `conftest.py` points the ears at
+  an empty folder so the other tests do not depend on what a machine downloaded.
+- The whole pipeline once with the real models on this CPU (scratch script, not committed): calibration on Marvin's reference
+  (noise -64 dBFS, voice -20 dBFS -> floor -58, too quiet -38), then a question recognised as "Marvin" (0.82) and the same
+  audio pitched up as unknown (0.29). Smart Turn 70-145 ms here on 2 cores while Parakeet ran: over the 50 ms budget on this
+  machine; expected well under it on the M3 Max (to confirm).
+- Java: `mvn -o clean verify` green (472 tests run, 29 skipped: the Docker and embedded-PostgreSQL ITs). New:
+  `VoiceEnrollmentServiceTest`, `VoiceprintsFileTest`, `VoiceEnrollmentApiTest`, `GrpcVoiceSidecarTest` +2;
+  `GrpcVoiceSidecarIT` against the real sidecar in test mode (its sub-list race fixed).
+- App: the panel and the dialog's states (first-run offer, a sentence, done, the panel after) in Chromium with a mocked API,
+  Day and Night, 1440x900 and 390x844; no error from `ears.js` (the mocked API leaves other screens' errors).
+
+### Known gaps
+
+- Nothing ran on Apple Silicon: parakeet-mlx (and whether it installs beside mlx-audio and mlx-whisper), Parakeet's real
+  latency and confidence values (the 0.15 rejection threshold is a guess), Smart Turn's latency on the M3 Max.
+- Smart Turn and the speaker threshold are tuned on synthetic and read speech, not on the owner's mixed French and English in
+  his room; Smart Turn's errors on mid-sentence pauses in read speech were frequent (read speech is not its domain).
+- The robot's calibration path is the same code, untested with a robot (none is built).
+- The Testcontainers ITs (`ApiContractIT`, `VoiceEndToEndIT`) did not run; the API spec's new endpoints have no golden yet.
+- The calibration's sentences are fixed (French and English); a voiceprint from three sentences is a start, not a strong one.
