@@ -716,6 +716,8 @@ class VoiceEngine:
         log.info("more to come after %r: waiting for %.2f s of silence", text, long_s)
         return long_s
 
+    TURN_BUDGET_S = 0.05        # what the end-of-turn decision may add to the end of a question
+
     def _turn_endpoint(self) -> float | None:
         sg = self.segmenter
         pend = sg.pending()
@@ -727,6 +729,8 @@ class VoiceEngine:
             log.exception("end of turn decision failed")
             return None
         self._turn_last = (pend.uid, d)
+        if d.seconds > self.TURN_BUDGET_S:
+            log.info("end of turn decided in %.0f ms (budget %.0f ms)", d.seconds * 1000, self.TURN_BUDGET_S * 1000)
         if d.complete:
             log.debug("end of turn: complete (p=%.2f, %.0f ms)", d.probability, d.seconds * 1000)
             return None

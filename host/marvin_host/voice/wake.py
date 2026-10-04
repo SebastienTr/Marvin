@@ -33,7 +33,7 @@ from .vad import rms_dbfs
 WAKE_WORD = "marvin"
 # how Whisper and people spell it; anything else must start with "marv"/"merv" and be close to "marvin"
 VARIANTS = {"marvin", "marvine", "marven", "marvain", "marvyn", "mervin", "mervyn", "marvins", "marvinn",
-            "marvinne", "marvein", "marvan", "marwin"}
+            "marvinne", "marvein", "marvan", "marwin", "marveen", "marvyne", "marvigne", "marvinh"}
 NOT_MARVIN = {"marvel", "marvels", "martin", "marin", "marine", "marina", "mardi", "matin", "marvelous"}
 # words that may come before the name: "hey Marvin", "dis Marvin", "ok Marvin", "bonjour Marvin"
 LEADING = {"hey", "hi", "hello", "ok", "okay", "oh", "dis", "salut", "bonjour", "bonsoir", "coucou", "eh",

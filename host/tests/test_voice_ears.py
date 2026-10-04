@@ -274,6 +274,18 @@ def test_vocabulary_wraps_any_engine_and_biases_whisper():
     assert m.initial_prompt == "Marvin, Bosco." and again.inner is m
 
 
+@pytest.mark.parametrize("heard, query", [
+    ("Marvine, quelle heure est-il ?", "quelle heure est-il ?"),        # how Parakeet spells the French "Marvine"
+    ("Marveen, what time is it?", "what time is it?"),
+    ("Dis Marvigne, tu es là ?", "tu es là ?"),
+    ("Hey Marvin.", ""),
+])
+def test_the_name_as_parakeet_writes_it(heard, query):
+    from marvin_host.voice.wake import match_wake_word
+    assert match_wake_word(heard) == query
+    assert match_wake_word(LEX.correct(heard)) == query                    # and after the vocabulary
+
+
 # ---------------------------------------------------------------- whose voice
 
 def test_voiceprints_and_matching():
