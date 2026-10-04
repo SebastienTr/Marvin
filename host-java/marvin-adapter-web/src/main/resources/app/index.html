@@ -622,6 +622,15 @@
                 <div><label for="v-stt">Speech recognition</label><select id="v-stt"></select></div>
                 <div><label for="v-stt-model">Whisper model</label><select id="v-stt-model"></select></div>
               </div>
+              <div class="field">
+                <label for="v-vocabulary">Names and words</label>
+                <textarea id="v-vocabulary" rows="2" spellcheck="false" autocapitalize="off" placeholder="Marvin, Aashma, Laurine, Bosco"></textarea>
+                <p class="hint">People, places and projects speech recognition should spell right, separated by commas. Parakeet is corrected after it hears; Whisper is also told them beforehand.</p>
+              </div>
+              <div class="field">
+                <label class="check"><input id="v-known" type="checkbox"><span>Only answer voices Marvin knows</span></label>
+                <p class="hint">Needs a calibrated voice (Your voice). Others are heard but not answered.</p>
+              </div>
               <div class="field two">
                 <div><label for="v-tts">Speech</label><select id="v-tts"></select></div>
                 <div><label for="v-voice">Voice</label><select id="v-voice"></select>
@@ -664,6 +673,14 @@
             <div class="actions"><span class="saved muted" id="voice-saved" role="status"></span><button type="submit" class="primary">Apply</button></div>
           </form>
           <div class="stack">
+            <section class="panel" id="ears-panel" aria-labelledby="ears-h">
+              <div class="panel-head"><h3 id="ears-h">Your voice</h3><span class="pill" id="ears-pill">–</span></div>
+              <p class="hint">Marvin measures your room and microphone, hears you read three short sentences, shows what it understood, and learns your voice: it then knows who is speaking. Everything stays on this computer.</p>
+              <ul class="model-list" id="ears-people" aria-label="Voices Marvin knows"></ul>
+              <p class="small muted" id="ears-calibration"></p>
+              <ul class="model-list" id="ears-models" aria-label="The ears’ models" hidden></ul>
+              <div class="actions"><span class="small muted" id="ears-start-hint"></span><button type="button" class="primary" id="ears-start">Calibrate a voice</button></div>
+            </section>
             <form class="panel form" id="camera-form" aria-labelledby="camera-h">
               <div class="panel-head"><h3 id="camera-h">Camera</h3><span class="pill" id="camera-pill">–</span></div>
               <p class="hint">Marvin looks only when you ask (“Marvin, qu’est-ce que tu vois ?”): one picture, the camera’s light on for about a second. The picture is described on this computer, then dropped.</p>

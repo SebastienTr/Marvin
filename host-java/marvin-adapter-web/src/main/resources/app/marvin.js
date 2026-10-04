@@ -8,6 +8,7 @@
 import { $, app, el, api, post, on, emit, cssVar, canvas2d, toast } from "./core.js";
 import { earcons } from "./talk.js";
 import * as camera from "./camera.js";
+import * as ears from "./ears.js";
 
 let devices = [];
 let scene = null;
@@ -428,7 +429,7 @@ function setupSettings() {
 
 // ------------------------------------------------------------------ voice settings
 
-const STT_LABELS = { auto: "Auto", mlx: "MLX (Apple GPU)", "faster-whisper": "faster-whisper (CPU)" };
+const STT_LABELS = { auto: "Auto", parakeet: "Parakeet v3", mlx: "Whisper on the Apple GPU (MLX)", "faster-whisper": "Whisper on the CPU (faster-whisper)" };
 const TTS_LABELS = { auto: "Auto (best available)", qwen: "Marvin’s voice (Qwen3-TTS)", say: "macOS say", piper: "Piper", espeak: "espeak-ng" };
 
 function fillSelect(sel, options, value) {
@@ -488,7 +489,7 @@ function fillVoiceForm(s) {
   else if (vi.sees) vh.textContent = `${vi.model} can see images: it looks at the ones you show Marvin in Talk.`;
   else vh.textContent = `${vi.model} cannot see images. Choose a model whose Ollama capabilities include vision.`;
   vh.classList.toggle("bad", !!vi && vi.sees === false);
-  fillSelect($("v-stt"), (o ? o.stt_backends : ["auto", "mlx", "faster-whisper"]).map((b) => ({ value: b, label: STT_LABELS[b] || b })), s.stt);
+  fillSelect($("v-stt"), (o ? o.stt_backends : ["auto", "parakeet", "mlx", "faster-whisper"]).map((b) => ({ value: b, label: STT_LABELS[b] || b })), s.stt);
   fillSelect($("v-stt-model"), (o ? o.stt_models : ["auto"]).map((m) => ({ value: m === "auto" ? "" : m, label: m === "auto" ? "Default" : m })), s.stt_model || "");
   fillSelect($("v-tts"), (o ? o.tts_backends : [{ name: "auto", available: true }]).map((b) => ({ value: b.name, label: (TTS_LABELS[b.name] || b.name) + (b.available ? "" : " (not installed)"), disabled: !b.available && b.name !== s.tts })), s.tts);
   fillVoices();
@@ -499,6 +500,8 @@ function fillVoiceForm(s) {
   $("v-tools").checked = s.tools !== false;
   $("v-internet").checked = s.internet !== false;
   $("v-home").value = s.home_place || "";
+  $("v-vocabulary").value = (s.vocabulary || []).join(", ");
+  $("v-known").checked = !!s.known_voices_only;
   renderToolList();
 }
 
@@ -526,6 +529,7 @@ async function loadVoiceForm() {
     fillWorld(v.settings);
     if (v.settings) {
       voiceOptions = await api("/api/voice/options");
+      ears.setOptions(voiceOptions);
       fillVoiceForm(app.voiceSettings);
     }
   } catch (e) {
@@ -683,6 +687,8 @@ function setupVoiceForm() {
       tools: $("v-tools").checked,
       internet: $("v-internet").checked,
       home_place: $("v-home").value.trim(),
+      vocabulary: $("v-vocabulary").value.split(/[,\n]/).map((w) => w.trim()).filter(Boolean),
+      known_voices_only: $("v-known").checked,
     };
     try {
       const r = await post("/api/voice/settings", body);
@@ -703,6 +709,7 @@ function setupVoiceForm() {
 
 export function setup() {
   camera.setup();
+  ears.setup();
   setupSettings();
   setupVoiceForm();
   setupMemoryModels();
