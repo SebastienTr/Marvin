@@ -7,11 +7,22 @@ embeddings: texts that share words are close).
 Images: /api/show lists "vision" among the capabilities of the models in STUB_VISION (comma-separated; by default
 the owner's model, qwen3.8:27b-mlx, as Ollama reports it). Every image a chat request carries is recorded (which
 message, its role, its size and SHA-256; never kept) and served at GET /stub/images; a question whose message has
-an image is answered about it."""
+an image is answered about it.
+
+Background tasks (docs/intelligence.md): the qwen3.8 models think ("thinking" among their capabilities, and Ollama's
+thinking levels false, low, medium, xhigh in /api/show). A question that asks for work in several steps ("prépare-moi",
+"compare", "look into") gets a start_task call when it is offered, "c'est quoi le résultat"/"what did you find" a
+task_result call. A task's requests (the worker's system prompt) think, call recall once, then final_answer with a
+small Markdown table; a goal with "slow" thinks for a long time (to cancel it), STUB_TASK_DELAY seconds between pieces
+(default 0.3). Each request's "think" is logged."""
 import hashlib, json, math, os, re, sys, time, unicodedata
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
-MODELS = ["qwen3:4b-instruct", "qwen3.8:27b-mlx", "qwen3-embedding:8b"]
+MODELS = ["qwen3:4b-instruct", "qwen3.8:27b-mlx", "qwen3.8:27b-mxfp8", "qwen3-embedding:8b"]
+SIZES = {"qwen3.8:27b-mlx": 18_400_000_000, "qwen3.8:27b-mxfp8": 32_100_000_000, "qwen3:4b-instruct": 2_500_000_000}
+THINKING = {"values": [False, "low", "medium", "xhigh"], "default": "medium"}
+TASK_DELAY = float(os.environ.get("STUB_TASK_DELAY", "0.3"))
+WORKER = "You are the background worker of Marvin"
 VISION = [m for m in os.environ.get("STUB_VISION", "qwen3.8:27b-mlx").split(",") if m]
 IMAGES = []     # what chat requests carried: {"request", "message", "role", "bytes", "sha256", "model"}
 REQUESTS = [0]
@@ -135,8 +146,10 @@ def structured(req):
 LOG = open(sys.argv[2] if len(sys.argv) > 2 else os.devnull, "a")
 
 
-def chunk(content="", done=False, tool_calls=None):
+def chunk(content="", done=False, tool_calls=None, thinking=None):
     m = {"role": "assistant", "content": content}
+    if thinking:
+        m["thinking"] = thinking
     if tool_calls:
         m["tool_calls"] = tool_calls
     d = {"model": "qwen3:4b-instruct", "created_at": "2026-01-01T00:00:00Z", "message": m, "done": done}
@@ -160,8 +173,30 @@ def record_images(req):
     return last_user >= 0 and bool(msgs[last_user].get("images"))
 
 
+def task_answer(req):
+    """A background task's request: think, look in memory once, then the final answer (slowly for a "slow" goal)."""
+    msgs = req.get("messages", [])
+    goal = next((m.get("content", "") for m in msgs if m.get("role") == "user"), "")
+    goal = goal.split("asked (in ", 1)[-1].split("): ", 1)[-1]
+    offered = {t.get("function", {}).get("name") for t in req.get("tools") or []}
+    has_tool = any(m.get("role") == "tool" for m in msgs)
+    think = [chunk(thinking=t) for t in ("The owner wants: " + goal[:80] + ". ", "First I look in memory, ",
+                                        "then I write a short comparison.")]
+    if "slow" in goal.lower():
+        return [chunk(thinking="Thinking for a long time... ") for _ in range(400)] + [chunk(done=True)]
+    if not has_tool and "recall" in offered:
+        return think + [chunk(tool_calls=[{"function": {"name": "recall", "arguments": {"query": goal[:60]}}}]),
+                        chunk(done=True)]
+    result = ("## " + goal[:60] + "\n\n| Option | Price | Note |\n|---|---|---|\n| A | 10 € | **cheaper** |\n"
+              "| B | 12 € | faster |\n\n- Checked in memory: nothing more.\n- Not checked: live prices (no web tool).")
+    return [chunk(thinking="Enough to answer.")] + [chunk(tool_calls=[{"function": {"name": "final_answer", "arguments": {
+        "summary": "Option A is cheaper by two euros.", "result": result}}}]), chunk(done=True)]
+
+
 def answer(req):
     msgs = req.get("messages", [])
+    if msgs and str(msgs[0].get("content", "")).startswith(WORKER):
+        return task_answer(req)
     has_image = record_images(req)
     if has_image and msgs and str(msgs[0].get("content", "")).startswith("You are the eyes of Marvin"):
         # the look tool's picture, described for the conversation's model
@@ -172,6 +207,22 @@ def answer(req):
     said_last = next((m.get("content", "") for m in reversed(msgs) if m.get("role") == "user"), "")
     last_user = said_last.lower()
     has_tool = bool(msgs) and msgs[-1].get("role") == "tool"
+    offered_tools = {t.get("function", {}).get("name") for t in req.get("tools") or []}
+    asks = re.search(r"(?:the person says|la personne dit): (.*)", said_last, re.I)
+    question = (asks.group(1) if asks else said_last).split("\n")[0].lower()
+    if "start_task" in offered_tools and not has_tool and re.search(r"prépare-moi|prepare-moi|compare|look into", question):
+        goal = (asks.group(1) if asks else said_last).split("\n")[0].strip()
+        return [chunk(tool_calls=[{"function": {"name": "start_task", "arguments": {"goal": goal}}}]), chunk(done=True)]
+    if "task_result" in offered_tools and not has_tool and re.search(r"résultat|resultat|what did you find", question):
+        return [chunk(tool_calls=[{"function": {"name": "task_result", "arguments": {}}}]), chunk(done=True)]
+    if has_tool and msgs[-2].get("tool_calls") and msgs[-2]["tool_calls"][0]["function"]["name"] == "task_result":
+        try:
+            found = json.loads(msgs[-1].get("content", "") or "{}")
+        except ValueError:
+            found = {}
+        done = (found.get("finished") or [{}])[0]
+        return [chunk("Here is what I found: " if done.get("summary") else "Nothing is finished yet. "),
+                chunk(done.get("summary", "")), chunk(done=True)]
     if ("weather" in last_user or "météo" in last_user) and not has_tool and req.get("tools"):
         return [chunk(tool_calls=[{"function": {"name": "get_weather", "arguments": {"place": "Nice"}}}]), chunk(done=True)]
     offered = {t.get("function", {}).get("name") for t in req.get("tools") or []}
@@ -249,7 +300,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/api/tags"):
-            return self._json(200, {"models": [{"name": m, "model": m, "size": 1} for m in MODELS]})
+            return self._json(200, {"models": [{"name": m, "model": m, "size": SIZES.get(m, 1)} for m in MODELS]})
         if self.path.startswith("/api/version"):
             return self._json(200, {"version": "0.12.0"})
         if self.path.startswith("/stub/images"):
@@ -277,9 +328,13 @@ class H(BaseHTTPRequestHandler):
             model = req.get("model") or req.get("name") or ""
             if model not in MODELS and model + ":latest" not in MODELS:
                 return self._json(404, {"error": f"model '{model}' not found"})
-            caps = ["completion", "tools"] + (["vision", "thinking"] if model in VISION else [])
-            return self._json(200, {"capabilities": caps, "details": {"family": "qwen3"},
-                                    "model_info": {"general.architecture": "qwen3"}})
+            qwen38 = model.startswith("qwen3.8")
+            caps = ["completion", "tools"] + (["vision"] if model in VISION else []) \
+                + (["thinking"] if qwen38 or model in VISION else [])
+            show = {"capabilities": caps, "details": {"family": "qwen3"}, "model_info": {"general.architecture": "qwen3"}}
+            if qwen38:
+                show["thinking"] = THINKING
+            return self._json(200, show)
         if self.path.startswith("/api/embed"):
             model = req.get("model", "")
             if model not in MODELS and model + ":latest" not in MODELS:
@@ -291,7 +346,8 @@ class H(BaseHTTPRequestHandler):
         if self.path.startswith("/api/chat"):
             system = next((m.get("content", "") for m in req.get("messages", []) if m.get("role") == "system"), "")
             digest = hashlib.sha1(system.encode()).hexdigest()[:12]
-            LOG.write(f"SYSTEM {'memory' if req.get('format') else 'voice'} {digest} {len(system)}\n"); LOG.flush()
+            kind = "memory" if req.get("format") else "task" if system.startswith(WORKER) else "voice"
+            LOG.write(f"SYSTEM {kind} {digest} {len(system)} think={json.dumps(req.get('think'))}\n"); LOG.flush()
             if len(sys.argv) > 2:  # each distinct system prompt next to the log, to compare them
                 seen = f"{sys.argv[2]}.system-{digest}.txt"
                 if not os.path.exists(seen):
@@ -309,11 +365,16 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/x-ndjson")
             self.send_header("Transfer-Encoding", "chunked")
             self.end_headers()
-            for l in lines:
-                data = (l + "\n").encode()
-                self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
-                self.wfile.flush()
-                time.sleep(0.05)
+            pause = TASK_DELAY if system.startswith(WORKER) else 0.05
+            try:
+                for l in lines:
+                    data = (l + "\n").encode()
+                    self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
+                    self.wfile.flush()
+                    time.sleep(pause)
+            except (BrokenPipeError, ConnectionResetError):
+                LOG.write("CLIENT GONE (cancelled)\n"); LOG.flush()
+                return
             self.wfile.write(b"0\r\n\r\n")
             return
         self._json(404, {"error": "not found"})
