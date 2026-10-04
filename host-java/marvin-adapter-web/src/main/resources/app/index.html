@@ -25,6 +25,7 @@
   <symbol id="i-talk" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/></symbol>
   <symbol id="i-memory" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5"/><path d="M5 9.5h14M5 14h14"/></symbol>
   <symbol id="i-activity" viewBox="0 0 24 24"><path d="M4 9c2-2 4-2 6 0s4 2 6 0 3-1.5 4-1M4 15c2-2 4-2 6 0s4 2 6 0 3-1.5 4-1"/></symbol>
+  <symbol id="i-senses" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.6"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8"/></symbol>
   <symbol id="i-marvin" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/></symbol>
   <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></symbol>
   <symbol id="i-mic-off" viewBox="0 0 24 24"><path d="M15 10V6.5a3 3 0 0 0-5.6-1.5M9 9v2.5a3 3 0 0 0 4.7 2.5M5.5 11.5a6.5 6.5 0 0 0 10.4 5.2M18.5 11.5a6.4 6.4 0 0 1-.5 2.4M12 18v2.5M4 4l16 16"/></symbol>
@@ -68,6 +69,7 @@
         <a href="#talk" data-view="talk"><svg class="nav-icon" aria-hidden="true"><use href="#i-talk"/></svg><span>Talk</span><span class="nav-live" data-live hidden aria-label="Marvin is listening or speaking"></span></a>
         <a href="#memory" data-view="memory"><svg class="nav-icon" aria-hidden="true"><use href="#i-memory"/></svg><span>Memory</span><span class="nav-count" data-count="memory" hidden></span></a>
         <a href="#activity" data-view="activity"><svg class="nav-icon" aria-hidden="true"><use href="#i-activity"/></svg><span>Activity</span><span class="nav-count" data-count="activity" hidden></span></a>
+        <a href="#senses" data-view="senses"><svg class="nav-icon" aria-hidden="true"><use href="#i-senses"/></svg><span>Senses</span></a>
         <a href="#marvin" data-view="marvin"><svg class="nav-icon" aria-hidden="true"><use href="#i-marvin"/></svg><span>Marvin</span><span class="nav-count" data-count="marvin" hidden></span></a>
       </nav>
       <div class="sidebar-bottom">
@@ -518,6 +520,117 @@
         </div>
       </section>
 
+      <!-- ============================================================ senses -->
+      <section class="view" data-view="senses" aria-labelledby="senses-title" hidden>
+        <header class="page-header">
+          <div>
+            <p class="label">What Marvin perceives</p>
+            <h1 id="senses-title" tabindex="-1">Senses.</h1>
+            <p class="intro">Everything Marvin sees, hears and feels, live. It streams only while this screen is open, and nothing on it is kept.</p>
+          </div>
+          <span class="live-pill" id="senses-live" data-state="connecting" role="status"><span class="dot" aria-hidden="true"></span><span id="senses-live-text">Connecting</span></span>
+        </header>
+
+        <section class="panel thinks" aria-labelledby="thinks-h">
+          <div class="panel-head"><h3 id="thinks-h">Thinks</h3><span class="small muted" id="thinks-meta"></span></div>
+          <dl class="kv-strip" id="thinks-kv"></dl>
+          <div class="pipeline">
+            <p class="kv-label">Last answer, from the end of the question to the speaker</p>
+            <div id="thinks-stages"></div>
+          </div>
+        </section>
+
+        <h2 class="senses-h" id="sees-h">Sees</h2>
+        <div class="senses-grid" role="group" aria-labelledby="sees-h">
+          <section class="panel" aria-labelledby="s-lidar-h">
+            <div class="panel-head wrap"><h3 id="s-lidar-h">Lidar</h3><span class="small muted mono" id="s-lidar-meta"></span></div>
+            <div class="segmented range-choice" role="radiogroup" aria-label="Lidar range">
+              <label><input type="radio" name="s-range" value="auto" checked><span>Auto</span></label>
+              <label><input type="radio" name="s-range" value="0.5"><span>0.5 m</span></label>
+              <label><input type="radio" name="s-range" value="1"><span>1 m</span></label>
+              <label><input type="radio" name="s-range" value="2"><span>2 m</span></label>
+              <label><input type="radio" name="s-range" value="4"><span>4 m</span></label>
+              <label><input type="radio" name="s-range" value="8"><span>8 m</span></label>
+            </div>
+            <canvas class="scope" id="s-lidar" role="img" aria-label="Top view from the lidar: the robot in the middle facing up, each return as a dot, the nearest one circled."></canvas>
+            <dl class="metrics" id="s-lidar-metrics"></dl>
+            <p class="empty-line muted" id="s-lidar-empty" hidden>No lidar connected. A lidar on the robot, or on a USB adapter beside this computer, shows its scan here.</p>
+          </section>
+          <section class="panel" aria-labelledby="s-radar-h">
+            <div class="panel-head"><h3 id="s-radar-h">Radar</h3><span class="small muted mono" id="s-radar-meta"></span></div>
+            <canvas class="scope radar-scope" id="s-radar" role="img" aria-label="The LD2450 radar's field of view with the people it tracks and their last five seconds."></canvas>
+            <ul class="target-list mono" id="s-targets"></ul>
+            <p class="empty-line muted" id="s-radar-empty" hidden>No radar connected. An LD2450 follows up to three people; an MR60BHA2 reads breathing and heart rate.</p>
+          </section>
+          <section class="panel" aria-labelledby="s-cam-h">
+            <div class="panel-head"><h3 id="s-cam-h">Camera</h3><span class="pill" id="s-cam-pill">–</span></div>
+            <p class="small muted" id="s-cam-line">–</p>
+            <figure class="cam-frame" id="s-cam-frame" hidden>
+              <img id="s-cam-img" alt="The last picture taken from this screen">
+              <figcaption class="small muted mono" id="s-cam-meta"></figcaption>
+            </figure>
+            <p class="live-indicator" id="s-cam-live" role="status" hidden><span class="rec" aria-hidden="true"></span>Live preview: a picture every 2 seconds, shown here only, never kept</p>
+            <div class="row-actions">
+              <button type="button" id="s-cam-take">Take a picture</button>
+              <label class="check"><input type="checkbox" id="s-cam-preview"><span>Live preview</span></label>
+            </div>
+            <p class="form-error" id="s-cam-error" role="alert" hidden></p>
+            <div class="look-block">
+              <p class="kv-label">What Marvin saw last</p>
+              <p class="small" id="s-look"></p>
+            </div>
+          </section>
+        </div>
+
+        <h2 class="senses-h" id="hears-h">Hears</h2>
+        <div class="senses-grid" role="group" aria-labelledby="hears-h">
+          <section class="panel" aria-labelledby="s-mic-h">
+            <div class="panel-head"><h3 id="s-mic-h">Microphone</h3><span class="state-chip" id="s-vad" data-state="off">–</span></div>
+            <div class="notice inline-notice" id="s-voice-off" role="status" hidden><p class="notice-title" id="s-voice-off-title"></p><p class="notice-text" id="s-voice-off-text"></p></div>
+            <div class="level-row">
+              <div class="level-meter" id="s-meter" role="meter" aria-label="Microphone level" aria-valuemin="-60" aria-valuemax="0" aria-valuenow="-60"><span class="fill" id="s-meter-fill"></span><span class="peak" id="s-meter-peak"></span></div>
+              <span class="level-value mono" id="s-dbfs">– dBFS</span>
+            </div>
+            <div class="level-scale mono" aria-hidden="true"><span>−60</span><span>−45</span><span>−30</span><span>−15</span><span>0</span></div>
+            <canvas class="level-history" id="s-level" role="img" aria-label="The microphone's level over the last ten seconds, speech shaded"></canvas>
+            <dl class="metrics wide-metrics" id="s-ears"></dl>
+          </section>
+          <section class="panel" aria-labelledby="s-utt-h">
+            <div class="panel-head"><h3 id="s-utt-h">What it heard</h3><span class="small muted" id="s-utt-meta"></span></div>
+            <ol class="utterances" id="s-utterances"></ol>
+            <p class="empty-line muted" id="s-utt-empty">Nothing heard since the voice started.</p>
+          </section>
+        </div>
+
+        <h2 class="senses-h" id="feels-h">Feels</h2>
+        <div class="senses-grid three" role="group" aria-labelledby="feels-h">
+          <section class="panel" aria-labelledby="s-presence-h">
+            <div class="panel-head"><h3 id="s-presence-h">Presence</h3><span class="pill" id="s-presence-source">–</span></div>
+            <p class="presence-word" id="s-presence-word">–</p>
+            <ul class="reasons" id="s-reasons"></ul>
+            <ul class="sensor-chips" id="s-sensor-chips" aria-label="Sensors"></ul>
+          </section>
+          <section class="panel" aria-labelledby="s-room-h">
+            <div class="panel-head"><h3 id="s-room-h">Room</h3><span class="small muted" id="s-room-meta"></span></div>
+            <dl class="metrics" id="s-room"></dl>
+            <p class="empty-line muted" id="s-room-empty" hidden>No room sensors. The bench board's PIR and DHT11 add motion, temperature, humidity and light.</p>
+          </section>
+          <section class="panel" aria-labelledby="s-vitals-h">
+            <div class="panel-head"><h3 id="s-vitals-h">Vital signs</h3><span class="small muted" id="s-vitals-meta"></span></div>
+            <dl class="metrics" id="s-vitals"></dl>
+            <p class="empty-line muted" id="s-vitals-empty" hidden>No vital-sign radar. An MR60BHA2 reads breathing and heart rate while someone sits still in front of Marvin.</p>
+          </section>
+        </div>
+
+        <h2 class="senses-h" id="s-devices-title">Devices</h2>
+        <section class="panel" aria-labelledby="s-devices-title">
+          <div class="panel-head"><h3>Linked devices</h3><span class="small muted" id="s-devices-summary"></span></div>
+          <ul class="devices" id="s-devices"></ul>
+          <p class="empty-line muted" id="s-devices-empty" hidden>No device yet. A robot board or the USB sensor bridge appears here as soon as it says hello.</p>
+          <p class="small muted gap-top" id="s-audio-route"></p>
+        </section>
+      </section>
+
       <!-- ============================================================ marvin -->
       <section class="view" data-view="marvin" aria-labelledby="marvin-title" hidden>
         <header class="page-header">
@@ -582,7 +695,7 @@
             <section class="panel" aria-labelledby="lidar-h">
               <div class="panel-head"><h3 id="lidar-h">Lidar</h3><span class="small muted" id="lidar-meta"></span></div>
               <canvas class="scope" id="lidar" role="img" aria-label="Top view of the room from the lidar: the robot in the middle facing up, the last scan around it, and the person the radar follows."></canvas>
-              <p class="small muted">Top view, the robot faces up; the scale follows the scan and the nearest return is circled.</p>
+              <p class="small muted">Top view, the robot faces up; the scale follows the scan and the nearest return is circled. Zoom, distances and rates in <a href="#senses">Senses</a>.</p>
             </section>
             <section class="panel" aria-labelledby="radar-h">
               <div class="panel-head"><h3 id="radar-h">Radar</h3><span class="small muted" id="radar-meta"></span></div>
@@ -902,6 +1015,7 @@
     <a href="#talk" data-view="talk"><svg class="nav-icon" aria-hidden="true"><use href="#i-talk"/></svg><span>Talk</span><span class="nav-live" data-live hidden></span></a>
     <a href="#memory" data-view="memory"><svg class="nav-icon" aria-hidden="true"><use href="#i-memory"/></svg><span>Memory</span><span class="nav-count" data-count="memory" hidden></span></a>
     <a href="#activity" data-view="activity"><svg class="nav-icon" aria-hidden="true"><use href="#i-activity"/></svg><span>Activity</span><span class="nav-count" data-count="activity" hidden></span></a>
+    <a href="#senses" data-view="senses"><svg class="nav-icon" aria-hidden="true"><use href="#i-senses"/></svg><span>Senses</span></a>
     <a href="#marvin" data-view="marvin"><svg class="nav-icon" aria-hidden="true"><use href="#i-marvin"/></svg><span>Marvin</span><span class="nav-count" data-count="marvin" hidden></span></a>
   </nav>
 </div>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-// Marvin's app, the Java host's: the shell (five destinations, a rail on a computer and a bar on a phone), the
+// Marvin's app, the Java host's: the shell (six destinations, a rail on a computer and a bar on a phone), the
 // appearance, the connection, and the one event stream that feeds every screen. Each screen is its own module:
-// home.js, talk.js, memory.js, activity.js, marvin.js. Plain ES modules, no build step, no network access
+// home.js, talk.js, memory.js, activity.js, senses.js (with its own stream, open while it is on screen), marvin.js. Plain ES modules, no build step, no network access
 // beyond this host.
 
 import { $, app, api, emit, on, toast } from "./core.js";
@@ -11,10 +11,11 @@ import * as talk from "./talk.js";
 import * as memory from "./memory.js";
 import * as activity from "./activity.js";
 import * as marvin from "./marvin.js";
+import * as senses from "./senses.js";
 import * as system from "./system.js";
 import * as tasks from "./tasks.js";
 
-const VIEWS = ["home", "talk", "memory", "activity", "marvin"];
+const VIEWS = ["home", "talk", "memory", "activity", "senses", "marvin"];
 const SUBS = { activity: ["", "history"], marvin: ["", "robot", "voice", "system", "preferences"] };
 // earlier addresses, still honoured (bookmarks, the phone's home screen)
 const OLD = { robot: "marvin/robot", history: "activity/history", settings: "marvin/preferences", "activity/log": "marvin/system" };
@@ -207,6 +208,7 @@ async function init() {
   memory.setup();
   activity.setup();
   marvin.setup();
+  senses.setup();
   system.setup();
   tasks.setup();
   try {
