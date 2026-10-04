@@ -67,6 +67,55 @@ Assembly work, all local on Apple Silicon:
 
 Level 3 is also a good learning project: real data, a real problem, and everything trains on a laptop GPU.
 
+## Thinking and background tasks
+
+Marvin runs **one language model** for everything (Qwen3.8 27B on the owner's Mac: two 27B models would not fit beside
+the voice's models in 64 GB). It works in two regimes:
+
+- **The conversation** answers at once: no reasoning by default (every token of thinking is silence before the first
+  word). Marvin > Voice & models > **Thinking & tasks** can turn it on (low, medium, high); the thinking is never
+  spoken, and the reply inspector shows it.
+- **Background tasks** think hard (high by default): work in several steps ("prépare-moi…", "compare…", "look
+  into…", "summarize my week…") that Marvin does with its tools while the conversation goes on, then tells you about.
+
+**How a task starts.** The model decides: the conversation offers it `start_task(goal)`, and the persona says when to
+use it (work in several steps, or anything asked "in the background"; never a question it can answer now). The turn
+then ends with Marvin's own sentence, "Je m'en occupe, je te dis quand c'est prêt" (no second request to the model). A
+light guard sits beside it: "fais-le en tâche de fond" / "in the background" starts a task without asking the model (the
+goal is the question before when nothing else is said), and words that usually announce several steps add a one-line
+hint to the question, never a decision. The app's Activity has a form for it too.
+
+**How it runs.** One task at a time, with the conversation's model at the task's reasoning level and the conversation's
+tools that stay on this computer: `recall`, `remember`, `look` (with a camera), the weather (with the internet), and
+whatever a connector adds later (the `ToolSource` port; each tool says what it does to the world, and one that writes
+outside this computer would wait for an approval, which does not exist yet, so no task gets one). `forget` stays in the
+conversation: it needs your yes. The task's prompt names its tools and says it has no other: no web, no email, no
+calendar, never an invented source or number. It finishes with `final_answer`: a sentence or two Marvin can say, and the
+result in Markdown. Budgets: 12 requests to the model, 20 minutes, 40 000 tokens written (thinking included); when one
+is nearly spent the model is asked to finish, and a task that spends one fails with what it had. Every request (with
+the model's reasoning) and every tool run is a step, kept in PostgreSQL; a task that was running when the host stopped
+is *interrupted* after the restart.
+
+**The voice comes first.** Ollama runs Qwen3.8 one request at a time whatever `OLLAMA_NUM_PARALLEL` says (its runner
+for this architecture, and its MLX runner, take one request at a time), so a reasoning step could make a spoken question
+wait a minute. Instead, as soon as a question is heard (or Marvin listens, thinks or speaks) a task's request is cut,
+Ollama drops it when the connection closes, and the task makes it again two seconds after the conversation is over;
+the cut request does not count. With a model Ollama does run in parallel, `OLLAMA_NUM_PARALLEL=2` and
+`MARVIN_LLM_PARALLEL=2` let tasks run beside the conversation instead (`./marvin doctor` says which case applies).
+
+**Thinking levels.** What reaches Ollama is the level the model lists: Qwen3.8 accepts `false`, `low`, `medium` and
+`xhigh`, and Ollama turns any other value, `"high"` and `true` included, into its default for it, `medium`. So *high*
+is sent as `xhigh` there (and as `high` to a model that lists it, such as gpt-oss). A server that refuses a level gets
+thinking simply on, then off. Spring AI's Ollama client cannot send `xhigh`, so requests that think go to Ollama's HTTP
+API directly, with the same body.
+
+**Telling you.** When a task is done, Marvin says it on its own ("C'est prêt, pour « … » : …") if you are there and not
+talking with it: the presence sensor says so, or, without one, you talked with Marvin in the last 15 minutes. During a
+conversation it waits for its end; when you are away, during quiet hours or with the voice off, the next answer
+mentions it first (and it is said when the sensor sees you arrive). "C'est quoi le résultat ?" works at any time
+(`task_result`). The app shows every task live in Activity, with its result and its steps, and the Log panel a line when
+one ends.
+
 ## Emergent behaviours we can hope for
 
 None of these is programmed directly. They come from combining sensors, a little learning and the LLM's memory:
@@ -93,6 +142,8 @@ Data comes first: nothing at level 2 or 3 is possible without weeks of recording
 - [ ] Recordings: add camera keyframes and audio features (not raw audio) to `.mvrec` as new record kinds, plus a label stream (brain events and your feedback). Unknown kinds are already skipped, so the format stays version 1.
 - [ ] First build: measure lidar noise and vibration at the desk, and MR60BHA2 heart-rate quality while typing.
 - [x] Look on demand: one picture from the robot's or the computer's camera, described by the local vision model ([vision.md](vision.md)).
+- [x] Reasoning levels and background tasks: one model, the conversation at once, tasks thinking hard with Marvin's tools ([above](#thinking-and-background-tasks)).
+- [ ] Tasks: approvals for tools that write outside this computer (email drafts, calendar events), task results in memory's log.
 - [ ] Level 1 vision: face recognition and pose on the MJPEG stream, as new brain inputs.
 - [ ] Level 1 sound: sound-event classifier; "on a call" detection (voices heard, one person seen).
 - [ ] Lidar: background model of the room, tracking behind the robot, "I was moved" event.

@@ -57,6 +57,7 @@ Everything fits comfortably in the ESP32-S3's Wi-Fi throughput.
 | **Screen as the face, eyes by default** | A face makes the device readable at a glance: awake, listening, sleepy. The mini-map is still one tap away. | Back screen with a mini-map (rev C–D) |
 | **Thread-forming screws into PETG and PLA** | No heat-set inserts and no nuts, except the optional tripod nut. | Brass inserts (rev A) |
 | **The voice: one decider, one audio process** | The Java host owns the conversation and every decision around the voice: its settings and their defaults, which audio device it uses (the computer or a robot), when an earcon plays and where, how each answer is cut into clauses and which language each one is. The Python voice sidecar only hears and speaks with the device it is given, and swaps it under the running voice when a robot links or leaves. Nothing is decided twice, so the two can never disagree ([voice.md](voice.md#audio-devices)). | Defaults and the route decided on both sides; a second conversation in Python (retired in October 2026) |
+| **One model, two regimes: answers at once, tasks that think** | Two 27B models do not fit beside the voice's models on a 64 GB Mac. The conversation's model answers without reasoning; the same model works on background tasks at a high reasoning level, with Marvin's tools, one task at a time, and gives the model back to the voice the moment someone talks (Ollama runs Qwen3.8 one request at a time). Each tool says what it does to the world and where it may run, so connectors plug in without the conversation knowing them ([intelligence.md](intelligence.md#thinking-and-background-tasks)). | A second, smaller model for the voice; tasks waiting for the owner to be idle |
 | **Marvin's own voice, cloned locally** | One voice for French and English, the one chosen for Marvin, synthesised on the computer's GPU (Qwen3-TTS through MLX, streamed) from a short reference recording kept in the repository. | The system voices (say, Piper): a voice per language, kept as fallbacks |
 
 ## Coordinate frame
@@ -98,6 +99,7 @@ The 24 GHz radar sits below the 60 GHz one, not above it: the 60 GHz beam leaves
 - [x] Host: presence events (brain) and the face, on simulated data
 - [x] Host: Marvin looks on demand, through the robot's camera or the computer's ([vision.md](vision.md))
 - [x] Host: Marvin's own voice (Qwen3-TTS), the voice's device and defaults decided by the Java host, the Python conversation retired
+- [x] Host: reasoning levels and background tasks (one model; tasks with budgets, steps kept, cancel, the voice first), see [intelligence.md](intelligence.md#thinking-and-background-tasks)
 - [ ] Host: camera/lidar extrinsic calibration
 - [ ] Companion: tested daily on the real robot, voice through the robot
 - [ ] Companion: perception and learning, see [intelligence.md](intelligence.md)

@@ -588,6 +588,16 @@ The voice conversation runs on a fast model (4–8B, as today). It does not do l
 
 Examples: "prepare my week" (calendar + open tasks + last week's episode → a short brief), "find the email about the car insurance and tell me the renewal date", "draft a reply to the plumber saying Thursday works".
 
+**As built (October 2026).** One model serves both (the owner's Qwen3.8 27B: a second model does not fit beside the
+voice), so the agent is the conversation's model at a high reasoning level rather than a larger one; the tool is
+`start_task(goal)`, with `task_result` to ask about tasks. Tasks live in the conversation context for now
+(`application.conversation.task`: they share its model port, its tools and its persona; a separate `agent` context would
+need a tool port both sides use without a cycle) and in the conversation's schema (`task`, `task_step`). States: queued,
+running, done, failed, cancelled, interrupted (after a restart); no `needs_approval` yet, since no task is offered a tool
+that writes outside the computer. Instead of `paused`, a task's request is cut when the voice needs the model and made
+again after. Budgets: 12 requests, 20 minutes, 40 000 tokens. Details in [intelligence.md](intelligence.md#thinking-and-background-tasks)
+and [host-java/NOTES.md](../host-java/NOTES.md).
+
 ### 6.2 Lifecycle
 
 ```mermaid

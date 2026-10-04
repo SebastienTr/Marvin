@@ -2444,3 +2444,109 @@ learns my voice by having me say one or two sentences". docs/voice.md, "The ears
 - The robot's calibration path is the same code, untested with a robot (none is built).
 - The Testcontainers ITs (`ApiContractIT`, `VoiceEndToEndIT`) did not run; the API spec's new endpoints have no golden yet.
 - The calibration's sentences are fixed (French and English); a voiceprint from three sentences is a start, not a strong one.
+## Thinking and background tasks (2026-10-04)
+
+The owner runs one model, Qwen3.8 27B (`qwen3.8:27b-mlx`, 18 GB, or `-mxfp8`, 32 GB): two 27B models do not fit beside
+the voice's models in 64 GB. With Hermes Desktop, the mxfp8 tag at reasoning "high" works well for agentic work. Agreed
+design: the conversation answers at once (no reasoning), background tasks think hard, with Marvin's tools, while the
+conversation stays usable (docs/intelligence.md, "Thinking and background tasks").
+
+### What exists
+
+- **Reasoning levels** (`domain.conversation`): `Reasoning` (off, low, medium, high) and its `thinkValue` for what the
+  model lists (`ModelThinking`, from `/api/show`'s `capabilities` and, on recent Ollama, `thinking: {values, default}`);
+  `ReasoningSettings` (`reasoning`, `task_reasoning`, `tasks` in `voice.json`, beside `llm_model`; validated apart from
+  `VoiceSettings`, read at each turn and step: nothing restarts). Port: `LanguageModel.streamChat(..., Thinking, ...)`
+  (level and length; `Thinking.OFF` is the old request byte for byte), `Stream.thinking`, `describe` (size, capabilities,
+  levels). Adapter: `OllamaHttp`, Ollama's API without Spring AI for requests that think (JDK `HttpClient`, the body as a
+  publisher of buffers, cancelled at once even while Ollama reads the prompt), the levels asked once per model, a refused
+  level falling back to `true` then `false`, kept per model.
+- **Tools**: `ToolAccess` (read, local write, external write) and `ToolSurface` (conversation, task) on every registry
+  tool; `ToolRegistry.forTasks` (the task's tools: offered in tasks, not writing outside the computer); the
+  `ToolSource` port (where connectors plug in, asked again at each question); a tool result's `final_say` ends the turn
+  with that sentence (`AnswerLoop`). `forget` is conversation-only (it waits for the owner's yes).
+- **Tasks** (`domain.conversation.task`: `Task`, `TaskStep`, `TaskStatus`, `TaskBudget`, `TaskSpent`, `TaskIntent`,
+  `TaskAnnouncement`, `AgentPrompt`, `TaskText`; `tool.TaskTools`: `start_task`, `task_result`, `final_answer`), and
+  `application.conversation.task`: `TaskRunner` (the agent loop: steps, tools, `final_answer`, budgets, the last step
+  offered `final_answer` only, a prompt kept under about 11 000 tokens, a plain answer accepted after one nudge),
+  `ModelLane` (the voice first), `TaskService` (queue, one at a time, store, listeners, announcements, the conversation's
+  two tools, settings and the model's description for the app). Ports: `TaskControl` (in), `TaskStore`, `TaskListener`
+  (out).
+- **Conversation** (`VoiceService`): the task tools while tasks are on (the registry is made again when that, a camera or
+  a tool source changes), `Persona.TASK_TOOLS` in the system prompt only then (without tasks it is byte for byte the old
+  one), "do it in the background" through the registry without the model (`TaskIntent.goal`: the question before when
+  nothing else is said), `Persona.TASK_HINT` for likely multi-step questions, finished tasks mentioned in the next
+  question's message (not kept in the history), the lane told at each heard question, status and turn end, a
+  proactive sentence when a task is done (`TaskHost`), turns thinking at the owner's level with their thinking in the
+  reply entry (`thinking`).
+- **Persistence**: `conversation/V3__task.sql` (`task`, `task_step`), `JdbcTaskStore`; the schema rule knows it.
+- **Web**: `TaskController` (`/api/tasks`, `/api/tasks/{id}`, `/start`, `/cancel`, `/settings`), `EventHub` as
+  `TaskListener` (`task`, `task_step`), the POST paths. **Boot**: `TaskWiring` (`ModelLane` from `marvin.llm.parallel` /
+  `MARVIN_LLM_PARALLEL`, the service, the hub, the Log panel lines, quiet hours from the app settings).
+- **App**: `tasks.js` (Activity's Tasks panel, the steps' inspector, the form; Thinking & tasks in Voice & models),
+  `markdown.js` (DOM-only Markdown: headings, lists, tables, code, quotes, links that open outside).
+- **Launcher**: `doctor` shows the model's size and whether tasks can run beside the conversation.
+- **Contracts**: `golden/api` (get `tasks`, `tasks_settings`, `task_unknown`; post `tasks_start_invalid`,
+  `task_cancel_unknown`, `tasks_settings_invalid`; stream `task`, `task_step`), `golden/conversation` (`tasks`: rules,
+  hint, schemas; the phrases).
+
+### Decisions and deviations
+
+1. **`xhigh`, not `high`, for Qwen3.8.** Read in Ollama's source (main, 2026-10-02): its Qwen3.8 renderer accepts
+   `false`, `low`, `medium`, `xhigh`, and `ResolveThinking` turns an unlisted level into the model's default, which
+   `Model.Thinking()` sets to `medium` for qwen3.8 (`true` reaches it as medium too). Sending "high" would think at
+   medium. The level comes from `/api/show`'s `thinking` descriptor, so another model gets its own (gpt-oss: `high`).
+2. **Spring AI cannot say it**: `ThinkOption` is sealed and `ThinkLevel` accepts only low, medium, high. Requests that
+   think use `OllamaHttp`; spoken turns keep Spring AI's path untouched.
+3. **`OLLAMA_NUM_PARALLEL` does not help Qwen3.8 today.** Ollama's scheduler forces one request at a time for the
+   `qwen35` family (Qwen3.8's architecture) and its MLX runner takes requests one by one from a channel. So Marvin does
+   the arbitration itself: `ModelLane` cuts a task's request when a conversation starts (the connection closed: Ollama
+   stops at the next token) and gives the model back two seconds after it ends. `MARVIN_LLM_PARALLEL=2` is for a model
+   Ollama really runs in parallel; doctor says which case applies.
+4. **Tasks in the conversation context**, not a new `agent` context as docs/design.md plans: they share its model port,
+   its tool registry and its persona, and a separate context would need a cycle-free tool port. The package
+   (`application.conversation.task`) is the seam for a later extraction.
+5. **One task at a time** (design 6.2), at most four open; the same goal still open is the same task.
+6. **Announcing**: presence when a sensor says something, else "talked with Marvin in the last 15 minutes"; the owner has
+   no radar connected now. Quiet hours and the voice off defer to the next answer.
+7. **Budgets** 12 requests, 20 minutes, 40 000 tokens written: a 27B model at `xhigh` writes thousands of thinking
+   tokens per step at roughly 10 to 20 tokens a second on the Mac. The context stays 16 384 (a change would reload the
+   model between voice and task requests); a task step may write 6 144 tokens.
+8. **The task's language**: the question's for a spoken or typed one; for the app's form, the voice's language, or a guess
+   from the goal's words, else the default (French).
+9. **Results are not in memory's log yet** (design 6.1 says they should be): `task_result` reads them from the store.
+
+### Verified
+
+- `mvn -o clean verify` (Temurin 25): all green, 478 unit tests (430 before), ArchUnit's 14 rules. New:
+  `ReasoningTest`, `TaskWordsTest`, `ConversationVectorsTest` +1 (domain); `ModelLaneTest`, `TaskRunnerTest` (a scripted
+  model: tools and the final answer, a tool error, an unknown tool, bad final arguments, the step and token budgets, time
+  running out mid-step, cancel, the voice cutting a request that starts again and does not count, Ollama down, tools
+  unsupported, the task's registry), `TaskServiceTest` (the run with the conversation's model at xhigh, the agent's
+  prompt, said once, not said while talking or away but mentioned, quiet hours and the voice off, refusals, the same goal,
+  one at a time, cancel queued and running, interrupted after a restart, the conversation's tools, settings),
+  `VoiceTasksTest` (the model's start_task ends the turn without a second request and the result is said, "fais-le en
+  tâche de fond" with the question before, mentioned in the next answer when away, the lane busy during a question,
+  tasks off and the conversation thinking low with its thinking in the reply) (application); `OllamaThinkingTest`
+  (off byte for byte, xhigh and the thinking apart, the messages as Spring AI writes them, fallbacks remembered, errors,
+  cancelling while Ollama is silent, a silent server timing out, describe) (llm); `TaskApiTest` (web). Docker is not
+  available: the Testcontainers and embedded-PostgreSQL ITs were skipped (`ApiContractIT`, `MarvinHostApplicationIT`,
+  `MemoryApiIT`, `MemoryEndToEndIT`, `VoiceEndToEndIT`, `MemoryStoresIT`, `StoresAndImportIT` with its new task test,
+  `ContextMigrationsIT`, `EmbeddedDatabaseIT`).
+- Python: `pytest -q` 338 passed, 3 skipped (nothing Python changed; the stub is not under test).
+- End to end, the host as a normal user on the embedded PostgreSQL (so `V3__task.sql` and `JdbcTaskStore` ran for real),
+  `stub_ollama.py`, the voice sidecar in its test mode, `llm_model` `qwen3.8:27b-mxfp8`: `e2e/tasks.py` 57 checks passed,
+  no console error (Day and Night, 1440x900 and 390x844). The task's requests carried `"think": "xhigh"`, the voice's
+  `false`; a task started from Talk paused while the conversation went on, then Marvin said it was ready; a cancelled
+  task's request was dropped (the stub saw the client go); `./marvin doctor` against the stub.
+
+### Known gaps
+
+- Never run against a real Qwen3.8: the stub thinks and calls tools on cue. How well the 27B plans, and how long a step
+  takes at `xhigh` on the Mac, are the owner's first runs (the budgets may need tuning).
+- The Ollama behaviour above (levels, one request at a time) is read from Ollama's main branch of 2026-10-02; an older
+  Ollama without the `thinking` descriptor gets "high", which it maps to thinking on (medium for Qwen3.8).
+- No approvals: no tool writes outside the computer, so none is offered to tasks; email drafts and calendar events wait
+  for them. No cloud model.
+- `ApiContractIT` was not run (Docker): the new API specification files are hand-written to what the demo answers.
+- A task's result does not reach memory's log; a task does not resume after a restart (interrupted, its steps kept).
