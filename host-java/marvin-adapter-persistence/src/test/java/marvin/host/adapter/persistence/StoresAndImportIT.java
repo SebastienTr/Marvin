@@ -24,6 +24,11 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import marvin.host.domain.conversation.ConversationEntry;
+import marvin.host.domain.conversation.task.Task;
+import marvin.host.domain.conversation.task.TaskBudget;
+import marvin.host.domain.conversation.task.TaskSpent;
+import marvin.host.domain.conversation.task.TaskStatus;
+import marvin.host.domain.conversation.task.TaskStep;
 import marvin.host.domain.presence.history.HistoryKinds;
 import marvin.host.domain.presence.history.Sample;
 import marvin.host.domain.presence.history.StoredEvent;
@@ -110,6 +115,38 @@ class StoresAndImportIT {
         assertThat(List.copyOf(((Map<?, ?>) convo.between(0, 100, 10).get(1).data().get("latency")).keySet()))
                 .isEqualTo(List.of("endpoint", "stt", "audio_start"));
         assertThat(convo.maxId()).isEqualTo(1002);
+    }
+
+    @Test
+    void tasksAndTheirStepsAndARestart() {
+        var tasks = new JdbcTaskStore(jdbc, migrations);
+        Task q = Task.queued("t1", "Compare my trains", "fr", Task.VOICE, 100.0, TaskBudget.DEFAULT);
+        tasks.save(q);
+        Task r = q.running(101.0, "qwen3.8:27b-mxfp8", "high", "xhigh");
+        tasks.save(r);
+        tasks.addStep("t1", new TaskStep(1, 102.0, TaskStep.MODEL, Map.of("thinking", "hmm", "tool_calls", List.of())));
+        tasks.addStep("t1", new TaskStep(2, 103.0, TaskStep.TOOL, Map.of("name", "recall", "ok", true)));
+        tasks.addStep("t1", new TaskStep(2, 104.0, TaskStep.NOTE, Map.of("text", "again")));     // a step is written once
+        assertThat(tasks.steps("t1")).extracting(TaskStep::kind).containsExactly("model", "tool");
+        assertThat(tasks.steps("t1").get(0).data()).containsEntry("thinking", "hmm");
+        Task d = r.finished(TaskStatus.DONE, 110.0, "Ready.", "# R", "", TaskSpent.NONE.plusStep(120, 500));
+        tasks.save(d);
+        tasks.save(d.announced("spoken", 111.0));
+        Task back = tasks.get("t1").orElseThrow();
+        assertThat(back.status()).isEqualTo(TaskStatus.DONE);
+        assertThat(back.result()).isEqualTo("# R");
+        assertThat(back.spent().tokens()).isEqualTo(120);
+        assertThat(back.announced()).isEqualTo("spoken");
+        assertThat(back.announcedAt()).isEqualTo(111.0);
+        assertThat(back.startedAt()).isEqualTo(101.0);
+        tasks.save(Task.queued("t2", "Plan the week", "en", Task.APP, 200.0, new TaskBudget(3, 60, 1000)));
+        assertThat(tasks.recent(10)).extracting(Task::id).containsExactly("t2", "t1");
+        assertThat(tasks.interruptUnfinished(300.0, "stopped")).isEqualTo(1);
+        Task t2 = tasks.get("t2").orElseThrow();
+        assertThat(t2.status()).isEqualTo(TaskStatus.INTERRUPTED);
+        assertThat(t2.budget()).isEqualTo(new TaskBudget(3, 60, 1000));
+        assertThat(t2.announcedAt()).isNull();
+        assertThat(tasks.get("nope")).isEmpty();
     }
 
     @Test

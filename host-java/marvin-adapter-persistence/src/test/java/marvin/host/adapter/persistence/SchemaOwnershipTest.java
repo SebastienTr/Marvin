@@ -26,6 +26,7 @@ class SchemaOwnershipTest {
     static final Map<String, String> OWNER = Map.ofEntries(
             Map.entry("JdbcPresenceHistoryStore.java", "presence"),
             Map.entry("JdbcConversationStore.java", "conversation"),
+            Map.entry("JdbcTaskStore.java", "conversation"),
             Map.entry("JdbcSettingsStore.java", "settings"),
             Map.entry("JdbcEventLog.java", "memory"),
             Map.entry("JdbcFactStore.java", "memory"),
