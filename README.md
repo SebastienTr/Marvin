@@ -83,6 +83,8 @@ See [docs/architecture.md](docs/architecture.md) for data rates, the power budge
 4. **Assemble** following [docs/assembly.md](docs/assembly.md).
 5. **Flash and run.** The [firmware](firmware/) and the [host software](host/) already talk to each other with simulated sensors (a Wemos D1 mini is enough to try the firmware); the real-sensor firmware waits for the first build. The host turns what it sees into events, a face, a local voice, a local memory you can read, correct and erase, and an app for your computer and your phone: `./marvin up` starts it (`./marvin demo` without a robot, `./marvin doctor` says what is missing). The Python host's `marvin-host` commands stay as tools: the simulator, the viewer, replays.
 
+   No board yet? A lidar on a USB-serial adapter plugged into the computer shows its scan in the app with `./marvin up` alone: [docs/usb-sensors.md](docs/usb-sensors.md).
+
 The body parts are ready to print; the head parts arrive with the head CAD.
 
 ## Repository layout

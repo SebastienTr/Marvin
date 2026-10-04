@@ -24,6 +24,7 @@ marvin-host -v run                 # the same, printing events and a summary per
 marvin-host run --record day1.mvrec   # keep the raw sensor data; `marvin-host replay day1.mvrec` plays it back
 marvin-host calibrate lidar --save # find the lidar's yaw (person moving in front of the robot)
 marvin-host sim --model d800       # pretend to be the robot, for another machine running `run`
+marvin-host usb-sensors             # a lidar or LD2450 on a USB-serial adapter, sent to the host as board 6
 ```
 
 The voice sidecar (`python -m marvin_host.sidecar.voice`) needs the `sidecar` and `voice` extras: see [docs/voice.md](../docs/voice.md); `./marvin up` installs them. The app (this host keeps its older one; the Java host has the current design): [docs/ui.md](../docs/ui.md). Recording, replay, calibration and wireless firmware updates: [docs/tools.md](../docs/tools.md).
@@ -60,6 +61,8 @@ The robot finds the host on its own: see [docs/protocol.md](../docs/protocol.md)
 | `protocol.py` | UDP envelope, message types, `HELLO` |
 | `ldrobot.py` | LDROBOT 47-byte lidar packets, CRC-8 |
 | `ld2450.py` | HLK-LD2450 30-byte target frames |
+| `sensor_framing.py` | The firmware's stream framers in Python: LDROBOT packets and LD2450 frames out of a raw serial stream |
+| `usb_sensors.py` | The USB sensor bridge: finds a lidar or radar on a USB-serial adapter and speaks the robot's protocol for it ([docs/usb-sensors.md](../docs/usb-sensors.md)) |
 | `frames.py` | Sensor extrinsics, conversions to the device frame |
 | `receiver.py` | UDP server, handshake, loss counting, lidar revolution assembly; sink calls run on their own thread, so a slow viewer or model never delays the robot's `HOST_ACK` (stale lidar scans are dropped first, see `Device.stats.shed` and `Receiver.timings()`) |
 | `viewer.py` | Rerun logging |
