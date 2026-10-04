@@ -79,17 +79,24 @@ public final class Persona {
             """;
 
     /** Sentences said without the language model: phrase, then language. */
-    static final Map<String, Map<String, String>> PHRASES = Map.of(
-            "llm_down", Map.of("fr", "Je n'arrive pas à joindre mon modèle de langage. Ollama est-il lancé ?",
-                    "en", "I can't reach my language model. Is Ollama running?"),
-            "error", Map.of("fr", "Désolé, quelque chose s'est mal passé.", "en", "Sorry, something went wrong."),
-            "still_long", Map.of("fr", "Tu es assis depuis {minutes} minutes. Et si tu faisais une pause ?",
-                    "en", "You've been sitting for {minutes} minutes. Time to stretch?"),
-            "still_long_hour", Map.of("fr", "Ça fait une heure que tu es assis. Une petite pause ?",
-                    "en", "You've been sitting for an hour. Time to stretch?"),
-            "welcome_back", Map.of("fr", "Re-bonjour.", "en", "Welcome back."),
-            "checking", Map.of("fr", "Je regarde…", "en", "Let me check…"),
-            "no_answer", Map.of("fr", "Je n'ai pas trouvé de réponse, désolé.", "en", "I couldn't find an answer, sorry."));
+    static final Map<String, Map<String, String>> PHRASES = Map.ofEntries(
+            Map.entry("llm_down", Map.of("fr", "Je n'arrive pas à joindre mon modèle de langage. Ollama est-il lancé ?",
+                    "en", "I can't reach my language model. Is Ollama running?")),
+            Map.entry("error", Map.of("fr", "Désolé, quelque chose s'est mal passé.", "en", "Sorry, something went wrong.")),
+            Map.entry("still_long", Map.of("fr", "Tu es assis depuis {minutes} minutes. Et si tu faisais une pause ?",
+                    "en", "You've been sitting for {minutes} minutes. Time to stretch?")),
+            Map.entry("still_long_hour", Map.of("fr", "Ça fait une heure que tu es assis. Une petite pause ?",
+                    "en", "You've been sitting for an hour. Time to stretch?")),
+            Map.entry("welcome_back", Map.of("fr", "Re-bonjour.", "en", "Welcome back.")),
+            Map.entry("checking", Map.of("fr", "Je regarde…", "en", "Let me check…")),
+            Map.entry("no_answer", Map.of("fr", "Je n'ai pas trouvé de réponse, désolé.", "en", "I couldn't find an answer, sorry.")),
+            // background tasks (docs/intelligence.md): started, then done or failed
+            Map.entry("task_started", Map.of("fr", "Je m'en occupe, je te dis quand c'est prêt.",
+                    "en", "I'm on it, I'll tell you when it's ready.")),
+            Map.entry("task_done", Map.of("fr", "C'est prêt, pour « {title} » : {summary}",
+                    "en", "It's ready, for “{title}”: {summary}")),
+            Map.entry("task_failed", Map.of("fr", "Je n'ai pas pu finir « {title} ». Le détail est dans l'application.",
+                    "en", "I couldn't finish “{title}”. The details are in the app.")));
 
     private static final Map<EventKind, String> EVENT_TEXT = Map.of(
             EventKind.ARRIVED, "someone arrived",
@@ -147,6 +154,42 @@ public final class Persona {
             again with its confirmation code only after they said yes. Never say a confirmation code aloud.
             """;
 
+    /**
+     * How the model is told about background tasks, after the other tools' rules, when {@code start_task} is offered. It
+     * extends the persona's honesty: a task has only Marvin's tools, and nothing is said about a task that no tool said.
+     */
+    static final String TASK_TOOLS = """
+            - Background tasks: for work in several steps (prepare, compare, look into, research, summarize a week or a \
+            period, plan), or when the person asks for it in the background, call start_task with the goal instead of \
+            answering now: it ends your turn with a short "I'm on it". Never for a question you can answer at once. A task \
+            has only your tools: never promise it can do what they cannot (read email, browse the web, book anything). \
+            When the person asks how a task is going or what it found, call task_result. Never say a task started, \
+            progressed or finished unless a tool said so, and never invent its result.
+            """;
+
+    /**
+     * The line of a question's message about background tasks that finished since the owner last heard of them: what each
+     * found, so the answer mentions it first. {@code null} when there is none.
+     */
+    public static String finishedTasksNote(List<marvin.host.domain.conversation.task.Task> tasks) {
+        if (tasks.isEmpty()) {
+            return null;
+        }
+        StringBuilder b = new StringBuilder(tasks.size() == 1 ? "A background task finished since you last spoke: "
+                : "Background tasks finished since you last spoke: ");
+        for (int i = 0; i < tasks.size(); i++) {
+            marvin.host.domain.conversation.task.Task t = tasks.get(i);
+            b.append(i > 0 ? "; " : "").append('“').append(t.title()).append("”, ")
+                    .append(t.status() == marvin.host.domain.conversation.task.TaskStatus.DONE
+                            ? "done: " + t.summary() : "failed: " + t.error());
+        }
+        return b.append(". Tell the person in one short sentence at the start of your answer; task_result has the details.")
+                .toString();
+    }
+
+    /** Said in a question's message when its words usually announce work in several steps (a hint, not a rule). */
+    public static final String TASK_HINT = "(This may be work in several steps: if so, start a background task.)";
+
     /** What the persona says of the camera when Marvin cannot look through it (the Python host's words). */
     static final String BLIND = "You cannot look at the camera image or the radar data yourself: everything you know "
             + "about the room and the person comes from the context block at the start of each message. Never describe "
@@ -193,12 +236,24 @@ public final class Persona {
      * blind sentence about the camera becomes {@link #CAMERA}. Without it the prompt is the one above, byte for byte.
      */
     public static String systemPrompt(String language, boolean tools, boolean memoryTools, boolean camera, String profile) {
+        return systemPrompt(language, tools, memoryTools, camera, false, profile);
+    }
+
+    /**
+     * The same, and {@code tasks}: {@code start_task} is offered, so the rules of background tasks follow the other
+     * tools' ({@link #TASK_TOOLS}). Without it the prompt is the one above, byte for byte.
+     */
+    public static String systemPrompt(String language, boolean tools, boolean memoryTools, boolean camera, boolean tasks,
+                                      String profile) {
         String p = personaPrompt(language, tools);
         if (tools && camera) {
             p = withCamera(p);
         }
         if (tools && memoryTools) {
             p += MEMORY_TOOLS;
+        }
+        if (tools && tasks) {
+            p += TASK_TOOLS;
         }
         if (profile != null && !profile.isBlank()) {
             p = p.stripTrailing() + "\n\n" + PROFILE_HEADING + "\n" + profile.strip();

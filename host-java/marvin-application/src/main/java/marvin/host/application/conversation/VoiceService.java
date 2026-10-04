@@ -34,6 +34,7 @@ import marvin.host.application.conversation.port.out.ConversationStore;
 import marvin.host.application.conversation.port.out.JsonFetcher;
 import marvin.host.application.conversation.port.out.LanguageModel;
 import marvin.host.application.conversation.port.out.MemoryContext;
+import marvin.host.application.conversation.port.out.ToolSource;
 import marvin.host.application.conversation.port.out.VoiceListener;
 import marvin.host.application.conversation.port.out.VoiceSettingsStore;
 import marvin.host.application.conversation.port.out.VoiceSidecar;
@@ -41,6 +42,8 @@ import marvin.host.application.conversation.tools.LookTool;
 import marvin.host.application.conversation.tools.MemoryTools;
 import marvin.host.application.conversation.tools.ToolRegistry;
 import marvin.host.application.conversation.tools.WeatherTool;
+import marvin.host.application.conversation.task.ModelLane;
+import marvin.host.application.conversation.task.TaskService;
 import marvin.host.application.presence.port.in.PresenceQuery;
 import marvin.host.application.system.port.out.Tracing;
 import marvin.host.application.vision.port.in.Camera;
@@ -52,6 +55,7 @@ import marvin.host.domain.conversation.ConversationMemory;
 import marvin.host.domain.conversation.ImageAttachment;
 import marvin.host.domain.conversation.Persona;
 import marvin.host.domain.conversation.ProactiveSpeech;
+import marvin.host.domain.conversation.ReasoningSettings;
 import marvin.host.domain.conversation.SentenceSplitter;
 import marvin.host.domain.conversation.SpeechLanguage;
 import marvin.host.domain.conversation.SpeechText;
@@ -59,8 +63,13 @@ import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.conversation.VoiceSettings.VoiceConfig;
 import marvin.host.domain.conversation.VoiceSnapshot;
 import marvin.host.domain.conversation.Voiceprint;
+import marvin.host.domain.conversation.task.Task;
+import marvin.host.domain.conversation.task.TaskIntent;
 import marvin.host.domain.conversation.tool.Look;
+import marvin.host.domain.conversation.tool.TaskTools;
 import marvin.host.domain.conversation.tool.ToolError;
+import marvin.host.domain.conversation.tool.ToolResult;
+import marvin.host.domain.conversation.tool.ToolSurface;
 import marvin.host.domain.presence.event.PresenceEvent;
 import marvin.host.domain.presence.event.PresenceState;
 import marvin.host.domain.robot.event.RoomState;
@@ -101,6 +110,14 @@ import marvin.host.domain.shared.TokenEstimator;
  * <p>With a camera (docs/vision.md), the {@code look} tool is offered while the vision context says a camera can take a
  * picture, and the persona says Marvin can look; otherwise neither, so Marvin never claims a sight it does not have. A
  * look takes one picture, the model for images describes it, and the conversation's model reads the description.
+ *
+ * <p>Background tasks (docs/intelligence.md, "Thinking and background tasks"): with a {@link TaskService}, the model is
+ * offered {@code start_task} (the turn then ends with "I'm on it") and {@code task_result}, and the persona says what tasks
+ * can and cannot do. "Do it in the background" starts one without asking the model; words that usually announce work in
+ * several steps add a hint to the question. A finished task the owner has not heard of is said aloud when they are there
+ * and not talking with Marvin, or mentioned at the start of the next answer. The voice tells the {@link ModelLane} when a
+ * conversation is going on, so a task's request gives way to it. Turns think as the owner's reasoning setting says (off
+ * by default); their thinking is never spoken, and is kept in the reply for the inspector.
  */
 public final class VoiceService implements VoiceControl {
     private static final Logger log = Logger.getLogger("marvin.voice");
@@ -215,6 +232,19 @@ public final class VoiceService implements VoiceControl {
      * add its messages, which may hold what must not be sent again.
      */
     private final AtomicLong historyEpoch = new AtomicLong();
+    /** Background tasks, the lane the voice shares the model with them on, tools from outside, quiet hours. */
+    private volatile TaskService tasks;
+    private volatile ModelLane lane;
+    private final List<ToolSource> toolSources = new CopyOnWriteArrayList<>();
+    private volatile java.util.function.BooleanSupplier quiet = () -> false;
+    /** Whether {@link #tools} offers the task tools, and which tools the sources gave it. */
+    private volatile boolean toolsTasks;
+    private volatile String toolsSources = "";
+    /** When someone last asked something (monotonic seconds). */
+    private volatile double lastTalkAt = Double.NEGATIVE_INFINITY;
+    /** The last question answered, for "do it in the background" said after it. */
+    private volatile String lastQuestion = "";
+    private volatile boolean laneBusy;
     /** Whether the last question was asked with someone else in the room. */
     private volatile boolean othersBefore;
     /** Memory searches started on a speculative transcript, by utterance. */
@@ -291,6 +321,27 @@ public final class VoiceService implements VoiceControl {
      */
     public void setCamera(Camera c) {
         camera = Objects.requireNonNull(c, "camera");
+    }
+
+    /**
+     * Background tasks: the conversation offers {@code start_task} and {@code task_result} while tasks are switched on,
+     * tells the tasks' {@link ModelLane} when a conversation is going on, and says finished tasks. Set before the voice
+     * starts; none by default.
+     */
+    public void setTasks(TaskService t) {
+        tasks = Objects.requireNonNull(t, "tasks");
+        lane = t.lane();
+        t.setHost(new TaskHost());
+    }
+
+    /** Tools from outside the conversation (a connector): offered where they say, from the next question on. */
+    public void addToolSource(ToolSource s) {
+        toolSources.add(Objects.requireNonNull(s, "source"));
+    }
+
+    /** Quiet hours: Marvin says nothing about tasks on its own then (the app's setting). */
+    public void setQuiet(java.util.function.BooleanSupplier q) {
+        quiet = Objects.requireNonNull(q, "quiet");
     }
 
     /** The memory sections' shared budget in tokens (what memory may add to each question's prompt). */
@@ -546,6 +597,8 @@ public final class VoiceService implements VoiceControl {
             language = c.language();
         }
         toolsLook = cameraAvailable();
+        toolsTasks = tasks != null && tasksOn();
+        toolsSources = sourcesSignature();
         tools = registry(c.tools(), c.internet(), c.homePlace(), toolsLook);
         proactive = new ProactiveSpeech(c.reminders(), c.welcomeBack());
         CompletableFuture<Void> warm = CompletableFuture.runAsync(() -> warmUp(c), answers);
@@ -677,7 +730,34 @@ public final class VoiceService implements VoiceControl {
         if (look && cam != null) {
             all.add(LookTool.tool(cam, this::describe));
         }
+        all.addAll(ToolRegistry.fromSources(toolSources, ToolSurface.CONVERSATION));
+        all.addAll(ToolRegistry.fromSources(toolSources, ToolSurface.TASK).stream()
+                .filter(t -> !t.offeredIn(ToolSurface.CONVERSATION)).toList());       // a task's registry keeps them
+        TaskService ts = tasks;
+        if (ts != null && tasksOn()) {
+            all.addAll(ts.conversationTools());
+        }
         return new ToolRegistry(all, enabled, internet, clocks::monotonicSeconds);
+    }
+
+    private boolean tasksOn() {
+        try {
+            return ReasoningSettings.of(settings()).tasksOn();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    private String sourcesSignature() {
+        if (toolSources.isEmpty()) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder();
+        for (ToolSurface surface : ToolSurface.values()) {
+            ToolRegistry.fromSources(toolSources, surface).forEach(t -> b.append(surface).append(':').append(t.spec().name())
+                    .append(' '));
+        }
+        return b.toString();
     }
 
     private boolean cameraAvailable() {
@@ -698,16 +778,25 @@ public final class VoiceService implements VoiceControl {
     private ToolRegistry currentTools() {
         VoiceConfig c = config;
         ToolRegistry reg = tools;
-        if (c == null || reg == null || camera == null) {
+        if (c == null || reg == null) {
             return reg;
         }
-        boolean look = cameraAvailable();
-        if (look != toolsLook) {
+        boolean look = camera != null ? cameraAvailable() : toolsLook;
+        boolean withTasks = tasks != null && tasksOn();
+        String sources = sourcesSignature();
+        if (look != toolsLook || withTasks != toolsTasks || !sources.equals(toolsSources)) {
             synchronized (this) {
-                if (look != toolsLook) {
+                if (look != toolsLook || withTasks != toolsTasks || !sources.equals(toolsSources)) {
+                    if (look != toolsLook) {
+                        log.info(look ? "a camera can take pictures: Marvin may look" : "no camera now: Marvin cannot look");
+                    }
+                    if (withTasks != toolsTasks) {
+                        log.info(withTasks ? "background tasks on: Marvin may start them" : "background tasks off");
+                    }
                     toolsLook = look;
+                    toolsTasks = withTasks;
+                    toolsSources = sources;
                     tools = registry(c.tools(), c.internet(), c.homePlace(), look);
-                    log.info(look ? "a camera can take pictures: Marvin may look" : "no camera now: Marvin cannot look");
                 }
                 reg = tools;
             }
@@ -766,7 +855,8 @@ public final class VoiceService implements VoiceControl {
     private String systemPrompt(String lang, boolean offer, ToolRegistry reg, MemoryContext.Profile profile) {
         boolean memoryTools = offer && reg != null && reg.get("remember") != null;
         boolean look = offer && reg != null && reg.get(Look.NAME) != null;
-        return Persona.systemPrompt(memoryContext.available() ? null : lang, offer, memoryTools, look, profile.text());
+        boolean withTasks = offer && reg != null && reg.get(TaskTools.START) != null;
+        return Persona.systemPrompt(memoryContext.available() ? null : lang, offer, memoryTools, look, withTasks, profile.text());
     }
 
     private MemoryContext.Profile profile() {
@@ -1145,6 +1235,26 @@ public final class VoiceService implements VoiceControl {
             publish("voice", snapshot().toMap());
         }
         maybeRewarm();
+        laneUpdate();
+    }
+
+    /**
+     * Tells the tasks' lane whether a conversation is going on (a task's request gives way to it); when one ends, a task
+     * that finished meanwhile may be said.
+     */
+    private void laneUpdate() {
+        ModelLane l = lane;
+        if (l == null) {
+            return;
+        }
+        boolean busy = conversing();
+        l.voice(busy);
+        boolean was = laneBusy;
+        laneBusy = busy;
+        TaskService ts = tasks;
+        if (was && !busy && ts != null && !closed) {
+            answers.execute(ts::tryAnnounce);
+        }
     }
 
     // ------------------------------------------------------------------ turns
@@ -1220,6 +1330,8 @@ public final class VoiceService implements VoiceControl {
             previous.superseded = true;
         }
         turns.put(h.uid(), turn);
+        lastTalkAt = clocks.monotonicSeconds();
+        laneUpdate();                           // a task's request gives way to the question at once
         answers.execute(() -> {
             try {
                 if (previous != null) {
@@ -1246,6 +1358,7 @@ public final class VoiceService implements VoiceControl {
                 turns.remove(h.uid());
                 turn.done.complete(null);
                 maybeRewarm();
+                laneUpdate();
             }
         });
     }
@@ -1353,9 +1466,25 @@ public final class VoiceService implements VoiceControl {
             span.attribute("marvin.memory.tokens", asm.estimatedTokens());
         }
         String context = asm.context();
-        String user = Persona.userMessage(h.text(), context, lang, image != null ? Persona.IMAGE_NOTE : null);
-        // the history keeps the text with a note, never the image: later questions do not send it again
-        String kept = image != null ? Persona.userMessage(h.text(), context, lang, Persona.IMAGE_SHOWN_NOTE) : user;
+        // background tasks: "do it in the background" starts one at once; finished ones are mentioned first; words that
+        // usually announce work in several steps get a hint (the model decides)
+        boolean taskTools = offer && reg != null && reg.get(TaskTools.START) != null;
+        String explicitGoal = taskTools && TaskIntent.explicit(h.text()) ? TaskIntent.goal(h.text(), lastQuestion) : null;
+        TaskService ts = tasks;
+        List<Task> mention = ts != null && image == null ? ts.toMention() : List.of();
+        List<String> taskNotes = new ArrayList<>();
+        String finished = Persona.finishedTasksNote(mention);
+        if (finished != null) {
+            taskNotes.add(finished);
+        }
+        if (taskTools && explicitGoal == null && TaskIntent.likely(h.text())) {
+            taskNotes.add(Persona.TASK_HINT);
+        }
+        String user = Persona.userMessage(h.text(), context, lang, notes(image != null ? Persona.IMAGE_NOTE : null, taskNotes));
+        // the history keeps the text with a note, never the image (later questions do not send it again), nor the notes
+        // about tasks (they were for this answer)
+        String kept = image != null ? Persona.userMessage(h.text(), context, lang, Persona.IMAGE_SHOWN_NOTE)
+                : taskNotes.isEmpty() ? user : Persona.userMessage(h.text(), context, lang);
         turn.userMessage = kept;
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPrompt(lang, offer, reg, profile)));
@@ -1373,22 +1502,28 @@ public final class VoiceService implements VoiceControl {
         toolContext.put(MemoryTools.TURN, turn.number);
         toolContext.put(MemoryTools.SAID, turn.said);
         toolContext.put(MemoryTools.OTHERS_PRESENT, turn.othersPresent);
+        toolContext.put("source", h.source().isEmpty() ? "voice" : h.source());
 
         voice.send(new VoiceSidecar.ReplyStart(turn.replyId, lang, false, h.uid()));
-        AnswerLoop.Outcome out = loop.answer(c.ollamaHost(), modelName, messages, reg, offer, lang,
-                c.maxToolRounds(), MODEL_TIMEOUT_S, () -> turn.cancelled, new AnswerLoop.Speaker() {
-                    @Override
-                    public void say(String sentence) {
-                        for (SpeechLanguage.Clause cl : SpeechLanguage.clauses(SpeechText.cleanForSpeech(sentence), lang)) {
-                            voice.send(new VoiceSidecar.Text(turn.replyId, cl.text(), cl.language()));
-                        }
-                    }
+        AnswerLoop.Speaker speaker = new AnswerLoop.Speaker() {
+            @Override
+            public void say(String sentence) {
+                for (SpeechLanguage.Clause cl : SpeechLanguage.clauses(SpeechText.cleanForSpeech(sentence), lang)) {
+                    voice.send(new VoiceSidecar.Text(turn.replyId, cl.text(), cl.language()));
+                }
+            }
 
-                    @Override
-                    public void filler(String text) {
-                        voice.send(new VoiceSidecar.Filler(turn.replyId, text, lang));
-                    }
-                }, () -> toolSupport.put(key, false), toolContext);
+            @Override
+            public void filler(String text) {
+                voice.send(new VoiceSidecar.Filler(turn.replyId, text, lang));
+            }
+        };
+        AnswerLoop.Outcome out = explicitGoal != null ? startTask(reg, explicitGoal, lang, toolContext, speaker) : null;
+        if (out == null) {
+            LanguageModel.Thinking thinking = LanguageModel.Thinking.chat(ReasoningSettings.of(settings()).chat());
+            out = loop.answer(c.ollamaHost(), modelName, messages, reg, offer, lang, c.maxToolRounds(), MODEL_TIMEOUT_S,
+                    () -> turn.cancelled, speaker, () -> toolSupport.put(key, false), toolContext, thinking);
+        }
         Map<String, Object> usage = usage(out, previous, messages, lang, span);
         if (out.failure() != null && out.saidAnswer().isEmpty() && !turn.cancelled) {
             // nothing was said: the voice says why, in a sentence of the persona's (it has no words of its own)
@@ -1443,6 +1578,45 @@ public final class VoiceService implements VoiceControl {
         reply(spoken.text(), lang, lat, interrupted, out, context, user, modelName, image, null, "",
                 asm.report(profile, usage), joined);
         turn.replied = true;
+        lastQuestion = explicitGoal != null ? explicitGoal : h.text();
+        if (!mention.isEmpty() && !interrupted && ts != null) {
+            ts.mentioned(mention);
+        }
+    }
+
+    /** The notes of a question's message, one per line ({@code null} when none). */
+    private static String notes(String first, List<String> more) {
+        List<String> all = new ArrayList<>();
+        if (first != null) {
+            all.add(first);
+        }
+        all.addAll(more);
+        return all.isEmpty() ? null : String.join("\n", all);
+    }
+
+    /**
+     * "Do it in the background": the task starts without asking the model, and Marvin says it will take care of it.
+     * {@code null} when it could not start (tasks off, too many): the model answers as usual, and can say why.
+     */
+    private AnswerLoop.Outcome startTask(ToolRegistry reg, String goal, String lang, Map<String, Object> toolContext,
+                                         AnswerLoop.Speaker speaker) {
+        Map<String, Object> ctx = new LinkedHashMap<>(toolContext);
+        ctx.put("language", lang);
+        ToolResult r = reg.call(TaskTools.START, Map.of("goal", goal), ctx);
+        String say = r.finalSay();
+        if (say == null) {
+            log.info("could not start the task asked for: " + r.error());
+            return null;
+        }
+        List<String> said = SentenceSplitter.split(say);
+        said.forEach(speaker::say);
+        List<ChatMessage> exchange = List.of(
+                ChatMessage.assistant("", List.of(new marvin.host.domain.conversation.ToolCall(TaskTools.START,
+                        Map.of("goal", goal), null))),
+                ChatMessage.tool(TaskTools.START, r.content()), ChatMessage.assistant(say));
+        Map<String, Double> lat = new LinkedHashMap<>();
+        lat.put("tools", r.seconds());
+        return new AnswerLoop.Outcome(said, exchange, List.of(r.record()), null, "", lat);
     }
 
     private VoiceSidecar.ReplySpoken awaitSpoken(Turn turn) {
@@ -1551,6 +1725,9 @@ public final class VoiceService implements VoiceControl {
         }
         if (memoryReport != null) {
             d.put("memory", memoryReport);
+        }
+        if (!out.thinking().isBlank()) {
+            d.put("thinking", ToolResult.shorten(out.thinking().strip(), 6000));      // the inspector shows it, never spoken
         }
         if (joined > 1) {
             d.put("joined", joined);            // the question was said in this many breaths (the inspector says so)
@@ -1759,6 +1936,10 @@ public final class VoiceService implements VoiceControl {
 
     /** A brain event: maybe a break reminder or "welcome back" (never during a conversation). */
     public void onPresenceEvent(PresenceEvent event) {
+        TaskService ts = tasks;
+        if (ts != null && event.kind() == marvin.host.domain.presence.event.EventKind.ARRIVED && !closed) {
+            answers.execute(ts::tryAnnounce);           // a task finished while they were away
+        }
         ProactiveSpeech p = proactive;
         if (p == null || !ON.equals(state) || !opened) {
             return;
@@ -1778,6 +1959,86 @@ public final class VoiceService implements VoiceControl {
         proactiveReplies.put(id, lang);
         voice.send(new VoiceSidecar.Say(id, text, lang, false, true, clauses(text, lang)));
         p.spoken(now);
+    }
+
+    // ------------------------------------------------------------------ what the tasks need of the conversation
+
+    /** The conversation as background tasks see it: its model and tools, the profile, the voice, who is there. */
+    private final class TaskHost implements TaskService.Host {
+        @Override
+        public VoiceConfig config() {
+            VoiceConfig c = config;
+            return c != null ? c : VoiceSettings.config(settings());
+        }
+
+        @Override
+        public ToolRegistry tools() {
+            ToolRegistry reg = currentTools();
+            if (reg == null) {
+                VoiceConfig c = config();
+                reg = registry(c.tools(), c.internet(), c.homePlace(), cameraAvailable());
+            }
+            return reg;
+        }
+
+        @Override
+        public String profile() {
+            return VoiceService.this.profile().text();
+        }
+
+        @Override
+        public boolean voiceOn() {
+            return ON.equals(state) && opened;
+        }
+
+        @Override
+        public boolean conversing() {
+            return VoiceService.this.conversing();
+        }
+
+        @Override
+        public boolean speak(String text, String language) {
+            return speakProactively(text, language);
+        }
+
+        @Override
+        public Boolean present() {
+            try {
+                PresenceState st = presence.state();
+                if (st == null || st.tUs() == 0) {
+                    return null;                    // no presence sensor has said anything
+                }
+                return st.present() || st.motionPresence();
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+
+        @Override
+        public double sinceTalkS() {
+            double t = lastTalkAt;
+            return t == Double.NEGATIVE_INFINITY ? Double.POSITIVE_INFINITY : clocks.monotonicSeconds() - t;
+        }
+
+        @Override
+        public boolean quiet() {
+            try {
+                return quiet.getAsBoolean();
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+    }
+
+    /** Says {@code text} on Marvin's own initiative, now: false when the voice is off or a conversation is going on. */
+    boolean speakProactively(String text, String lang) {
+        if (!ON.equals(state) || !opened || conversing()) {
+            return false;
+        }
+        long id = replyIds.getAndIncrement();
+        proactiveReplies.put(id, lang);
+        voice.send(new VoiceSidecar.Say(id, text, lang, false, true, clauses(text, lang)));
+        return true;
     }
 
     // ------------------------------------------------------------------ options

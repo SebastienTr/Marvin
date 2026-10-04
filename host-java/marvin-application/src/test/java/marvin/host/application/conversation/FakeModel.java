@@ -39,9 +39,28 @@ final class FakeModel implements LanguageModel {
         });
     }
 
+    /** How each request thought ({@link Thinking#OFF} for the requests made without saying). */
+    final List<Thinking> thinkings = new java.util.concurrent.CopyOnWriteArrayList<>();
+    /** What the model thinks before each answer, when it is asked to think. */
+    volatile String thought = "";
+
+    @Override
+    public void streamChat(String host, String model, List<ChatMessage> messages, List<Map<String, Object>> t,
+                           double timeoutS, Thinking thinking, Stream stream) {
+        if (!thinking.equals(Thinking.OFF) && !thought.isEmpty() && !down) {
+            stream.thinking(thought);
+        }
+        stream(host, model, messages, t, stream, thinking);
+    }
+
     @Override
     public void streamChat(String host, String model, List<ChatMessage> messages, List<Map<String, Object>> t,
                            double timeoutS, Stream stream) {
+        stream(host, model, messages, t, stream, Thinking.OFF);
+    }
+
+    private void stream(String host, String model, List<ChatMessage> messages, List<Map<String, Object>> t, Stream stream,
+                        Thinking thinking) {
         if (down) {
             throw new Unavailable("cannot reach Ollama at " + host + ": Connection refused", "Start Ollama.");
         }
@@ -49,6 +68,7 @@ final class FakeModel implements LanguageModel {
             throw new ToolsUnsupported(model + " cannot use tools: " + model + " does not support tools");
         }
         callNanos.add(System.nanoTime());
+        thinkings.add(thinking);
         modelNames.add(model);
         calls.add(List.copyOf(messages));
         tools.add(t);
