@@ -46,6 +46,8 @@ def rms_dbfs(pcm: np.ndarray) -> float:
 class WebRtcVad:
     """Google's WebRTC VAD. `aggressiveness` 0 (keeps most) to 3 (drops most non-speech)."""
 
+    name = "webrtc"
+
     def __init__(self, aggressiveness: int = 2, min_dbfs: float = -60.0):
         import webrtcvad
         self._vad = webrtcvad.Vad(aggressiveness)
@@ -59,6 +61,8 @@ class WebRtcVad:
 
 class EnergyVad:
     """Speech = louder than the tracked noise floor by `margin_db` (and above `min_dbfs`)."""
+
+    name = "energy"
 
     def __init__(self, margin_db: float = 12.0, min_dbfs: float = -50.0, floor_tau_s: float = 3.0):
         self.margin_db = margin_db
@@ -83,6 +87,7 @@ class SileroVad:
     chunk's, with hysteresis: speech from `threshold`, silence again below `threshold - 0.15`.
     Frames quieter than `min_dbfs` are never speech (the device's floor)."""
 
+    name = "silero"
     CHUNK = 512
     CONTEXT = 64
     _sessions: dict = {}

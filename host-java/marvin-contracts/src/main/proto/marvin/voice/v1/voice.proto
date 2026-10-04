@@ -243,6 +243,7 @@ message VoiceToCore {
     Utterance utterance = 11;       // someone started / stopped talking
     ReplySpoken spoken = 12;        // an answer has been said entirely, with its timings
     EnrollProgress enroll = 13;     // the calibration goes on (Enroll)
+    Hearing hearing = 14;           // what the ears decided, for the app's Senses screen (diagnostics only)
   }
 }
 
@@ -322,6 +323,39 @@ message Level {
   double mic = 1;                   // 0..1 (-60..-10 dBFS)
   bool speech = 2;
   bool gated = 3;
+  optional double dbfs = 4;         // the loudest 20 ms frame since the last Level, dBFS (-100: muted); unset from
+                                    // a sidecar older than the Senses screen
+}
+
+// The ears' diagnostics, for the app's Senses screen (docs/voice.md, "What Marvin hears"): each end-of-turn decision
+// while someone pauses (kind "turn"), and each utterance once it is judged (kind "utterance"). The core keeps the last
+// few in memory for the app and stores none; no audio is ever sent. Added beside contract version 2: a core that does
+// not know it ignores it.
+message Hearing {
+  string kind = 1;                  // turn | utterance
+  uint64 uid = 2;                   // Utterance.uid
+  double wall_time = 3;             // Unix seconds
+  string vad = 4;                   // the voice activity detector: silero | webrtc | energy
+  string turn = 5;                  // the end-of-turn model: smart-turn (or fake in the test mode); empty: silence timers
+  // turn: the model's decision on the utterance so far
+  optional bool complete = 6;
+  optional double probability = 7;  // that the turn is complete, 0..1
+  optional double turn_s = 8;       // how long the model took
+  // utterance
+  double duration_s = 9;
+  optional double dbfs = 10;        // its loudness (the loudest half)
+  string stt = 11;                  // the speech recognition that read it (empty: not transcribed)
+  optional double stt_s = 12;       // the recognition's time left to wait for after the end of speech
+  bool speculative = 13;            // recognition started during the pause
+  string text = 14;                 // what was recognised, before any cleaning
+  string language = 15;             // as recognised
+  optional double language_prob = 16;
+  bool wake = 17;                   // the name ("Marvin") was heard in it
+  string speaker = 18;              // a Voiceprint's name, "unknown", or empty (not judged)
+  optional double speaker_score = 19;
+  string outcome = 20;              // heard (a question for the core) | listening (the name alone) | ignored | dropped
+                                    // (not judged: too quiet, Marvin busy without the name, deaf while it speaks)
+  string reason = 21;               // ignored, dropped: why
 }
 
 message Partial {

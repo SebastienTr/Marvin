@@ -24,8 +24,8 @@ skipped with `Interrupted` "busy" while a conversation is going on, unless force
 
 Earcons: `Earcon` plays a short sound on the device (the core decides when, docs/voice.md).
 
-Every live signal of the engine (status, level, utterance, partial, say, ignored, muted) becomes
-its `VoiceToCore` message. Messages are handed to `send`, from the engine's threads.
+Every live signal of the engine (status, level, utterance, partial, say, ignored, muted, and the ears'
+diagnostics, hearing) becomes its `VoiceToCore` message. Messages are handed to `send`, from the engine's threads.
 
 SPDX-License-Identifier: MIT
 """
@@ -235,7 +235,12 @@ class SidecarVoice(VoiceEngine):
         if kind in ("status", "muted"):
             msg = self.status_message()
         elif kind == "level":
-            msg = pb.VoiceToCore(level=pb.Level(mic=d["mic"], speech=bool(d["speech"]), gated=bool(d["gated"])))
+            lv = pb.Level(mic=d["mic"], speech=bool(d["speech"]), gated=bool(d["gated"]))
+            if d.get("dbfs") is not None:
+                lv.dbfs = d["dbfs"]
+            msg = pb.VoiceToCore(level=lv)
+        elif kind == "hearing":
+            msg = pb.VoiceToCore(hearing=hearing_message(d, self.names.get("stt", "")))
         elif kind == "utterance":
             msg = pb.VoiceToCore(utterance=pb.Utterance(state=UTTERANCE[d["state"]], uid=d["uid"]))
             if d["state"] != "end" and self.status == Status.LISTENING.value:
@@ -264,6 +269,26 @@ class SidecarVoice(VoiceEngine):
         else:
             return
         self._send(msg)
+
+
+_HEARING_OPTIONAL = ("complete", "probability", "turn_s", "dbfs", "stt_s", "language_prob", "speaker_score")
+_HEARING_FIELDS = ("uid", "duration_s", "text", "language", "speculative", "wake", "speaker", "outcome", "reason",
+                   "vad", "turn")
+
+
+def hearing_message(d: dict, stt: str = "") -> pb.Hearing:
+    """A "hearing" event of the engine (the ears' diagnostics) as the contract's message; `stt`: the speech
+    recognition in use, named on utterances that were transcribed."""
+    h = pb.Hearing(kind=d["kind"], wall_time=float(d.get("t", 0.0)))
+    for k in _HEARING_FIELDS:
+        if d.get(k) is not None:
+            setattr(h, k, d[k])
+    for k in _HEARING_OPTIONAL:
+        if d.get(k) is not None:
+            setattr(h, k, d[k])
+    if d["kind"] == "utterance" and d.get("stt_s") is not None:
+        h.stt = stt
+    return h
 
 
 def enroll_progress(d: dict) -> pb.EnrollProgress:

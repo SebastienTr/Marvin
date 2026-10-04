@@ -226,7 +226,9 @@ class VoiceEngine:
         self.echo = EchoFilter()
         self._cap_n = 0                                      # frames captured
         self._level_peak = 0.0                               # live signals for the app (_live)
+        self._level_db = -100.0                              # the loudest frame since the last "level", dBFS
         self._level_n = 0
+        self._diag: dict | None = None                       # what is known of the utterance being judged (_hearing)
         self._utt: int | None = None                         # utterance being heard (its uid)
         self._seg_started: float | None = None               # start of the utterance being judged
         self._seg_dbfs: float | None = None                  # its loudness (for "ignored" events)
@@ -559,7 +561,7 @@ class VoiceEngine:
         if fn in self._listeners:
             self._listeners.remove(fn)
 
-    def _emit(self, kind: str, **data) -> None:
+    def _emit(self, kind: str, /, **data) -> None:
         data["t"] = time.time()
         for fn in list(self._listeners):
             try:
@@ -729,6 +731,8 @@ class VoiceEngine:
             log.exception("end of turn decision failed")
             return None
         self._turn_last = (pend.uid, d)
+        self._hearing("turn", uid=pend.uid, complete=bool(d.complete), probability=round(float(d.probability), 3),
+                      turn_s=round(float(d.seconds), 4))
         if d.seconds > self.TURN_BUDGET_S:
             log.info("end of turn decided in %.0f ms (budget %.0f ms)", d.seconds * 1000, self.TURN_BUDGET_S * 1000)
         if d.complete:
@@ -750,6 +754,7 @@ class VoiceEngine:
             self._ignored(text, bad or "nothing understood")
             return
         rest = match_wake_word(text)
+        self._note(wake=rest is not None)
         if rest is not None and not rest.strip():   # "Marvin." again: stop and listen, as a barge-in
             log.info("barge-in")
             self._interrupt("barge-in")
@@ -783,13 +788,39 @@ class VoiceEngine:
         if not self._listeners:
             return
         rms = float(np.sqrt(np.mean(frame.astype(np.float32) ** 2))) if len(frame) else 0.0
-        db = 20 * np.log10(max(rms, 1.0) / 32768)
+        db = float(20 * np.log10(max(rms, 1.0) / 32768))
         self._level_peak = max(self._level_peak, min(1.0, max(0.0, (db + 60) / 50)))
+        self._level_db = max(self._level_db, db)
         self._level_n += 1
         if self._level_n >= self.LEVEL_EVERY:
+            # dbfs: what the microphone hears even while the echo gate makes Marvin deaf (the app's meter); muted: nothing
             self._emit("level", mic=round(0.0 if (gated or self._muted) else self._level_peak, 3),
-                       speech=self.segmenter.in_speech and not gated, gated=bool(gated))
-            self._level_peak, self._level_n = 0.0, 0
+                       speech=self.segmenter.in_speech and not gated, gated=bool(gated),
+                       dbfs=-100.0 if self._muted else round(self._level_db, 1))
+            self._level_peak, self._level_db, self._level_n = 0.0, -100.0, 0
+
+    def _hearing(self, kind: str, **data) -> None:
+        """The ears' diagnostics for the app (the Senses screen): an end-of-turn decision ("turn"), or what became of
+        an utterance ("utterance": its loudness, the transcript and its engine, the name, whose voice, the outcome)."""
+        if not self._listeners:
+            return
+        vad = self.segmenter.vad
+        self._emit("hearing", kind=kind, vad=getattr(vad, "name", type(vad).__name__.lower()),
+                   turn=getattr(self.turn, "name", "") if self.turn is not None else "", **data)
+
+    def _note(self, **data) -> None:
+        """Adds to what is known of the utterance being judged; its first outcome stays."""
+        d = self._diag
+        if d is None:
+            return
+        if d.get("outcome") and "outcome" in data:
+            data = {k: v for k, v in data.items() if k not in ("outcome", "reason")}
+        d.update(data)
+
+    def _note_transcript(self, tr: Transcript, lat: dict) -> None:
+        self._note(text=(tr.text or "").strip(), language=tr.language or "", stt_s=round(float(lat.get("stt", tr.seconds)), 3),
+                   speculative=bool(lat.get("speculative")),
+                   **({"language_prob": round(float(tr.language_prob), 3)} if tr.language_prob is not None else {}))
 
     def _utterance(self, state: str, uid: int) -> None:
         """"start": someone started talking; "end": they stopped, the words are being understood;
@@ -907,17 +938,21 @@ class VoiceEngine:
         if tr is None:
             tr = self._transcribe(seg.pcm)
             lat["stt"] = tr.seconds
+        self._note_transcript(tr, lat)
         return tr
 
     def _wake_check(self, seg: Segment, lat: dict) -> WakeMatch | None:
         if isinstance(self.wake, TranscriptWakeWord):
             if not self.wake.candidate(seg.pcm):
                 self._spec = None
+                self._note(wake=False)
                 return None
-            return self.wake.check(seg.pcm, self.config.language, transcript=self._full_transcript(seg, lat))
-        t = time.monotonic()
-        m = self.wake.check(seg.pcm, self.config.language)
-        lat["wake"] = time.monotonic() - t
+            m = self.wake.check(seg.pcm, self.config.language, transcript=self._full_transcript(seg, lat))
+        else:
+            t = time.monotonic()
+            m = self.wake.check(seg.pcm, self.config.language)
+            lat["wake"] = time.monotonic() - t
+        self._note(wake=m is not None)
         return m
 
     def _reply_language(self, tr: Transcript | None) -> str:
@@ -934,17 +969,20 @@ class VoiceEngine:
 
     def _own_voice(self, text: str, started: float | None = None) -> bool:
         if self.echo.is_own_voice(text, started):
+            self._note(outcome="ignored", reason="own voice")
             log.info("heard: %s (ignored: own voice)", text)
             self._emit("ignored", text=text, reason="own voice", **self._level())
             return True
         return False
 
     def _ignored(self, text: str, reason: str, quiet: bool = False) -> None:
+        self._note(outcome="dropped" if quiet else "ignored", reason=reason)
         (log.debug if quiet else log.info)("heard: %s (ignored: %s)", text or "…", reason)
         if not quiet:
             self._emit("ignored", text=text, reason=reason, **self._level())
 
     def _close_conversation(self, text: str, reason: str) -> None:
+        self._note(outcome="ignored", reason=f"conversation closed: {reason}")
         log.info("heard: %s (conversation closed: %s)", text, reason)
         self._emit("ignored", text=text, reason=f"conversation closed: {reason}", **self._level())
         with self._lock:
@@ -958,10 +996,19 @@ class VoiceEngine:
         if spk is not None and spk.enrolled and seg.duration >= MIN_SPEECH_S:
             # whose voice, while the words are being recognised
             self._spk = (seg.uid, self._spk_pool.submit(spk.identify, seg.pcm))
+        self._diag = {"uid": seg.uid, "duration_s": round(seg.duration, 3)}
+        if self._seg_dbfs is not None:
+            self._diag["dbfs"] = round(float(self._seg_dbfs), 1)
         try:
             self._judge(seg, t_cap)
         finally:
             self._seg_dbfs = None
+            d, self._diag = self._diag, None
+            if d is not None:
+                if not d.get("outcome"):
+                    d["outcome"], d["reason"] = "dropped", d.get("reason") or (
+                        "not for Marvin: no name" if d.get("wake") is False else "Marvin was busy")
+                self._hearing("utterance", **d)
 
     def _judge(self, seg: Segment, t_cap: float) -> None:
         c = self.config
@@ -1021,6 +1068,7 @@ class VoiceEngine:
                 self._ignored(tr.text, bad or "nothing understood")
                 return
             rest = match_wake_word(tr.text)
+            self._note(wake=rest is not None)
             text = tr.text.strip() if rest is None else rest
             if rest is not None and not text:   # "Marvin." again: keep listening
                 self._listen(seg.t_end)
@@ -1078,6 +1126,7 @@ class VoiceEngine:
             self._listen(seg.t_end)
 
     def _listen(self, t_audio: float) -> None:
+        self._note(outcome="listening")
         with self._lock:
             self._asked_to_listen = True
             self._listen_until = t_audio + self.config.listen_window_s
@@ -1102,12 +1151,14 @@ class VoiceEngine:
         if who.score is not None:
             extra["speaker"] = who.label()
             extra["speaker_score"] = who.score
+            self._note(speaker=who.label(), speaker_score=round(float(who.score), 3))
             lat = dict(lat or {})
             lat["speaker"] = round(who.seconds, 4)
             self.last_latency = dict(lat)
         if continues:
             extra["continues"] = list(continues)
             extra["cut"] = [u for u in continues if u in self._heard_aloud]     # answered (in part) in between
+        self._note(outcome="heard", reason="")
         uid = next(self._question_ids)
         job = _Job("ask", text, language, t0 or time.monotonic(), uid=uid, source=source, continues=tuple(continues))
         self._asked = (_Asked([*continues, uid], text, raw or text, language, seg.t_speech_end, job)
@@ -1164,6 +1215,7 @@ class VoiceEngine:
                 return False
             self._ignored(text, "voice not recognised (too short to tell)")
             return True
+        self._note(speaker=who.label(), speaker_score=round(float(who.score), 3))
         self._ignored(text, f"unknown voice ({who.score:.2f}, closest {who.best})")
         return True
 

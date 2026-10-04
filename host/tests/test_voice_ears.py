@@ -106,6 +106,51 @@ def test_without_smart_turn_the_silence_timers_stay():
     assert va.last_latency["endpoint"] == pytest.approx(0.55, abs=0.03) and "turn" not in va.last_latency
 
 
+# ---------------------------------------------------------------- the ears' diagnostics (the app's Senses screen)
+
+def hearings(events, kind):
+    return [d for k, d in events if k == "hearing" and d["kind"] == kind]
+
+
+def test_the_ears_report_each_turn_decision_and_what_became_of_the_utterance():
+    turn = FakeTurn(lambda pcm: 0.1 if len(pcm) < 2.2 * SAMPLE_RATE else 0.9, seconds=0.012)
+    va, stt, events = engine([("quiet", 0.5), ("say", 1.2), ("quiet", 0.9), ("say", 1.0), ("quiet", 1.0), ("idle",)],
+                             ["Marvin, je voudrais un café."], turn=turn)
+    va.run()
+    turns = hearings(events, "turn")
+    assert [(t["complete"], t["probability"]) for t in turns] == [(False, 0.1), (True, 0.9)]
+    assert all(t["turn"] == "fake" and t["vad"] == "energy" and t["turn_s"] == 0.012 for t in turns)
+    assert turns[0]["uid"] == turns[1]["uid"]                               # the same utterance, judged twice
+    (u,) = hearings(events, "utterance")
+    assert u["uid"] == turns[0]["uid"] and u["outcome"] == "heard" and u["wake"] is True
+    assert u["text"] == "Marvin, je voudrais un café." and u["language"] == "fr" and not u["speculative"]
+    assert 2.5 < u["duration_s"] < 3.6 and u["dbfs"] > -40 and u["stt_s"] >= 0
+    assert "t" in u and "speaker" not in u                                  # nobody enrolled: not judged
+
+
+def test_the_ears_say_why_an_utterance_was_not_answered():
+    va, stt, events = engine([("quiet", 0.5), ("say", 1.0), ("quiet", 1.0), ("idle",)], ["Il fait beau."])
+    va.run()
+    (u,) = hearings(events, "utterance")
+    assert va.asked == [] and u["outcome"] == "dropped" and u["wake"] is False
+    assert u["reason"] == "not for Marvin: no name" and u["text"] == "Il fait beau."
+    assert hearings(events, "turn") == []                                   # no end-of-turn model: silence timers
+
+
+def test_the_level_carries_the_loudness_in_dbfs():
+    va, stt, events = engine([("quiet", 0.5), ("say", 1.0), ("quiet", 0.5), ("idle",)], ["Marvin, bonjour."])
+    va.run()
+    levels = [d for k, d in events if k == "level"]
+    quiet, loud = min(x["dbfs"] for x in levels), max(x["dbfs"] for x in levels)
+    assert -100 <= quiet < -40 < loud <= 0
+    assert any(x["speech"] for x in levels) and all(0 <= x["mic"] <= 1 for x in levels)
+    va.mute(True)
+    va._live_level(np.full(320, 8000, np.int16), False)
+    va._live_level(np.full(320, 8000, np.int16), False)
+    va._live_level(np.full(320, 8000, np.int16), False)
+    assert [d for k, d in events if k == "level"][-1]["dbfs"] == -100.0    # muted: nothing is heard
+
+
 def test_make_vad_falls_back_without_silero():
     v = make_vad("auto")
     assert type(v).__name__ in ("WebRtcVad", "EnergyVad")

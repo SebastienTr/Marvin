@@ -175,6 +175,24 @@ def test_contract_is_generated_from_the_proto():
     assert r.returncode == 0, r.stderr
 
 
+def test_the_ears_diagnostics_as_the_contracts_message():
+    from marvin_host.sidecar.voice.engine import hearing_message
+    t = hearing_message({"kind": "turn", "uid": 7, "t": 1.8e9, "vad": "silero", "turn": "smart-turn",
+                         "complete": False, "probability": 0.12, "turn_s": 0.031}, "parakeet")
+    assert (t.kind, t.uid, t.vad, t.turn, t.complete, t.probability, t.turn_s) == \
+        ("turn", 7, "silero", "smart-turn", False, pytest.approx(0.12), pytest.approx(0.031))
+    assert t.HasField("complete") and not t.HasField("dbfs") and t.stt == ""
+    u = hearing_message({"kind": "utterance", "uid": 7, "t": 1.8e9, "vad": "silero", "turn": "", "duration_s": 1.4,
+                         "dbfs": -31.5, "text": "Marvin, bonjour.", "language": "fr", "language_prob": 0.97,
+                         "stt_s": 0.08, "speculative": True, "wake": True, "speaker": "Seb", "speaker_score": 0.71,
+                         "outcome": "heard", "reason": ""}, "parakeet")
+    assert (u.stt, u.outcome, u.speaker, u.wake, u.speculative) == ("parakeet", "heard", "Seb", True, True)
+    assert u.speaker_score == pytest.approx(0.71) and not u.HasField("complete")
+    d = hearing_message({"kind": "utterance", "uid": 8, "duration_s": 0.3, "outcome": "dropped",
+                         "reason": "too quiet"}, "parakeet")
+    assert d.stt == "" and d.reason == "too quiet"                # not transcribed: no engine named
+
+
 def test_settings_from_the_core():
     from marvin_host.voice.engine import VoiceConfig
     assert voice_config(settings(follow_up_s=5.0)) == VoiceConfig()       # the defaults, sent whole
@@ -289,6 +307,12 @@ def test_a_heard_question_goes_to_the_core_and_its_answer_is_spoken(sidecar, cor
     assert utt[:3] == [pb.Utterance.START, pb.Utterance.END, pb.Utterance.DONE]
     levels = core.of("level")
     assert len(levels) > 20 and max(lv.mic for lv in levels) > 0.5 and any(lv.speech for lv in levels)
+    assert all(lv.HasField("dbfs") for lv in levels) and max(lv.dbfs for lv in levels) > -30
+    # the ears' diagnostics: what became of the utterance, with the engines that read it
+    h = core.wait("hearing", lambda m: m.kind == "utterance")
+    assert (h.outcome, h.text, h.language, h.stt, h.wake) == ("heard", "Marvin, quelle heure est-il ?", "fr", "fake", True)
+    assert h.vad and h.duration_s > 1 and h.HasField("dbfs") and h.HasField("stt_s") and h.wall_time > 1e9
+    assert not h.HasField("speaker_score")                       # nobody enrolled
 
 
 def test_typed_question_filler_and_a_failed_answer(sidecar, cores):

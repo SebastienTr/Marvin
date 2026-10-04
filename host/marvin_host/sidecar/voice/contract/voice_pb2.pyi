@@ -293,7 +293,7 @@ class RobotLink(_message.Message):
     def __init__(self, device: _Optional[str] = ..., connected: _Optional[bool] = ..., has_audio: _Optional[bool] = ...) -> None: ...
 
 class VoiceToCore(_message.Message):
-    __slots__ = ("status", "heard", "ignored", "level", "partial", "robot_speaker", "ctrl", "say", "interrupted", "sound", "utterance", "spoken", "enroll")
+    __slots__ = ("status", "heard", "ignored", "level", "partial", "robot_speaker", "ctrl", "say", "interrupted", "sound", "utterance", "spoken", "enroll", "hearing")
     STATUS_FIELD_NUMBER: _ClassVar[int]
     HEARD_FIELD_NUMBER: _ClassVar[int]
     IGNORED_FIELD_NUMBER: _ClassVar[int]
@@ -307,6 +307,7 @@ class VoiceToCore(_message.Message):
     UTTERANCE_FIELD_NUMBER: _ClassVar[int]
     SPOKEN_FIELD_NUMBER: _ClassVar[int]
     ENROLL_FIELD_NUMBER: _ClassVar[int]
+    HEARING_FIELD_NUMBER: _ClassVar[int]
     status: Status
     heard: Heard
     ignored: Ignored
@@ -320,7 +321,8 @@ class VoiceToCore(_message.Message):
     utterance: Utterance
     spoken: ReplySpoken
     enroll: EnrollProgress
-    def __init__(self, status: _Optional[_Union[Status, _Mapping]] = ..., heard: _Optional[_Union[Heard, _Mapping]] = ..., ignored: _Optional[_Union[Ignored, _Mapping]] = ..., level: _Optional[_Union[Level, _Mapping]] = ..., partial: _Optional[_Union[Partial, _Mapping]] = ..., robot_speaker: _Optional[_Union[SpeakerFrame, _Mapping]] = ..., ctrl: _Optional[_Union[RobotAudioCtrl, _Mapping]] = ..., say: _Optional[_Union[SayProgress, _Mapping]] = ..., interrupted: _Optional[_Union[Interrupted, _Mapping]] = ..., sound: _Optional[_Union[RobotSound, _Mapping]] = ..., utterance: _Optional[_Union[Utterance, _Mapping]] = ..., spoken: _Optional[_Union[ReplySpoken, _Mapping]] = ..., enroll: _Optional[_Union[EnrollProgress, _Mapping]] = ...) -> None: ...
+    hearing: Hearing
+    def __init__(self, status: _Optional[_Union[Status, _Mapping]] = ..., heard: _Optional[_Union[Heard, _Mapping]] = ..., ignored: _Optional[_Union[Ignored, _Mapping]] = ..., level: _Optional[_Union[Level, _Mapping]] = ..., partial: _Optional[_Union[Partial, _Mapping]] = ..., robot_speaker: _Optional[_Union[SpeakerFrame, _Mapping]] = ..., ctrl: _Optional[_Union[RobotAudioCtrl, _Mapping]] = ..., say: _Optional[_Union[SayProgress, _Mapping]] = ..., interrupted: _Optional[_Union[Interrupted, _Mapping]] = ..., sound: _Optional[_Union[RobotSound, _Mapping]] = ..., utterance: _Optional[_Union[Utterance, _Mapping]] = ..., spoken: _Optional[_Union[ReplySpoken, _Mapping]] = ..., enroll: _Optional[_Union[EnrollProgress, _Mapping]] = ..., hearing: _Optional[_Union[Hearing, _Mapping]] = ...) -> None: ...
 
 class Status(_message.Message):
     __slots__ = ("state", "muted", "error", "fix", "stt", "tts", "listen_s", "hearing", "asked", "device")
@@ -450,14 +452,62 @@ class Ignored(_message.Message):
     def __init__(self, text: _Optional[str] = ..., reason: _Optional[str] = ..., dbfs: _Optional[float] = ...) -> None: ...
 
 class Level(_message.Message):
-    __slots__ = ("mic", "speech", "gated")
+    __slots__ = ("mic", "speech", "gated", "dbfs")
     MIC_FIELD_NUMBER: _ClassVar[int]
     SPEECH_FIELD_NUMBER: _ClassVar[int]
     GATED_FIELD_NUMBER: _ClassVar[int]
+    DBFS_FIELD_NUMBER: _ClassVar[int]
     mic: float
     speech: bool
     gated: bool
-    def __init__(self, mic: _Optional[float] = ..., speech: _Optional[bool] = ..., gated: _Optional[bool] = ...) -> None: ...
+    dbfs: float
+    def __init__(self, mic: _Optional[float] = ..., speech: _Optional[bool] = ..., gated: _Optional[bool] = ..., dbfs: _Optional[float] = ...) -> None: ...
+
+class Hearing(_message.Message):
+    __slots__ = ("kind", "uid", "wall_time", "vad", "turn", "complete", "probability", "turn_s", "duration_s", "dbfs", "stt", "stt_s", "speculative", "text", "language", "language_prob", "wake", "speaker", "speaker_score", "outcome", "reason")
+    KIND_FIELD_NUMBER: _ClassVar[int]
+    UID_FIELD_NUMBER: _ClassVar[int]
+    WALL_TIME_FIELD_NUMBER: _ClassVar[int]
+    VAD_FIELD_NUMBER: _ClassVar[int]
+    TURN_FIELD_NUMBER: _ClassVar[int]
+    COMPLETE_FIELD_NUMBER: _ClassVar[int]
+    PROBABILITY_FIELD_NUMBER: _ClassVar[int]
+    TURN_S_FIELD_NUMBER: _ClassVar[int]
+    DURATION_S_FIELD_NUMBER: _ClassVar[int]
+    DBFS_FIELD_NUMBER: _ClassVar[int]
+    STT_FIELD_NUMBER: _ClassVar[int]
+    STT_S_FIELD_NUMBER: _ClassVar[int]
+    SPECULATIVE_FIELD_NUMBER: _ClassVar[int]
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_PROB_FIELD_NUMBER: _ClassVar[int]
+    WAKE_FIELD_NUMBER: _ClassVar[int]
+    SPEAKER_FIELD_NUMBER: _ClassVar[int]
+    SPEAKER_SCORE_FIELD_NUMBER: _ClassVar[int]
+    OUTCOME_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    kind: str
+    uid: int
+    wall_time: float
+    vad: str
+    turn: str
+    complete: bool
+    probability: float
+    turn_s: float
+    duration_s: float
+    dbfs: float
+    stt: str
+    stt_s: float
+    speculative: bool
+    text: str
+    language: str
+    language_prob: float
+    wake: bool
+    speaker: str
+    speaker_score: float
+    outcome: str
+    reason: str
+    def __init__(self, kind: _Optional[str] = ..., uid: _Optional[int] = ..., wall_time: _Optional[float] = ..., vad: _Optional[str] = ..., turn: _Optional[str] = ..., complete: _Optional[bool] = ..., probability: _Optional[float] = ..., turn_s: _Optional[float] = ..., duration_s: _Optional[float] = ..., dbfs: _Optional[float] = ..., stt: _Optional[str] = ..., stt_s: _Optional[float] = ..., speculative: _Optional[bool] = ..., text: _Optional[str] = ..., language: _Optional[str] = ..., language_prob: _Optional[float] = ..., wake: _Optional[bool] = ..., speaker: _Optional[str] = ..., speaker_score: _Optional[float] = ..., outcome: _Optional[str] = ..., reason: _Optional[str] = ...) -> None: ...
 
 class Partial(_message.Message):
     __slots__ = ("uid", "text")
