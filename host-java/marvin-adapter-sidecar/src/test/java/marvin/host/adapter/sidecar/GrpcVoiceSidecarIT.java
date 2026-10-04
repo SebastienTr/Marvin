@@ -177,9 +177,11 @@ class GrpcVoiceSidecarIT {
         voice.robotLink("marvin-a1b2c3", false, false);
         assertThat(voice.robotWithAudio()).isFalse();
         voice.open(settings(null), signals::add);                     // the core moves the voice back to the computer
-        waitFor(() -> signals.subList(before, signals.size()).stream()
+        // copies: a sub-list of a CopyOnWriteArrayList fails once a signal arrives (levels keep coming)
+        waitFor(() -> List.copyOf(signals).stream().skip(before)
                 .anyMatch(s -> s instanceof VoiceSidecar.Status st && "computer".equals(st.device())), 20_000);
-        assertThat(signals.subList(before, signals.size())).noneMatch(s -> s instanceof VoiceSidecar.Status st
+        List<VoiceSidecar.Signal> after = List.copyOf(signals);
+        assertThat(after.subList(before, after.size())).noneMatch(s -> s instanceof VoiceSidecar.Status st
                 && st.state().equals("starting"));                  // swapped, not restarted
         waitFor(() -> robotOut.contains("ctrl marvin-a1b2c3 " + HostMessages.AUDIO_MIC_STOP), 5000);
     }
