@@ -11,7 +11,10 @@
 #   ./marvin status    what is running, and the host's health
 #   ./marvin logs      follow the host's log (-n N: the last N lines and exit)
 #   ./marvin doctor    check this machine and say how to fix what is missing
+#   ./marvin usb-sensors  the USB sensor bridge in the foreground (--detect: what is plugged in, and exit)
 #
+# A lidar or a radar on a USB-serial adapter (docs/usb-sensors.md) is bridged by `up` and `restart`: when an
+# adapter is plugged in, a small Python process reads it and sends its data to the host as a robot board would.
 # macOS (Apple Silicon) and Linux (x64, arm64). Needs curl and tar. Installs nothing system-wide:
 # a JDK 25, when there is none, goes to ~/.local/share/marvin/jdk; PostgreSQL runs in Docker
 # (pgvector/pgvector:pg18 on 127.0.0.1:5433, data in the Docker volume marvin-pgdata), or, with no
@@ -21,6 +24,8 @@
 # (0.0.0.0), MARVIN_DB (auto | docker | embedded; auto keeps the one used the first time),
 # MARVIN_PG_PORT (5433, the Docker database), MARVIN_JAVA_HOME (a JDK 25 to use), MARVIN_JAVA_OPTS
 # (the host JVM's options; default: the serial collector and a 384 MB heap).
+# USB sensors: MARVIN_USB_SENSORS (auto | off), MARVIN_USB_PORTS (comma-separated ports or globs to look at,
+# instead of /dev/cu.usbserial-*, /dev/cu.SLAB_USBtoUART*, /dev/cu.wchusbserial*, /dev/ttyUSB*).
 # Robot link: MARVIN_UDP_PORT (47100), MARVIN_TAP (forward the robot's datagrams to this UDP port for
 # the Python viewer: marvin-host run --port <it> --no-ui), MARVIN_RECORD (also record them to a
 # .mvrec[.gz] file), MARVIN_REPLAY (play a .mvrec recording instead of listening for robots).
@@ -41,6 +46,9 @@ LOG_DIR="$DATA_DIR/logs"
 PID_FILE="$RUN_DIR/host.pid"
 STATE_FILE="$RUN_DIR/host.env"
 LOG_FILE="$LOG_DIR/host.log"
+USB_PID_FILE="$RUN_DIR/usb-sensors.pid"
+USB_STATUS_FILE="$RUN_DIR/usb-sensors.json"
+USB_LOG_FILE="$LOG_DIR/usb-sensors.log"
 PORT=${MARVIN_PORT:-8765}
 BIND=${MARVIN_BIND:-0.0.0.0}
 PG_CONTAINER=marvin-postgres
@@ -434,6 +442,10 @@ start_host() {
     if pid=$(host_pid); then
         say "Marvin's host is already running (pid $pid)."
         if jar_is_stale; then say "A newer version of the code is here: ./marvin restart"; fi
+        if [ "$mode" = live ] && ! usb_pid >/dev/null; then
+            start_usb_sensors
+            report_usb_sensors
+        fi
         return 0
     fi
     [ -f "$PID_FILE" ] && kill_stale_sidecars
@@ -468,6 +480,8 @@ start_host() {
     [ -x "$VENV/bin/python" ] && python_env="MARVIN_PYTHON=$VENV/bin/python"
     mkdir -p "$RUN_DIR" "$LOG_DIR"
     rotate_log
+    # a lidar or radar on a USB adapter: its bridge looks at the ports while the host starts
+    [ "$mode" = live ] && start_usb_sensors
     step "Starting Marvin's host ($mode) ..."
     # shellcheck disable=SC2086 # db_env, python_env and the JVM options are lists of words
     env MARVIN_MODE="$mode" MARVIN_PORT="$PORT" MARVIN_BIND="$BIND" MARVIN_DATA_DIR="$DATA_DIR" \
@@ -481,6 +495,7 @@ start_host() {
     until health >/dev/null; do
         if ! kill -0 "$pid" 2>/dev/null; then
             rm -f "$PID_FILE"
+            stop_usb_sensors
             tail -n 30 "$LOG_FILE" >&2
             die "the host stopped while starting (log above, all of it: ./marvin logs)"
         fi
@@ -491,6 +506,7 @@ start_host() {
     remember_db_mode
     say "${G}Marvin's app: http://localhost:$PORT/${N}"
     phone_url
+    report_usb_sensors
     say "  log: ./marvin logs    stop: ./marvin down"
 }
 
@@ -539,10 +555,128 @@ stop_host() {
     rm -f "$PID_FILE"
 }
 
+# ------------------------------------------------------------------------------------ USB sensors
+
+# the USB-serial adapters plugged in (marvin_host/usb_sensors.py looks at the same ones; never Bluetooth)
+usb_ports() {
+    pats="/dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbserial* /dev/cu.usbmodem-ch34* /dev/ttyUSB*"
+    [ -z "${MARVIN_USB_PORTS:-}" ] || pats=$(printf '%s' "$MARVIN_USB_PORTS" | tr ',' ' ')
+    # shellcheck disable=SC2086 # the patterns are globs
+    for p in $pats; do
+        [ -e "$p" ] || continue
+        case "$p" in *[Bb]luetooth* | *BLTH*) continue ;; esac
+        printf '%s\n' "$p"
+    done
+}
+
+usb_ports_line() {
+    usb_ports | tr '\n' ' ' | sed 's/ $//'
+}
+
+usb_pid() {
+    [ -f "$USB_PID_FILE" ] || return 1
+    pid=$(cat "$USB_PID_FILE" 2>/dev/null || true)
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && { printf '%s\n' "$pid"; return 0; }
+    return 1
+}
+
+# a Python that can run the bridge (marvin_host and pyserial); $1 = install: add what is missing
+usb_python() {
+    if [ -x "$VENV/bin/python" ]; then
+        if ! "$VENV/bin/python" -c 'import serial' 2>/dev/null; then
+            [ "${1:-}" = install ] || return 1
+            step "Adding pyserial to host/.venv (the USB sensor bridge) ..." >&2
+            "$VENV/bin/python" -m pip install -q "pyserial>=3.5" >/dev/null 2>&1 || return 1
+        fi
+        printf '%s\n' "$VENV/bin/python"
+        return 0
+    fi
+    if python_ok && python3 -c 'import serial, numpy' 2>/dev/null; then
+        printf '%s\n' python3
+        return 0
+    fi
+    [ "${1:-}" = install ] && python_ok && venv_ok || return 1
+    ensure_venv base >&2 || return 1
+    usb_python
+}
+
+# the bridge's sensors, one line each (from the status file it keeps)
+usb_status_lines() {
+    py=$(usb_python) || return 0
+    [ -f "$USB_STATUS_FILE" ] || return 0
+    "$py" -c "
+import json, sys
+try:
+    st = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    sys.exit(0)
+for s in st.get('sensors', []):
+    rate = s.get('rate') or 0
+    what = f\"{rate * 12:.0f} pts/s\" if s['kind'] == 'lidar' else f'{rate:.1f} frames/s'
+    link = 'sending to the host' if s.get('linked') else 'waiting for the host'
+    print(f\"{s['name']} on {s['port']} @{s['baud']} as {s['device']}, {link}, {what}\")
+" "$USB_STATUS_FILE" 2>/dev/null || true
+}
+
+# starts the bridge in the background when an adapter is plugged in (it probes the ports itself, and exits
+# if no lidar or radar answers); returns at once
+start_usb_sensors() {
+    [ "${MARVIN_USB_SENSORS:-auto}" != off ] || return 0
+    [ -z "${MARVIN_REPLAY:-}" ] || return 0
+    usb_pid >/dev/null && return 0
+    [ -n "$(usb_ports)" ] || return 0
+    if ! py=$(usb_python install); then
+        warn "a USB serial adapter is plugged in ($(usb_ports_line)), but the sensor bridge needs Python with pyserial (./marvin doctor)"
+        return 0
+    fi
+    mkdir -p "$RUN_DIR" "$LOG_DIR"
+    if [ -f "$USB_LOG_FILE" ] && [ "$(wc -c <"$USB_LOG_FILE" | tr -d ' ')" -gt "$LOG_ROTATE_BYTES" ]; then
+        mv -f "$USB_LOG_FILE" "$USB_LOG_FILE.1"
+    fi
+    rm -f "$USB_STATUS_FILE"
+    (cd "$ROOT/host" && exec nohup "$py" -m marvin_host.usb_sensors --port "$UDP_PORT" --exit-if-none \
+        --status-file "$USB_STATUS_FILE" >>"$USB_LOG_FILE" 2>&1 </dev/null) &
+    printf '%s\n' "$!" >"$USB_PID_FILE"
+}
+
+# what the bridge found, once it has had a moment to look (it probes in the background)
+report_usb_sensors() {
+    [ -f "$USB_PID_FILE" ] || return 0
+    i=0
+    while [ "$i" -lt 8 ]; do
+        lines=$(usb_status_lines)
+        case "$lines" in *"sending to the host"*) break ;; esac
+        usb_pid >/dev/null || break
+        i=$((i + 1))
+        sleep 0.5
+    done
+    if [ -n "$lines" ]; then
+        printf '%s\n' "$lines" | while IFS= read -r l; do say "  USB sensors: $l"; done
+    elif usb_pid >/dev/null; then
+        say "  USB sensors: still looking on $(usb_ports_line) (./marvin status)"
+    else
+        rm -f "$USB_PID_FILE"
+        say "  USB sensors: no lidar or radar answered on $(usb_ports_line) (wiring and power: docs/usb-sensors.md)"
+    fi
+}
+
+stop_usb_sensors() {
+    if pid=$(usb_pid); then
+        kill "$pid" 2>/dev/null || true
+        i=0
+        while kill -0 "$pid" 2>/dev/null; do
+            i=$((i + 1))
+            [ "$i" -le 10 ] || { kill -9 "$pid" 2>/dev/null || true; break; }
+            sleep 0.3
+        done
+    fi
+    rm -f "$USB_PID_FILE" "$USB_STATUS_FILE"
+}
+
 # ------------------------------------------------------------------------------------ commands
 
 usage() {
-    sed -n '4,14p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '4,18p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 cmd_up() {
@@ -571,6 +705,7 @@ cmd_demo() {
 cmd_restart() {
     mode=$(sed -n 's/^MODE=//p' "$STATE_FILE" 2>/dev/null || true)
     stop_host
+    stop_usb_sensors
     case "${mode:-live}" in
         demo) cmd_demo "$@" ;;
         *) cmd_up "$@" ;;
@@ -578,6 +713,7 @@ cmd_restart() {
 }
 
 cmd_down() {
+    stop_usb_sensors
     stop_host
     stop_postgres
     rm -f "$STATE_FILE"
@@ -607,16 +743,49 @@ cmd_status() {
         say "postgres:   Docker not available (the host runs its own PostgreSQL)"
     fi
     say "database:   ${db:-not chosen yet} (kept in $DB_MODE_FILE)"
+    if pid=$(usb_pid); then
+        lines=$(usb_status_lines)
+        if [ -n "$lines" ]; then
+            first=yes
+            printf '%s\n' "$lines" | while IFS= read -r l; do
+                if [ "$first" = yes ]; then say "usb:        bridge running (pid $pid): $l"; first=no; else say "            $l"; fi
+            done
+        else
+            say "usb:        bridge running (pid $pid), looking on $(usb_ports_line)"
+        fi
+    elif [ -n "$(usb_ports)" ]; then
+        say "usb:        not bridged: $(usb_ports_line) plugged in (./marvin restart, or ./marvin usb-sensors --detect)"
+    else
+        say "usb:        no USB serial adapter plugged in"
+    fi
     say "data:       $DATA_DIR"
 }
 
 cmd_logs() {
     [ -f "$LOG_FILE" ] || die "no log yet ($LOG_FILE)"
+    # the USB sensor bridge's log too, while it runs (tail names each file)
+    files=$LOG_FILE
+    usb_pid >/dev/null && [ -f "$USB_LOG_FILE" ] && files="$LOG_FILE $USB_LOG_FILE"
+    # shellcheck disable=SC2086 # files is a list of paths without spaces in the default data folder
     case "${1:-}" in
-        -n) tail -n "${2:-100}" "$LOG_FILE" ;;
-        "") tail -n 50 -f "$LOG_FILE" ;;
+        -n) tail -n "${2:-100}" $files ;;
+        "") tail -n 50 -f $files ;;
         *) die "usage: ./marvin logs [-n LINES]" ;;
     esac
+}
+
+# the bridge in the foreground, for debugging (it replaces the one ./marvin up started)
+cmd_usb_sensors() {
+    py=$(usb_python install) || die "the USB sensor bridge needs Python 3.10+ with pyserial (./marvin doctor)"
+    if pid=$(usb_pid); then
+        case " $* " in
+            *" --detect "*) die "the bridge started by ./marvin up has the adapter (pid $pid): ./marvin status says what it found" ;;
+        esac
+        say "Stopping the bridge started by ./marvin up (pid $pid); ./marvin restart starts it again."
+        stop_usb_sensors
+    fi
+    cd "$ROOT/host"
+    exec "$py" -m marvin_host.usb_sensors --port "$UDP_PORT" "$@"
 }
 
 # doctor: one line per check; FAILED counts what blocks `./marvin up`
@@ -734,6 +903,31 @@ cmd_doctor() {
         fix "macOS: brew install python; Linux: your package manager"
     fi
 
+    # a lidar or radar on a USB-serial adapter (docs/usb-sensors.md)
+    if pid=$(usb_pid); then
+        lines=$(usb_status_lines)
+        if [ -n "$lines" ]; then
+            printf '%s\n' "$lines" | while IFS= read -r l; do ok "USB sensors: $l"; done
+        else
+            ok "USB sensor bridge running (pid $pid), looking on $(usb_ports_line)"
+        fi
+    elif [ "${MARVIN_USB_SENSORS:-auto}" = off ]; then
+        note "USB sensors: off (MARVIN_USB_SENSORS=off)"
+    elif [ -z "$(usb_ports)" ]; then
+        ok "no USB serial adapter plugged in (a lidar or radar on one is bridged by ./marvin up: docs/usb-sensors.md)"
+    elif py=$(usb_python); then
+        found=$(cd "$ROOT/host" && "$py" -m marvin_host.usb_sensors --detect 2>/dev/null || true)
+        case "$found" in
+            "" | "no lidar or radar"*)
+                note "USB serial adapter $(usb_ports_line): no lidar or radar answered"
+                fix "check the wiring (sensor TX to the adapter's RXD, GND, 5 V; the STL-27L's PWM to GND) and the power: docs/usb-sensors.md" ;;
+            *) printf '%s\n' "$found" | while IFS= read -r l; do ok "USB sensors: $l (./marvin up bridges it)"; done ;;
+        esac
+    else
+        note "USB serial adapter $(usb_ports_line) plugged in, but no Python with pyserial to read it"
+        fix "./marvin up installs it into host/.venv (or: pip install pyserial)"
+    fi
+
     tags=$(curl -fsS --max-time 2 "$OLLAMA_URL/api/tags" 2>/dev/null || true)
     if [ -n "$tags" ]; then
         ok "Ollama at $OLLAMA_URL"
@@ -788,6 +982,7 @@ main() {
         status) cmd_status ;;
         logs | log) cmd_logs "$@" ;;
         doctor) cmd_doctor ;;
+        usb-sensors | usb) cmd_usb_sensors "$@" ;;
         help | -h | --help) usage ;;
         *) usage >&2; exit 2 ;;
     esac
