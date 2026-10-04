@@ -463,7 +463,7 @@ def _real(model_id):
 
 
 def _reference():
-    from scipy.signal import resample_poly
+    resample_poly = pytest.importorskip("scipy.signal").resample_poly     # in the voice's extras, not dev's
     with wave.open(str(REFERENCE)) as w:
         x = np.frombuffer(w.readframes(w.getnframes()), np.int16)
         rate = w.getframerate()
@@ -496,7 +496,7 @@ def test_real_smart_turn():
 
 def test_real_speaker_model():
     from marvin_host.voice.speaker import WeSpeakerEncoder
-    from scipy.signal import resample_poly
+    resample_poly = pytest.importorskip("scipy.signal").resample_poly
     enc = WeSpeakerEncoder(path=_real("speaker"))
     ref = _reference()
     fr, en = enc.embed(ref[:int(3.9 * SAMPLE_RATE)]), enc.embed(ref[int(4.9 * SAMPLE_RATE):])
