@@ -5,8 +5,9 @@
 // (camera.js), Ollama, memory's models), and the preferences (breaks, quiet hours, clock, sounds, appearance, Home layout, language,
 // tools and home place). System is system.js.
 
-import { $, app, el, api, post, on, emit, cssVar, canvas2d, toast } from "./core.js";
+import { $, app, el, api, post, on, emit, toast } from "./core.js";
 import { earcons } from "./talk.js";
+import { deviceItem, drawLidar as drawLidarView, drawRadar as drawRadarView, drawSpark, drawWave, fmtDistance, radarLive } from "./sensorviews.js";
 import * as camera from "./camera.js";
 import * as ears from "./ears.js";
 
@@ -44,66 +45,6 @@ function renderOverview() {
 
 // ------------------------------------------------------------------ robot: devices
 
-function ago(s) {
-  if (s < 1.5) return "live";
-  if (s < 90) return `${Math.round(s)} s ago`;
-  return `${Math.round(s / 60)} min ago`;
-}
-
-function uptime(s) {
-  if (s == null) return "";
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-  return h ? `up ${h} h ${String(m).padStart(2, "0")}` : `up ${m} min`;
-}
-
-function metric(label, value, unit, warn) {
-  const d = el("div", warn ? "warn" : "");
-  const dd = el("dd", null, value);
-  if (unit) dd.append(el("small", null, unit));
-  d.append(el("dt", null, label), dd);
-  return d;
-}
-
-const fmtRate = (x) => (x == null ? "–" : x >= 10 ? String(Math.round(x)) : x.toFixed(1));
-
-function deviceItem(d) {
-  const li = el("li", "device");
-  const head = el("div", "device-head");
-  head.append(el("span", "device-name", d.label), el("span", "small muted", d.name));
-  const link = el("span", `link ${!d.online ? "down" : d.age_s >= 3 ? "stale" : ""}`);
-  link.append(el("span", "dot"), el("span", null, d.online ? ago(d.age_s) : `offline · ${ago(d.age_s)}`));
-  if (d.rssi != null) {
-    const bars = el("span", "bars");
-    bars.setAttribute("role", "img");
-    bars.setAttribute("aria-label", `Wi-Fi ${d.rssi} dBm, ${d.rssi_bars} of 4 bars`);
-    for (let i = 1; i <= 4; i++) bars.append(el("i", i <= d.rssi_bars ? "on" : ""));
-    link.append(bars, el("span", null, `${d.rssi} dBm`));
-  }
-  head.append(link);
-  li.append(head);
-  const usb = d.role === "usb-sensors";         // a lidar or radar on a USB adapter, read by this computer
-  const sub = [d.board, d.firmware && `firmware ${d.firmware}`, usb ? "on this computer" : d.ip, uptime(d.uptime_s)].filter(Boolean);
-  li.append(el("p", "device-sub", sub.join(" · ")));
-  const tags = el("div", "tags");
-  if (d.simulated) tags.append(el("span", "tag", "Simulated data"));
-  if (usb) tags.append(el("span", "tag", "Real sensors over USB"));
-  if (d.camera) tags.append(el("span", "tag", "Camera"));
-  if (d.audio) tags.append(el("span", "tag", "Speaker and mic"));
-  if (tags.children.length) li.append(tags);
-  const r = d.rates || {};
-  const m = el("dl", "metrics");
-  m.append(metric("Datagrams", fmtRate(r.datagrams), "/s"));
-  m.append(metric("Loss", d.loss_pct == null ? "–" : d.loss_pct.toFixed(1), "%", d.loss_pct != null && d.loss_pct >= 2));
-  m.append(metric("CRC errors", String(d.crc_errors), "", false));
-  // the USB bridge shows the sensor it carries (a lidar until it says otherwise)
-  if (usb ? r.scans || !r.radar : d.role !== "vitals" || r.scans) m.append(metric("Lidar", fmtRate(r.scans), `/s · ${d.points} pts`));
-  if (usb ? r.radar : d.role !== "vitals" || r.radar) m.append(metric("Radar", fmtRate(r.radar), "/s"));
-  if (d.role === "vitals" || r.vitals) m.append(metric("Vital signs", fmtRate(r.vitals), "/s"));
-  if (d.shed) m.append(metric("Dropped by host", String(d.shed), "", true));
-  li.append(m);
-  return li;
-}
-
 function renderDevices(list) {
   devices = list;
   $("devices-empty").hidden = list.length > 0;
@@ -133,166 +74,20 @@ function renderRobotNotice() {
   } else n.hidden = true;
 }
 
-// ------------------------------------------------------------------ robot: sensor views
-
-function palette() {
-  return {
-    text: cssVar("--ink"), muted: cssVar("--muted"), seated: cssVar("--seated"), accent: cssVar("--reminder"),
-    line: cssVar("--line"), fov: cssVar("--soft"),
-  };
-}
-
-function rings(ctx, cx, cy, scale, meters, from, to, col) {
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = col.line;
-  for (let k = 1; k <= meters; k++) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, k * 100 * scale, from, to);
-    ctx.stroke();
-  }
-}
-
-function drawPerson(ctx, x, y, col) {
-  ctx.globalAlpha = 0.22;
-  ctx.fillStyle = col.accent;
-  ctx.beginPath(); ctx.arc(x, y, 12, 0, 2 * Math.PI); ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 2 * Math.PI); ctx.fill();
-}
-
-function drawTrail(ctx, trail, toXY, col) {
-  ctx.fillStyle = col.accent;
-  for (const [age, r, f] of trail) {
-    const [x, y] = toXY(r, f);
-    ctx.globalAlpha = Math.max(0.06, 0.45 * (1 - age / 5));
-    ctx.beginPath(); ctx.arc(x, y, 2.2, 0, 2 * Math.PI); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
+// ------------------------------------------------------------------ robot: sensor views (drawn by sensorviews.js)
 
 function drawLidar() {
-  const g = canvas2d($("lidar"));
-  if (!g) return;
-  const { ctx, w, h } = g, col = palette();
-  const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 8;
+  const { range, stats } = drawLidarView($("lidar"), scene, { radar: radarLive(devices) });
   const lidar = scene && scene.lidar;
-  const ranges = lidar ? lidar.ranges_cm : [];
-  const nz = ranges.filter((d) => d > 0).sort((a, b) => a - b);
-  const p95 = nz.length ? nz[Math.floor(nz.length * 0.95)] : 300;
-  const meters = Math.max(2, Math.min(8, Math.ceil(p95 / 100)));
-  const scale = R / (meters * 100);
-  const fov = ((scene && scene.radar) || { half_angle_deg: 60 }).half_angle_deg * Math.PI / 180;
-  ctx.fillStyle = col.fov;
-  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, -Math.PI / 2 - fov, -Math.PI / 2 + fov); ctx.closePath(); ctx.fill();
-  rings(ctx, cx, cy, scale, meters, 0, 2 * Math.PI, col);
-  ctx.fillStyle = col.muted;
-  ctx.font = "11px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  for (let k = 1; k <= meters; k++) if (k === meters || k % 2 === 0 || meters <= 4) ctx.fillText(`${k} m`, cx + k * 100 * scale * 0.7071 + 12, cy + k * 100 * scale * 0.7071 + 2);
-  ctx.fillStyle = col.seated;
-  ctx.globalAlpha = lidar && lidar.age_s > 2 ? 0.35 : 0.9;
-  for (let i = 0; i < ranges.length; i++) {
-    const d = ranges[i];
-    if (!d) continue;
-    const a = ((i + 0.5) * 360 / ranges.length) * Math.PI / 180;
-    const rr = Math.min(R + 4, d * scale);
-    ctx.fillRect(cx + Math.sin(a) * rr - 1.2, cy - Math.cos(a) * rr - 1.2, 2.4, 2.4);
-  }
-  ctx.globalAlpha = 1;
-  const toXY = (r, f) => [cx + r * scale, cy - f * scale];
-  if (scene) drawTrail(ctx, scene.trail, toXY, col);
-  if (scene) for (const [r, f] of scene.targets) drawPerson(ctx, ...toXY(r, f), col);
-  ctx.fillStyle = col.text;
-  ctx.beginPath(); ctx.moveTo(cx, cy - 9); ctx.lineTo(cx + 6.5, cy + 6); ctx.lineTo(cx - 6.5, cy + 6); ctx.closePath(); ctx.fill();
-  $("lidar-meta").textContent = lidar ? `${lidar.points} points · ${meters} m${lidar.age_s > 2 ? ` · ${Math.round(lidar.age_s)} s old` : ""}` : "no scan yet";
+  $("lidar-meta").textContent = !lidar ? "no scan yet"
+    : `${lidar.points} points · ${fmtDistance(range)} view${stats && stats.nearest_cm ? ` · nearest ${fmtDistance(stats.nearest_cm / 100)}` : ""}${lidar.age_s > 2 ? ` · ${Math.round(lidar.age_s)} s old` : ""}`;
 }
 
 function drawRadar() {
-  const g = canvas2d($("radar"));
-  if (!g) return;
-  const { ctx, w, h } = g, col = palette();
-  const fovDeg = ((scene && scene.radar) || { half_angle_deg: 60 }).half_angle_deg;
-  const fov = fovDeg * Math.PI / 180;
-  const targets = scene ? scene.targets : [];
-  const far = Math.max(0, ...targets.map(([r, f]) => Math.hypot(r, f)), ...(scene ? scene.trail.map(([, r, f]) => Math.hypot(r, f)) : [0]));
-  const meters = Math.max(3, Math.min(6, Math.ceil(far / 100 + 0.5)));
-  const cx = w / 2, cy = h - 14;
-  const scale = Math.min((h - 30) / (meters * 100), (w / 2 - 12) / (Math.sin(fov) * meters * 100));
-  const a0 = -Math.PI / 2 - fov, a1 = -Math.PI / 2 + fov;
-  ctx.fillStyle = col.fov;
-  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, meters * 100 * scale, a0, a1); ctx.closePath(); ctx.fill();
-  rings(ctx, cx, cy, scale, meters, a0, a1, col);
-  for (const deg of [-fovDeg, -fovDeg / 2, 0, fovDeg / 2, fovDeg]) {
-    const a = -Math.PI / 2 + deg * Math.PI / 180;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * meters * 100 * scale, cy + Math.sin(a) * meters * 100 * scale); ctx.stroke();
-  }
-  ctx.fillStyle = col.muted;
-  ctx.font = "11px system-ui, sans-serif";
-  ctx.textAlign = "left";
-  for (let k = 1; k <= meters; k++) {
-    const rr = k * 100 * scale;
-    ctx.fillText(`${k} m`, Math.min(w - 26, cx + Math.sin(fov) * rr + 6), cy - Math.cos(fov) * rr + 4);
-  }
-  const toXY = (r, f) => [cx + r * scale, cy - f * scale];
-  if (scene) drawTrail(ctx, scene.trail, toXY, col);
-  for (const [r, f] of targets) drawPerson(ctx, ...toXY(r, f), col);
-  ctx.fillStyle = col.text;
-  ctx.fillRect(cx - 9, cy + 2, 18, 4);
-  if (targets.length) {
-    const d = Math.min(...targets.map(([r, f]) => Math.hypot(r, f))) / 100;
-    $("radar-meta").textContent = `${targets.length} ${targets.length === 1 ? "person" : "people"} · ${d.toFixed(2)} m`;
-  } else {
-    $("radar-meta").textContent = scene ? "nobody in view" : "no frame yet";
-  }
-}
-
-function drawSpark(c, series, lo, hi) {
-  const g = canvas2d(c);
-  if (!g) return;
-  const { ctx, w, h } = g, col = palette();
-  ctx.strokeStyle = col.line;
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(0, h - 0.5); ctx.lineTo(w, h - 0.5); ctx.stroke();
-  const vals = series.filter((p) => p[1] != null).map((p) => p[1]);
-  if (!vals.length) return;
-  let a = Math.min(...vals), b = Math.max(...vals);
-  const mid = (a + b) / 2, span = Math.max(b - a, hi - lo);
-  a = mid - span / 2; b = mid + span / 2;
-  const x = (age) => w - (age / 300) * w;
-  const y = (v) => 6 + (1 - (v - a) / (b - a)) * (h - 14);
-  ctx.strokeStyle = col.seated;
-  ctx.lineWidth = 1.8;
-  ctx.lineJoin = "round";
-  ctx.beginPath();
-  let pen = false, last = null;
-  for (const [age, v] of series.slice().sort((p, q) => q[0] - p[0])) {
-    if (v == null) { pen = false; continue; }
-    if (pen) ctx.lineTo(x(age), y(v)); else ctx.moveTo(x(age), y(v));
-    pen = true; last = [age, v];
-  }
-  ctx.stroke();
-  if (last) { ctx.fillStyle = col.text; ctx.beginPath(); ctx.arc(x(last[0]), y(last[1]), 2.6, 0, 2 * Math.PI); ctx.fill(); }
-  ctx.fillStyle = col.muted;
-  ctx.font = "10px system-ui, sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText(`${Math.round(Math.max(...vals))}`, 2, 10);
-  ctx.fillText(`${Math.round(Math.min(...vals))}`, 2, h - 4);
-}
-
-function drawWave(c, waves, k) {
-  const g = canvas2d(c);
-  if (!g) return;
-  const { ctx, w, h } = g, col = palette();
-  const mid = h / 2;
-  ctx.strokeStyle = waves.length ? col.muted : col.line;
-  ctx.lineWidth = 1.3;
-  ctx.beginPath();
-  if (!waves.length) { ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke(); return; }
-  waves.slice().sort((p, q) => q[0] - p[0]).forEach((p, i) => {
-    const x = w - (p[0] / 15) * w, y = mid - p[k] * (h / 2 - 3);
-    if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-  });
-  ctx.stroke();
+  const { nearest_m: d } = drawRadarView($("radar"), scene);
+  const n = scene && scene.targets ? scene.targets.length : 0;
+  $("radar-meta").textContent = n ? `${n} ${n === 1 ? "person" : "people"} · ${d.toFixed(2)} m`
+    : !radarLive(devices) ? "no radar connected" : scene ? "nobody in view" : "no frame yet";
 }
 
 let vitalsHistory = [];
@@ -325,10 +120,18 @@ const robotView = {
   es: null,
   frame: 0,
   faceTimer: 0,
+  retry: 0,
   update() {
     const want = app.view === "marvin" && app.sub === "robot" && !document.hidden;
     if (want && !this.es) {
       this.es = new EventSource("/api/robot/stream");
+      // a stream refused for good (an error page while the host restarts) is never retried by the browser
+      this.es.addEventListener("error", () => {
+        if (!this.es || this.es.readyState !== EventSource.CLOSED) return;
+        this.es = null;
+        clearTimeout(this.retry);
+        this.retry = setTimeout(() => this.update(), 3000);
+      });
       this.es.addEventListener("scene", (m) => {
         scene = JSON.parse(m.data);
         if (!this.frame) this.frame = requestAnimationFrame(() => { this.frame = 0; drawScene(); });
