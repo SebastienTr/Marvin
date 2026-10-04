@@ -55,11 +55,13 @@ def rssi_bars(rssi: int | None) -> int | None:
 
 
 def device_role(hello: protocol.Hello) -> tuple[str, str]:
-    """("robot" | "vitals" | "simulator", a label for people)."""
+    """("robot" | "vitals" | "usb-sensors" | "simulator", a label for people)."""
     if hello.board == 255:
         return "simulator", "Simulated robot"
     if hello.board == 4:
         return "vitals", "Vital signs radar"
+    if hello.board == protocol.BOARD_USB_BRIDGE:
+        return "usb-sensors", "USB sensor bridge"
     return "robot", "Robot"
 
 

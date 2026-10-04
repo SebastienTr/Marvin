@@ -42,6 +42,24 @@ class DeviceMonitorTest {
     }
 
     @Test
+    void theUsbSensorBridgeIsADeviceOfItsOwnWithRealData() {
+        datagram(robot, MessageType.HELLO, hello(Board.ESP32_DEVKIT, 1).encode(), 0);
+        Endpoint usb = new Endpoint("127.0.0.1", 47131);
+        datagram(usb, MessageType.HELLO,
+                new Hello(new byte[] {0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f}, Board.USB_BRIDGE, 0, 0, 42_000, "usb-0.1.0").encode(), 0);
+        monitor.tick(0.1);
+        DeviceStatus s = monitor.statuses().get(1);
+        assertThat(s.role()).isEqualTo(Board.Role.USB_SENSORS);
+        assertThat(s.role().wireName()).isEqualTo("usb-sensors");
+        assertThat(s.role().label()).isEqualTo("USB sensor bridge");
+        assertThat(s.board()).isEqualTo("USB sensor bridge (computer)");
+        assertThat(s.simulated()).isFalse();
+        assertThat(s.rssi()).isNull();                  // no Wi-Fi: no signal bars
+        assertThat(s.screen()).isFalse();
+        assertThat(s.name()).isEqualTo("marvin-4d5e6f");
+    }
+
+    @Test
     void ratesLossAndOffline() {
         datagram(robot, MessageType.HELLO, hello(Board.D1_MINI, 1).encode(), 0);
         monitor.tick(0);

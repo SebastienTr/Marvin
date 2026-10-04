@@ -153,6 +153,8 @@ inline bool valid(const uint8_t *buf, size_t len) {
 }
 
 // HELLO payload: mac[6], board u8, flags u8, rssi i8, uptime_ms u32, firmware (u8 length + text).
+// Board ids (MARVIN_BOARD; docs/protocol.md): 1 D1 mini, 2 ESP32-S3 DevKitC, 3 XIAO ESP32S3 Sense, 4 MR60BHA2 kit,
+// 5 ESP32 DevKit, 6 USB sensor bridge (the computer, host/marvin_host/usb_sensors.py), 255 host simulator.
 inline size_t hello(uint8_t *p, const uint8_t mac[6], uint8_t board, uint8_t flags, int8_t rssi,
                     uint32_t uptime_ms, const char *fw) {
   uint8_t *s = p;

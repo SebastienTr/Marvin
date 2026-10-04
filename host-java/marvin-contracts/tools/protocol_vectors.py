@@ -99,6 +99,8 @@ def robot_to_host() -> list[dict]:
                                                            protocol.FLAG_SIMULATED | protocol.FLAG_BUTTONS
                                                            | protocol.FLAG_BUZZER | protocol.FLAG_FACE
                                                            | protocol.FLAG_ENVIRONMENT, -55, 61000, "0.1.0")),
+        ("hello_usb_bridge", protocol.Hello(bytes.fromhex("1a2b3c4d5e6f"), protocol.BOARD_USB_BRIDGE, 0, 0, 42000,
+                                            "usb-0.1.0")),
     ]:
         out.append(vec(name, protocol.HELLO, 7, 99_000, h.encode(), hello_decoded(h)))
     # LIDAR: the real LD19 packet, a built one crossing 0 degrees, a datagram with a bad CRC in the middle

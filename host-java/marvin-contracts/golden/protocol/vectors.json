@@ -12,6 +12,7 @@
       "3": "XIAO ESP32S3 Sense",
       "4": "MR60BHA2 kit (XIAO ESP32C6)",
       "5": "ESP32 DevKit (ESP32-WROOM-32)",
+      "6": "USB sensor bridge (computer)",
       "255": "simulator"
     },
     "lidar_models": {
@@ -572,6 +573,34 @@
         "uptime_ms": 61000,
         "firmware": "0.1.0",
         "device_name": "marvin-112233"
+      }
+    },
+    {
+      "name": "hello_usb_bridge",
+      "type": 1,
+      "datagram": "4d56010107000000b8820100000000001a2b3c4d5e6f06000010a40000097573622d302e312e30",
+      "header": {
+        "type": 1,
+        "seq": 7,
+        "t_us": 99000
+      },
+      "payload": "1a2b3c4d5e6f06000010a40000097573622d302e312e30",
+      "decoded": {
+        "device_id": "1a2b3c4d5e6f",
+        "board": 6,
+        "board_name": "USB sensor bridge (computer)",
+        "flags": 0,
+        "simulated": false,
+        "has_camera": false,
+        "has_audio": false,
+        "has_buttons": false,
+        "has_buzzer": false,
+        "has_face": false,
+        "has_environment": false,
+        "rssi": 0,
+        "uptime_ms": 42000,
+        "firmware": "usb-0.1.0",
+        "device_name": "marvin-4d5e6f"
       }
     },
     {

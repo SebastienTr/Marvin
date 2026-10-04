@@ -16,6 +16,11 @@ public final class Board {
      * its {@code HELLO} flags (OLED eyes, buttons, buzzer).
      */
     public static final int ESP32_DEVKIT = 5;
+    /**
+     * A lidar or a radar on a USB-serial adapter, read by the computer and sent like a robot board's
+     * ({@code marvin-host usb-sensors}, docs/usb-sensors.md): real sensor data, no Wi-Fi, no screen, speaker or buttons.
+     */
+    public static final int USB_BRIDGE = 6;
     public static final int SIMULATOR = 255;
 
     /** Boards with the face screen: the host sends them {@code FACE_STATE} and {@code FACE_EVENT}. */
@@ -27,13 +32,15 @@ public final class Board {
             XIAO_ESP32S3_SENSE, "XIAO ESP32S3 Sense",
             MR60BHA2_KIT, "MR60BHA2 kit (XIAO ESP32C6)",
             ESP32_DEVKIT, "ESP32 DevKit (ESP32-WROOM-32)",
+            USB_BRIDGE, "USB sensor bridge (computer)",
             SIMULATOR, "simulator");
 
     private static final Map<Integer, String> LIDAR_MODELS = Map.of(1, "D500 (STL-19P)", 2, "D800 (STL-27L)");
 
     /** What a device is for the app. */
     public enum Role {
-        ROBOT("robot", "Robot"), VITALS("vitals", "Vital signs radar"), SIMULATOR("simulator", "Simulated robot");
+        ROBOT("robot", "Robot"), VITALS("vitals", "Vital signs radar"),
+        USB_SENSORS("usb-sensors", "USB sensor bridge"), SIMULATOR("simulator", "Simulated robot");
 
         private final String wireName;
         private final String label;
@@ -72,6 +79,7 @@ public final class Board {
         return switch (board) {
             case SIMULATOR -> Role.SIMULATOR;
             case MR60BHA2_KIT -> Role.VITALS;
+            case USB_BRIDGE -> Role.USB_SENSORS;
             default -> Role.ROBOT;
         };
     }
