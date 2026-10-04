@@ -2285,3 +2285,70 @@ conversation, kept until now as a tool, is retired (the owner approved it).
 - The PyTorch backend fails with `HF_HUB_OFFLINE=1` (transformers asks the hub for model info); online it works.
 - The robot profile's values (echo tail 0.5 s, output latency 50 ms, VAD floors) are estimates, not measured on the robot.
 - The Testcontainers ITs (`ApiContractIT`, `VoiceEndToEndIT`) did not run (no Docker).
+
+## USB sensors: the lidar on the computer, no ESP32 (2026-10-04)
+
+The owner's classic DevKit is dead and the S3 is not soldered yet, but the D800 kit's lidar (STL-27L) answers on a
+CP2102 adapter (HW-598A) at `/dev/cu.usbserial-0001`. Goal: its scan live in the app with `./marvin up` alone.
+
+### What exists
+
+- `host/marvin_host/usb_sensors.py`: the bridge. Probes `/dev/cu.usbserial-*`, `/dev/cu.SLAB_USBtoUART*`,
+  `/dev/cu.wchusbserial*`, `/dev/ttyUSB*` (never Bluetooth) at 921600, 230400, 256000 for about a second each (3 valid
+  lidar packets, or 2 LD2450 target frames); one `SensorLink` thread per sensor, each a device of its own (`UsbDevice`:
+  the firmware's `link_step`, `on_lidar_packet` / `flush_lidar`, `report_stats`). A `Bridge` rescans every 2 s,
+  re-probes a port after an unplug, keeps one socket per MAC for the run. `--detect`, `--status-file`,
+  `--exit-if-none` for the launcher.
+- `host/marvin_host/sensor_framing.py`: `LidarFramer`, `Ld2450Framer`, the LD2450 commands. Scans chunks with
+  `bytes.find` instead of byte by byte; same frames and same counters as the C++ (its native tests repeated in
+  `test_sensor_framing.py`). About 5 ms of CPU per second of STL-27L stream.
+- Board 6 in `Board.java` (role `usb-sensors`, label "USB sensor bridge"), `protocol.py`, `ui/sink.py`,
+  `docs/protocol.md`, `protocol.h` (comment), vectors (`hello_usb_bridge`).
+- `SensorScene` and `PresenceFeed`: real beats simulated for 2 s (`PREFER_REAL_S`).
+- `./marvin`: `start_usb_sensors` (background, before the JVM starts), `report_usb_sensors` (after health),
+  `stop_usb_sensors`, status/logs/doctor lines, `./marvin usb-sensors`. Files: `run/usb-sensors.{pid,json}`,
+  `logs/usb-sensors.log`.
+- App: the device row (tag, "on this computer", only the sensor it carries), and a `sensors` connection state.
+
+### Decisions and deviations
+
+- The `LIDAR` payload's first byte is the lidar *model* (as the firmware and both hosts have it), not a packet count.
+- A Python process, not Java: the Python side already owns the hardware-facing tools (simulator, viewer, recordings)
+  and the framing mirrors; pyserial is small. The host is unchanged: the bridge is just a board.
+- The bridge sends to 127.0.0.1 only (not a broadcast): it runs next to the host. `--host` for another computer.
+- Ports are opened exclusively with DTR/RTS low; a port where nothing ever answered is tried 3 times, then not until
+  replugged, because it may be a board's USB port (probing would hold it and may reset it). A port that had a sensor
+  is retried every 10 s.
+- Device "online" in the app's top bar is the brain's (presence frames), not the link's. A lidar alone feeds no
+  presence, so instead of "Robot offline" the app says "Sensors live · no presence sensor" when a device is online.
+  The brain and the history keep their meaning.
+- The Python `marvin-host run` keeps its old behaviour between devices (no real-beats-simulated): it is a legacy tool.
+
+### Verified
+
+- Python: `pytest -q` 337 passed, 1 failed, 3 skipped: `test_speech_resuming_before_the_answer_continues_the_question`
+  failed while Maven loaded the machine; it passes alone and in `test_voice.py` (unrelated timing). New:
+  `test_sensor_framing.py` (14), `test_usb_sensors.py` (12: probe at each speed, noise, busy port, HELLO/ACK, batches
+  and the 20 ms flush, timeout, radar frames, unplug, silence, retries, and the whole bridge on a pty into the Python
+  receiver, unplugged and plugged back in as the same device).
+- Java: `mvn -o clean verify` (Temurin 25) green, 430 unit tests. New: `SensorSceneTest`, `DeviceMonitorTest` +1,
+  `PresenceFeedTest` +1; `ProtocolVectorsTest` reads board 6. No Docker: the Testcontainers and embedded-PostgreSQL
+  ITs were skipped (`ApiContractIT`, `MarvinHostApplicationIT`, `MemoryApiIT`, `MemoryEndToEndIT`, `VoiceEndToEndIT`,
+  `MemoryStoresIT`, `StoresAndImportIT`, `ContextMigrationsIT`, `EmbeddedDatabaseIT`).
+- End to end, as a non-root user: a pty replaying a simulated STL-27L stream at its real rate (1800 packets/s) under
+  `MARVIN_USB_PORTS`, `./marvin up --no-voice` (embedded PostgreSQL): the bridge found it at 921600, `up` printed it,
+  `/api/robot` listed `marvin-2d81ee` (usb-sensors, not simulated, 9.8 scans/s, 2160 points, 0 CRC errors, 0 lost),
+  `/api/robot/stream` carried the scene's lidar, the app (Playwright, 1440x900 Day and 390x844 Night) drew the scan
+  with no console error. A simulated robot alongside: the scene kept the real scan. Unplug and replug: the same
+  device and endpoint, back online. `status`, `logs -n`, `down` and `usb-sensors --detect` checked.
+
+### Known gaps
+
+- Never run against the real STL-27L or a real CP2102: the pty stands in for both (baud rates are not exercised by a
+  pty). The owner's first `./marvin up` with the adapter is the first real run.
+- The LD2450 path is tested with recorded and synthetic frames only, and macOS's handling of 256000 baud on a CP2102
+  is untested.
+- Opening a port with DTR/RTS low does not stop every adapter from pulsing them: an ESP32 board on a probed port may
+  reset once at probe time.
+- The lidar's yaw on the desk is the robot's calibration (`calibrate lidar`); a lidar lying loose on a desk may need
+  `marvin-host calibrate lidar` for "up" to be its front.
