@@ -7,6 +7,7 @@
     marvin-host ui --demo  [--speed 10]                              the app in the browser, with a simulated robot
     marvin-host replay     FILE.mvrec [--speed 2]                    play a recorded session back
     marvin-host calibrate  lidar [--manual] [--save]                 calibrate the lidar's yaw
+    marvin-host usb-sensors [--detect] [--serial PORT]               a lidar or radar on a USB adapter, as a robot board
 
 Marvin's voice and conversation run in the Java host (./marvin up); this command line keeps the
 tools around the robot: the simulator, the viewer, recordings and calibration.
@@ -20,7 +21,7 @@ import logging
 import threading
 import time
 
-from . import __version__, calibration, protocol, record, ui
+from . import __version__, calibration, protocol, record, ui, usb_sensors
 from .brain import Brain
 from .link import FaceLink
 from .receiver import Receiver, Sink
@@ -254,6 +255,8 @@ def main(argv=None) -> None:
     ui.add_cli(sub)                        # marvin-host ui [--demo]
     record.add_cli(sub)                    # marvin-host replay
     calibration.add_cli(sub)               # marvin-host calibrate
+    usb = sub.add_parser("usb-sensors", help="bridge a lidar or radar on a USB-serial adapter to the host")
+    usb_sensors.add_arguments(usb)
 
     args = ap.parse_args(argv)
     from . import parent
@@ -289,6 +292,8 @@ def main(argv=None) -> None:
             record.run_replay(args, lambda: _sink(args, Brain(cal.brain_config())))
         elif args.cmd == "calibrate":
             calibration.run_cli(args)
+        elif args.cmd == "usb-sensors":
+            raise SystemExit(usb_sensors.run_cli(args))
     except KeyboardInterrupt:
         pass
 
