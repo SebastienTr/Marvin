@@ -16,7 +16,7 @@ TAG = sys.argv[1] if len(sys.argv) > 1 else "demo"
 os.makedirs(OUT, exist_ok=True)
 errors, results = [], []
 SIZES = {"phone": ({"width": 390, "height": 844}, 2), "desktop": ({"width": 1440, "height": 900}, 1)}
-SCREENS = ["home", "talk", "memory", "activity", "activity/history", "marvin", "marvin/robot", "marvin/voice",
+SCREENS = ["home", "talk", "memory", "activity", "activity/history", "senses", "marvin", "marvin/robot", "marvin/voice",
            "marvin/system", "marvin/preferences"]
 
 
@@ -49,7 +49,7 @@ def context(browser, size, theme):
     viewport, dpr = SIZES[size]
     ctx = browser.new_context(viewport=viewport, device_scale_factor=dpr, is_mobile=size == "phone", has_touch=size == "phone")
     ctx.add_init_script(f"try {{ if (!sessionStorage.getItem('e2e')) {{ sessionStorage.setItem('e2e', '1'); "
-                        f"localStorage.setItem('marvin.appearance', JSON.stringify('{theme}')); localStorage.removeItem('marvin.home'); }} }} catch (e) {{}}")
+                        f"localStorage.setItem('marvin.appearance', JSON.stringify('{theme}')); localStorage.removeItem('marvin.home'); localStorage.setItem('marvin.ears.offered', '1'); }} }} catch (e) {{}}")
     page = ctx.new_page()
     page.on("console", lambda m: m.type == "error" and errors.append(f"{size}/{theme}: {m.text}"))
     page.on("pageerror", lambda e: errors.append(f"{size}/{theme}: pageerror {e}"))
