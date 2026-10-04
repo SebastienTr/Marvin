@@ -15,6 +15,11 @@ import java.util.List;
  * {@link #view}, when someone looks. The scan reduction is cached per scan. Times are the host's
  * monotonic seconds, passed in. Top view convention: {@code right} is to the robot's right, {@code fwd}
  * in front of it (device frame: right = -X, fwd = -Y); lidar bearings clockwise from the front.
+ *
+ * <p>With several devices, the last scan and the last targets win, except that real sensors beat simulated ones:
+ * while a device with real data (its {@code HELLO} without the simulated flag: a robot with real sensors, the USB
+ * sensor bridge) has sent a scan or targets in the last {@link #PREFER_REAL_S} seconds, a simulated device's are
+ * not shown. The real lidar on the desk is not interleaved with the simulated room of a bench board.
  * Thread-safe.
  */
 public final class SensorScene {
@@ -26,17 +31,21 @@ public final class SensorScene {
     /** HLK-LD2450 field of view, for drawing. */
     public static final int RADAR_HALF_ANGLE_DEG = 60;
     public static final int RADAR_RANGE_CM = 600;
+    /** How long a real sensor's scan or targets keep a simulated device's out of the views. */
+    public static final double PREFER_REAL_S = 2.0;
 
     private final Extrinsics extrinsics;
 
     private SensorFrame.LidarRevolution scan;
     private double scanT;
+    private boolean scanReal;
     private long scanSeq;
     private long cachedSeq = -1;
     private int[] cachedRanges;
     private int cachedPoints;
 
     private double targetsT;
+    private boolean targetsReal;
     private List<double[]> targets;                 // {right, fwd, speed}
     private final Deque<Trail> trail = new ArrayDeque<>();
     private double vitalsT;
@@ -55,11 +64,21 @@ public final class SensorScene {
     public synchronized void record(SensorFrame frame, double now) {
         switch (frame) {
             case SensorFrame.LidarRevolution r -> {
+                boolean real = !r.device().hello().simulated();
+                if (!real && scanReal && now - scanT < PREFER_REAL_S) {
+                    return;
+                }
                 scan = r;
                 scanT = now;
+                scanReal = real;
                 scanSeq++;
             }
             case SensorFrame.RadarTargets t -> {
+                boolean real = !t.device().hello().simulated();
+                if (!real && targetsReal && now - targetsT < PREFER_REAL_S) {
+                    return;
+                }
+                targetsReal = real;
                 List<double[]> pts = new ArrayList<>(t.targets().size());
                 for (int i = 0; i < t.targets().size(); i++) {
                     double[] p = t.points().get(i);

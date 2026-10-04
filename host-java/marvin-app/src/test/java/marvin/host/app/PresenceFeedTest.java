@@ -24,6 +24,7 @@ import marvin.host.domain.robot.Vitals;
 /** What reaches the brain: a bench board's real PIR stands in for its simulated radar ({@link PresenceFeed}). */
 class PresenceFeedTest {
     private final List<String> calls = new ArrayList<>();
+    private double now;
     private final PresenceFeed feed = new PresenceFeed(new ObservePresence() {
         @Override
         public void onTargets(long tUs, boolean simulated, List<TargetSighting> targets) {
@@ -39,7 +40,7 @@ class PresenceFeedTest {
         public void onMotion(long tUs, boolean simulated, boolean motion, boolean warmingUp) {
             calls.add("motion " + tUs + " " + motion + (warmingUp ? " warming" : "") + (simulated ? " sim" : ""));
         }
-    });
+    }, () -> now);
 
     private static Device device(int flags, int port) {
         return new Device(new Hello(new byte[] {8, 9, 10, 0x11, 0x22, 0x33}, Board.ESP32_DEVKIT, flags, -50, 1, "0.1.0"),
@@ -78,6 +79,21 @@ class PresenceFeedTest {
         Device plain = device(ProtocolV1.FLAG_SIMULATED, 47103);
         radar(plain, 3);
         assertThat(calls).containsExactly("targets 2", "vitals 2", "targets 3", "vitals 3");
+    }
+
+    @Test
+    void aRealRadarHoldsASimulatedOneBack() {
+        Device usb = new Device(new Hello(new byte[] {2, 9, 9, 9, 9, 9}, Board.USB_BRIDGE, 0, 0, 1, "usb-0.1.0"),
+                new Endpoint("127.0.0.1", 47131));
+        Device sim = device(ProtocolV1.FLAG_SIMULATED, 47105);
+        radar(sim, 1);
+        now = 10.0;
+        feed.onFrame(new SensorFrame.RadarTargets(usb, 500, List.of(), List.of()));
+        now = 11.0;
+        radar(sim, 2);                          // the real radar spoke 1 s ago: the simulated person is held back
+        now = 12.5;
+        radar(sim, 3);                          // 2.5 s: the real radar is gone, the simulated one is back
+        assertThat(calls).containsExactly("targets 1", "vitals 1", "targets 500", "targets 3", "vitals 3");
     }
 
     @Test

@@ -39,6 +39,8 @@ The bench board ([wiring-bench.md](wiring-bench.md)) simulates the lidar and bot
 - no motion for 2 minutes (`motion_hold_s`, 120 s): `left` ("no movement for 120 s"). Someone at a desk moves often enough for a PIR at arm's length; someone reading very still may be taken for gone after two minutes, and comes back with the next movement;
 - no position, distance or sitting: the eyes wake up and look straight ahead rather than following you, the break timer does not run, and the vital signs (simulated on that board) are ignored. The state says `motion_presence`, and Marvin's context says a motion sensor noticed movement, not that someone is in front of it.
 
+Real sensors also beat simulated ones between devices: while a device with a real radar (a robot, or the [USB sensor bridge](usb-sensors.md) with an LD2450) has sent targets in the last 2 s, a simulated device's targets and vital signs do not reach the brain (`PresenceFeed`), and the app draws a real lidar's scan rather than a simulated one (`SensorScene`). The brain follows one person on one clock.
+
 A real, live radar always wins: a PIR next to it is only noted, since the radar knows where you are and that you are still there when you do not move. Fusing a real radar and a real PIR (the PIR confirming an arrival, or holding a presence the radar lost) waits for a robot that has both.
 
 ## How far machine learning goes: three levels
