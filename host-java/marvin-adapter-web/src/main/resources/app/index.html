@@ -427,22 +427,30 @@
 
         <div class="sub" data-sub="" data-of="activity">
           <div class="activity-grid">
-            <section class="panel task-empty" aria-labelledby="tasks-h">
-              <div class="panel-head"><span class="label muted" id="tasks-h">Tasks &amp; approvals</span><span class="pill">Coming later</span></div>
-              <h2 class="panel-title">Nothing in motion.</h2>
-              <p class="small muted">Marvin cannot run tasks for you yet. When it can, this is where they will be:</p>
-              <ul class="later-list">
-                <li><b>Each task and its steps</b><span>What Marvin read, what it prepared, what is left.</span></li>
-                <li><b>Its budget</b><span>The time and the model’s work it may spend, and what it spent.</span></li>
-                <li><b>Your approval</b><span>Anything that would leave this computer waits here for your yes, on the exact version you read.</span></li>
-              </ul>
-              <div class="gap-top" id="activity-decisions"><p class="small muted">Today, the only thing that can wait for you is a request to forget.</p></div>
+            <section class="panel wide tasks-panel" id="tasks-panel" aria-labelledby="tasks-h">
+              <div class="panel-head"><span class="label muted" id="tasks-h">Tasks</span><span class="pill" id="tasks-pill">–</span></div>
+              <h2 class="panel-title" id="tasks-title" aria-live="polite">Nothing yet.</h2>
+              <ol class="task-list" id="task-list" aria-label="Background tasks"></ol>
+              <p class="small muted" id="tasks-empty">Ask Marvin to prepare, compare or look into something (“prépare-moi…”, “look into…”), or to do it in the background: it works on it here, with its tools, while you talk, and tells you when it is ready.</p>
+              <div id="tasks-failed" hidden><p class="small muted" id="tasks-failed-text"></p><button type="button" class="small-button gap-top" id="tasks-retry">Try again</button></div>
+              <div class="more-row"><button type="button" class="small-button" id="tasks-more" hidden>Show all</button></div>
+              <form class="task-form" id="task-form" autocomplete="off">
+                <label for="task-goal" class="sr">A task for Marvin</label>
+                <input id="task-goal" type="text" maxlength="500" placeholder="Give Marvin a task: compare, prepare, look into…" enterkeyhint="go" spellcheck="true">
+                <button type="submit" class="primary">Start</button>
+              </form>
+              <p class="form-error" id="task-error" role="alert" hidden></p>
+              <div class="task-approvals">
+                <span class="label muted">Approvals</span>
+                <p class="small muted">Tasks only read and write on this computer for now. Anything that would leave it will wait here for your yes, on the exact version you read.</p>
+                <div class="gap-top" id="activity-decisions"><p class="small muted">Today, the only thing that can wait for you is a request to forget.</p></div>
+              </div>
             </section>
             <section class="panel" aria-labelledby="worker-h">
               <div class="panel-head"><h3 id="worker-h">Memory at work</h3><span class="pill" data-worker-pill>–</span></div>
               <div data-worker-body="compact"><div class="loading-lines" aria-hidden="true"><i></i><i></i><i></i></div></div>
             </section>
-            <section class="panel wide" aria-labelledby="today-moments-h">
+            <section class="panel" aria-labelledby="today-moments-h">
               <div class="panel-head"><h3 id="today-moments-h">Today’s moments</h3><span class="small muted" id="today-moments-date"></span></div>
               <ol class="recent capped" id="all-events"></ol>
               <div class="loading-lines" id="all-events-loading" aria-hidden="true"><i></i><i></i><i></i></div>
@@ -710,6 +718,40 @@
               <p class="small muted" id="ollama-line">Checking…</p>
               <ul class="model-list" id="ollama-models" aria-label="Models installed in Ollama"></ul>
             </section>
+            <form class="panel form" id="reasoning-form" aria-labelledby="reasoning-h">
+              <div class="panel-head"><h3 id="reasoning-h">Thinking &amp; tasks</h3><span class="pill" id="reasoning-pill">–</span></div>
+              <p class="hint">One model, two ways of working: it answers you at once, and thinks hard on background tasks. Saving restarts nothing.</p>
+              <fieldset class="fields" id="reasoning-fields" disabled>
+                <legend class="sr">Thinking and tasks</legend>
+                <fieldset class="field">
+                  <legend>When you talk with Marvin</legend>
+                  <div class="segmented">
+                    <label><input type="radio" name="r-chat" value="off"><span>Off</span></label>
+                    <label><input type="radio" name="r-chat" value="low"><span>Low</span></label>
+                    <label><input type="radio" name="r-chat" value="medium"><span>Medium</span></label>
+                    <label><input type="radio" name="r-chat" value="high"><span>High</span></label>
+                  </div>
+                  <p class="hint">Off: Marvin answers at once. Thinking is silence before the first word.</p>
+                </fieldset>
+                <fieldset class="field">
+                  <legend>On background tasks</legend>
+                  <div class="segmented">
+                    <label><input type="radio" name="r-task" value="off"><span>Off</span></label>
+                    <label><input type="radio" name="r-task" value="low"><span>Low</span></label>
+                    <label><input type="radio" name="r-task" value="medium"><span>Medium</span></label>
+                    <label><input type="radio" name="r-task" value="high"><span>High</span></label>
+                  </div>
+                  <p class="hint" id="r-task-hint">Tasks think hard: better plans and fewer mistakes, slower answers.</p>
+                </fieldset>
+                <div class="field">
+                  <label class="check"><input id="r-tasks" type="checkbox"><span>Let Marvin start background tasks</span></label>
+                </div>
+              </fieldset>
+              <ul class="model-list" id="reasoning-model" aria-label="The language model"></ul>
+              <div id="reasoning-notes"></div>
+              <p class="form-error" id="reasoning-error" role="alert" hidden></p>
+              <div class="actions"><span class="saved muted" id="reasoning-saved" role="status"></span><button type="submit" class="primary" disabled>Save</button></div>
+            </form>
             <form class="panel form" id="memory-models-form" aria-labelledby="mmodels-h">
               <h3 id="mmodels-h">Memory’s models</h3>
               <p class="hint">Memory reads what happened while you are away, and rewrites your profile at night. It always gives way to the voice. Saving does not restart anything.</p>

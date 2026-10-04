@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Activity: what is in motion (tasks and approvals: an honest empty state until they exist; memory's worker),
+// Activity: what is in motion (background tasks, tasks.js; approvals: today a request to forget; memory's worker),
 // today's moments, and History: any day's timeline and numbers with the day in Marvin's words, the last seven
 // days, the weeks in Marvin's words, the conversation of that day and a search over everything said.
 

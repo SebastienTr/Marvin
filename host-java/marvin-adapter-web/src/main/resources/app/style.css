@@ -589,9 +589,61 @@ dialog .field > label:not(.check) { margin: 0 0 7px; font-size: 13px; font-weigh
 
 .panel-title { font: 25px/1.2 var(--display); font-weight: 400; margin: 2px 0 10px; }
 .recent.capped > li:nth-child(n+13) { display: none; }
-.later-list { display: grid; gap: 10px; margin-top: 14px; }
-.later-list li { display: grid; gap: 2px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 14px; font-size: 13px; }
-.later-list span { color: var(--muted); font-size: 12px; }
+/* background tasks (tasks.js): the list, live progress, results in Markdown, the steps' inspector */
+.task-list { display: grid; gap: 0; margin-top: 6px; }
+.task { padding: 16px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.task:last-child { border: 0; }
+.task-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; }
+.task-head h3 { font-size: 17px; font-weight: 500; overflow-wrap: anywhere; }
+.task-pill { flex: none; }
+.task.running .task-pill::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--live); margin-right: 6px; vertical-align: 1px; }
+.task-meta { margin-top: 4px; }
+.task-doing { margin-top: 10px; font-size: 14px; }
+.task-track { margin: 10px 0 8px; }
+.task-track i { background: var(--accent); }
+.task-summary { margin-top: 10px; font: 17px/1.4 var(--display); overflow-wrap: anywhere; }
+.task-error { margin-top: 8px; color: var(--attention); }
+.task-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.task-result { margin-top: 14px; padding: 14px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; }
+.task-form { display: flex; gap: 10px; margin-top: 18px; }
+.task-form input { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; font-size: 16px; }
+.task-approvals { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.task-approvals > p { margin-top: 6px; }
+.md { font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.md > * + * { margin-top: 10px; }
+.md h4, .md h5, .md h6 { font-size: 15px; font-weight: 600; margin-top: 16px; }
+.md h4:first-child, .md h5:first-child { margin-top: 0; }
+.md ul, .md ol { padding-left: 20px; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li + li { margin-top: 4px; }
+.md li > ul, .md li > ol { margin-top: 4px; }
+.md code { background: var(--soft); border-radius: 6px; padding: 1px 5px; }
+.md pre { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { border-left: 2px solid var(--strong); padding-left: 12px; color: var(--muted); }
+.md hr { border: 0; border-top: 1px solid var(--line); }
+.md a { color: var(--accent); }
+.md-table { overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: 13px; min-width: 60%; }
+.md th, .md td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+.md th { font-weight: 600; }
+.tsteps { display: grid; gap: 0; }
+.tstep { padding: 10px 0; border-top: 1px dashed var(--line); font-size: 13px; min-width: 0; }
+.tstep:first-child { border-top: 0; }
+.tstep-head { display: flex; gap: 10px; align-items: baseline; }
+.tstep-n { font: 12px var(--mono); color: var(--muted); min-width: 18px; }
+.tstep-kind { font-weight: 550; }
+.tstep-at { margin-left: auto; }
+.tstep-thinking { margin-top: 6px; }
+.tstep-thinking summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--muted); }
+.tstep-thinking pre, .tstep-res { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; max-height: 280px; overflow: auto; font-size: 12px; margin: 6px 0 0; }
+.tstep-text { margin: 6px 0 0 !important; color: var(--ink) !important; font-size: 13px !important; white-space: pre-wrap; }
+.tstep-call { display: block; margin-top: 6px; overflow-wrap: anywhere; color: var(--ink); }
+.tstep-res.bad { color: var(--attention) !important; background: transparent; border: 0; padding: 0; }
+.tstep.note .tstep-note { margin: 4px 0 0 !important; font-size: 13px !important; }
+.tinsp-head { margin-top: 10px; }
+.insp-facts li.bad { color: var(--attention); }
 .day-summary { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .day-summary p { margin-top: 6px; font-size: 14px; overflow-wrap: anywhere; }
 .day-summary p:not(.muted) { font: 17px/1.4 var(--display); }

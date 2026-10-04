@@ -12,6 +12,7 @@ import * as memory from "./memory.js";
 import * as activity from "./activity.js";
 import * as marvin from "./marvin.js";
 import * as system from "./system.js";
+import * as tasks from "./tasks.js";
 
 const VIEWS = ["home", "talk", "memory", "activity", "marvin"];
 const SUBS = { activity: ["", "history"], marvin: ["", "robot", "voice", "system", "preferences"] };
@@ -153,7 +154,8 @@ function connect() {
     devicesOnline = json(m).some((d) => d.online);
     if (app.state) setConnection(app.state.online ? "live" : "offline");
   });
-  for (const name of ["today", "event", "settings", "voice", "level", "utterance", "partial", "say", "log", "devices", "memory", "camera"]) {
+  for (const name of ["today", "event", "settings", "voice", "level", "utterance", "partial", "say", "log", "devices", "memory", "camera",
+    "task", "task_step"]) {
     es.addEventListener(name, (m) => emit(name, json(m)));
   }
   es.addEventListener("transcript", (m) => emit("transcript", { entry: json(m), fresh: true }));
@@ -206,6 +208,7 @@ async function init() {
   activity.setup();
   marvin.setup();
   system.setup();
+  tasks.setup();
   try {
     const r = await api("/api/state");
     app.settings = r.settings;
@@ -218,7 +221,7 @@ async function init() {
     toast("Cannot reach Marvin’s host.");
   }
   setupNav();
-  await Promise.all([home.load(), talk.load(), memory.load(), activity.load()].map((p) => p.catch(() => {})));
+  await Promise.all([home.load(), talk.load(), memory.load(), activity.load(), tasks.load()].map((p) => p.catch(() => {})));
   connect();
   let resizeTimer;
   window.addEventListener("resize", () => {
