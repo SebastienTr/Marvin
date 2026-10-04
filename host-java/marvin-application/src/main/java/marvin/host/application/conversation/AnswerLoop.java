@@ -29,6 +29,12 @@ import marvin.host.domain.conversation.tool.ToolResult;
  * calls and their results are added to the conversation, and the model is asked again. At most
  * {@code maxToolRounds} rounds, then it must answer.
  *
+ * <p>A tool whose result says what to say ({@link ToolResult#FINAL_SAY}, a task just started) ends the turn with that
+ * sentence: the model is not asked again.
+ *
+ * <p>A turn may think first ({@link LanguageModel.Thinking}, the owner's reasoning setting for the conversation): the
+ * thinking comes apart from the answer, is never spoken, and is kept in the outcome for the reply inspector.
+ *
  * <p>A response that starts like a tool call written as text is held back until it is complete; so is one
  * that answers a tool result (models may think aloud there). Reasoning written into the answer and closed by
  * {@code </think>} is dropped while it streams: a possible start of the tag is held back; at the tag, if
@@ -55,13 +61,20 @@ public final class AnswerLoop {
      * @param hint     how to fix a failure
      * @param latency  llm_first_token, first_chunk, tools, llm_first_token_2 (seconds)
      * @param usage    what the model server reported for each request, in order (may be empty)
+     * @param thinking what the model thought before answering (empty when it did not think)
      */
     public record Outcome(List<String> answer, List<ChatMessage> exchange, List<Map<String, Object>> calls,
-                          String failure, String hint, Map<String, Double> latency, List<LanguageModel.Usage> usage) {
+                          String failure, String hint, Map<String, Double> latency, List<LanguageModel.Usage> usage,
+                          String thinking) {
 
         public Outcome(List<String> answer, List<ChatMessage> exchange, List<Map<String, Object>> calls,
                        String failure, String hint, Map<String, Double> latency) {
-            this(answer, exchange, calls, failure, hint, latency, List.of());
+            this(answer, exchange, calls, failure, hint, latency, List.of(), "");
+        }
+
+        public Outcome(List<String> answer, List<ChatMessage> exchange, List<Map<String, Object>> calls,
+                       String failure, String hint, Map<String, Double> latency, List<LanguageModel.Usage> usage) {
+            this(answer, exchange, calls, failure, hint, latency, usage, "");
         }
 
         /** What was said of the answer, cleaned for speech. */
@@ -97,6 +110,16 @@ public final class AnswerLoop {
                           boolean offerTools, String language, int maxToolRounds, double timeoutS,
                           BooleanSupplier cancelled, Speaker speaker, Runnable toolsUnsupported,
                           Map<String, Object> toolContext) {
+        return answer(host, modelName, messages, tools, offerTools, language, maxToolRounds, timeoutS, cancelled, speaker,
+                toolsUnsupported, toolContext, LanguageModel.Thinking.OFF);
+    }
+
+    /** The same, the model thinking first as {@code thinking} says. */
+    public Outcome answer(String host, String modelName, List<ChatMessage> messages, ToolRegistry tools,
+                          boolean offerTools, String language, int maxToolRounds, double timeoutS,
+                          BooleanSupplier cancelled, Speaker speaker, Runnable toolsUnsupported,
+                          Map<String, Object> toolContext, LanguageModel.Thinking thinking) {
+        StringBuilder thought = new StringBuilder();
         Map<String, Object> ctx = new LinkedHashMap<>(toolContext);
         ctx.put("language", language);
         List<LanguageModel.Usage> usage = new ArrayList<>();
@@ -112,17 +135,17 @@ public final class AnswerLoop {
         int rounds = 0;
         try {
             while (true) {
-                Round r = new Round(t, rounds, lat, answer, speaker, cancelled, usage);
+                Round r = new Round(t, rounds, lat, answer, speaker, cancelled, usage, thought);
                 List<ChatMessage> request = new ArrayList<>(messages);
                 request.addAll(exchange);
                 try {
-                    model.streamChat(host, modelName, request, schemas, timeoutS, r);
+                    stream(host, modelName, request, schemas, timeoutS, thinking, r);
                 } catch (LanguageModel.ToolsUnsupported e) {
                     log.warning(e.getMessage() + ": answering without tools");
                     schemas = null;
                     toolsUnsupported.run();
-                    r = new Round(t, rounds, lat, answer, speaker, cancelled, usage);
-                    model.streamChat(host, modelName, request, null, timeoutS, r);
+                    r = new Round(t, rounds, lat, answer, speaker, cancelled, usage, thought);
+                    stream(host, modelName, request, null, timeoutS, thinking, r);
                 }
                 if (cancelled.getAsBoolean()) {
                     break;
@@ -154,16 +177,26 @@ public final class AnswerLoop {
                     for (ToolCall c : toolCalls) {
                         results.add(tools.call(c.name(), c.arguments(), ctx));
                         if (cancelled.getAsBoolean()) {
-                            return new Outcome(answer, exchange, calls, null, "", lat, usage);
+                            return new Outcome(answer, exchange, calls, null, "", lat, usage, thought.toString());
                         }
                     }
                     lat.merge("tools", clock.getAsDouble() - tTools, Double::sum);
                     exchange.add(ChatMessage.assistant(Boolean.TRUE.equals(held) ? "" : content, toolCalls));
+                    String finalSay = null;
                     for (int i = 0; i < toolCalls.size(); i++) {
                         exchange.add(ChatMessage.tool(toolCalls.get(i).name(), results.get(i).content()));
                         calls.add(results.get(i).record());
+                        finalSay = finalSay != null ? finalSay : results.get(i).finalSay();
                     }
                     rounds++;
+                    if (finalSay != null) {
+                        // the tool said what to say (a task just started): the turn ends with it
+                        for (String s : SentenceSplitter.split(finalSay)) {
+                            r.say(s);
+                        }
+                        exchange.add(ChatMessage.assistant(finalSay));
+                        break;
+                    }
                     continue;
                 }
                 if (!toolCalls.isEmpty()) {
@@ -196,7 +229,16 @@ public final class AnswerLoop {
             log.log(Level.SEVERE, "the language model failed", e);
             failure = "error";
         }
-        return new Outcome(answer, exchange, calls, failure, hint, lat, usage);
+        return new Outcome(answer, exchange, calls, failure, hint, lat, usage, thought.toString());
+    }
+
+    private void stream(String host, String modelName, List<ChatMessage> request, List<Map<String, Object>> schemas,
+                        double timeoutS, LanguageModel.Thinking thinking, Round r) {
+        if (thinking == LanguageModel.Thinking.OFF) {
+            model.streamChat(host, modelName, request, schemas, timeoutS, r);      // as it always was
+        } else {
+            model.streamChat(host, modelName, request, schemas, timeoutS, thinking, r);
+        }
     }
 
     /** One request to the model and what came back. */
@@ -218,10 +260,12 @@ public final class AnswerLoop {
         boolean cut;
         final int saidBefore;
         final List<LanguageModel.Usage> usage;
+        final StringBuilder thought;
 
         Round(double t, int rounds, Map<String, Double> lat, List<String> answer, Speaker speaker,
-              BooleanSupplier cancelled, List<LanguageModel.Usage> usage) {
+              BooleanSupplier cancelled, List<LanguageModel.Usage> usage, StringBuilder thought) {
             this.usage = usage;
+            this.thought = thought;
             this.t = t;
             this.rounds = rounds;
             this.lat = lat;
@@ -298,6 +342,11 @@ public final class AnswerLoop {
                 say(s);
             }
             fed = stop;
+        }
+
+        @Override
+        public void thinking(String piece) {
+            thought.append(piece);
         }
 
         @Override

@@ -3,10 +3,13 @@ package marvin.host.application.conversation.tools;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import marvin.host.application.conversation.port.out.MemoryContext;
 import marvin.host.domain.conversation.tool.MemoryToolSpecs;
+import marvin.host.domain.conversation.tool.ToolAccess;
 import marvin.host.domain.conversation.tool.ToolError;
+import marvin.host.domain.conversation.tool.ToolSurface;
 
 /**
  * The memory tools (docs/design.md 5.3): {@code remember}, {@code recall} and {@code forget}, offered with the other
@@ -26,11 +29,14 @@ public final class MemoryTools {
     /** The three tools over a memory port. */
     public static List<ToolRegistry.Tool> tools(MemoryContext memory) {
         return List.of(
-                new ToolRegistry.Tool(MemoryToolSpecs.remember(), (args, ctx) -> value(memory.remember(str(args, "statement"), audience(ctx)))),
+                new ToolRegistry.Tool(MemoryToolSpecs.remember(), (args, ctx) -> value(memory.remember(str(args, "statement"),
+                        audience(ctx))), ToolAccess.LOCAL_WRITE, ToolSurface.ALL),
                 new ToolRegistry.Tool(MemoryToolSpecs.recall(), (args, ctx) ->
                         value(memory.recall(str(args, "query"), str(args, "period"), audience(ctx)))),
+                // forgetting waits for the person's yes, in the conversation: never from a background task
                 new ToolRegistry.Tool(MemoryToolSpecs.forget(), (args, ctx) ->
-                        value(memory.forget(str(args, "query"), str(args, "confirm"), turn(ctx), said(ctx), audience(ctx)))));
+                        value(memory.forget(str(args, "query"), str(args, "confirm"), turn(ctx), said(ctx), audience(ctx))),
+                        ToolAccess.LOCAL_WRITE, Set.of(ToolSurface.CONVERSATION)));
     }
 
     private static Object value(MemoryContext.ToolAnswer a) {

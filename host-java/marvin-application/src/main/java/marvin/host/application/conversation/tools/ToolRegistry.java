@@ -4,6 +4,7 @@ package marvin.host.application.conversation.tools;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -15,10 +16,13 @@ import java.util.function.DoubleSupplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import marvin.host.application.conversation.port.out.ToolSource;
+import marvin.host.domain.conversation.tool.ToolAccess;
 import marvin.host.domain.conversation.tool.ToolArguments;
 import marvin.host.domain.conversation.tool.ToolError;
 import marvin.host.domain.conversation.tool.ToolResult;
 import marvin.host.domain.conversation.tool.ToolSpec;
+import marvin.host.domain.conversation.tool.ToolSurface;
 import marvin.host.domain.shared.JsonText;
 
 /**
@@ -29,12 +33,51 @@ import marvin.host.domain.shared.JsonText;
  * is not offered does not exist for the model: it is not in the request, and a call to it is answered as an
  * unknown tool. Running a call never throws: unknown tools, bad arguments, exceptions and timeouts all become
  * an error result the model can talk about.
+ *
+ * <p>Each tool says what it does to the world ({@link ToolAccess}) and where it is offered ({@link ToolSurface}): the
+ * conversation's registry has the conversation's tools, {@link #forTasks(List)} a background task's (no tool that writes
+ * outside this computer: that needs an approval, which does not exist yet). Tools from outside the conversation (a
+ * connector) come through {@link ToolSource}s ({@link #fromSources}).
  */
 public final class ToolRegistry {
     private static final Logger log = Logger.getLogger("marvin.voice.tools");
 
-    /** A tool: what the model is told, and what runs. */
-    public record Tool(ToolSpec spec, ToolFunction fn) {
+    /** A tool: what the model is told, what runs, what it does to the world and where it is offered. */
+    public record Tool(ToolSpec spec, ToolFunction fn, ToolAccess access, Set<ToolSurface> surfaces) {
+        public Tool {
+            access = access == null ? ToolAccess.READ : access;
+            surfaces = surfaces == null || surfaces.isEmpty() ? ToolSurface.ALL : Set.copyOf(surfaces);
+        }
+
+        /** A tool that only reads, offered everywhere. */
+        public Tool(ToolSpec spec, ToolFunction fn) {
+            this(spec, fn, ToolAccess.READ, ToolSurface.ALL);
+        }
+
+        public Tool with(ToolAccess a, Set<ToolSurface> s) {
+            return new Tool(spec, fn, a, s);
+        }
+
+        public boolean offeredIn(ToolSurface s) {
+            return surfaces.contains(s);
+        }
+    }
+
+    /** The tools of {@code sources} offered in {@code surface}, as registry tools. A failing source offers none. */
+    public static List<Tool> fromSources(List<ToolSource> sources, ToolSurface surface) {
+        List<Tool> out = new ArrayList<>();
+        for (ToolSource src : sources) {
+            try {
+                for (ToolSource.SourcedTool t : src.tools()) {
+                    if (t.surfaces().contains(surface)) {
+                        out.add(new Tool(t.spec(), t.handler()::call, t.access(), t.surfaces()));
+                    }
+                }
+            } catch (RuntimeException e) {
+                log.log(Level.WARNING, "a tool source failed: its tools are not offered", e);
+            }
+        }
+        return out;
     }
 
     private final Map<String, Tool> tools = new TreeMap<>();
@@ -42,12 +85,22 @@ public final class ToolRegistry {
     private final boolean internet;
     private final DoubleSupplier clock;
     private final List<Map<String, Object>> schemas;
+    private final List<Tool> all;
+    private final ToolSurface surface;
     private static final ExecutorService RUNNER = Executors.newVirtualThreadPerTaskExecutor();
 
     public ToolRegistry(List<Tool> tools, boolean enabled, boolean internet, DoubleSupplier monotonicSeconds) {
+        this(tools, enabled, internet, monotonicSeconds, ToolSurface.CONVERSATION);
+    }
+
+    /** The same, offering the tools of {@code surface} only (the others are kept for {@link #forTasks(List)}). */
+    public ToolRegistry(List<Tool> tools, boolean enabled, boolean internet, DoubleSupplier monotonicSeconds,
+                        ToolSurface surface) {
+        this.surface = surface;
         for (Tool t : tools) {
             this.tools.put(t.spec().name(), t);
         }
+        this.all = List.copyOf(this.tools.values());
         this.enabled = enabled;
         this.internet = internet;
         this.clock = monotonicSeconds;
@@ -63,8 +116,33 @@ public final class ToolRegistry {
         return List.copyOf(tools.values());
     }
 
+    /**
+     * A background task's registry: the tools offered in tasks that do not write outside this computer, with the same
+     * switches, and {@code extra} (the task's own, such as its final answer).
+     */
+    public ToolRegistry forTasks(List<Tool> extra) {
+        List<Tool> kept = new ArrayList<>();
+        for (Tool t : all) {
+            if (t.offeredIn(ToolSurface.TASK) && t.access() != ToolAccess.EXTERNAL_WRITE) {
+                kept.add(t);
+            }
+        }
+        kept.addAll(extra);
+        return new ToolRegistry(kept, enabled, internet, clock, ToolSurface.TASK);
+    }
+
+    /** Whether the tools are switched on at all (the {@code tools} setting). */
+    public boolean enabled() {
+        return enabled;
+    }
+
+    /** Whether online tools are offered (the {@code internet} setting). */
+    public boolean internet() {
+        return internet;
+    }
+
     public boolean isOffered(Tool t) {
-        return enabled && (internet || !t.spec().online());
+        return enabled && (internet || !t.spec().online()) && t.offeredIn(surface);
     }
 
     /** The tools the model is given, by name (a fixed order: the request never changes). */

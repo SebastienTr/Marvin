@@ -15,6 +15,24 @@ public record ToolResult(String name, Map<String, Object> arguments, boolean ok,
                          String error) {
     /** Characters of a result, as recorded for the app. */
     public static final int SUMMARY_CHARS = 280;
+    /**
+     * A key of a tool's JSON result: the sentence Marvin says for this turn, without asking the model again (a task just
+     * started: "I'll take care of it"). The turn ends there.
+     */
+    public static final String FINAL_SAY = "final_say";
+
+    /** The sentence this result ends the turn with ({@link #FINAL_SAY}), or {@code null}. */
+    public String finalSay() {
+        if (!ok || !content.contains(FINAL_SAY)) {
+            return null;
+        }
+        try {
+            return JsonText.parse(content) instanceof Map<?, ?> m && m.get(FINAL_SAY) instanceof String s && !s.isBlank()
+                    ? s : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
 
     public static ToolResult success(String name, Map<String, Object> arguments, String content, double seconds) {
         return new ToolResult(name, arguments, true, content, seconds, "");
