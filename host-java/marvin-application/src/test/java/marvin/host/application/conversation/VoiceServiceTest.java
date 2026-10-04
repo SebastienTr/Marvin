@@ -700,9 +700,41 @@ class VoiceServiceTest {
         assertThat(new ArrayList<>(say.keySet())).containsExactly("text", "seconds", "envelope", "t");
         @SuppressWarnings("unchecked")
         Map<String, Object> level = (Map<String, Object>) live.get(0).get("payload");
-        assertThat(new ArrayList<>(level.keySet())).containsExactly("mic", "speech", "gated", "t");
+        assertThat(new ArrayList<>(level.keySet())).containsExactly("mic", "speech", "gated", "dbfs", "t");
+        assertThat(level.get("dbfs")).isNull();                  // a sidecar that does not say it
         sidecar.signals.signal(new VoiceSidecar.Ignored("Thanks for watching!", "known hallucination", -41.5));
         assertThat(kinds("ignored").get(0)).containsEntry("reason", "known hallucination").containsEntry("dbfs", -41.5);
+    }
+
+    @Test
+    void theEarsDiagnosticsArePassedOnAndTheLastFewKeptInMemory() throws InterruptedException {
+        started(FakeModel.of("w", "w"));
+        VoiceService v = services.get(0);
+        List<String> kinds = new CopyOnWriteArrayList<>();
+        v.addListener((kind, payload) -> kinds.add(kind));
+        sidecar.signals.signal(new VoiceSidecar.Status("idle", false, "", "", "parakeet tdt-0.6b-v3", "qwen marvin", null));
+        sidecar.signals.signal(new VoiceSidecar.Level(0.6, true, false, -23.4));
+        sidecar.signals.signal(new VoiceSidecar.Hearing("turn", 4, 1.8e9, "silero", "smart-turn", false, 0.12, 0.031, 0, null,
+                "", null, false, "", "", null, false, "", null, "", ""));
+        for (int i = 0; i < VoiceService.HEARINGS + 3; i++) {
+            sidecar.signals.signal(new VoiceSidecar.Hearing("utterance", 4 + i, 1.8e9, "silero", "smart-turn", null, null, null,
+                    1.4, -31.5, "parakeet", 0.08, true, "Marvin, bonjour " + i, "fr", 0.97, true, "Seb", 0.71, "heard", ""));
+        }
+        assertThat(kinds).contains("hearing", "level");
+        Map<String, Object> h = v.hearing();
+        assertThat(h).containsEntry("stt", "parakeet tdt-0.6b-v3").containsEntry("tts", "qwen marvin");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> level = (Map<String, Object>) h.get("level");
+        assertThat(level).containsEntry("dbfs", -23.4).containsEntry("speech", true);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> recent = (List<Map<String, Object>>) h.get("recent");
+        assertThat(recent).hasSize(VoiceService.HEARINGS);                         // the turn decision fell out first
+        assertThat(recent.getLast()).containsEntry("text", "Marvin, bonjour " + (VoiceService.HEARINGS + 2))
+                .containsEntry("outcome", "heard").containsEntry("speaker", "Seb").containsEntry("speaker_score", 0.71)
+                .containsEntry("stt", "parakeet").doesNotContainKey("complete");
+        Map<String, Object> turn = new VoiceSidecar.Hearing("turn", 4, 1.8e9, "silero", "smart-turn", false, 0.12, 0.031, 0,
+                null, "", null, false, "", "", null, false, "", null, "", "").toMap();
+        assertThat(turn).containsEntry("complete", false).containsEntry("probability", 0.12).doesNotContainKey("text");
     }
 
     // ------------------------------------------------------------------ commands and settings

@@ -38,6 +38,32 @@ class GrpcVoiceSidecarTest {
     }
 
     @Test
+    void theEarsDiagnosticsAndTheLevelInDbfsComeBack() {
+        var turn = (VoiceSidecar.Hearing) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setHearing(
+                marvin.host.contracts.voice.v1.Hearing.newBuilder().setKind("turn").setUid(7).setVad("silero")
+                        .setTurn("smart-turn").setComplete(false).setProbability(0.12).setTurnS(0.031)).build());
+        assertThat(turn.complete()).isFalse();
+        assertThat(turn.probability()).isEqualTo(0.12);
+        assertThat(turn.dbfs()).isNull();
+        assertThat(turn.speakerScore()).isNull();
+        var u = (VoiceSidecar.Hearing) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setHearing(
+                marvin.host.contracts.voice.v1.Hearing.newBuilder().setKind("utterance").setUid(7).setDurationS(1.4)
+                        .setDbfs(-31.5).setStt("parakeet").setSttS(0.08).setSpeculative(true).setText("Marvin, bonjour.")
+                        .setLanguage("fr").setLanguageProb(0.97).setWake(true).setSpeaker("Seb").setSpeakerScore(0.71)
+                        .setOutcome("heard")).build());
+        assertThat(u.complete()).isNull();
+        assertThat(u).extracting(VoiceSidecar.Hearing::text, VoiceSidecar.Hearing::outcome, VoiceSidecar.Hearing::wake,
+                VoiceSidecar.Hearing::dbfs, VoiceSidecar.Hearing::speakerScore)
+                .containsExactly("Marvin, bonjour.", "heard", true, -31.5, 0.71);
+        var old = (VoiceSidecar.Level) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setLevel(
+                marvin.host.contracts.voice.v1.Level.newBuilder().setMic(0.4)).build());
+        assertThat(old.dbfs()).isNull();                                      // an older sidecar
+        var level = (VoiceSidecar.Level) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setLevel(
+                marvin.host.contracts.voice.v1.Level.newBuilder().setMic(0.4).setSpeech(true).setDbfs(-23.4)).build());
+        assertThat(level.dbfs()).isEqualTo(-23.4);
+    }
+
+    @Test
     void theWindowWaitsWhileSomeoneTalks() {
         var s = (VoiceSidecar.Status) GrpcVoiceSidecar.signal(VoiceToCore.newBuilder().setStatus(Status.newBuilder()
                 .setState(Status.State.LISTENING).setHearing(true)).build());

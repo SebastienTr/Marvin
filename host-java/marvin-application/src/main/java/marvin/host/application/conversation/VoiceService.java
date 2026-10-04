@@ -128,7 +128,9 @@ public final class VoiceService implements VoiceControl {
     public static final String STOPPING = "stopping";
     public static final String ERROR = "error";
     /** Live signals passed straight to the app. */
-    public static final Set<String> LIVE_KINDS = Set.of("level", "utterance", "partial", "say");
+    public static final Set<String> LIVE_KINDS = Set.of("level", "utterance", "partial", "say", "hearing");
+    /** The ears' diagnostics kept for the app's Senses screen (in memory only). */
+    static final int HEARINGS = 20;
     private static final Set<String> RUNNING = Set.of("idle", "listening", "thinking", "speaking");
     /** How long the model may take for its first word, and between words. */
     static final double MODEL_TIMEOUT_S = 60.0;
@@ -176,6 +178,8 @@ public final class VoiceService implements VoiceControl {
 
     private final Object lock = new Object();
     private final Deque<ConversationEntry> transcript = new ArrayDeque<>();
+    private final Deque<Map<String, Object>> hearings = new ArrayDeque<>();
+    private volatile Map<String, Object> lastLevel;
     private final AtomicLong ids;
     private final AtomicLong replyIds = new AtomicLong(1);
     private final Map<Long, Turn> turns = new ConcurrentHashMap<>();
@@ -1182,7 +1186,9 @@ public final class VoiceService implements VoiceControl {
                 }
                 entry("ignored", clocks.wallSeconds(), i.text(), d);
             }
-            case VoiceSidecar.Level l -> live("level", "mic", l.mic(), "speech", l.speech(), "gated", l.gated());
+            case VoiceSidecar.Level l -> lastLevel = live("level", "mic", l.mic(), "speech", l.speech(), "gated", l.gated(),
+                    "dbfs", l.dbfs());
+            case VoiceSidecar.Hearing h -> onHearing(h);
             case VoiceSidecar.Utterance u -> live("utterance", "state", u.state(), "uid", u.uid());
             case VoiceSidecar.Partial p -> {
                 prefetch(p.uid(), p.text());
@@ -1195,13 +1201,41 @@ public final class VoiceService implements VoiceControl {
         }
     }
 
-    private void live(String kind, Object... kv) {
+    private Map<String, Object> live(String kind, Object... kv) {
         Map<String, Object> m = new LinkedHashMap<>();
         for (int i = 0; i < kv.length; i += 2) {
             m.put((String) kv[i], kv[i + 1]);
         }
         m.put("t", clocks.wallSeconds());
         publish(kind, m);
+        return m;
+    }
+
+    /** The ears' diagnostics: the last {@link #HEARINGS} kept in memory for the app, each passed on as it comes. */
+    private void onHearing(VoiceSidecar.Hearing h) {
+        Map<String, Object> m = h.toMap();
+        synchronized (hearings) {
+            hearings.addLast(m);
+            while (hearings.size() > HEARINGS) {
+                hearings.removeFirst();
+            }
+        }
+        publish("hearing", m);
+    }
+
+    @Override
+    public Map<String, Object> hearing() {
+        VoiceSidecar.Status st = status;
+        boolean running = ON.equals(state) && st != null && RUNNING.contains(st.state());
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("stt", running ? st.stt() : "");
+        m.put("tts", running ? st.tts() : "");
+        m.put("device", running ? st.device() : "");
+        m.put("level", running ? lastLevel : null);
+        synchronized (hearings) {
+            m.put("recent", List.copyOf(hearings));
+        }
+        return m;
     }
 
     private void onStatus(VoiceSidecar.Status s) {

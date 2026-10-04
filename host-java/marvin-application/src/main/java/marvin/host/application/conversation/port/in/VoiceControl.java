@@ -25,6 +25,15 @@ public interface VoiceControl {
     /** The voice's state now. */
     VoiceSnapshot snapshot();
 
+    /**
+     * What the ears are doing, for the app's Senses screen: the engines the running voice uses ({@code stt}, {@code tts},
+     * {@code device}; empty when it does not run), its last microphone {@code level}, and the ears' last diagnostics
+     * ({@code recent}, oldest first: end-of-turn decisions and what became of each utterance), kept in memory only.
+     */
+    default Map<String, Object> hearing() {
+        return Map.of("stt", "", "tts", "", "device", "", "recent", List.of());
+    }
+
     /** The settings the app edits, with the defaults filled in. */
     Map<String, Object> appSettings();
 

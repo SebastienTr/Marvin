@@ -578,7 +578,17 @@ public final class GrpcVoiceSidecar implements VoiceSidecar, VoiceRobotAudio, Au
                 var i = m.getIgnored();
                 yield new Ignored(i.getText(), i.getReason(), i.hasDbfs() ? i.getDbfs() : null);
             }
-            case LEVEL -> new Level(m.getLevel().getMic(), m.getLevel().getSpeech(), m.getLevel().getGated());
+            case LEVEL -> new Level(m.getLevel().getMic(), m.getLevel().getSpeech(), m.getLevel().getGated(),
+                    m.getLevel().hasDbfs() ? m.getLevel().getDbfs() : null);
+            case HEARING -> {
+                var h = m.getHearing();
+                yield new Hearing(h.getKind(), h.getUid(), h.getWallTime(), h.getVad(), h.getTurn(),
+                        h.hasComplete() ? h.getComplete() : null, h.hasProbability() ? h.getProbability() : null,
+                        h.hasTurnS() ? h.getTurnS() : null, h.getDurationS(), h.hasDbfs() ? h.getDbfs() : null,
+                        h.getStt(), h.hasSttS() ? h.getSttS() : null, h.getSpeculative(), h.getText(), h.getLanguage(),
+                        h.hasLanguageProb() ? h.getLanguageProb() : null, h.getWake(), h.getSpeaker(),
+                        h.hasSpeakerScore() ? h.getSpeakerScore() : null, h.getOutcome(), h.getReason());
+            }
             case PARTIAL -> new Partial(m.getPartial().getUid(), m.getPartial().getText());
             case UTTERANCE -> new Utterance(m.getUtterance().getState().name().toLowerCase(java.util.Locale.ROOT),
                     m.getUtterance().getUid());

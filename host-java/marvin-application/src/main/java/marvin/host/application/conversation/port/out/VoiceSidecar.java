@@ -199,8 +199,55 @@ public interface VoiceSidecar {
     record Ignored(String text, String reason, Double dbfs) implements Signal {
     }
 
-    /** Microphone loudness (0..1). */
-    record Level(double mic, boolean speech, boolean gated) implements Signal {
+    /**
+     * Microphone loudness (0..1), and in dBFS ({@code null} from a sidecar that does not say it; -100: muted).
+     */
+    record Level(double mic, boolean speech, boolean gated, Double dbfs) implements Signal {
+        public Level(double mic, boolean speech, boolean gated) {
+            this(mic, speech, gated, null);
+        }
+    }
+
+    /**
+     * The ears' diagnostics (the app's Senses screen): an end-of-turn decision ({@code turn}), or what became of an
+     * utterance ({@code utterance}). Values the sidecar did not send are {@code null}; strings are never null.
+     *
+     * @param outcome heard, listening (the name alone), ignored, dropped (not judged)
+     */
+    record Hearing(String kind, long uid, double wallTime, String vad, String turn, Boolean complete, Double probability,
+                   Double turnS, double durationS, Double dbfs, String stt, Double sttS, boolean speculative, String text,
+                   String language, Double languageProb, boolean wake, String speaker, Double speakerScore,
+                   String outcome, String reason) implements Signal {
+
+        /** As the app reads it (snake_case keys; what was not sent is left out). */
+        public Map<String, Object> toMap() {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("kind", kind);
+            m.put("uid", uid);
+            m.put("t", wallTime);
+            m.put("vad", vad);
+            m.put("turn", turn);
+            if ("turn".equals(kind)) {
+                m.put("complete", complete);
+                m.put("probability", probability);
+                m.put("turn_s", turnS);
+                return m;
+            }
+            m.put("duration_s", durationS);
+            m.put("dbfs", dbfs);
+            m.put("stt", stt);
+            m.put("stt_s", sttS);
+            m.put("speculative", speculative);
+            m.put("text", text);
+            m.put("language", language);
+            m.put("language_prob", languageProb);
+            m.put("wake", wake);
+            m.put("speaker", speaker);
+            m.put("speaker_score", speakerScore);
+            m.put("outcome", outcome);
+            m.put("reason", reason);
+            return m;
+        }
     }
 
     /** The words understood so far of the utterance {@code uid}. */
