@@ -55,7 +55,7 @@ The simulated person comes in, sits down, stands up and leaves in a loop of abou
 
 | # | Do | Expected |
 |---|---|---|
-| 4.1 | On the phone, open the address `./marvin up` printed (`http://<Mac address>:8765/?token=...`) | The same app, with the five destinations in a bar at the bottom. It keeps working after reloading the page without `?token=` (the key is kept in a cookie). |
+| 4.1 | On the phone, open the address `./marvin up` printed (`http://<Mac address>:8765/?token=...`) | The same app, with the six destinations in a bar at the bottom. It keeps working after reloading the page without `?token=` (the key is kept in a cookie). |
 | 4.2 | On the phone, the same address without `?token=` in a private tab | Refused (the access key is needed from other devices). |
 | 4.3 | **Home** | Marvin's eyes, your decision ("Nothing needs you."), your day, a small thing remembered, breaks and breathing, recent moments. **Customize** hides and reorders them. |
 | 4.4 | **Marvin > Robot** and **Marvin > System** | Devices, lidar, radar, vital signs; System lists each service with its state and the host log (new lines appear by themselves, filters work). |

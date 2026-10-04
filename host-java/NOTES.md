@@ -2550,3 +2550,83 @@ conversation stays usable (docs/intelligence.md, "Thinking and background tasks"
   for them. No cloud model.
 - `ApiContractIT` was not run (Docker): the new API specification files are hand-written to what the demo answers.
 - A task's result does not reach memory's log; a task does not resume after a restart (interrupted, its steps kept).
+
+## Senses, and the lidar you could not see (2026-10-04)
+
+The owner, live on his Mac with an STL-27L on a USB adapter: "everything is running, but I see nothing in the UI for the
+lidar", and asked for "a somewhat technical tab with everything Marvin sees, hears, feels". docs/ui.md, "Senses".
+
+### The lidar: what was wrong
+
+- The data path was sound: the bridge (21.6k points/s), the host (1800 packets/s, no CRC error), `GET /api/robot` and
+  `/api/robot/stream` all carried the scan. Reproduced here with `e2e/lidar_pty.py` (a pty playing an STL-27L on a
+  cluttered desk, 10 cm to 1 m) through the real bridge and host: the stream opened on a direct `#marvin/robot`, after
+  a click, across a host restart, in Chromium and WebKit, Day and Night, 390 and 1440 wide; no exception.
+- What failed was the drawing. The scale never went below 2 m and was set by the 95th percentile of *every* return, so
+  the few far returns a lidar on a desk gets through a gap (a room behind) pushed it to 3 to 5 m; rings were whole
+  metres; the dots were 2.4 px squares of `--seated` (a pale olive or lavender); and the robot's 18 px marker was drawn
+  last, over the nearest returns. A scan within 10 to 100 cm became a few dozen faint pixels around (and under) the
+  marker: "only the rings". The previous verification used a room-sized scan, where it looked fine.
+- Fixed in the shared view (`sensorviews.js`, used by Robot and Senses): the range is the smallest of 0.5, 1, 2, 4, 8 m
+  that holds the 85th percentile (with 15 % margin), or one chosen by hand; rings at 10 / 25 / 50 cm or 1 / 2 m;
+  dots sized to the canvas in `--live`, drawn after the marker; far returns as ticks on the edge; the nearest return
+  circled and measured. The radar's field of view is shaded only when a radar sends targets. Also: a Robot (or Senses)
+  stream that the browser closes for good (a non-200 answer, as during a restart) is opened again after 3 s; before,
+  the panel stayed frozen until one left and came back.
+
+### What exists
+
+- Contract (additions to version 2): `Hearing` (`kind` turn or utterance; Smart Turn's decision, probability and time;
+  the utterance's length, loudness, engine and recognition time, speculative or not, raw transcript, language and
+  probability, the name, whose voice, outcome and reason) and `Level.dbfs`. Python: the engine notes what it learns
+  while it judges an utterance (`_note`, first outcome wins) and emits `hearing` when it is judged (`_on_segment`) and
+  at each end-of-turn decision; the VADs have names; `_emit`'s kind is positional-only (a `kind` key in the payload).
+- Java: `VoiceSidecar.Hearing`, `Level.dbfs`; `VoiceService` keeps the last 20 diagnostics and the last level in
+  memory (`VoiceControl.hearing()`, with the engines in use) and passes them on; `EventHub` clients choose their kinds
+  (`hearing` never reaches `/api/stream`). Web: `Senses` (pure views: the sensors live, presence's source and its
+  evidence, what the ears report, the last answer, the last look) and `SensesController` (`GET /api/senses`,
+  `/api/senses/stream`: scene 5/s, devices and summary 1/s, levels at most 20/s, `hearing`, `utterance`, `voice`,
+  `camera`, `task`; the reasoning levels, which ask Ollama, every 30 s only). Nothing stored.
+- App: `senses.js` (Thinks strip, Sees, Hears, Feels, Devices; every panel with its empty state; the camera's live
+  preview is one snapshot every 2 s through the existing camera test, with a visible indicator, stopped when the screen
+  is left), the sixth destination (the phone's bar fits six from 320 px), `sensorviews.js` shared with Robot.
+
+### Decisions and deviations
+
+1. **Presence's "reasoning" is the evidence, not the brain's internals**: the lines are built from the brain's state and
+   the sensors live (what the radar sees, how long still, the vital-sign radar, PIR alone, no presence sensor). The
+   camera is said never to be used for presence, because it is not.
+2. **"Loaded"** for the model is what the last answer measured (`load_s` of Ollama's usage), not a poll of Ollama.
+3. **No continuous video**: the live preview is the camera test repeated (ffmpeg opens the camera for each picture),
+   2 s apart, opt-in, visibly marked, never kept. Each picture is announced on the stream as any other (`camera`).
+4. **Robot keeps its panels** (devices, screen, lidar, radar, vital signs) on the same drawing code; its caption links
+   to Senses for zoom and distances.
+
+### Verified
+
+- `mvn -o clean verify` (Temurin 25): green, 493 unit tests (487 before). New: `SensesApiTest` (the snapshot behind
+  the access filter, the voice off, presence's source and evidence, the stream: scene rate, levels throttled, `hearing`
+  on Senses' stream only), `VoiceServiceTest` +1 (the diagnostics passed on, the last 20 kept, the engines),
+  `GrpcVoiceSidecarTest` +1 (`Hearing`, `Level.dbfs` from a new and an older sidecar). Docker is not available: the
+  Testcontainers and embedded-PostgreSQL ITs were skipped (`ApiContractIT`, which now also reads `/api/senses` and its
+  stream, among them).
+- Python: `pytest -q` 390 passed, 8 skipped. New: the ears' turn decisions and outcomes (heard; not for Marvin, no
+  name), the level's dBFS and muted, the sidecar's `Hearing` and `Level.dbfs` over a real session.
+  `test_real_speaker_model` now skips without SciPy (a base fix: SciPy comes with the voice's extras, not dev's).
+- End to end, as a normal user on the embedded PostgreSQL: `lidar_pty.py` through `./marvin up`'s USB bridge,
+  `stub_ollama.py`, the voice sidecar in its test mode with six scripted phrases: `e2e/senses.py` 42 checks passed
+  (points drawn on Senses and Robot, counted in pixels of the point colour; nearest 13 cm; the range by hand and kept;
+  the level from -61 to -17 dBFS; utterances with their outcomes; the stages; the voice off; the empty states; Day and
+  Night at 1440 and 390; 320 px; no console error). `e2e.py live`: 52 of 55; the three failures are older expectations,
+  unrelated to this work: "connected" does not accept *Sensors live* (only a lidar), and the Home layout now includes
+  the room module.
+
+### Known gaps
+
+- Not run on the owner's Mac or with his real STL-27L; the scale fix is checked on a synthetic desk scan.
+- Not run with Silero, Smart Turn, Parakeet or a voiceprint: the test mode's ears are the energy VAD and the silence
+  timers, so the turn decisions and speaker scores were checked by the unit tests only.
+- The radar, vital-sign, room and camera panels were checked in their empty states and unit tests, not with a radar,
+  an MR60BHA2, a bench board or a camera.
+- `ApiContractIT` not run (Docker): `get/senses.json` and the Senses stream in `sse.json` are written from what the
+  live host answered here.

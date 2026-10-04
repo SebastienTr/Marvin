@@ -122,6 +122,20 @@ that needs no model ([`vad.py`](../host/marvin_host/voice/vad.py),
 sidecar's log says what runs: `voice ready (parakeet (mlx) ..., qwen ...; silero VAD, smart-turn end
 of turn, 1 voiceprint(s); computer)`.
 
+### What Marvin hears
+
+The app's **Senses** screen ([ui.md](ui.md#what-it-shows)) shows the ears at work. Beside the microphone's level
+(`Level`, now with `dbfs`: the loudest 20 ms frame since the last one, -100 when muted), the sidecar sends a `Hearing`
+message for each end-of-turn decision while someone pauses (`kind: "turn"`: complete or not, its probability, how long
+Smart Turn took) and for each utterance once it is judged (`kind: "utterance"`: its length and loudness, the speech
+recognition that read it and the time left to wait for it, whether it started during the pause, the transcript before
+any cleaning, its language and probability, whether "Marvin" was in it, whose voice, and its outcome: `heard`, a
+question for the core; `listening`, the name alone; `ignored`, with the reason the conversation shows; `dropped`, not
+judged: too quiet, Marvin busy and no name, no name outside a listening window). No audio is sent. The Java host keeps
+the last 20 in memory for the app, never on disk, and sends them only on the Senses screen's own stream
+(`/api/senses/stream`), not the app's main one. The message is an addition to contract version 2: an older core
+ignores it, and a core reading an older sidecar shows no diagnostics and no dBFS.
+
 ### When you have finished
 
 A fixed silence is a poor judge: too short and "Je voudrais... [thinks] un café" is cut in two, too
