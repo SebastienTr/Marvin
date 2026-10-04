@@ -17,10 +17,15 @@ dev = ["pytest>=7", "marvin-host[sidecar]", "grpcio-tools>=1.84"]
 # the voice sidecar's gRPC server (python -m marvin_host.sidecar.voice, docs/voice.md); add "voice"
 # for real audio and models
 sidecar = ["grpcio>=1.84", "grpcio-health-checking>=1.84", "protobuf>=7.35.1,<8"]
-# Marvin's ears and voice, all local (docs/voice.md): Whisper, the VAD, and on Apple Silicon
-# Qwen3-TTS through MLX (Marvin's own voice, mlx-audio). Piper voices are optional: pip install piper-tts
-voice = ["sounddevice>=0.5", "faster-whisper>=1.1", "webrtcvad-wheels>=2.0.14",
+# Marvin's ears and voice, all local (docs/voice.md): Parakeet (MLX on Apple Silicon, onnxruntime
+# elsewhere) with Whisper as the fallback, the VADs (Silero through onnxruntime, WebRTC), Smart Turn and
+# the speaker model (onnxruntime; their files: python -m marvin_host.voice.models --prefetch), and on
+# Apple Silicon Qwen3-TTS through MLX (Marvin's own voice, mlx-audio). Piper voices are optional:
+# pip install piper-tts
+voice = ["sounddevice>=0.5", "faster-whisper>=1.1", "webrtcvad-wheels>=2.0.14", "onnxruntime>=1.20",
          "mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'",
+         "parakeet-mlx>=0.5.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+         "onnx-asr>=0.12; sys_platform != 'darwin' or platform_machine != 'arm64'",
          "mlx-audio>=0.5.7; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 # Marvin's own voice without MLX (PyTorch: CUDA, or the CPU at tens of seconds a sentence)
 qwen = ["qwen-tts>=0.1.1"]

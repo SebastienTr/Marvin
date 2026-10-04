@@ -306,7 +306,7 @@ venv_ok() {
     python3 -c 'import venv, ensurepip' 2>/dev/null
 }
 
-VOICE_PACKAGES="sounddevice webrtcvad grpc grpc_health"
+VOICE_PACKAGES="sounddevice webrtcvad grpc grpc_health onnxruntime"
 
 # Marvin's own voice (Qwen3-TTS) runs through MLX on Apple Silicon (docs/voice.md, "Marvin's voice")
 apple_silicon() {
@@ -324,6 +324,27 @@ ensure_qwen_weights() {
     step "Downloading Marvin's voice (Qwen3-TTS, about 1.5 GB, once) ..."
     (cd "$ROOT/host" && "$VENV/bin/python" -m marvin_host.voice.qwen_tts --prefetch) ||
         warn "could not download Marvin's voice (offline?): it speaks with the system voice until ./marvin restart"
+}
+
+# speech recognition: Parakeet through MLX on Apple Silicon, through onnxruntime (onnx-asr) elsewhere
+parakeet_installed() {
+    if apple_silicon; then m=parakeet_mlx; else m=onnx_asr; fi
+    "$VENV/bin/python" -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('$m') else 1)" 2>/dev/null
+}
+
+# the ears' models, downloaded once so the voice does not start without them: Silero VAD, Smart Turn and
+# the speaker model (36 MB, models.py), and Parakeet (2.5 GB on Apple Silicon, 670 MB elsewhere)
+ensure_ear_models() {
+    if ! (cd "$ROOT/host" && "$VENV/bin/python" -m marvin_host.voice.models --check >/dev/null 2>&1); then
+        step "Downloading the ears' models (Silero VAD, Smart Turn, speaker recognition: 36 MB, once) ..."
+        (cd "$ROOT/host" && "$VENV/bin/python" -m marvin_host.voice.models --prefetch) ||
+            warn "could not download the ears' models (offline?): the voice uses its older VAD and silence timers until ./marvin restart"
+    fi
+    parakeet_installed || return 0
+    (cd "$ROOT/host" && "$VENV/bin/python" -m marvin_host.voice.stt --check >/dev/null 2>&1) && return 0
+    step "Downloading speech recognition (Parakeet v3, $(apple_silicon && echo 2.5 GB || echo 670 MB), once) ..."
+    (cd "$ROOT/host" && "$VENV/bin/python" -m marvin_host.voice.stt --prefetch) ||
+        warn "could not download Parakeet (offline?): the voice uses Whisper until ./marvin restart"
 }
 
 # the voice's packages are installed (not imported: sounddevice needs PortAudio to import, which
@@ -358,14 +379,14 @@ ensure_venv() {
             "$VENV/bin/python" -m pip install -q -e "$ROOT/host" || { warn "pip install failed (offline?)"; return 1; }
         fi
     fi
-    if [ "$extra" = voice ] && { ! voice_installed || { apple_silicon && ! qwen_installed; }; }; then
+    if [ "$extra" = voice ] && { ! voice_installed || ! parakeet_installed || { apple_silicon && ! qwen_installed; }; }; then
         step "Adding the voice to host/.venv (a few minutes; Marvin's own voice comes with it on Apple Silicon) ..."
         "$VENV/bin/python" -m pip install -q -e "$ROOT/host[sidecar,voice]" || {
             warn "could not install the voice's packages (offline?): Marvin starts without its voice; ./marvin restart later"
             return 1
         }
     fi
-    [ "$extra" = voice ] && ensure_qwen_weights
+    [ "$extra" = voice ] && { ensure_qwen_weights; ensure_ear_models; }
     return 0
 }
 
@@ -885,6 +906,21 @@ cmd_doctor() {
                         note "Marvin's own voice: ${q:-the model is not downloaded yet}"
                         fix "./marvin restart downloads it (about 1.5 GB, once)"
                     fi
+                fi
+                if e=$(cd "$ROOT/host" && "$VENV/bin/python" -m marvin_host.voice.models --check 2>/dev/null); then
+                    ok "the ears: $e"
+                else
+                    note "the ears: ${e:-their models cannot be checked}"
+                    fix "./marvin restart downloads them (36 MB, once)"
+                fi
+                if ! parakeet_installed; then
+                    note "Parakeet (speech recognition) is not installed: the voice uses Whisper"
+                    fix "./marvin restart installs it"
+                elif p=$(cd "$ROOT/host" && "$VENV/bin/python" -m marvin_host.voice.stt --check 2>/dev/null); then
+                    ok "speech recognition: $p"
+                else
+                    note "speech recognition: ${p:-Parakeet is not downloaded yet}: the voice uses Whisper"
+                    fix "./marvin restart downloads it"
                 fi
                 if [ "$OS" = linux ] && ! "$VENV/bin/python" -c 'import sounddevice' >/dev/null 2>&1; then
                     note "PortAudio is missing: the voice cannot use this computer's microphone"
