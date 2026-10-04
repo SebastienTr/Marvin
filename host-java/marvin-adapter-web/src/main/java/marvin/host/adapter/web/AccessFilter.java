@@ -54,7 +54,7 @@ public final class AccessFilter implements Filter {
             "/api/memory/consolidate", "/api/memory/facts/remember", "/api/memory/facts/edit", "/api/memory/facts/pin",
             "/api/memory/facts/archive", "/api/memory/facts/review", "/api/memory/facts/forget", "/api/memory/forget/confirm",
             "/api/memory/forget/cancel", "/api/memory/forget-everything", "/api/memory/profile", "/api/memory/profile/restore",
-            "/api/memory/settings");
+            "/api/memory/settings", TaskController.START_PATH, TaskController.CANCEL_PATH, TaskController.SETTINGS_PATH);
     static final Set<String> PUBLIC = Set.of("/icon.png", "/favicon.ico", "/manifest.webmanifest");
 
     static final byte[] LOCKED_PAGE = """

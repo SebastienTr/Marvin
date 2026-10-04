@@ -64,6 +64,10 @@ marvin:
     # the memory worker (idle and nightly passes); its models and hours are the owner's memory settings
     worker: ${MARVIN_MEMORY_WORKER:true}
     tick-s: 30
+  llm:
+    # requests the model server answers at once (OLLAMA_NUM_PARALLEL): 1 (Ollama's default, and always for Qwen3.8): a
+    # background task's request gives way to the conversation; 2 or more: tasks run beside it (docs/intelligence.md)
+    parallel: ${MARVIN_LLM_PARALLEL:1}
   camera:
     # Marvin's eyes (docs/vision.md): which camera is the voice setting "camera" (auto, computer, robot, off).
     # The computer's camera is opened by ffmpeg for one picture; empty: ffmpeg from the PATH, then Homebrew's places

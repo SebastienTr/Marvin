@@ -202,7 +202,7 @@ public final class TaskService implements TaskControl {
             if (open.size() >= MAX_OPEN) {
                 throw new Refused(MAX_OPEN + " tasks are already waiting or running: wait for one to finish, or cancel one");
             }
-            String lang = language == null || language.isBlank() ? "en" : language;
+            String lang = language == null || language.isBlank() ? languageOf(g) : language;
             Task t = Task.queued(UUID.randomUUID().toString(), g, lang, origin, clocks.wallSeconds(), budget);
             open.put(t.id(), t);
             save(t);
@@ -210,6 +210,21 @@ public final class TaskService implements TaskControl {
             log.info("task queued: " + t.title());
             return t;
         }
+    }
+
+    /** The language of a goal typed in the app: the voice's when it is set, else a guess from its words. */
+    private String languageOf(String goal) {
+        VoiceConfig c;
+        try {
+            c = host.config();
+        } catch (RuntimeException e) {
+            return "en";
+        }
+        if (c.language() != null) {
+            return c.language();
+        }
+        String guess = marvin.host.domain.conversation.SpeechText.guessLanguage(goal, c.languages());
+        return guess != null ? guess : c.defaultLanguage();
     }
 
     private static String normal(String s) {

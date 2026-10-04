@@ -8,6 +8,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArraySet;
 
+import marvin.host.application.conversation.port.out.TaskListener;
 import marvin.host.application.conversation.port.out.VoiceListener;
 import marvin.host.application.memory.port.out.MemoryListener;
 import marvin.host.application.presence.port.out.PresenceHistoryListener;
@@ -23,7 +24,7 @@ import marvin.host.domain.system.LogEntry;
  * bounded queue: a stuck client misses messages, it never blocks the brain.
  */
 public final class EventHub implements PresenceHistoryListener, HostLogListener, SettingsListener, VoiceListener,
-        MemoryListener, CameraListener {
+        MemoryListener, CameraListener, TaskListener {
     static final int QUEUE = 256;
 
     /** One message: an SSE event name and its payload (serialized when sent). */
@@ -92,6 +93,12 @@ public final class EventHub implements PresenceHistoryListener, HostLogListener,
     @Override
     public void pictureTaken(Map<String, Object> picture) {
         publish("camera", picture);
+    }
+
+    /** Background tasks: {@code task} (a task as lists show it) and {@code task_step} ({@code {id, step}}). */
+    @Override
+    public void onTask(String kind, Map<String, Object> payload) {
+        publish(kind, payload);
     }
 
     public void devicesChanged(List<Map<String, Object>> devices) {
