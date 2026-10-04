@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import marvin.host.application.conversation.port.out.VoiceSettingsStore;
+import marvin.host.domain.conversation.ReasoningSettings;
 import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.shared.JsonText;
 
@@ -100,9 +101,12 @@ public final class VoiceSettingsFile implements VoiceSettingsStore {
             m.forEach((k, v) -> out.put(String.valueOf(k), v));
             Set<String> unknown = new TreeSet<>(out.keySet());
             unknown.removeAll(VoiceSettings.FILE_KEYS);
+            unknown.removeAll(ReasoningSettings.KEYS);          // the model's two regimes, beside its name
             if (!unknown.isEmpty() && !unknown.toString().equals(warned)) {
                 warned = unknown.toString();
-                log.warn("{}: unknown keys {} (known: {})", path, unknown, new TreeSet<>(VoiceSettings.FILE_KEYS));
+                Set<String> known = new TreeSet<>(VoiceSettings.FILE_KEYS);
+                known.addAll(ReasoningSettings.KEYS);
+                log.warn("{}: unknown keys {} (known: {})", path, unknown, known);
             }
             return out;
         }

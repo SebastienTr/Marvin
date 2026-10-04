@@ -20,6 +20,8 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import marvin.host.application.conversation.port.out.LanguageModel;
 import marvin.host.domain.conversation.ChatMessage;
+import marvin.host.domain.conversation.ModelThinking;
+import marvin.host.domain.conversation.Reasoning;
 import marvin.host.domain.conversation.ToolCall;
 import marvin.host.domain.shared.JsonText;
 
@@ -30,6 +32,11 @@ import marvin.host.domain.shared.JsonText;
  * explicitly: a change reloads the
  * model), and the model kept in memory for 30 minutes. The tool loop is the conversation service's, not
  * Spring AI's: tool calls are passed on as they stream.
+ *
+ * <p>A request that thinks ({@link LanguageModel.Thinking}) goes through {@link OllamaHttp} instead, with the same
+ * options but its own length: {@code think} is the level the model lists for the one asked ({@link Reasoning#thinkValue}),
+ * read once per model from {@code /api/show}. When Ollama refuses it (an older server, a model without levels), the
+ * request is made again with thinking simply on, then off, and the value that worked is kept for that model.
  */
 public final class OllamaLanguageModel implements LanguageModel {
     private static final Logger log = LoggerFactory.getLogger("marvin.voice.llm");
@@ -39,12 +46,26 @@ public final class OllamaLanguageModel implements LanguageModel {
 
     /** The options of every request, in the Python host's order. */
     static Map<String, Object> options() {
+        return options(Thinking.OFF.maxTokens());
+    }
+
+    /** The same, at most {@code numPredict} tokens written. The context size never changes: a change reloads the model. */
+    static Map<String, Object> options(int numPredict) {
         Map<String, Object> o = new LinkedHashMap<>();
         o.put("temperature", 0.6);
-        o.put("num_predict", 400);
-        o.put("num_ctx", 16384);
+        o.put("num_predict", numPredict);
+        o.put("num_ctx", NUM_CTX);
         return o;
     }
+
+    /** The context of every request (prompt and answer together). */
+    public static final int NUM_CTX = 16384;
+
+    private final OllamaHttp http = new OllamaHttp();
+    /** What each model says of its thinking, by host and model (asked once). */
+    private final Map<String, ModelThinking> thinking = new ConcurrentHashMap<>();
+    /** The {@code think} value that worked after Ollama refused the one asked, by host, model and level. */
+    private final Map<String, Object> thinkFallback = new ConcurrentHashMap<>();
 
     private OllamaApi api(String host) {
         return clients.computeIfAbsent(host.replaceAll("/+$", ""), h -> OllamaApi.builder().baseUrl(h).build());
@@ -57,10 +78,15 @@ public final class OllamaLanguageModel implements LanguageModel {
 
     /** The request body: warm-up and questions use exactly the same shape. */
     static OllamaApi.ChatRequest request(String model, List<ChatMessage> messages, List<Map<String, Object>> tools) {
+        return request(model, messages, tools, Thinking.OFF.maxTokens());
+    }
+
+    static OllamaApi.ChatRequest request(String model, List<ChatMessage> messages, List<Map<String, Object>> tools,
+                                         int numPredict) {
         OllamaApi.ChatRequest.Builder b = OllamaApi.ChatRequest.builder(model)
                 .messages(messages.stream().map(OllamaLanguageModel::message).toList())
                 .stream(true)
-                .options(options())
+                .options(options(numPredict))
                 .keepAlive(KEEP_ALIVE)
                 .disableThinking();
         if (tools != null && !tools.isEmpty()) {
@@ -100,7 +126,127 @@ public final class OllamaLanguageModel implements LanguageModel {
     @Override
     public void streamChat(String host, String model, List<ChatMessage> messages, List<Map<String, Object>> tools,
                            double timeoutS, LanguageModel.Stream stream) {
-        OllamaApi.ChatRequest req = request(model, messages, tools);
+        springChat(host, model, request(model, messages, tools), timeoutS, stream);
+    }
+
+    @Override
+    public void streamChat(String host, String model, List<ChatMessage> messages, List<Map<String, Object>> tools,
+                           double timeoutS, Thinking thinks, LanguageModel.Stream stream) {
+        if (thinks.level() == Reasoning.OFF) {
+            springChat(host, model, request(model, messages, tools, thinks.maxTokens()), timeoutS, stream);
+            return;
+        }
+        String key = host + " " + model + " " + thinks.level().id();
+        Object think = thinkFallback.containsKey(key) ? thinkFallback.get(key) : thinks.level().thinkValue(thinkingOf(host, model));
+        while (true) {
+            Map<String, Object> body = OllamaHttp.chatBody(model, messages, tools, options(thinks.maxTokens()), think);
+            try {
+                http.chat(host, body, timeoutS, stream);
+                return;
+            } catch (ToolsUnsupported e) {
+                throw e;
+            } catch (Unavailable e) {
+                throw e.hint().isEmpty() ? new Unavailable(e.getMessage(), hint(model)) : e;
+            } catch (OllamaHttp.Failed e) {
+                Object next = nextThink(think, e);
+                if (next == null) {
+                    throw translate(e, host, model);
+                }
+                log.warn("{} refused think={} ({}): asking again with think={}", model, think, e.error, next);
+                think = next;
+                thinkFallback.put(key, think);
+            }
+        }
+    }
+
+    /** What to send after Ollama refused {@code think}: thinking simply on, then off; {@code null} when not about thinking. */
+    static Object nextThink(Object think, OllamaHttp.Failed e) {
+        String err = e.error.toLowerCase(java.util.Locale.ROOT);
+        if (e.status != 400 || !err.contains("think")) {
+            return null;
+        }
+        if (err.contains("does not support thinking")) {
+            return Boolean.FALSE.equals(think) ? null : Boolean.FALSE;
+        }
+        if (think instanceof String) {
+            return Boolean.TRUE;
+        }
+        return Boolean.TRUE.equals(think) ? Boolean.FALSE : null;
+    }
+
+    /** An HTTP error of the direct client, as {@link #translate} words Spring AI's. */
+    private static RuntimeException translate(OllamaHttp.Failed e, String host, String model) {
+        if (e.status == 400 && e.error.contains("does not support tools")) {
+            return new ToolsUnsupported(model + " cannot use tools: " + e.error);
+        }
+        if (e.status == 404) {
+            return new Unavailable("Ollama has no model '" + model + "': " + (e.error.isEmpty() ? "not found" : e.error),
+                    "Run `ollama pull " + model + "`.");
+        }
+        return new Unavailable(e.getMessage(), hint(model));
+    }
+
+    /** What {@code model} says of its thinking (asked once; unknown when the server cannot be asked). */
+    ModelThinking thinkingOf(String host, String model) {
+        String key = host + " " + model;
+        ModelThinking t = thinking.get(key);
+        if (t != null) {
+            return t;
+        }
+        try {
+            Map<?, ?> show = http.show(host, model, 10);
+            t = thinkingFrom(show);
+            thinking.put(key, t);
+            log.info("{} thinks: {}", model, t.toMap());
+            return t;
+        } catch (OllamaHttp.Failed e) {
+            if (e.status == 404) {
+                throw translate(e, host, model);
+            }
+            return ModelThinking.UNKNOWN;
+        } catch (RuntimeException e) {
+            return ModelThinking.UNKNOWN;           // the chat request says what is wrong with the server
+        }
+    }
+
+    static ModelThinking thinkingFrom(Map<?, ?> show) {
+        List<String> caps = show.get("capabilities") instanceof List<?> l
+                ? l.stream().map(String::valueOf).toList() : null;
+        return ModelThinking.of(caps, show.get("thinking"));
+    }
+
+    /**
+     * The model's size on disk ({@code /api/tags}), what it can do and how it thinks ({@code /api/show}); unknown parts
+     * when the server cannot say.
+     */
+    @Override
+    public ModelInfo describe(String host, String model) {
+        long size = -1;
+        Set<String> caps = Set.of();
+        ModelThinking t = ModelThinking.UNKNOWN;
+        try {
+            if (http.tags(host, 5).get("models") instanceof List<?> models) {
+                for (Object o : models) {
+                    if (o instanceof Map<?, ?> m && (model.equals(m.get("name")) || (model + ":latest").equals(m.get("name")))
+                            && m.get("size") instanceof Number n) {
+                        size = n.longValue();
+                    }
+                }
+            }
+            Map<?, ?> show = http.show(host, model, 10);
+            if (show.get("capabilities") instanceof List<?> l) {
+                caps = new LinkedHashSet<>(l.stream().map(String::valueOf).toList());
+            }
+            t = thinkingFrom(show);
+            thinking.put(host + " " + model, t);
+        } catch (RuntimeException e) {
+            log.debug("cannot describe {}: {}", model, e.getMessage());
+        }
+        return new ModelInfo(model, size, caps, t);
+    }
+
+    private void springChat(String host, String model, OllamaApi.ChatRequest req, double timeoutS,
+                            LanguageModel.Stream stream) {
         Duration timeout = Duration.ofMillis((long) (timeoutS * 1000));
         try (java.util.stream.Stream<OllamaApi.ChatResponse> s = api(host).streamingChat(req).timeout(timeout).toStream(1)) {
             Iterator<OllamaApi.ChatResponse> it = s.iterator();

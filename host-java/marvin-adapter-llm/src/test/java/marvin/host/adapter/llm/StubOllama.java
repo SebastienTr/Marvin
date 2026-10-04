@@ -44,6 +44,12 @@ public final class StubOllama implements AutoCloseable {
     public final List<String> showRequests = new CopyOnWriteArrayList<>();
     /** Models that can see images. */
     public volatile Set<String> vision = Set.of();
+    /** Models that can think ({@code thinking} in their capabilities). */
+    public volatile Set<String> thinks = Set.of();
+    /** {@code /api/show}'s {@code thinking} descriptor ({@code {values, default}}) by model; none when absent. */
+    public volatile Map<String, Object> thinkingOf = Map.of();
+    /** Model sizes in {@code /api/tags}, by model. */
+    public volatile Map<String, Long> sizes = Map.of();
     /**
      * Each image a chat request carried: {@code request} (its index in {@link #requests}), {@code message} (the index of
      * its message), {@code role}, {@code last} (whether it was on the last message), {@code bytes}, {@code sha256}.
@@ -83,6 +89,16 @@ public final class StubOllama implements AutoCloseable {
             out.add(JsonText.write(Map.of("message", Map.of("role", "assistant", "content", p), "done", false)));
         }
         out.add(done(0));
+        return out;
+    }
+
+    /** A streamed answer that thinks first: the thinking pieces, then the answer's, then {@code done}. */
+    public static List<String> thought(List<String> thinking, String... pieces) {
+        List<String> out = new ArrayList<>();
+        for (String t : thinking) {
+            out.add(JsonText.write(Map.of("message", Map.of("role", "assistant", "content", "", "thinking", t), "done", false)));
+        }
+        out.addAll(text(pieces));
         return out;
     }
 
@@ -167,7 +183,9 @@ public final class StubOllama implements AutoCloseable {
     private void tags(HttpExchange ex) throws IOException {
         StringBuilder b = new StringBuilder("{\"models\": [");
         for (int i = 0; i < models.size(); i++) {
-            b.append(i > 0 ? ", " : "").append("{\"name\": ").append(JsonText.write(models.get(i))).append("}");
+            b.append(i > 0 ? ", " : "").append("{\"name\": ").append(JsonText.write(models.get(i)));
+            Long size = sizes.get(models.get(i));
+            b.append(size == null ? "" : ", \"size\": " + size).append("}");
         }
         send(ex, 200, "application/json", b.append("]}").toString());
     }
@@ -177,6 +195,9 @@ public final class StubOllama implements AutoCloseable {
         List<String> caps = new ArrayList<>(List.of("completion", "tools"));
         if (vision.contains(model)) {
             caps.add("vision");
+        }
+        if (thinks.contains(model)) {
+            caps.add("thinking");
         }
         return caps;
     }
@@ -191,8 +212,14 @@ public final class StubOllama implements AutoCloseable {
             send(ex, 404, "application/json", "{\"error\":\"model '" + model + "' not found\"}");
             return;
         }
-        send(ex, 200, "application/json", JsonText.write(Map.of("capabilities", capabilities(model),
-                "details", Map.of("family", "qwen3"), "model_info", Map.of("general.architecture", "qwen3"))));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("capabilities", capabilities(model));
+        out.put("details", Map.of("family", "qwen3"));
+        out.put("model_info", Map.of("general.architecture", "qwen3"));
+        if (thinkingOf.get(model) != null) {
+            out.put("thinking", thinkingOf.get(model));
+        }
+        send(ex, 200, "application/json", JsonText.write(out));
     }
 
     /** Records the images of a chat request (never keeps them). */
