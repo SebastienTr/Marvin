@@ -72,6 +72,17 @@ class ConversationVectorsTest {
     }
 
     @Test
+    void backgroundTasksRulesHintAndTools() {
+        Map<String, Object> t = map(v.get("tasks"));
+        assertThat(Persona.TASK_TOOLS).isEqualTo(t.get("tool_rules"));
+        assertThat(Persona.TASK_HINT).isEqualTo(t.get("hint"));
+        assertThat(JsonText.write(List.of(marvin.host.domain.conversation.tool.TaskTools.start().schema(),
+                marvin.host.domain.conversation.tool.TaskTools.result().schema(),
+                marvin.host.domain.conversation.tool.TaskTools.finalAnswer().schema())))
+                .isEqualTo(JsonText.write(t.get("ollama_tools")));
+    }
+
+    @Test
     void aQuestionWithAnImageAndWhatTheHistoryKeepsOfIt() {
         Map<String, Object> img = map(map(v.get("persona")).get("image"));
         assertThat(Persona.IMAGE_NOTE).isEqualTo(img.get("note"));

@@ -148,6 +148,36 @@
         "key": "no_answer",
         "language": "de",
         "text": "I couldn't find an answer, sorry."
+      },
+      {
+        "key": "task_started",
+        "language": "fr",
+        "text": "Je m'en occupe, je te dis quand c'est prêt."
+      },
+      {
+        "key": "task_started",
+        "language": "en",
+        "text": "I'm on it, I'll tell you when it's ready."
+      },
+      {
+        "key": "task_done",
+        "language": "fr",
+        "text": "C'est prêt, pour « {title} » : {summary}"
+      },
+      {
+        "key": "task_done",
+        "language": "en",
+        "text": "It's ready, for “{title}”: {summary}"
+      },
+      {
+        "key": "task_failed",
+        "language": "fr",
+        "text": "Je n'ai pas pu finir « {title} ». Le détail est dans l'application."
+      },
+      {
+        "key": "task_failed",
+        "language": "en",
+        "text": "I couldn't finish “{title}”. The details are in the app."
       }
     ],
     "image": {
@@ -5399,5 +5429,76 @@
       },
       "said": "Tu es assis depuis 74 minutes. Et si tu faisais une pause ?"
     }
-  ]
+  ],
+  "tasks": {
+    "about": "Background tasks (Java host only): the rules added to the system prompt when start_task is offered, the hint added to a question whose words usually announce work in several steps, and the three tools' schemas.",
+    "tool_rules": "- Background tasks: for work in several steps (prepare, compare, look into, research, summarize a week or a period, plan), or when the person asks for it in the background, call start_task with the goal instead of answering now: it ends your turn with a short \"I'm on it\". Never for a question you can answer at once. A task has only your tools: never promise it can do what they cannot (read email, browse the web, book anything). When the person asks how a task is going or what it found, call task_result. Never say a task started, progressed or finished unless a tool said so, and never invent its result.\n",
+    "hint": "(This may be work in several steps: if so, start a background task.)",
+    "ollama_tools": [
+      {
+        "function": {
+          "description": "Start a background task for work in several steps that you should not answer at once: prepare, compare, look into, research, summarize a week or a period, plan. You work on it with your tools while the conversation goes on, and tell the person when it is ready. Also when they ask you to do something in the background. Not for a question you can answer now.",
+          "name": "start_task",
+          "parameters": {
+            "properties": {
+              "goal": {
+                "description": "the task, complete enough to work from alone, in the person's words and language",
+                "maxLength": 500,
+                "type": "string"
+              }
+            },
+            "required": [
+              "goal"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "How your background tasks are going and what they found: the running ones, and the latest results with their summary. Use it when the person asks about a task or its result.",
+          "name": "task_result",
+          "parameters": {
+            "properties": {
+              "query": {
+                "description": "which task, a few words; leave it out for the latest",
+                "maxLength": 200,
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Finish the task: give the result. Call it once, at the end.",
+          "name": "final_answer",
+          "parameters": {
+            "properties": {
+              "result": {
+                "description": "the full result in Markdown, concise and structured, saying what could not be checked",
+                "maxLength": 20000,
+                "type": "string"
+              },
+              "summary": {
+                "description": "one or two short sentences Marvin says aloud: plain words, no markdown, numbers written as they are said",
+                "maxLength": 400,
+                "type": "string"
+              }
+            },
+            "required": [
+              "summary",
+              "result"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      }
+    ]
+  }
 }

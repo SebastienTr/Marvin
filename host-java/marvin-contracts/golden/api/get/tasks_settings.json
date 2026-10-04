@@ -1,0 +1,94 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/tasks/settings"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "settings": {
+      "reasoning": "off",
+      "task_reasoning": "high",
+      "tasks": true
+    },
+    "levels": [
+      "off",
+      "low",
+      "medium",
+      "high"
+    ],
+    "model": {
+      "name": "qwen3:4b-instruct",
+      "size_bytes": null,
+      "capabilities": [
+        "completion",
+        "tools"
+      ],
+      "thinking": {
+        "thinks": null,
+        "levels": [],
+        "default": null
+      },
+      "think_chat": null,
+      "think_tasks": null
+    },
+    "recommended": {
+      "model": "qwen3.8:27b-mxfp8",
+      "current": false,
+      "installed": false
+    },
+    "budget": {
+      "steps": 12,
+      "seconds": 1200.0,
+      "tokens": 40000
+    },
+    "server": {
+      "parallel": 1,
+      "yields_to_voice": true
+    }
+  },
+  "shape": {
+    "settings": {
+      "reasoning": "string",
+      "task_reasoning": "string",
+      "tasks": "boolean"
+    },
+    "levels": [
+      "string"
+    ],
+    "model": {
+      "name": "string",
+      "size_bytes": "null",
+      "capabilities": [
+        "string"
+      ],
+      "thinking": {
+        "thinks": "null",
+        "levels": [],
+        "default": "null"
+      },
+      "think_chat": "null",
+      "think_tasks": "null"
+    },
+    "recommended": {
+      "model": "string",
+      "current": "boolean",
+      "installed": "boolean"
+    },
+    "budget": {
+      "steps": "number",
+      "seconds": "number",
+      "tokens": "number"
+    },
+    "server": {
+      "parallel": "number",
+      "yields_to_voice": "boolean"
+    }
+  }
+}

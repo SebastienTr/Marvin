@@ -36,7 +36,7 @@ The Maven module puts `golden/` on the classpath under `marvin/contracts/golden/
 | `golden/recordings/index.json` | `recordings.py` | The scenarios, the receiver's counters per device, the brain's configuration, the lidar yaw estimate |
 | `golden/api/get/*.json`, `post/*.json`, `access/*.json` | by hand (recorded from the Python host's demo until 2026-10) | Every app endpoint in demo mode: request, status, headers, body and its shape (see below); the access key rules |
 | `golden/api/sse.json` | by hand (as above) | The two event streams: event names, counts, a sample payload and the shapes of each |
-| `golden/conversation/vectors.json` | by hand (generated from the Python persona until 2026-10) | The conversation's texts and rules: prompts, context blocks, text cleaning, sentence splitting, the voice settings' validation and defaults |
+| `golden/conversation/vectors.json` | by hand (generated from the Python persona until 2026-10) | The conversation's texts and rules: prompts, context blocks, text cleaning, sentence splitting, the voice settings' validation and defaults, the background tasks' rules, hint and tools |
 | `golden/face/` | `face_vectors.py` | The face: each expression as PNG, the icon, and the scripted scenario of `host/scripts/face_golden.py` with the CRC-32 of every frame |
 | `src/main/proto/marvin/voice/v1/voice.proto` | by hand | The gRPC contract between the Java core and the voice sidecar (design section 4) |
 

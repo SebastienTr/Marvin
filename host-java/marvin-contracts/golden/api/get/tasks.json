@@ -1,0 +1,88 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/tasks?limit=20"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "tasks": [
+      {
+        "id": "1c2f6a3e-5b8d-4c1e-9f7a-2d4b6c8e0a12",
+        "title": "Compare the two mobile plans",
+        "goal": "Compare the two mobile plans",
+        "status": "done",
+        "language": "en",
+        "origin": "voice",
+        "created_at": 1789983000.5,
+        "started_at": 1789983000.6,
+        "finished_at": 1789983190.2,
+        "model": "qwen3.8:27b-mxfp8",
+        "reasoning": "high",
+        "think": "xhigh",
+        "budget": {
+          "steps": 12,
+          "seconds": 1200.0,
+          "tokens": 40000
+        },
+        "spent": {
+          "steps": 3,
+          "tool_calls": 2,
+          "tokens": 5210,
+          "prompt_tokens": 2600,
+          "seconds": 189.6
+        },
+        "activity": "",
+        "summary": "Plan A is two euros cheaper; plan B has more data.",
+        "error": "",
+        "announced": "spoken",
+        "announced_at": 1789983191.0,
+        "has_result": true
+      }
+    ],
+    "open": 0
+  },
+  "shape": {
+    "tasks": [
+      {
+        "id": "string",
+        "title": "string",
+        "goal": "string",
+        "status": "string",
+        "language": "string",
+        "origin": "string",
+        "created_at": "number",
+        "started_at": "number",
+        "finished_at": "number",
+        "model": "string",
+        "reasoning": "string",
+        "think": "string",
+        "budget": {
+          "steps": "number",
+          "seconds": "number",
+          "tokens": "number"
+        },
+        "spent": {
+          "steps": "number",
+          "tool_calls": "number",
+          "tokens": "number",
+          "prompt_tokens": "number",
+          "seconds": "number"
+        },
+        "activity": "string",
+        "summary": "string",
+        "error": "string",
+        "announced": "string",
+        "announced_at": "number",
+        "has_result": "boolean"
+      }
+    ],
+    "open": "number"
+  }
+}

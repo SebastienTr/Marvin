@@ -896,6 +896,186 @@
               "t": "number"
             }
           ]
+        },
+        "task": {
+          "count": 0,
+          "sample": {
+            "id": "1c2f6a3e-5b8d-4c1e-9f7a-2d4b6c8e0a12",
+            "title": "Compare the two mobile plans",
+            "goal": "Compare the two mobile plans",
+            "status": "running",
+            "language": "en",
+            "origin": "voice",
+            "created_at": 1789983000.5,
+            "started_at": 1789983000.6,
+            "finished_at": null,
+            "model": "qwen3.8:27b-mxfp8",
+            "reasoning": "high",
+            "think": "xhigh",
+            "budget": {
+              "steps": 12,
+              "seconds": 1200.0,
+              "tokens": 40000
+            },
+            "spent": {
+              "steps": 3,
+              "tool_calls": 2,
+              "tokens": 5210,
+              "prompt_tokens": 2600,
+              "seconds": 189.6
+            },
+            "activity": "Thinking (420 tokens)",
+            "summary": "",
+            "error": "",
+            "announced": "",
+            "announced_at": null,
+            "has_result": false
+          },
+          "shapes": [
+            {
+              "id": "string",
+              "title": "string",
+              "goal": "string",
+              "status": "string",
+              "language": "string",
+              "origin": "string",
+              "created_at": "number",
+              "started_at": "number",
+              "finished_at": "null",
+              "model": "string",
+              "reasoning": "string",
+              "think": "string",
+              "budget": {
+                "steps": "number",
+                "seconds": "number",
+                "tokens": "number"
+              },
+              "spent": {
+                "steps": "number",
+                "tool_calls": "number",
+                "tokens": "number",
+                "prompt_tokens": "number",
+                "seconds": "number"
+              },
+              "activity": "string",
+              "summary": "string",
+              "error": "string",
+              "announced": "string",
+              "announced_at": "null",
+              "has_result": "boolean"
+            },
+            {
+              "id": "string",
+              "title": "string",
+              "goal": "string",
+              "status": "string",
+              "language": "string",
+              "origin": "string",
+              "created_at": "number",
+              "started_at": "number",
+              "finished_at": "number",
+              "model": "string",
+              "reasoning": "string",
+              "think": "string",
+              "budget": {
+                "steps": "number",
+                "seconds": "number",
+                "tokens": "number"
+              },
+              "spent": {
+                "steps": "number",
+                "tool_calls": "number",
+                "tokens": "number",
+                "prompt_tokens": "number",
+                "seconds": "number"
+              },
+              "activity": "string",
+              "summary": "string",
+              "error": "string",
+              "announced": "string",
+              "announced_at": "number",
+              "has_result": "boolean"
+            }
+          ]
+        },
+        "task_step": {
+          "count": 0,
+          "sample": {
+            "id": "1c2f6a3e-5b8d-4c1e-9f7a-2d4b6c8e0a12",
+            "step": {
+              "n": 1,
+              "at": 1789983058.1,
+              "kind": "model",
+              "thinking": "The owner wants a comparison...",
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "recall",
+                  "arguments": {
+                    "query": "mobile plans"
+                  }
+                }
+              ],
+              "seconds": 57.5,
+              "usage": {
+                "prompt_eval_count": 1310,
+                "prompt_eval_s": 2.1,
+                "eval_count": 1720,
+                "eval_s": 55.2
+              }
+            }
+          },
+          "shapes": [
+            {
+              "id": "string",
+              "step": {
+                "n": "number",
+                "at": "number",
+                "kind": "string",
+                "thinking": "string",
+                "text": "string",
+                "tool_calls": [
+                  {
+                    "name": "string",
+                    "arguments": {
+                      "query": "string"
+                    }
+                  }
+                ],
+                "seconds": "number",
+                "usage": {
+                  "prompt_eval_count": "number",
+                  "prompt_eval_s": "number",
+                  "eval_count": "number",
+                  "eval_s": "number"
+                }
+              }
+            },
+            {
+              "id": "string",
+              "step": {
+                "n": "number",
+                "at": "number",
+                "kind": "string",
+                "name": "string",
+                "arguments": {
+                  "query": "string"
+                },
+                "ok": "boolean",
+                "seconds": "number",
+                "result": "string"
+              }
+            },
+            {
+              "id": "string",
+              "step": {
+                "n": "number",
+                "at": "number",
+                "kind": "string",
+                "text": "string"
+              }
+            }
+          ]
         }
       }
     },
