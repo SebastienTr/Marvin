@@ -1,14 +1,18 @@
 """Voice activity detection: which 20 ms frames contain speech, and where utterances start and end.
 
-`WebRtcVad` (the `webrtcvad` module, from the `webrtcvad-wheels` package) is the default: tiny,
-fast, no model file. `EnergyVad` is a dependency-free fallback that tracks the noise floor and
-flags frames well above it; it is also what the tests use because it is deterministic.
+`SileroVad` (Silero VAD v6, a 2 MB ONNX model run by onnxruntime, models.py) is the default when
+its file is here: a neural network that tells speech from noise, keyboard and music far better
+than energy or WebRTC's GMM. `WebRtcVad` (the `webrtcvad` module, from the `webrtcvad-wheels`
+package) is the fallback: tiny, fast, no model file. `EnergyVad` is a dependency-free fallback
+that tracks the noise floor and flags frames well above it; it is also what the tests use because
+it is deterministic.
 
 `Segmenter` turns per-frame decisions into utterances: speech starts when most of the last few
 frames are voiced, ends after a stretch of silence, and keeps a short pre-roll so the first
 syllable ("Mar-") is not clipped. The silence that ends an utterance is `end_silence_s`, unless
-`endpoint` (a callback the engine sets) asks for a longer one for this pause: the words so far
-announce more ("..., et", "parce que", a lone "OK").
+`endpoint` (a callback the engine sets) asks for a longer one for this pause: Smart Turn hears an
+unfinished turn (turn.py), or without it the words so far announce more ("..., et", "parce que",
+a lone "OK").
 
 SPDX-License-Identifier: MIT
 """
@@ -72,9 +76,77 @@ class EnergyVad:
         return speech
 
 
-def make_vad(kind: str = "auto", aggressiveness: int = 2, min_dbfs: float = -60.0) -> Vad:
-    """'webrtc', 'energy', or 'auto' (webrtc if installed). `aggressiveness` and `min_dbfs`: the
-    device's (device.py)."""
+class SileroVad:
+    """Silero VAD v6: the probability that the last 32 ms (512 samples) are speech, from a small
+    recurrent network. Frames of 20 ms are buffered into the model's 512-sample chunks (each with
+    the 64 samples before it, as Silero's own wrapper does); a frame's decision is the latest
+    chunk's, with hysteresis: speech from `threshold`, silence again below `threshold - 0.15`.
+    Frames quieter than `min_dbfs` are never speech (the device's floor)."""
+
+    CHUNK = 512
+    CONTEXT = 64
+    _sessions: dict = {}
+
+    def __init__(self, threshold: float = 0.5, min_dbfs: float = -60.0, path=None, session=None):
+        from . import models
+        if session is None:
+            path = path or models.path_of("silero-vad")
+            if path is None:
+                raise FileNotFoundError("Silero VAD is not downloaded (python -m marvin_host.voice.models --prefetch)")
+            key = str(path)
+            session = SileroVad._sessions.get(key)
+            if session is None:
+                session = SileroVad._sessions[key] = models.onnx_session(path)
+        self._session = session
+        self.threshold = float(threshold)
+        self.min_dbfs = min_dbfs
+        self.reset()
+
+    def reset(self) -> None:
+        self._state = np.zeros((2, 1, 128), np.float32)
+        self._context = np.zeros(self.CONTEXT, np.float32)
+        self._buf = np.zeros(0, np.float32)
+        self._speech = False
+        self.prob = 0.0                     # the latest chunk's probability
+
+    def probability(self, chunk: np.ndarray) -> float:
+        """Runs one 512-sample float chunk through the model (its state moves on)."""
+        x = np.concatenate([self._context, chunk]).astype(np.float32)[None, :]
+        out, self._state = self._session.run(None, {"input": x, "state": self._state,
+                                                    "sr": np.array(16000, dtype=np.int64)})
+        self._context = x[0, -self.CONTEXT:]
+        return float(out[0][0])
+
+    def is_speech(self, frame: np.ndarray) -> bool:
+        self._buf = np.concatenate([self._buf, np.asarray(frame, np.float32) / 32768.0])
+        while len(self._buf) >= self.CHUNK:
+            chunk, self._buf = self._buf[:self.CHUNK], self._buf[self.CHUNK:]
+            self.prob = self.probability(chunk)
+            if self.prob >= self.threshold:
+                self._speech = True
+            elif self.prob < self.threshold - 0.15:
+                self._speech = False
+        return self._speech and rms_dbfs(frame) >= self.min_dbfs
+
+
+VAD_CHOICES = ("auto", "silero", "webrtc", "energy")
+
+
+def make_vad(kind: str = "auto", aggressiveness: int = 2, min_dbfs: float = -60.0, threshold: float = 0.5) -> Vad:
+    """'silero', 'webrtc', 'energy', or 'auto' (Silero when its model is downloaded, else WebRTC
+    if installed, else energy). `aggressiveness` (WebRTC), `min_dbfs` and `threshold` (Silero):
+    the device's (device.py)."""
+    if kind in ("auto", "silero"):
+        try:
+            return SileroVad(threshold or 0.5, min_dbfs)
+        except (FileNotFoundError, ImportError) as e:
+            if kind == "silero":
+                raise
+            log.info("Silero VAD unavailable (%s): using WebRTC VAD", e)
+        except Exception as e:                          # noqa: BLE001 - a broken file or runtime
+            if kind == "silero":
+                raise
+            log.warning("Silero VAD failed to load (%s): using WebRTC VAD", e)
     if kind in ("auto", "webrtc"):
         try:
             return WebRtcVad(aggressiveness, min_dbfs)

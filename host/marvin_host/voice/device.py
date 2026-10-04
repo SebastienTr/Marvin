@@ -13,9 +13,10 @@ The profile holds what differs from one device to the other:
 - half or full duplex, the echo tail and the output latency (echo.py, `EchoGate`): the computer's
   speakers are far from its microphone, the robot's speaker sits in the same body as its
   microphone;
-- the VAD's floor (`vad_min_dbfs`) and the "too quiet" threshold of an utterance
-  (`speech_min_dbfs`, filters.py): the robot's microphone has 12 dB of gain (docs/audio.md) and the
-  lidar's motor turns a few centimetres away, so its noise floor is higher;
+- the VAD's floor (`vad_min_dbfs`), Silero's speech threshold (`vad_threshold`) and the "too quiet"
+  threshold of an utterance (`speech_min_dbfs`, filters.py): the robot's microphone has 12 dB of
+  gain (docs/audio.md) and the lidar's motor turns a few centimetres away, so its noise floor is
+  higher. The voice calibration (enroll.py) measures them on the device itself;
 - capabilities: whether it can play the voice's earcons, whether it cancels its own echo.
 
 The values themselves are the Java host's (host-java `VoiceSettings`, the single source of the
@@ -49,6 +50,7 @@ class DeviceProfile:
     vad_min_dbfs: float = -60.0         # a frame quieter than this is never speech
     speech_min_dbfs: float = -50.0      # an utterance whose loudest half is quieter is "too quiet"
     vad_aggressiveness: int = 2         # WebRTC VAD, 0..3
+    vad_threshold: float = 0.5          # Silero VAD: speech from this probability (calibration may raise it)
     has_earcons: bool = True            # it can play the voice's short sounds
     has_aec: bool = False               # it cancels its own echo
     input_device: str = ""              # computer: PortAudio input ("" = the system default)

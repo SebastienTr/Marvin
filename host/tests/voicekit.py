@@ -98,8 +98,9 @@ class ScriptedVoice(VoiceEngine):
 
 
 class ScriptSource:
-    """Plays a script of ("say", seconds), ("quiet", seconds), ("idle",), ("call", fn) and
-    ("status", name) steps. "idle" waits until the engine has finished answering, like a person
+    """Plays a script of ("say", seconds[, f0]), ("quiet", seconds), ("idle",), ("call", fn) and
+    ("status", name) steps (`f0`: the voice's pitch, 140 Hz by default: another pitch is another
+    person for `speaker.FakeEncoder`). "idle" waits until the engine has finished answering, like a person
     waiting for the reply."""
 
     def __init__(self, script):
@@ -124,7 +125,7 @@ class ScriptSource:
                     assert time.monotonic() < end, f"never reached {step[1]}"
                     time.sleep(0.005)
                 continue
-            audio = voice(step[1]) if step[0] == "say" else silence(step[1])
+            audio = voice(*step[1:]) if step[0] == "say" else silence(step[1])
             for i in range(len(audio) // FRAME_SAMPLES):
                 yield audio[i * FRAME_SAMPLES:(i + 1) * FRAME_SAMPLES]
 

@@ -601,6 +601,7 @@ def test_make_stt_picks_mlx_and_falls_back(monkeypatch):
             self.model = model
 
     monkeypatch.setattr(stt_mod, "WhisperSTT", CpuWhisper)
+    monkeypatch.setattr(stt_mod, "parakeet_backend", lambda: None)     # no Parakeet here (test_voice_ears.py)
     monkeypatch.setitem(sys.modules, "mlx_whisper", _FakeMlxWhisper())
     monkeypatch.setattr(stt_mod, "mlx_available", lambda: True)
     assert isinstance(stt_mod.make_stt("auto"), stt_mod.MlxWhisperSTT)

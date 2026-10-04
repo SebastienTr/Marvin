@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import sys
 
-STT_CHOICES = ("auto", "mlx", "faster-whisper")
+STT_CHOICES = ("auto", "parakeet", "mlx", "faster-whisper")
 TTS_CHOICES = ("auto", "qwen", "say", "piper", "espeak")
 STT_MODELS = ("tiny", "base", "small", "medium", "large-v3", "turbo")
 # Piper voices offered for download (rhasspy/piper-voices); installed ones are listed too
@@ -72,9 +72,32 @@ def tts_available() -> dict[str, bool]:
 
 def stt_available() -> dict[str, bool]:
     """Which speech recognition backends can run here ("auto" when one of them can)."""
-    from .stt import mlx_available
-    out = {"mlx": mlx_available(), "faster-whisper": importlib.util.find_spec("faster_whisper") is not None}
+    from .stt import mlx_available, parakeet_backend
+    out = {"parakeet": parakeet_backend() is not None, "mlx": mlx_available(),
+           "faster-whisper": importlib.util.find_spec("faster_whisper") is not None}
     return {"auto": any(out.values()), **out}
+
+
+def ears_available() -> list[dict]:
+    """The ears' models (models.py and Parakeet): [{"name", "installed" (downloaded and runnable), "why"}]."""
+    from . import models
+    from .stt import parakeet_backend, parakeet_downloaded
+    out = []
+    onnx = models.onnx_available()
+    for m in models.MODELS.values():
+        here = onnx and m.present()
+        why = "" if here else ("pip install onnxruntime (./marvin up does it)" if not onnx
+                               else "not downloaded: ./marvin up (or python -m marvin_host.voice.models --prefetch)")
+        out.append({"name": m.id, "installed": here, "why": why})
+    backend = parakeet_backend()
+    try:
+        here = backend is not None and parakeet_downloaded(backend)
+    except ImportError:
+        here = False
+    out.append({"name": "parakeet", "installed": here,
+                "why": "" if here else ("Apple Silicon: pip install parakeet-mlx; elsewhere: pip install onnx-asr"
+                                        if backend is None else "not downloaded: ./marvin up")})
+    return out
 
 
 def audio_preflight(input_device=None, microphone: bool = True) -> None:
@@ -83,7 +106,8 @@ def audio_preflight(input_device=None, microphone: bool = True) -> None:
     microphone needs no sound card."""
     wanted = ("numpy", "sounddevice", "webrtcvad") if microphone else ("numpy", "webrtcvad")
     missing = [m for m in wanted if importlib.util.find_spec(m) is None]
-    if importlib.util.find_spec("faster_whisper") is None and importlib.util.find_spec("mlx_whisper") is None:
+    if not any(importlib.util.find_spec(m) is not None for m in ("faster_whisper", "mlx_whisper", "parakeet_mlx",
+                                                                  "onnx_asr")):
         missing.append("faster-whisper")
     if missing:
         raise VoiceUnavailable(f"The voice extra is not installed (missing: {', '.join(missing)})",

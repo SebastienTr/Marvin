@@ -18,8 +18,14 @@ States: idle -> listening -> thinking -> speaking -> (listening for a follow-up)
   talks; if they did say something, the pending answer is cancelled and the two texts go as one
   question (its "heard" event lists the questions it `continues`). A question that interrupts an
   answer (barge-in, Talk now) within `continue_join_s` of the interrupted question joins it too.
-- The pause that ends a question is `end_silence_s`, or `end_silence_long_s` when the words so
-  far announce more ("..., et", "parce que", "and", a lone "OK"): see `_endpoint`.
+- The end of a question: with Smart Turn (turn.py), a short silence (`turn_check_s`, 0.2 s) lets
+  the model judge whether the turn is complete; if not, the voice waits up to `turn_max_s` (2 s).
+  Without it, the pause is `end_silence_s`, or `end_silence_long_s` when the words so far announce
+  more ("..., et", "parce que", "and", a lone "OK"). See `_endpoint`.
+- Whose voice (speaker.py): with voiceprints, each question's speaker is recognised while its
+  words are, and the core is told ("speaker"); `known_voices_only` ignores unknown voices.
+- Calibration and enrollment (enroll.py, `enroll`): while it runs the voice answers nothing; the
+  frames go to the calibration.
 
 `VoiceEngine` is everything but the conversation: what to answer is decided by `_answer(job)`,
 which a subclass implements. The voice sidecar's (marvin_host.sidecar.voice) sends the question to
@@ -62,7 +68,7 @@ import logging
 import queue
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Callable
 
@@ -72,10 +78,13 @@ from ..audio import FRAME_MS
 from . import filters
 from .device import AudioDevice
 from .echo import CLOSED, MASK, EchoFilter, EchoGate
+from .enroll import NOISE_S, Enrollment
+from .speaker import MIN_SPEECH_S, SpeakerEncoder, SpeakerId, SpeakerMatch, Voiceprint
 from .stt import STT, Transcript
 from .text import guess_language
 from .tts import TTS, pronounce
-from .vad import Segment, Segmenter, SegmenterConfig, Vad, make_vad
+from .turn import TurnDetector, make_turn
+from .vad import EnergyVad, Segment, Segmenter, SegmenterConfig, Vad, make_vad
 from .wake import TranscriptWakeWord, WakeMatch, WakeWordDetector, match_wake_word
 
 log = logging.getLogger("marvin.voice")
@@ -97,11 +106,20 @@ class VoiceConfig:
     languages: tuple[str, ...] = ("fr", "en")   # languages the speaker is expected to use
     default_language: str = "fr"            # until someone speaks
     # models (used when the components are not passed in)
-    stt: str = "auto"                       # auto (MLX on Apple Silicon if installed), mlx, faster-whisper
-    stt_model: str | None = None            # None: the backend's default (turbo on MLX, small on CPU)
+    stt: str = "auto"                       # auto (Parakeet where it runs, else Whisper), parakeet, mlx, faster-whisper
+    stt_model: str | None = None            # None: the backend's default (Parakeet v3; turbo on MLX, small on CPU)
     tts: str = "auto"                       # auto, qwen, say, piper, espeak
     tts_voice: str | None = None
-    vad: str = "auto"                       # auto, webrtc, energy
+    vad: str = "auto"                       # auto (Silero when downloaded), silero, webrtc, energy
+    vocabulary: tuple[str, ...] = ("Marvin",)   # names and terms speech recognition must get right (lexicon.py)
+    # the end of a question (turn.py)
+    turn: str = "auto"                      # auto (Smart Turn when downloaded), smart-turn, silence
+    turn_check_s: float = 0.2               # Smart Turn judges the turn after this much silence...
+    turn_max_s: float = 2.0                 # ...and an unfinished one ends after this much
+    # whose voice (speaker.py)
+    voiceprints: tuple = ()                 # ((name, (floats...), model), ...): the people Marvin knows
+    speaker_threshold: float = 0.45
+    known_voices_only: bool = False         # ignore questions from voices it does not know
     # behaviour
     wake: bool = True                       # False: every utterance is a question
     listen_window_s: float = 6.0            # after "Marvin." alone
@@ -161,6 +179,7 @@ class VoiceEngine:
     def __init__(self, device: AudioDevice, config: VoiceConfig | None = None, *,
                  stt: STT | None = None, tts: TTS | None = None,
                  vad: Vad | None = None, wake: WakeWordDetector | None = None,
+                 turn: TurnDetector | None | str = "auto", speaker: SpeakerEncoder | None | str = "auto",
                  stt_lock: threading.Lock | None = None,
                  on_status: Callable[[str], None] | None = None,
                  on_transcript: Callable[[str], None] | None = None,
@@ -170,16 +189,36 @@ class VoiceEngine:
         languages = (c.language,) if c.language else c.languages
         self.language = c.language or c.default_language    # of the conversation
         if stt is None:
-            from .stt import make_stt
-            stt = make_stt(c.stt, c.stt_model, languages)
+            from .stt import make_stt, with_vocabulary
+            stt = with_vocabulary(make_stt(c.stt, c.stt_model, languages), c.vocabulary)
         if tts is None:
             tts = load_tts(c)
         self.stt, self.tts = stt, tts
         self.wake = wake or TranscriptWakeWord(stt)
         self._own_vad = vad is None                          # made here: it follows the device's profile
         p = device.profile
-        self.segmenter = Segmenter(vad or make_vad(c.vad, p.vad_aggressiveness, p.vad_min_dbfs), c.segmenter)
+        # the end of a question: Smart Turn after a short silence, else the silence timers
+        self.turn = make_turn(c.turn) if turn == "auto" else turn
+        seg_config = c.segmenter
+        if self.turn is not None:
+            seg_config = replace(c.segmenter, end_silence_s=c.turn_check_s,
+                                 end_silence_long_s=max(c.turn_max_s, c.turn_check_s))
+        self._turn_last = None                               # (utterance uid, TurnDecision) of the last judged pause
+        self.segmenter = Segmenter(vad or make_vad(c.vad, p.vad_aggressiveness, p.vad_min_dbfs, p.vad_threshold),
+                                   seg_config)
         self.segmenter.endpoint = self._endpoint
+        # whose voice: an encoder (enrollment needs it even before anyone is known) and the voiceprints
+        if speaker == "auto":
+            from .speaker import make_encoder
+            speaker = make_encoder()
+        self.speaker_encoder = speaker
+        prints = [Voiceprint(n, np.asarray(e, np.float32), m) for n, e, m in c.voiceprints]
+        self.speaker = SpeakerId(speaker, prints, c.speaker_threshold) if speaker is not None else None
+        self._spk: tuple[int, concurrent.futures.Future] | None = None     # (utterance uid, its SpeakerMatch)
+        self._spk_done: tuple[int, SpeakerMatch] | None = None
+        self._spk_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="marvin-voice-speaker")
+        self._last_known: tuple[str, float] | None = None   # the last recognised speaker and when (audio time)
+        self._enroll: Enrollment | None = None
         self.on_status, self.on_transcript, self.on_reply = on_status, on_transcript, on_reply
         self._listeners: list[Callable[[str, dict], None]] = []
         self._muted = False
@@ -284,6 +323,7 @@ class VoiceEngine:
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=2)
         self._spec_pool.shutdown(wait=False)
+        self._spk_pool.shutdown(wait=False)
         if hasattr(self.sink, "close"):
             self.sink.close()
 
@@ -297,12 +337,15 @@ class VoiceEngine:
             old = self.device
             if self.gate.speaking or self._pending > 0 or old.sink.busy:
                 self._interrupt("stop")
+            enr, self._enroll = self._enroll, None
+            if enr is not None:
+                enr.cancel()                # it measured the old device
             self.device = device
             p = device.profile
             self.gate.configure(p.echo_tail_s, not p.duplex, device.output_latency_s)
             self.gate.cut()
             if self._own_vad:
-                self.segmenter.vad = make_vad(self.config.vad, p.vad_aggressiveness, p.vad_min_dbfs)
+                self.segmenter.vad = make_vad(self.config.vad, p.vad_aggressiveness, p.vad_min_dbfs, p.vad_threshold)
             self._swap_gen += 1
             self._reset_segmenter = True
         log.info("voice: now on %s", device.name)
@@ -321,6 +364,56 @@ class VoiceEngine:
     @property
     def closed(self) -> bool:
         return self._closed.is_set()
+
+    # ------------------------------------------------------------ calibration and enrollment
+
+    @property
+    def enrolling(self) -> bool:
+        return self._enroll is not None
+
+    def enroll(self, name: str, sentences: list[str] | None = None, noise_s: float = NOISE_S) -> bool:
+        """Starts a calibration (and, with a speaker model, an enrollment of `name`'s voice) on the
+        current device (enroll.py): what Marvin says stops, the microphone is unmuted, nothing is
+        answered until it ends. Progress comes as "enroll" events. False once closed."""
+        if self._closed.is_set():
+            return False
+        p = self.device.profile
+        vad = make_vad(self.config.vad, p.vad_aggressiveness, -90.0, 0.5) if self._own_vad \
+            else EnergyVad(margin_db=10.0, min_dbfs=-90.0)
+        with self._lock:
+            if self._pending > 0 or self._status in (Status.THINKING, Status.SPEAKING):
+                self._interrupt("stop")
+            self._listen_until = None
+            self._set_status(Status.IDLE)
+            old, self._enroll = self._enroll, None
+            if old is not None:
+                old.cancel()
+            enc = self.speaker_encoder
+            self._enroll = Enrollment(name, list(sentences or []), vad=vad, transcribe=self._transcribe,
+                                      embed=enc.embed if enc is not None else None, emit=self._enroll_event,
+                                      noise_s=noise_s)
+        if self._muted:
+            self.mute(False)
+        log.info("calibration started on %s%s", self.device.name, f" for {name}" if name else "")
+        return True
+
+    def enroll_cancel(self) -> bool:
+        with self._lock:
+            enr, self._enroll = self._enroll, None
+        if enr is None:
+            return False
+        enr.cancel()
+        return True
+
+    def _enroll_event(self, state: str, **data) -> None:
+        if state == "done":
+            cal = data["calibration"]
+            log.info("calibration on %s: noise %.1f dBFS, voice %.1f dBFS -> VAD floor %.1f, too quiet %.1f, "
+                     "Silero %.2f%s", self.device.name, cal.noise_dbfs, cal.speech_dbfs, cal.vad_min_dbfs,
+                     cal.speech_min_dbfs, cal.vad_threshold, "".join(f"; {w}" for w in cal.warnings))
+            data["device"] = self.device.profile
+            data["model"] = getattr(self.speaker_encoder, "model_id", "")
+        self._emit("enroll", state=state, **data)
 
     def wait_idle(self, timeout: float | None = None) -> bool:
         """Blocks until everything captured has been heard and nothing is queued, thought or
@@ -512,6 +605,19 @@ class VoiceEngine:
             self._spec = None
             self._utterance_done()
         gated = state == CLOSED
+        enr = self._enroll
+        if enr is not None:                   # calibrating: the frames are the calibration's, nothing is judged
+            enr.feed(frame, heard=not gated)
+            if not enr.active:
+                with self._lock:
+                    if self._enroll is enr:
+                        self._enroll = None
+            self.segmenter.advance()
+            self._spec = None
+            self._utterance_done()
+            self._live_level(frame, gated)
+            self._audio_now = self.segmenter.time
+            return
         if gated:
             self.segmenter.advance()          # deaf: time goes on, a started utterance is dropped
             self._spec = None
@@ -578,13 +684,18 @@ class VoiceEngine:
     ENDPOINT_WAIT_S = 1.5       # longest wait for the speculative transcript when deciding the endpoint
 
     def _endpoint(self) -> float | None:
-        """The segmenter asks, once per pause of `end_silence_s`, whether to wait longer: yes
-        (`end_silence_long_s`) when the speculative transcript of the words so far announces more
-        (filters.announces_more). The transcript was started at `speculate_after_s` and the answer
-        would wait for it anyway, so asking costs nothing when the question is over."""
+        """The segmenter asks, once per pause of `end_silence_s`, whether to wait longer.
+
+        With Smart Turn (`end_silence_s` is then `turn_check_s`): the model judges the utterance so
+        far; an unfinished turn waits `turn_max_s` (`end_silence_long_s`) unless the person goes on.
+        Without it: wait `end_silence_long_s` when the speculative transcript of the words so far
+        announces more (filters.announces_more). The transcript was started at `speculate_after_s`
+        and the answer would wait for it anyway, so asking costs nothing when the question is over."""
         c, sg = self.config, self.segmenter
-        long_s = c.segmenter.end_silence_long_s
-        if long_s <= c.segmenter.end_silence_s:
+        if self.turn is not None:
+            return self._turn_endpoint()
+        long_s = sg.config.end_silence_long_s
+        if long_s <= sg.config.end_silence_s:
             return None
         spec = self._spec
         if spec is None or spec[:2] != sg.utterance_key:
@@ -604,6 +715,24 @@ class VoiceEngine:
             return None
         log.info("more to come after %r: waiting for %.2f s of silence", text, long_s)
         return long_s
+
+    def _turn_endpoint(self) -> float | None:
+        sg = self.segmenter
+        pend = sg.pending()
+        if pend is None or not self._may_matter():
+            return None                         # Marvin is busy: only a barge-in could count, judged at once
+        try:
+            d = self.turn.decide(pend.pcm)
+        except Exception:                       # noqa: BLE001 - never lose the utterance
+            log.exception("end of turn decision failed")
+            return None
+        self._turn_last = (pend.uid, d)
+        if d.complete:
+            log.debug("end of turn: complete (p=%.2f, %.0f ms)", d.probability, d.seconds * 1000)
+            return None
+        log.info("end of turn: not finished (p=%.2f, %.0f ms), waiting up to %.1f s of silence",
+                 d.probability, d.seconds * 1000, sg.config.end_silence_long_s)
+        return sg.config.end_silence_long_s
 
     def _continue(self, prev: _Asked, seg: Segment, t0: float, lat: dict) -> None:
         """`seg` continues the question `prev`, whose answer has not been heard: the answer is
@@ -821,6 +950,10 @@ class VoiceEngine:
 
     def _on_segment(self, seg: Segment, t_cap: float) -> None:
         self._seg_dbfs = filters.loud_dbfs(seg.pcm) if len(seg.pcm) else None
+        spk = self.speaker
+        if spk is not None and spk.enrolled and seg.duration >= MIN_SPEECH_S:
+            # whose voice, while the words are being recognised
+            self._spk = (seg.uid, self._spk_pool.submit(spk.identify, seg.pcm))
         try:
             self._judge(seg, t_cap)
         finally:
@@ -829,8 +962,13 @@ class VoiceEngine:
     def _judge(self, seg: Segment, t_cap: float) -> None:
         c = self.config
         now_audio = self.segmenter.time
-        lat = {"endpoint": max(0.0, now_audio - seg.t_speech_end) if seg.t_speech_end else c.segmenter.end_silence_s,
+        lat = {"endpoint": max(0.0, now_audio - seg.t_speech_end) if seg.t_speech_end
+               else self.segmenter.config.end_silence_s,
                "queue": max(0.0, time.monotonic() - t_cap)}
+        tl = self._turn_last
+        if tl is not None and tl[0] == seg.uid:
+            lat["turn"] = round(tl[1].seconds, 4)       # Smart Turn's decision, part of the endpoint
+            lat["turn_p"] = round(tl[1].probability, 3)
         t0 = t_cap                              # when the end of the question was captured
         self._seg_started = t_cap - max(0.0, now_audio - seg.t_start)   # when it began (monotonic)
         with self._lock:
@@ -861,6 +999,8 @@ class VoiceEngine:
             m = self._wake_check(seg, lat)
             if m is None or (m.transcript is not None and self._own_voice(m.transcript.text, self._seg_started)):
                 return
+            if self._refused(seg, m.transcript.text if m.transcript is not None else ""):
+                return                          # a voice it does not know cannot cut it short
             join = self._joinable(seg)          # "Marvin, ... and also ...": the rest of the question it cuts
             if busy:
                 log.info("barge-in")
@@ -943,6 +1083,11 @@ class VoiceEngine:
                 lat: dict | None = None, source: str = "voice", *, seg: Segment | None = None,
                 continues: tuple[int, ...] = (), raw: str | None = None) -> None:
         raw = raw if raw is not None else ((tr.text or "").strip() if tr is not None else "")
+        who = SpeakerMatch(None, None)
+        if source == "voice" and seg is not None:
+            who = self._speaker_of(seg)
+            if self._refused(seg, text, who):
+                return
         lead, self._lead_in = self._lead_in, None
         grace = self.config.continue_grace_s
         if lead is not None and seg is not None and grace > 0 and 0 <= seg.speech_start - lead[1] <= grace:
@@ -950,6 +1095,12 @@ class VoiceEngine:
         log.info("heard (%s): %s", language, text)
         self.last_latency = dict(lat or {})
         extra = {"raw": raw} if raw and raw != text else {}
+        if who.score is not None:
+            extra["speaker"] = who.label()
+            extra["speaker_score"] = who.score
+            lat = dict(lat or {})
+            lat["speaker"] = round(who.seconds, 4)
+            self.last_latency = dict(lat)
         if continues:
             extra["continues"] = list(continues)
             extra["cut"] = [u for u in continues if u in self._heard_aloud]     # answered (in part) in between
@@ -970,6 +1121,47 @@ class VoiceEngine:
             self._listen_until = None
             self._set_status(Status.THINKING)
             self._enqueue(job)
+
+    SPEAKER_WAIT_S = 1.0        # longest wait for the speaker's recognition (it runs beside speech recognition)
+    KNOWN_FOR_S = 60.0          # known_voices_only: a short reply (too short to judge) counts as the last known voice's
+
+    def _speaker_of(self, seg: Segment) -> SpeakerMatch:
+        """Whose voice `seg` is (computed since the utterance ended), or not judged."""
+        done = self._spk_done
+        if done is not None and done[0] == seg.uid:
+            return done[1]
+        spk = self._spk
+        if spk is None or spk[0] != seg.uid:
+            return SpeakerMatch(None, None)
+        try:
+            m = spk[1].result(timeout=self.SPEAKER_WAIT_S)
+        except Exception:                           # noqa: BLE001 - a timeout or a failure: not judged
+            log.warning("speaker recognition did not answer in time")
+            m = SpeakerMatch(None, None)
+        if m.score is not None:
+            log.info("speaker: %s (%.2f%s, %.0f ms)", m.name or "unknown", m.score,
+                     "" if m.name else f", closest {m.best}", m.seconds * 1000)
+            if m.known:
+                self._last_known = (m.name, seg.t_end)
+        self._spk_done = (seg.uid, m)
+        return m
+
+    def _refused(self, seg: Segment, text: str, who: SpeakerMatch | None = None) -> bool:
+        """`known_voices_only`: an unknown voice is ignored (logged and shown, never answered). A
+        reply too short to judge counts as the voice recognised last, within `KNOWN_FOR_S`."""
+        if not self.config.known_voices_only or self.speaker is None or not self.speaker.enrolled:
+            return False
+        who = who or self._speaker_of(seg)
+        if who.known:
+            return False
+        if who.score is None:
+            last = self._last_known
+            if last is not None and seg.t_end - last[1] <= self.KNOWN_FOR_S:
+                return False
+            self._ignored(text, "voice not recognised (too short to tell)")
+            return True
+        self._ignored(text, f"unknown voice ({who.score:.2f}, closest {who.best})")
+        return True
 
     def _prepare(self, job: _Job) -> None:
         """Called for a question before it is announced ("heard") and queued. Nothing by default."""
@@ -1219,6 +1411,8 @@ def format_latency(lat: dict) -> str:
     """One line: where the time went between the end of the question and the first word."""
     first_word = lat.get("endpoint", 0.0) + lat.get("audio_start", 0.0)
     parts = [f"end of speech {lat.get('endpoint', 0.0):.2f}"]
+    if "turn" in lat:
+        parts.append(f"end of turn {lat['turn']:.3f}")
     if lat.get("queue", 0.0) >= 0.05:
         parts.append(f"backlog {lat['queue']:.2f}")
     stt = f"speech recognition {lat.get('stt', 0.0):.2f}"

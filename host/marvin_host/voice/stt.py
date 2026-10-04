@@ -1,10 +1,18 @@
-"""Speech to text, locally: Whisper on the Apple Silicon GPU (MLX) or on the CPU (faster-whisper).
+"""Speech to text, locally: Parakeet (the default) or Whisper, on the Apple Silicon GPU or the CPU.
 
-- `MlxWhisperSTT` (package `mlx-whisper`, Apple Silicon only): large-v3-turbo on the GPU, a few
-  hundred milliseconds per question and much better French than the small CPU models.
-- `WhisperSTT` (faster-whisper, CTranslate2): everywhere else; `small` by default.
+- `ParakeetSTT`: NVIDIA's Parakeet TDT 0.6B v3 (CC-BY-4.0), a transducer that writes 25 European
+  languages with punctuation and capitals, the best French word error rate of the open models of
+  its size, and no Whisper-style inventions on silence. On Apple Silicon through MLX
+  (`parakeet-mlx`, model `mlx-community/parakeet-tdt-0.6b-v3`, 2.5 GB once); elsewhere through
+  onnxruntime (`onnx-asr`, int8, 670 MB once: about 0.6 s for a 4 s question on two CPU cores).
+  It does not say which language it heard: the turn's language is read from its words
+  (text.detect_language). It has no word biasing: the vocabulary is applied after (lexicon.py).
+- `MlxWhisperSTT` (package `mlx-whisper`, Apple Silicon only): large-v3-turbo on the GPU.
+- `WhisperSTT` (faster-whisper, CTranslate2): the CPU fallback; `small` by default.
 
-`make_stt("auto")` picks MLX on an Apple Silicon Mac when it is installed, faster-whisper otherwise.
+`make_stt("auto")` picks Parakeet when it can run here (MLX on Apple Silicon, or onnx-asr when
+installed), else MLX Whisper on Apple Silicon, else faster-whisper. `"parakeet"`, `"mlx"` and
+`"faster-whisper"` ask for one.
 
 `WhisperSTT` transcribes one utterance at a time. The language is either fixed or detected among a
 short list (French and English by default): Whisper's detection is unreliable on a one-second
@@ -42,6 +50,7 @@ class Transcript:
     avg_logprob: float | None = None
     compression_ratio: float | None = None
     rejected: str | None = None     # every segment looked like non-speech: why (the text is then "")
+    confidence: float | None = None     # Parakeet: the mean of its tokens' confidence (0..1), None otherwise
 
 
 def _keep_segments(segments) -> tuple[str, dict, str | None]:
@@ -225,15 +234,168 @@ class MlxWhisperSTT:
         return Transcript(text, lang, confident, time.monotonic() - t, None, rejected=rejected, **scores)
 
 
-STT_BACKENDS = ("auto", "mlx", "faster-whisper")
+# ---------------------------------------------------------------- Parakeet
+
+PARAKEET_MLX = "mlx-community/parakeet-tdt-0.6b-v3"
+PARAKEET_ONNX = "nemo-parakeet-tdt-0.6b-v3"          # onnx-asr's name for it
+PARAKEET_MIN_CONFIDENCE = 0.15                        # below: "low confidence" (to tune on real use)
+
+
+def parakeet_backend() -> str | None:
+    """"mlx" on an Apple Silicon Mac with parakeet-mlx, "onnx" with onnx-asr, else None."""
+    import importlib.util
+    import platform
+    import sys
+    if (sys.platform == "darwin" and platform.machine() == "arm64"
+            and importlib.util.find_spec("parakeet_mlx") is not None):
+        return "mlx"
+    if importlib.util.find_spec("onnx_asr") is not None and importlib.util.find_spec("onnxruntime") is not None:
+        return "onnx"
+    return None
+
+
+PARAKEET_ONNX_REPO = "istupakov/parakeet-tdt-0.6b-v3-onnx"
+PARAKEET_ONNX_FILES = ["config.json", "vocab.txt", "nemo128.onnx", "*.int8.onnx"]     # int8 only: 670 MB
+
+
+def _local_snapshot(repo: str, patterns: list[str] | None = None) -> str:
+    """The Hugging Face repo's local copy (downloaded once), so loading never touches the network."""
+    from huggingface_hub import snapshot_download
+    try:
+        return snapshot_download(repo, allow_patterns=patterns, local_files_only=True)
+    except Exception:                                  # noqa: BLE001 - not cached yet
+        log.info("downloading %s (once)...", repo)
+        return snapshot_download(repo, allow_patterns=patterns)
+
+
+def parakeet_prefetch(backend: str | None = None) -> str:
+    """Downloads Parakeet's weights for `backend` (default: the one that runs here); their folder."""
+    backend = backend or parakeet_backend()
+    if backend == "mlx":
+        return _local_snapshot(PARAKEET_MLX)
+    return _local_snapshot(PARAKEET_ONNX_REPO, PARAKEET_ONNX_FILES)
+
+
+def parakeet_downloaded(backend: str | None = None) -> bool:
+    from huggingface_hub import snapshot_download
+    backend = backend or parakeet_backend()
+    try:
+        if backend == "mlx":
+            snapshot_download(PARAKEET_MLX, local_files_only=True)
+        else:
+            snapshot_download(PARAKEET_ONNX_REPO, allow_patterns=PARAKEET_ONNX_FILES, local_files_only=True)
+        return True
+    except Exception:                                  # noqa: BLE001
+        return False
+
+
+class ParakeetSTT:
+    """Parakeet TDT 0.6B v3. `backend`: "mlx" or "onnx" (default: `parakeet_backend()`); `model`: a
+    Hugging Face repo or a local folder with that backend's files (default: v3 for the backend)."""
+
+    def __init__(self, model: str | None = None, languages: Iterable[str] = ("fr", "en"), backend: str | None = None,
+                 min_confidence: float = PARAKEET_MIN_CONFIDENCE):
+        import os
+        self.backend = backend or parakeet_backend()
+        if self.backend is None:
+            raise RuntimeError("Parakeet needs parakeet-mlx (Apple Silicon) or onnx-asr: pip install -e \".[voice]\"")
+        self.languages = tuple(languages)
+        self.min_confidence = min_confidence
+        local = model if model and os.path.isdir(os.path.expanduser(model)) else None
+        t = time.monotonic()
+        if self.backend == "mlx":
+            from parakeet_mlx import from_pretrained
+            from parakeet_mlx.audio import get_logmel
+            import mlx.core as mx
+            self.model_name = model or PARAKEET_MLX
+            self._model = from_pretrained(local or _local_snapshot(self.model_name))
+            self._mx, self._logmel = mx, get_logmel
+        else:
+            import onnx_asr
+            self.model_name = model or PARAKEET_ONNX_REPO
+            folder = local or _local_snapshot(self.model_name, PARAKEET_ONNX_FILES)
+            self._model = onnx_asr.load_model(PARAKEET_ONNX, folder, quantization="int8")
+        self._run(np.zeros(SAMPLE_RATE // 2, np.float32))         # compile and warm up now
+        log.info("parakeet %s (%s) loaded in %.1f s", self.model_name, self.backend, time.monotonic() - t)
+
+    def _run(self, audio: np.ndarray) -> tuple[str, float | None]:
+        if self.backend == "mlx":
+            mel = self._logmel(self._mx.array(audio), self._model.preprocessor_config)
+            r = self._model.generate(mel)[0]
+            tokens = [tok for sentence in r.sentences for tok in sentence.tokens]
+            conf = float(np.mean([tok.confidence for tok in tokens])) if tokens else None
+            return (r.text or "").strip(), conf
+        out = self._model.recognize(audio, sample_rate=SAMPLE_RATE)
+        return (out if isinstance(out, str) else getattr(out, "text", "") or "").strip(), None
+
+    def transcribe(self, pcm: np.ndarray, language: str | None = None) -> Transcript:
+        from .text import detect_language
+        t = time.monotonic()
+        text, conf = self._run(np.asarray(pcm, dtype=np.float32) / 32768.0)
+        rejected = None
+        if conf is not None and text and conf < self.min_confidence:
+            rejected, text = f"low confidence ({conf:.2f})", ""
+        if language:
+            return Transcript(text, language, True, time.monotonic() - t, 1.0, rejected=rejected, confidence=conf)
+        lang, share = detect_language(text, self.languages or ("fr", "en"))
+        # as Whisper's detection: a short or mixed utterance is not a reason to switch languages
+        confident = lang is not None and share >= 0.7 and len(text.split()) >= 2
+        return Transcript(text, lang, confident, time.monotonic() - t, round(share, 3) if lang else None,
+                          rejected=rejected, confidence=conf)
+
+
+# ---------------------------------------------------------------- the vocabulary
+
+class LexiconSTT:
+    """Another STT, its transcripts corrected with the owner's vocabulary (lexicon.py)."""
+
+    def __init__(self, stt: STT, terms: Iterable[str]):
+        from .lexicon import Lexicon
+        self.inner = stt
+        self.lexicon = Lexicon(list(terms))
+        self.model_name = getattr(stt, "model_name", None)
+
+    def transcribe(self, pcm: np.ndarray, language: str | None = None) -> Transcript:
+        tr = self.inner.transcribe(pcm, language)
+        if tr.text and self.lexicon:
+            fixed = self.lexicon.correct(tr.text)
+            if fixed != tr.text:
+                log.debug("vocabulary: %r -> %r", tr.text, fixed)
+                tr.text = fixed
+        return tr
+
+
+def with_vocabulary(stt: STT, terms: Iterable[str]) -> STT:
+    """`stt` biased towards `terms` where it can be (Whisper's hot words or initial prompt) and
+    corrected after (all engines). The model is not reloaded."""
+    terms = [t for t in terms if t]
+    inner = stt.inner if isinstance(stt, LexiconSTT) else stt
+    if isinstance(inner, WhisperSTT):
+        inner.hotwords = ", ".join(terms) or None
+    elif isinstance(inner, MlxWhisperSTT):
+        inner.initial_prompt = (", ".join(terms) + ".") if terms else None
+    return LexiconSTT(inner, terms) if terms else inner
+
+
+STT_BACKENDS = ("auto", "parakeet", "mlx", "faster-whisper")
 
 
 def make_stt(backend: str = "auto", model: str | None = None, languages: Iterable[str] = ("fr", "en")) -> STT:
-    """'mlx', 'faster-whisper', or 'auto' (MLX on Apple Silicon when installed, else faster-whisper).
-    `model` None or "auto" picks the backend's default (turbo on MLX, small on faster-whisper)."""
+    """'parakeet', 'mlx' (Whisper on Apple Silicon), 'faster-whisper', or 'auto' (Parakeet where it
+    runs, else MLX Whisper on Apple Silicon, else faster-whisper). `model` None or "auto" picks
+    the backend's default (Parakeet v3; turbo on MLX, small on faster-whisper)."""
     if backend not in STT_BACKENDS:
         raise ValueError(f"unknown STT backend {backend!r}, expected one of {STT_BACKENDS}")
     model = None if model in (None, "", "auto") else model
+    if backend == "parakeet" or (backend == "auto" and parakeet_backend() is not None):
+        try:
+            # a Whisper model name chosen for the Whisper engines is not Parakeet's
+            return ParakeetSTT(model if model and ("parakeet" in model or "/" in model) else None, languages)
+        except Exception as e:
+            if backend == "parakeet":
+                raise
+            log.warning("Parakeet failed (%s), falling back to Whisper", e)
+        model = None if model and "parakeet" in model else model
     if backend == "mlx" or (backend == "auto" and mlx_available()):
         try:
             return MlxWhisperSTT(model or MLX_DEFAULT, languages)
@@ -242,3 +404,30 @@ def make_stt(backend: str = "auto", model: str | None = None, languages: Iterabl
                 raise
             log.warning("MLX Whisper failed (%s), falling back to faster-whisper on the CPU", e)
     return WhisperSTT(model or "small", languages)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m marvin_host.voice.stt --check | --prefetch`: Parakeet's weights (./marvin up)."""
+    import argparse
+    import sys
+    ap = argparse.ArgumentParser(prog="python -m marvin_host.voice.stt", description="Speech recognition's model.")
+    ap.add_argument("--check", action="store_true", help="say whether Parakeet can run here and is downloaded")
+    ap.add_argument("--prefetch", action="store_true", help="download Parakeet's weights now (once)")
+    args = ap.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    backend = parakeet_backend()
+    if backend is None:
+        print("Parakeet: not installed (Apple Silicon: pip install parakeet-mlx; elsewhere: pip install onnx-asr); "
+              "Whisper is used")
+        return 1
+    repo = PARAKEET_MLX if backend == "mlx" else PARAKEET_ONNX_REPO
+    if args.prefetch and not parakeet_downloaded(backend):
+        print(f"Downloading Parakeet {repo} (once, {'2.5 GB' if backend == 'mlx' else '670 MB'}) ...", flush=True)
+        parakeet_prefetch(backend)
+    here = parakeet_downloaded(backend)
+    print(f"Parakeet: {backend}, {repo}, weights {'downloaded' if here else 'not downloaded yet'}")
+    return 0 if here else 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
