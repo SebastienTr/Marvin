@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.function.Predicate;
 
 import marvin.host.application.conversation.port.out.TaskListener;
 import marvin.host.application.conversation.port.out.VoiceListener;
@@ -21,26 +22,39 @@ import marvin.host.domain.system.LogEntry;
 
 /**
  * Fans out messages to the app's connected event streams (the Python {@code _Hub}). Each client has a
- * bounded queue: a stuck client misses messages, it never blocks the brain.
+ * bounded queue: a stuck client misses messages, it never blocks the brain. A client says which kinds it wants: the
+ * app's main stream takes everything but the ears' diagnostics ({@link #SENSES_ONLY}), which only the Senses screen's
+ * stream carries.
  */
 public final class EventHub implements PresenceHistoryListener, HostLogListener, SettingsListener, VoiceListener,
         MemoryListener, CameraListener, TaskListener {
     static final int QUEUE = 256;
+    /** Kinds only a stream that asks for them gets (the Senses screen's). */
+    static final Set<String> SENSES_ONLY = Set.of("hearing");
 
     /** One message: an SSE event name and its payload (serialized when sent). */
     record Message(String kind, Object payload) {
     }
 
-    private final Set<BlockingQueue<Message>> clients = new CopyOnWriteArraySet<>();
+    private record Client(BlockingQueue<Message> queue, Predicate<String> wants) {
+    }
 
+    private final Set<Client> clients = new CopyOnWriteArraySet<>();
+
+    /** Every kind but {@link #SENSES_ONLY}. */
     BlockingQueue<Message> subscribe() {
+        return subscribe(kind -> !SENSES_ONLY.contains(kind));
+    }
+
+    /** Only the kinds {@code wants} accepts. */
+    BlockingQueue<Message> subscribe(Predicate<String> wants) {
         BlockingQueue<Message> q = new ArrayBlockingQueue<>(QUEUE);
-        clients.add(q);
+        clients.add(new Client(q, wants));
         return q;
     }
 
     void unsubscribe(BlockingQueue<Message> q) {
-        clients.remove(q);
+        clients.removeIf(c -> c.queue() == q);
     }
 
     public int size() {
@@ -49,8 +63,10 @@ public final class EventHub implements PresenceHistoryListener, HostLogListener,
 
     public void publish(String kind, Object payload) {
         Message m = new Message(kind, payload);
-        for (BlockingQueue<Message> q : clients) {
-            q.offer(m);
+        for (Client c : clients) {
+            if (c.wants().test(kind)) {
+                c.queue().offer(m);
+            }
         }
     }
 

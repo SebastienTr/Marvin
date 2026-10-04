@@ -113,7 +113,7 @@ public class StreamController implements SmartLifecycle {
         }
     }
 
-    private static OutputStream open(HttpServletResponse rs) throws IOException {
+    static OutputStream open(HttpServletResponse rs) throws IOException {
         rs.setStatus(200);
         rs.setHeader("Content-Type", "text/event-stream");
         rs.setHeader("Cache-Control", "no-store");
@@ -122,7 +122,7 @@ public class StreamController implements SmartLifecycle {
         return rs.getOutputStream();
     }
 
-    private static void sse(OutputStream out, String kind, Object payload, int retry) throws IOException {
+    static void sse(OutputStream out, String kind, Object payload, int retry) throws IOException {
         String msg = (retry > 0 ? "retry: " + retry + "\n" : "") + "event: " + kind + "\ndata: " + PyJson.write(payload)
                 + "\n\n";
         out.write(msg.getBytes(StandardCharsets.UTF_8));
