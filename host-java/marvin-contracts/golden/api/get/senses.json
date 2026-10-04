@@ -1,0 +1,473 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/senses"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "t": 1791110008.606,
+    "devices": [
+      {
+        "id": "127.0.0.1:47163",
+        "name": "marvin-11016b",
+        "role": "usb-sensors",
+        "label": "USB sensor bridge",
+        "board": "USB sensor bridge (computer)",
+        "firmware": "usb-0.1.0",
+        "ip": "127.0.0.1",
+        "rssi": null,
+        "rssi_bars": null,
+        "uptime_s": 265,
+        "simulated": false,
+        "camera": false,
+        "audio": false,
+        "online": true,
+        "age_s": 0.0,
+        "connected_at": 1791109749.796,
+        "rates": {
+          "datagrams": 181.5,
+          "scans": 10.0,
+          "radar": 0.0,
+          "vitals": 0.0,
+          "audio": 0.0
+        },
+        "loss_pct": 0.0,
+        "datagrams": 46767,
+        "lost": 0,
+        "crc_errors": 0,
+        "bad": 0,
+        "shed": 0,
+        "points": 2131
+      }
+    ],
+    "scene": {
+      "lidar": {
+        "age_s": 0.09,
+        "ranges_cm": [
+          41,
+          41,
+          42,
+          41,
+          41,
+          42,
+          41,
+          41,
+          41,
+          41,
+          41,
+          41,
+          "... 360 values"
+        ],
+        "points": 2131
+      },
+      "targets": [],
+      "trail": [],
+      "vitals": null,
+      "radar": {
+        "half_angle_deg": 60,
+        "range_cm": 600
+      }
+    },
+    "feels": {
+      "sensors": {
+        "lidar": true,
+        "radar": false,
+        "vitals": false,
+        "pir": false,
+        "climate": false,
+        "light": false,
+        "camera": false
+      },
+      "presence": {
+        "present": false,
+        "seated": false,
+        "source": "none",
+        "distance_m": null,
+        "still_s": 0.0,
+        "seated_s": 0.0,
+        "targets": 0,
+        "simulated": false,
+        "reasoning": [
+          "No presence sensor: the lidar sees shapes, but cannot tell a person from furniture.",
+          "The camera is never used for presence: it takes a picture only when asked."
+        ]
+      },
+      "vitals": {
+        "sensor": false,
+        "breath_rate": null,
+        "heart_rate": null
+      },
+      "room": null
+    },
+    "hears": {
+      "state": "on",
+      "status": "idle",
+      "muted": false,
+      "why": "",
+      "wake": true,
+      "language": "auto",
+      "vocabulary": [
+        "Marvin"
+      ],
+      "known_voices_only": false,
+      "stt": "fake",
+      "stt_setting": "auto",
+      "tts": "fake",
+      "tts_setting": "auto",
+      "tts_voice": null,
+      "device": "computer",
+      "earcons": "device",
+      "level": {
+        "mic": 0.0,
+        "speech": false,
+        "gated": false,
+        "dbfs": -60.8,
+        "t": 1791110008.578
+      },
+      "recent": [
+        {
+          "kind": "turn",
+          "uid": 4,
+          "t": 1789983062.5,
+          "vad": "silero",
+          "turn": "smart-turn",
+          "complete": false,
+          "probability": 0.12,
+          "turn_s": 0.031
+        },
+        {
+          "kind": "utterance",
+          "uid": 1,
+          "t": 1791109764.0094306,
+          "vad": "energy",
+          "turn": "",
+          "duration_s": 2.28,
+          "dbfs": -18.1,
+          "stt": "fake",
+          "stt_s": 0.0,
+          "speculative": true,
+          "text": "Marvin quelle heure est-il ?",
+          "language": "fr",
+          "language_prob": 0.99,
+          "wake": true,
+          "speaker": "",
+          "speaker_score": null,
+          "outcome": "heard",
+          "reason": ""
+        },
+        {
+          "kind": "utterance",
+          "uid": 2,
+          "t": 1791109771.844625,
+          "vad": "energy",
+          "turn": "",
+          "duration_s": 2.12,
+          "dbfs": -18.1,
+          "stt": "fake",
+          "stt_s": 0.0,
+          "speculative": true,
+          "text": "Il fait beau aujourd'hui.",
+          "language": "fr",
+          "language_prob": 0.99,
+          "wake": false,
+          "speaker": "",
+          "speaker_score": null,
+          "outcome": "heard",
+          "reason": ""
+        }
+      ]
+    },
+    "thinks": {
+      "model": "qwen3:4b-instruct",
+      "status": "idle",
+      "last_answer": {
+        "t": 1791109796.46,
+        "model": "qwen3:4b-instruct",
+        "first_word_s": 0.6,
+        "latency": {
+          "endpoint": 0.56,
+          "queue": 0.001,
+          "stt": 0.0,
+          "speculative": 1.0,
+          "llm_first_token": 0.011,
+          "first_chunk": 0.011,
+          "playback_start": 0.04,
+          "audio_start": 0.04,
+          "first_audio": 0.04,
+          "total": 1.12,
+          "tts": 0.0
+        },
+        "interrupted": false,
+        "load_s": 0.0
+      },
+      "reasoning": {
+        "settings": {
+          "reasoning": "off",
+          "task_reasoning": "high",
+          "tasks": true
+        },
+        "model": {
+          "name": "qwen3:4b-instruct",
+          "size_bytes": 2500000000,
+          "capabilities": [
+            "completion",
+            "tools"
+          ],
+          "thinking": {
+            "thinks": false,
+            "levels": [],
+            "default": null
+          },
+          "think_chat": false,
+          "think_tasks": false
+        }
+      },
+      "task": null
+    },
+    "sees": {
+      "camera": {
+        "setting": "auto",
+        "settings": [
+          "auto",
+          "computer",
+          "robot",
+          "off"
+        ],
+        "source": null,
+        "detail": "No robot with a camera is connected; no camera at /dev/video0",
+        "fix": "Plug in a webcam, or set MARVIN_CAMERA_DEVICE.",
+        "sources": [
+          {
+            "name": "computer",
+            "available": false,
+            "detail": "No camera at /dev/video0",
+            "fix": "Plug in a webcam, or set MARVIN_CAMERA_DEVICE."
+          },
+          {
+            "name": "robot",
+            "available": false,
+            "detail": "No robot with a camera is connected",
+            "fix": "Turn the robot on: its camera works once it says hello."
+          }
+        ],
+        "last": null
+      },
+      "look": null
+    }
+  },
+  "shape": {
+    "t": "number",
+    "devices": [
+      {
+        "id": "string",
+        "name": "string",
+        "role": "string",
+        "label": "string",
+        "board": "string",
+        "firmware": "string",
+        "ip": "string",
+        "rssi": "null",
+        "rssi_bars": "null",
+        "uptime_s": "number",
+        "simulated": "boolean",
+        "camera": "boolean",
+        "audio": "boolean",
+        "online": "boolean",
+        "age_s": "number",
+        "connected_at": "number",
+        "rates": {
+          "datagrams": "number",
+          "scans": "number",
+          "radar": "number",
+          "vitals": "number",
+          "audio": "number"
+        },
+        "loss_pct": "number",
+        "datagrams": "number",
+        "lost": "number",
+        "crc_errors": "number",
+        "bad": "number",
+        "shed": "number",
+        "points": "number"
+      }
+    ],
+    "scene": {
+      "lidar": {
+        "age_s": "number",
+        "ranges_cm": [
+          "number"
+        ],
+        "points": "number"
+      },
+      "targets": [],
+      "trail": [],
+      "vitals": "null",
+      "radar": {
+        "half_angle_deg": "number",
+        "range_cm": "number"
+      }
+    },
+    "feels": {
+      "sensors": {
+        "lidar": "boolean",
+        "radar": "boolean",
+        "vitals": "boolean",
+        "pir": "boolean",
+        "climate": "boolean",
+        "light": "boolean",
+        "camera": "boolean"
+      },
+      "presence": {
+        "present": "boolean",
+        "seated": "boolean",
+        "source": "string",
+        "distance_m": "null",
+        "still_s": "number",
+        "seated_s": "number",
+        "targets": "number",
+        "simulated": "boolean",
+        "reasoning": [
+          "string"
+        ]
+      },
+      "vitals": {
+        "sensor": "boolean",
+        "breath_rate": "null",
+        "heart_rate": "null"
+      },
+      "room": "null"
+    },
+    "hears": {
+      "state": "string",
+      "status": "string",
+      "muted": "boolean",
+      "why": "string",
+      "wake": "boolean",
+      "language": "string",
+      "vocabulary": [
+        "string"
+      ],
+      "known_voices_only": "boolean",
+      "stt": "string",
+      "stt_setting": "string",
+      "tts": "string",
+      "tts_setting": "string",
+      "tts_voice": "null",
+      "device": "string",
+      "earcons": "string",
+      "level": {
+        "mic": "number",
+        "speech": "boolean",
+        "gated": "boolean",
+        "dbfs": "number",
+        "t": "number"
+      },
+      "recent": [
+        {
+          "kind": "string",
+          "uid": "number",
+          "t": "number",
+          "vad": "string",
+          "turn": "string",
+          "complete": "boolean",
+          "probability": "number",
+          "turn_s": "number"
+        },
+        {
+          "kind": "string",
+          "uid": "number",
+          "t": "number",
+          "vad": "string",
+          "turn": "string",
+          "duration_s": "number",
+          "dbfs": "number",
+          "stt": "string",
+          "stt_s": "number",
+          "speculative": "boolean",
+          "text": "string",
+          "language": "string",
+          "language_prob": "number",
+          "wake": "boolean",
+          "speaker": "string",
+          "speaker_score": "null",
+          "outcome": "string",
+          "reason": "string"
+        }
+      ]
+    },
+    "thinks": {
+      "model": "string",
+      "status": "string",
+      "last_answer": {
+        "t": "number",
+        "model": "string",
+        "first_word_s": "number",
+        "latency": {
+          "endpoint": "number",
+          "queue": "number",
+          "stt": "number",
+          "speculative": "number",
+          "llm_first_token": "number",
+          "first_chunk": "number",
+          "playback_start": "number",
+          "audio_start": "number",
+          "first_audio": "number",
+          "total": "number",
+          "tts": "number"
+        },
+        "interrupted": "boolean",
+        "load_s": "number"
+      },
+      "reasoning": {
+        "settings": {
+          "reasoning": "string",
+          "task_reasoning": "string",
+          "tasks": "boolean"
+        },
+        "model": {
+          "name": "string",
+          "size_bytes": "number",
+          "capabilities": [
+            "string"
+          ],
+          "thinking": {
+            "thinks": "boolean",
+            "levels": [],
+            "default": "null"
+          },
+          "think_chat": "boolean",
+          "think_tasks": "boolean"
+        }
+      },
+      "task": "null"
+    },
+    "sees": {
+      "camera": {
+        "setting": "string",
+        "settings": [
+          "string"
+        ],
+        "source": "null",
+        "detail": "string",
+        "fix": "string",
+        "sources": [
+          {
+            "name": "string",
+            "available": "boolean",
+            "detail": "string",
+            "fix": "string"
+          }
+        ],
+        "last": "null"
+      },
+      "look": "null"
+    }
+  }
+}

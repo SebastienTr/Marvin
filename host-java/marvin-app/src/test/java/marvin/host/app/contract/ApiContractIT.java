@@ -487,6 +487,7 @@ class ApiContractIT {
         JsonNode sse = golden("sse.json").get("streams");
         checkStream("/api/stream", sse.get("/api/stream"), List.of("hello", "today", "voice", "devices", "state"));
         checkStream("/api/robot/stream", sse.get("/api/robot/stream"), List.of("hello", "scene", "devices"));
+        checkStream("/api/senses/stream", sse.get("/api/senses/stream"), List.of("hello", "scene", "devices", "senses"));
     }
 
     private void checkStream(String path, JsonNode gold, List<String> first) throws Exception {

@@ -40,7 +40,8 @@
     "voice_options",
     "tasks",
     "tasks_settings",
-    "task_unknown"
+    "task_unknown",
+    "senses"
   ],
   "post": [
     "settings_break_45",
@@ -89,7 +90,8 @@
     "voice status",
     "about.data_dir",
     "the room sensors' readings (state.room: the simulated room's values and ages)",
-    "background tasks: ids, times, what they spent, and the model's description (size, capabilities, how it thinks: think_chat and think_tasks are false or a level name)"
+    "background tasks: ids, times, what they spent, and the model's description (size, capabilities, how it thinks: think_chat and think_tasks are false or a level name)",
+    "the Senses screen (get/senses.json): the scene, the devices, the voice's state and the ears' diagnostics, the last answer and look are live values (the Java host only)"
   ],
   "machine_dependent": [
     "get/voice_options.json: Ollama models, speech backends and voices installed on the machine that recorded it; compare the shape only"
