@@ -91,7 +91,7 @@ small, .small { font-size: 12px; }
 .brand-eyes { width: 26px; height: 26px; display: block; }
 .top-status { margin-left: 12px; color: var(--muted); font: 12px var(--mono); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .top-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--strong); }
-.top-status[data-state="live"] .dot { background: var(--live); }
+.top-status[data-state="live"] .dot, .top-status[data-state="sensors"] .dot { background: var(--live); }
 .top-status[data-state="lost"] .dot, .top-status[data-state="offline"] .dot {
   /* a hollow ring, not only another colour: the state does not rest on colour alone */
   background: transparent; box-shadow: inset 0 0 0 2px var(--reminder); width: 9px; height: 9px;

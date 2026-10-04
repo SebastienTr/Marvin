@@ -19,7 +19,11 @@ function renderOverview() {
   const s = app.state;
   const pill = $("device-pill"), line = $("device-line");
   const robots = devices.filter((d) => d.online);
-  if (!s || !s.online) {
+  if (s && !s.online && robots.length) {
+    // devices that sense no presence (a lidar alone, the USB sensor bridge): live, but nobody can be seen
+    pill.textContent = "Sensors only";
+    line.textContent = `${robots.map((d) => d.label).join(", ")} connected: the lidar is live in Robot. Presence needs a radar (LD2450 or MR60BHA2).`;
+  } else if (!s || !s.online) {
     pill.textContent = "Not connected";
     line.textContent = devices.length ? "The robot stopped answering. It reconnects on its own when it is back on the network." : "No robot has said hello yet. Power it on, on the same network as this computer.";
   } else {
@@ -76,10 +80,12 @@ function deviceItem(d) {
   }
   head.append(link);
   li.append(head);
-  const sub = [d.board, d.firmware && `firmware ${d.firmware}`, d.ip, uptime(d.uptime_s)].filter(Boolean);
+  const usb = d.role === "usb-sensors";         // a lidar or radar on a USB adapter, read by this computer
+  const sub = [d.board, d.firmware && `firmware ${d.firmware}`, usb ? "on this computer" : d.ip, uptime(d.uptime_s)].filter(Boolean);
   li.append(el("p", "device-sub", sub.join(" · ")));
   const tags = el("div", "tags");
   if (d.simulated) tags.append(el("span", "tag", "Simulated data"));
+  if (usb) tags.append(el("span", "tag", "Real sensors over USB"));
   if (d.camera) tags.append(el("span", "tag", "Camera"));
   if (d.audio) tags.append(el("span", "tag", "Speaker and mic"));
   if (tags.children.length) li.append(tags);
@@ -88,8 +94,9 @@ function deviceItem(d) {
   m.append(metric("Datagrams", fmtRate(r.datagrams), "/s"));
   m.append(metric("Loss", d.loss_pct == null ? "–" : d.loss_pct.toFixed(1), "%", d.loss_pct != null && d.loss_pct >= 2));
   m.append(metric("CRC errors", String(d.crc_errors), "", false));
-  if (d.role !== "vitals" || r.scans) m.append(metric("Lidar", fmtRate(r.scans), `/s · ${d.points} pts`));
-  if (d.role !== "vitals" || r.radar) m.append(metric("Radar", fmtRate(r.radar), "/s"));
+  // the USB bridge shows the sensor it carries (a lidar until it says otherwise)
+  if (usb ? r.scans || !r.radar : d.role !== "vitals" || r.scans) m.append(metric("Lidar", fmtRate(r.scans), `/s · ${d.points} pts`));
+  if (usb ? r.radar : d.role !== "vitals" || r.radar) m.append(metric("Radar", fmtRate(r.radar), "/s"));
   if (d.role === "vitals" || r.vitals) m.append(metric("Vital signs", fmtRate(r.vitals), "/s"));
   if (d.shed) m.append(metric("Dropped by host", String(d.shed), "", true));
   li.append(m);

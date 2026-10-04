@@ -85,14 +85,19 @@ function setupTheme() {
 
 // ------------------------------------------------------------------ connection and simulated sensors
 
+// devices online that sense no presence (a lidar alone, such as the USB sensor bridge's): the host is not
+// "offline", the robot's presence sensing is
+let devicesOnline = false;
+
 function setConnection(state) {
+  if (state === "offline" && devicesOnline) state = "sensors";
   app.connection = state;
   const conn = $("conn");
   conn.dataset.state = state;
   const local = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(location.hostname);
   $("conn-text").textContent = {
     connecting: "Connecting", live: local ? "Live · on this computer" : "Live · connected to Marvin’s host",
-    lost: "Reconnecting", offline: "Robot offline",
+    lost: "Reconnecting", offline: "Robot offline", sensors: "Sensors live · no presence sensor",
   }[state];
   conn.title = $("conn-text").textContent;
   // every screen: say plainly when what it shows may be out of date
@@ -143,6 +148,10 @@ function connect() {
     const s = json(m);
     setState(s);
     setConnection(s.online ? "live" : "offline");
+  });
+  es.addEventListener("devices", (m) => {
+    devicesOnline = json(m).some((d) => d.online);
+    if (app.state) setConnection(app.state.online ? "live" : "offline");
   });
   for (const name of ["today", "event", "settings", "voice", "level", "utterance", "partial", "say", "log", "devices", "memory", "camera"]) {
     es.addEventListener(name, (m) => emit(name, json(m)));
