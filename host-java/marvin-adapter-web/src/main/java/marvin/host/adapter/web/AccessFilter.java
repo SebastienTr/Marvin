@@ -49,7 +49,8 @@ public final class AccessFilter implements Filter {
     static final String IMAGE_PATH = "/api/voice/image";
     static final Set<String> POST_PATHS = Set.of("/api/settings", "/api/voice/settings", "/api/voice/on",
             "/api/voice/off", "/api/voice/ask", "/api/voice/listen", "/api/voice/mute", "/api/voice/stop-speaking",
-            IMAGE_PATH, "/api/voice/image/remove", CameraController.SNAPSHOT_PATH,
+            IMAGE_PATH, "/api/voice/image/remove", CameraController.SNAPSHOT_PATH, VoiceEnrollmentController.START,
+            VoiceEnrollmentController.CANCEL, VoiceEnrollmentController.FORGET,
             "/api/memory/consolidate", "/api/memory/facts/remember", "/api/memory/facts/edit", "/api/memory/facts/pin",
             "/api/memory/facts/archive", "/api/memory/facts/review", "/api/memory/facts/forget", "/api/memory/forget/confirm",
             "/api/memory/forget/cancel", "/api/memory/forget-everything", "/api/memory/profile", "/api/memory/profile/restore",

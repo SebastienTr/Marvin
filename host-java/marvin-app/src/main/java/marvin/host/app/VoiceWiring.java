@@ -14,11 +14,13 @@ import io.micrometer.tracing.Tracer;
 
 import marvin.host.adapter.llm.OllamaLanguageModel;
 import marvin.host.adapter.persistence.VoiceSettingsFile;
+import marvin.host.adapter.persistence.VoiceprintsFile;
 import marvin.host.adapter.robot.UdpRobotLink;
 import marvin.host.adapter.sidecar.GrpcVoiceSidecar;
 import marvin.host.adapter.sidecar.PythonRuntime;
 import marvin.host.adapter.sidecar.SidecarProperties;
 import marvin.host.adapter.web.EventHub;
+import marvin.host.application.conversation.VoiceEnrollmentService;
 import marvin.host.application.conversation.VoiceService;
 import marvin.host.application.conversation.port.out.JsonFetcher;
 import marvin.host.application.conversation.port.out.ConversationStore;
@@ -54,6 +56,33 @@ public class VoiceWiring {
                                                @Value("${marvin.data-dir}") String dataDir) {
         VoiceSettingsFile owner = VoiceSettingsFile.inConfigDir(configDir);
         return "demo".equals(mode) ? VoiceSettingsFile.demoCopy(owner, java.nio.file.Path.of(dataDir, "demo")) : owner;
+    }
+
+    /** The voices Marvin knows ({@code voiceprints.json} beside voice.json); the demo starts with none of the owner's. */
+    @Bean
+    public VoiceprintsFile voiceprintsFile(@Value("${marvin.config-dir:}") String configDir,
+                                           @Value("${marvin.mode:live}") String mode,
+                                           @Value("${marvin.data-dir}") String dataDir) {
+        if ("demo".equals(mode)) {
+            java.nio.file.Path demo = java.nio.file.Path.of(dataDir, "demo", VoiceprintsFile.NAME);
+            try {
+                java.nio.file.Files.deleteIfExists(demo);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("cannot reset " + demo + ": " + e.getMessage(), e);
+            }
+            return new VoiceprintsFile(demo);
+        }
+        return VoiceprintsFile.inConfigDir(configDir);
+    }
+
+    /** The voice calibration: the device's thresholds, the voices Marvin knows. */
+    @Bean
+    public VoiceEnrollmentService voiceEnrollment(VoiceService voice, VoiceSettingsFile settingsFile,
+                                                  VoiceprintsFile prints, Clocks clocks) {
+        VoiceEnrollmentService enrollment = new VoiceEnrollmentService(voice, settingsFile, prints, clocks);
+        voice.setVoiceprints(prints::load);
+        voice.setEnrollment(enrollment::onProgress);
+        return enrollment;
     }
 
     @Bean(destroyMethod = "")
