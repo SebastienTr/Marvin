@@ -67,9 +67,13 @@ public sealed interface SensorFrame {
     record RoomReading(Device device, long tUs, Environment environment) implements SensorFrame {
     }
 
+    /** Where the device's head looks ({@code HEAD}). */
+    record HeadPose(Device device, long tUs, Head head) implements SensorFrame {
+    }
+
     /**
      * The name of the matching Python {@code Sink} callback, used for statistics: scan, targets,
-     * vitals, log, audio, hello, button, environment.
+     * vitals, log, audio, hello, button, environment, head.
      */
     default String kind() {
         return switch (this) {
@@ -81,6 +85,7 @@ public sealed interface SensorFrame {
             case AudioChunk a -> "audio";
             case ButtonPress b -> "button";
             case RoomReading r -> "environment";
+            case HeadPose h -> "head";
         };
     }
 }

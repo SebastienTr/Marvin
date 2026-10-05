@@ -15,12 +15,14 @@ public enum MessageType {
     AUDIO_IN(0x06, Direction.ROBOT_TO_HOST),
     BUTTON(0x07, Direction.ROBOT_TO_HOST),
     ENVIRONMENT(0x08, Direction.ROBOT_TO_HOST),
+    HEAD(0x09, Direction.ROBOT_TO_HOST),
     HOST_ACK(0x81, Direction.HOST_TO_ROBOT),
     FACE_STATE(0x82, Direction.HOST_TO_ROBOT),
     FACE_EVENT(0x83, Direction.HOST_TO_ROBOT),
     AUDIO_OUT(0x84, Direction.HOST_TO_ROBOT),
     AUDIO_CTRL(0x85, Direction.HOST_TO_ROBOT),
-    SOUND(0x86, Direction.HOST_TO_ROBOT);
+    SOUND(0x86, Direction.HOST_TO_ROBOT),
+    HEAD_CTRL(0x87, Direction.HOST_TO_ROBOT);
 
     /** Who sends a message type. */
     public enum Direction { ROBOT_TO_HOST, HOST_TO_ROBOT }

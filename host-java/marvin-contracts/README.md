@@ -28,7 +28,7 @@ The Maven module puts `golden/` on the classpath under `marvin/contracts/golden/
 
 | Path | Made by | Content |
 |---|---|---|
-| `golden/protocol/vectors.json` | `protocol_vectors.py` | Protocol v1 test vectors: every message type, whole datagrams as hex, their header and decoded values (`HELLO`, `LIDAR` with the LDROBOT manual's packet and CRC failures, `LD2450` with the datasheet frame, `VITALS`, `LOG`, `AUDIO_IN`; `HOST_ACK`, `FACE_STATE`, `FACE_EVENT`, `AUDIO_OUT`, `AUDIO_CTRL`, `SOUND`), invalid datagrams, and the protocol constants (CRC table, board ids, extrinsics) |
+| `golden/protocol/vectors.json` | `protocol_vectors.py` | Protocol v1 test vectors: every message type, whole datagrams as hex, their header and decoded values (`HELLO`, `LIDAR` with the LDROBOT manual's packet and CRC failures, `LD2450` with the datasheet frame, `VITALS`, `LOG`, `AUDIO_IN`, `BUTTON`, `ENVIRONMENT`, `HEAD`; `HOST_ACK`, `FACE_STATE`, `FACE_EVENT`, `AUDIO_OUT`, `AUDIO_CTRL`, `SOUND`, `HEAD_CTRL`), invalid datagrams, and the protocol constants (CRC table, board ids, extrinsics) |
 | `golden/recordings/*.mvrec.gz` | `recordings.py` | Recordings of the simulated robot (`.mvrec` v1, gzip): `room_loop` (walks in, sits, vital signs acquired and lost at each fidget, stands up, leaves), `lidar_yaw` (lidar mounted 37° off), `robot_reboot` (the device clock jumps back), `damaged_link` (lost datagrams, CRC errors, bad frames, junk) |
 | `golden/recordings/*.events.jsonl` | `recordings.py` | The Python brain's events for each recording, in order, with their device times |
 | `golden/recordings/*.states.jsonl` | `recordings.py` | The brain's presence state at the end of each device tick |

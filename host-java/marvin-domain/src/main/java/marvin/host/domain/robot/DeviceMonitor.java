@@ -108,6 +108,9 @@ public final class DeviceMonitor {
             case SensorFrame.RoomReading r -> {
                 // counted in the datagrams; the room keeps the readings
             }
+            case SensorFrame.HeadPose h -> {
+                // counted in the datagrams; nothing on the host uses the head yet
+            }
         }
     }
 

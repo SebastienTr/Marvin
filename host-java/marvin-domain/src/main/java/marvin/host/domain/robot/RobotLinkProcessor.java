@@ -140,6 +140,12 @@ public final class RobotLinkProcessor {
             } catch (ProtocolException e) {
                 dev.stats().bad();
             }
+        } else if (type == MessageType.HEAD.code()) {
+            try {
+                out.add(new SensorFrame.HeadPose(dev, hdr.tUs(), Head.decode(payload)));
+            } catch (ProtocolException e) {
+                dev.stats().bad();
+            }
         }
         return new Reception(ack, dev, out, null);
     }

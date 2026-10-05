@@ -77,10 +77,11 @@ class RobotLinkProcessorTest {
         send(MessageType.AUDIO_IN, 4, 0, new byte[5]);
         send(MessageType.BUTTON, 5, 0, new byte[1]);
         send(MessageType.ENVIRONMENT, 6, 0, new byte[11]);
+        send(MessageType.HEAD, 7, 0, new byte[9]);
         LinkStats.Snapshot s = rx.device(from).stats().snapshot();
         assertThat(s.crcErrors()).isEqualTo(1);
         assertThat(s.lidarPackets()).isEqualTo(1);
-        assertThat(s.bad()).isEqualTo(5);
+        assertThat(s.bad()).isEqualTo(6);
     }
 
     @Test
@@ -97,6 +98,21 @@ class RobotLinkProcessorTest {
             assertThat(r.environment().motionKnown()).isTrue();
             assertThat(r.tUs()).isEqualTo(9000);
             assertThat(r.kind()).isEqualTo("environment");
+        });
+    }
+
+    @Test
+    void headBecomesHeadPoses() {
+        Hello looks = new Hello(new byte[] {8, (byte) 0xd1, (byte) 0xf9, 0x11, 0x22, 0x33}, Board.ESP32_DEVKIT,
+                ProtocolV1.FLAG_BUTTONS | ProtocolV1.FLAG_BUZZER | ProtocolV1.FLAG_FACE, -55, 1, "0.1.0");
+        send(MessageType.HELLO, 0, 0, looks.encode());
+        Head sent = new Head(Head.AUTO, -12.3, -12.5, -12.6, 1234, true, false, true);
+        List<SensorFrame> f = send(MessageType.HEAD, 1, 9000, sent.encode()).frames();
+        assertThat(f).singleElement().satisfies(x -> {
+            SensorFrame.HeadPose h = (SensorFrame.HeadPose) x;
+            assertThat(h.head()).isEqualTo(sent);
+            assertThat(h.tUs()).isEqualTo(9000);
+            assertThat(h.kind()).isEqualTo("head");
         });
     }
 

@@ -22,12 +22,14 @@ enum Type : uint8_t {
   AUDIO_IN = 0x06,    // robot -> host: microphone PCM (audio/audio_packets.h)
   BUTTON = 0x07,      // robot -> host: a button was pressed, button u8 + action u8 (ButtonId, ButtonAction)
   ENVIRONMENT = 0x08, // robot -> host: the room sensors (PIR, DHT11, light), ENVIRONMENT_SIZE bytes (Environment)
+  HEAD = 0x09,        // robot -> host: the head's pose, HEAD_SIZE bytes (Head), 5 Hz and at once on a change
   HOST_ACK = 0x81,
   FACE_STATE = 0x82,  // host -> robot: presence state for the face (FACE_STATE_SIZE bytes, ~10 Hz)
   FACE_EVENT = 0x83,  // host -> robot: one brain event, u8 code (face::Event in face/face.h)
   AUDIO_OUT = 0x84,   // host -> robot: PCM to play (audio/audio_packets.h)
   AUDIO_CTRL = 0x85,  // host -> robot: command u8 + argument u8 (AudioCommand)
   SOUND = 0x86,       // host -> robot: play a built-in sound, u8 id (audio/earcons.h)
+  HEAD_CTRL = 0x87,   // host -> robot: head mode u8 (HeadMode) + yaw i16 (0.1 deg, for HEAD_MANUAL)
 };
 
 // HELLO flags. Parsers that only know bit 0 keep working: the other bits are capabilities.
@@ -104,6 +106,36 @@ struct Environment {
   uint16_t motion_age_s = ENV_NO_MOTION;
 };
 
+// HEAD payload, 10 bytes: mode u8 (HeadMode), flags u8 (HeadFlag), yaw i16 (0.1 deg: where the head
+// points, 0 straight ahead, positive towards the device frame's +x), goal i16 (0.1 deg: where it is
+// going), target yaw i16 (0.1 deg, from the head's centre), target distance u16 (mm). The target
+// fields are 0 without HEAD_TARGET. No HELLO flag (bit 7 is kept for a second flags byte): a robot
+// with a head sends HEAD, and a host that has had one may send HEAD_CTRL. The host reads these 10
+// bytes of a longer payload.
+constexpr size_t HEAD_SIZE = 10;
+// HEAD_CTRL payload: mode u8, yaw i16 (0.1 deg, used by HEAD_MANUAL, clamped to the head's limits).
+constexpr size_t HEAD_CTRL_SIZE = 3;
+enum HeadMode : uint8_t {
+  HEAD_AUTO = 1,    // follows the nearest LD2450 target; looks around now and then when nobody is there
+  HEAD_MANUAL = 2,  // holds the yaw the host gave, until another HEAD_CTRL or the host is lost
+  HEAD_CENTER = 3,  // straight ahead
+};
+enum HeadFlag : uint8_t {
+  HEAD_TARGET = 0x01,    // the last LD2450 frame had a target: target yaw and distance valid
+  HEAD_TRACKING = 0x02,  // following a target (seen in the last 3 s)
+  HEAD_GLANCING = 0x04,  // an idle glance around
+  HEAD_SERVO_ON = 0x08,  // the servo is driven (off at boot and while the head rests)
+};
+
+struct Head {
+  uint8_t mode = HEAD_AUTO;
+  uint8_t flags = 0;
+  int16_t yaw_dd = 0;          // 0.1 deg
+  int16_t goal_dd = 0;
+  int16_t target_yaw_dd = 0;
+  uint16_t target_distance_mm = 0;
+};
+
 // FACE_STATE payload: flags u8, head x/y/z i16 mm, position x/y/z i16 mm, distance u16 mm,
 // heart rate u16 (0.01/min). Invalid fields are 0. Decoded by face/face_link.h.
 constexpr size_t FACE_STATE_SIZE = 17;
@@ -135,6 +167,17 @@ inline size_t environment(uint8_t *p, const Environment &e) {
   q = put16(q, e.light_raw);
   put16(q, e.motion_age_s);
   return ENVIRONMENT_SIZE;
+}
+
+// HEAD payload (Head above), HEAD_SIZE bytes.
+inline size_t head(uint8_t *p, const Head &h) {
+  p[0] = h.mode;
+  p[1] = h.flags;
+  uint8_t *q = put16(p + 2, (uint16_t)h.yaw_dd);
+  q = put16(q, (uint16_t)h.goal_dd);
+  q = put16(q, (uint16_t)h.target_yaw_dd);
+  put16(q, h.target_distance_mm);
+  return HEAD_SIZE;
 }
 
 // Writes the 16-byte header, returns a pointer to the payload.

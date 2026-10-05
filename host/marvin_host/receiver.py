@@ -9,8 +9,8 @@ Two threads while `serve()` runs:
 - the dispatch thread makes the sink calls, in the order the datagrams came in.
 
 If the sinks fall behind, the oldest lidar scans are dropped first (a newer revolution replaces
-them); HELLO, LOG, VITALS, LD2450, AUDIO_IN, BUTTON and ENVIRONMENT calls are dropped only when the
-whole queue is full.
+them); HELLO, LOG, VITALS, LD2450, AUDIO_IN, BUTTON, ENVIRONMENT and HEAD calls are dropped only when
+the whole queue is full.
 Drops are counted per callback in `Device.stats.shed`, and `Receiver.timings()` tells how long each
 callback takes and how long calls wait in the queue.
 
@@ -77,6 +77,8 @@ class Sink:
     def on_button(self, dev: Device, t_us: int, button: int, action: int) -> None: ...
     # ENVIRONMENT: the room sensors' readings (protocol.Environment)
     def on_environment(self, dev: Device, t_us: int, env: protocol.Environment) -> None: ...
+    # HEAD: where the device's head looks (protocol.Head)
+    def on_head(self, dev: Device, t_us: int, head: protocol.Head) -> None: ...
 
 
 @dataclass
@@ -260,6 +262,13 @@ class Receiver:
                 s.bad += 1
                 return
             self._submit("environment", dev, (hdr.t_us, env))
+        elif hdr.type == protocol.HEAD:
+            try:
+                head = protocol.Head.decode(payload)
+            except protocol.ProtocolError:
+                s.bad += 1
+                return
+            self._submit("head", dev, (hdr.t_us, head))
 
     def _hello(self, hdr, payload, addr) -> None:
         try:
@@ -429,6 +438,8 @@ class Receiver:
                 sink.on_button(dev, *args)
             elif name == "environment":
                 sink.on_environment(dev, *args)
+            elif name == "head":
+                sink.on_head(dev, *args)
             elif name == "hello":
                 sink.on_hello(dev)
         finally:

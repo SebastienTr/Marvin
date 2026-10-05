@@ -2630,3 +2630,27 @@ lidar", and asked for "a somewhat technical tab with everything Marvin sees, hea
   an MR60BHA2, a bench board or a camera.
 - `ApiContractIT` not run (Docker): `get/senses.json` and the Senses stream in `sse.json` are written from what the
   live host answered here.
+
+## The head's messages (2026-10-05)
+
+The "looks" bench (docs/looks-bench.md) turns a servo head towards the nearest LD2450 target. The hosts decode where it
+looks, and can steer it; nothing on the host uses it yet.
+
+### What exists
+
+- **Protocol v1, no version bump**: `HEAD` (0x09, robot → host, 10 bytes: mode u8, flags u8, yaw, goal and target yaw
+  i16 0.1°, target distance u16 mm; 5 Hz and on a change) and `HEAD_CTRL` (0x87, host → robot: mode u8, yaw i16 0.1°;
+  auto, manual, centre). Domain: `Head`, `SensorFrame.HeadPose` (kind `head`), `HostMessages.headCtrl`; Python
+  `protocol.Head`, `protocol.head_ctrl`, `Sink.on_head`; vectors: five `HEAD`s and a short one, five `HEAD_CTRL`s, the
+  new constants.
+
+### Decisions and deviations
+
+1. **No `HELLO` flag**: bit 7 stays kept for a second flags byte. A device with a head sends `HEAD`; a host that has
+   had one may send `HEAD_CTRL`, which other robots ignore like any unknown type.
+2. **Half to even**: `Head.deci` uses `Math.rint`, as Python's `round()` (the `head_ctrl_rounds_half_to_even` vector).
+
+### Verified
+
+- `mvn test` (Temurin 25): green, 505 tests. `RobotLinkProcessorTest` +1 (`HEAD` to `HeadPose`, a short one is bad),
+  `ProtocolVectorsTest` the new vectors and constants. Python: `pytest -q` 395 passed, 8 skipped (`test_head.py`, 5).

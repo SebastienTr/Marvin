@@ -38,12 +38,14 @@ VITALS = 0x05       # device -> host: MR60BHA2 readings (see Vitals)
 AUDIO_IN = 0x06     # device -> host: microphone PCM, u32 sample index + 320 x i16 (see AudioIn)
 BUTTON = 0x07       # device -> host: a button was pressed, u8 button + u8 action (see Button)
 ENVIRONMENT = 0x08  # device -> host: the room sensors, PIR / temperature and humidity / light (see Environment)
+HEAD = 0x09         # device -> host: the head's pose, 5 Hz and on a change (see Head)
 HOST_ACK = 0x81     # host -> device: u64 host clock (us); the device then unicasts to the sender
 FACE_STATE = 0x82   # host -> device: presence state for the face, ~10 Hz (see FaceState)
 FACE_EVENT = 0x83   # host -> device: one brain event, u8 code (see FACE_EVENT_CODES)
 AUDIO_OUT = 0x84    # host -> device: PCM to play, u16 stream id + u32 sample index + N x i16 (see AudioOut)
 AUDIO_CTRL = 0x85   # host -> device: u8 command + u8 argument (see audio_ctrl)
 SOUND = 0x86        # host -> device: play a built-in sound, u8 id (see SOUNDS)
+HEAD_CTRL = 0x87    # host -> device: u8 head mode + i16 yaw (0.1 deg) (see head_ctrl)
 
 # HELLO board ids
 BOARDS = {1: "Wemos D1 mini (ESP8266)", 2: "ESP32-S3 DevKitC", 3: "XIAO ESP32S3 Sense", 4: "MR60BHA2 kit (XIAO ESP32C6)",
@@ -105,6 +107,16 @@ ENV_HUMIDITY_VALID = 0x08
 ENV_LIGHT_VALID = 0x10
 ENV_SIMULATED = 0x20    # the readings are simulated
 ENV_NO_MOTION = 0xFFFF  # motion age: none since the PIR warmed up
+
+# HEAD: the head's modes (HEAD and HEAD_CTRL) and flags. No HELLO flag: a device with a head sends HEAD.
+HEAD_AUTO = 1           # follows the nearest LD2450 target, glances around now and then when nobody is there
+HEAD_MANUAL = 2         # holds the yaw HEAD_CTRL gave, until another HEAD_CTRL or the host is lost
+HEAD_CENTER = 3         # straight ahead
+HEAD_MODES = {HEAD_AUTO: "auto", HEAD_MANUAL: "manual", HEAD_CENTER: "center"}
+HEAD_TARGET = 0x01      # the last LD2450 frame had a target: target yaw and distance valid
+HEAD_TRACKING = 0x02    # following a target (seen in the last 3 s)
+HEAD_GLANCING = 0x04    # an idle glance around
+HEAD_SERVO_ON = 0x08    # the servo is driven (off at boot and while the head rests)
 
 # FACE_EVENT codes, one table for both sides (firmware/src/face/face.h, enum face::Event). 0 is unused;
 # the robot ignores codes it does not know.
@@ -278,6 +290,58 @@ class Environment:
                    h / 10 if flags & ENV_HUMIDITY_VALID else None,
                    lv / 1000 if light_ok else None, raw if light_ok else None,
                    None if age == ENV_NO_MOTION else age, bool(flags & ENV_SIMULATED))
+
+
+@dataclass
+class Head:
+    """HEAD payload, 10 bytes: where the robot's head looks (docs/protocol.md).
+
+    mode (u8, HEAD_MODES), flags (u8: HEAD_TARGET, HEAD_TRACKING, HEAD_GLANCING, HEAD_SERVO_ON), yaw (i16, 0.1
+    deg: 0 straight ahead, positive towards the device frame's +x), goal (i16, 0.1 deg: where it is going),
+    target yaw (i16, 0.1 deg) and distance (u16, mm), 0 on the wire and None here without HEAD_TARGET. A longer
+    payload keeps this prefix.
+    """
+
+    mode: int = HEAD_AUTO
+    yaw_deg: float = 0.0
+    goal_deg: float = 0.0
+    target_yaw_deg: float | None = None
+    target_distance_mm: int | None = None
+    tracking: bool = False
+    glancing: bool = False
+    servo_on: bool = False
+
+    _S = struct.Struct("<BBhhhH")
+    SIZE = 10
+
+    def encode(self) -> bytes:
+        def dd(v):
+            return max(-32767, min(32767, round(v * 10)))
+        target = self.target_yaw_deg is not None
+        flags = (HEAD_TARGET * target | HEAD_TRACKING * self.tracking | HEAD_GLANCING * self.glancing
+                 | HEAD_SERVO_ON * self.servo_on)
+        return self._S.pack(self.mode & 0xFF, flags, dd(self.yaw_deg), dd(self.goal_deg),
+                            dd(self.target_yaw_deg) if target else 0,
+                            max(0, min(0xFFFF, int(self.target_distance_mm or 0))) if target else 0)
+
+    @classmethod
+    def decode(cls, payload: bytes) -> "Head":
+        if len(payload) < cls.SIZE:
+            raise ProtocolError("HEAD too short")
+        mode, flags, yaw, goal, tyaw, tdist = cls._S.unpack_from(payload)
+        target = bool(flags & HEAD_TARGET)
+        return cls(mode, yaw / 10, goal / 10, tyaw / 10 if target else None, tdist if target else None,
+                   bool(flags & HEAD_TRACKING), bool(flags & HEAD_GLANCING), bool(flags & HEAD_SERVO_ON))
+
+    @property
+    def mode_name(self) -> str | None:
+        """auto, manual, center, or None for a mode this host does not know."""
+        return HEAD_MODES.get(self.mode)
+
+
+def head_ctrl(mode: int, yaw_deg: float = 0.0) -> bytes:
+    """HEAD_CTRL payload: a head mode (HEAD_AUTO, HEAD_MANUAL, HEAD_CENTER) and, for HEAD_MANUAL, the yaw."""
+    return struct.pack("<Bh", mode & 0xFF, max(-32767, min(32767, round(yaw_deg * 10))))
 
 
 def camera_url(ip: str, path: str = "/stream") -> str:

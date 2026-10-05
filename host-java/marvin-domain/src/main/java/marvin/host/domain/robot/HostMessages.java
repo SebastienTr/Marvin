@@ -3,7 +3,10 @@ package marvin.host.domain.robot;
 
 import java.util.Map;
 
-/** Payloads of the small host → robot messages: {@code HOST_ACK}, {@code FACE_EVENT}, {@code AUDIO_CTRL}, {@code SOUND}. */
+/**
+ * Payloads of the small host → robot messages: {@code HOST_ACK}, {@code FACE_EVENT}, {@code AUDIO_CTRL},
+ * {@code SOUND}, {@code HEAD_CTRL}.
+ */
 public final class HostMessages {
     /** {@code AUDIO_CTRL} commands. */
     public static final int AUDIO_MIC_START = 1;
@@ -58,5 +61,14 @@ public final class HostMessages {
 
     public static byte[] sound(int id) {
         return new byte[] {(byte) id};
+    }
+
+    /**
+     * {@code HEAD_CTRL} payload: a head mode ({@link Head#AUTO}, {@link Head#MANUAL}, {@link Head#CENTER}) and,
+     * for {@link Head#MANUAL}, the yaw in degrees (0.1 degree on the wire). Only for a device that sends
+     * {@code HEAD}.
+     */
+    public static byte[] headCtrl(int mode, double yawDeg) {
+        return Wire.le(3).put((byte) mode).putShort(Head.deci(yawDeg)).array();
     }
 }

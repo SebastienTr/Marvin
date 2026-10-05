@@ -40,12 +40,14 @@ No configuration is needed on either side: the host does not need to know the ro
 | `0x06` | `AUDIO_IN` | robot → host | Microphone: sample index (u32), then 320 × i16 PCM (see [Audio messages](#audio-messages)) |
 | `0x07` | `BUTTON` | robot → host | A button was pressed: button (u8), action (u8) (see [Buttons](#buttons)) |
 | `0x08` | `ENVIRONMENT` | robot → host | The room sensors: PIR motion, temperature and humidity, light, 12 bytes (see [Room sensors](#room-sensors)) |
+| `0x09` | `HEAD` | robot → host | Where the head looks: mode, flags, yaw, goal, target, 10 bytes, 5 Hz (see [Head](#head)) |
 | `0x81` | `HOST_ACK` | host → robot | Host clock, microseconds (u64) |
 | `0x82` | `FACE_STATE` | host → robot | Presence state for the face, 17 bytes, ≈ 10 Hz (see [Face messages](#face-messages)) |
 | `0x83` | `FACE_EVENT` | host → robot | One brain event: event code (u8) |
 | `0x84` | `AUDIO_OUT` | host → robot | Speaker: stream id (u16), sample index (u32), then 1–480 × i16 PCM |
 | `0x85` | `AUDIO_CTRL` | host → robot | Audio command (u8), argument (u8) |
 | `0x86` | `SOUND` | host → robot | Built-in sound id (u8) |
+| `0x87` | `HEAD_CTRL` | host → robot | Head mode (u8), yaw (i16, 0.1°) (see [Head](#head)) |
 
 `VITALS` is sent by the simulators and by the real MR60BHA2 kit: the [MR60BHA2 bridge](../firmware/mr60_bridge/README.md) firmware runs on the kit's own ESP32-C6, reads the radar and sends its readings in this format (board id 4), so the host sees one stream.
 
@@ -179,6 +181,27 @@ A reading whose valid flag is clear is sent as 0 and means nothing: a sensor the
 
 The host reads only these 12 bytes of a longer payload and ignores the flags and sensor bits it does not know, so readings can be added. A shorter payload is counted as bad and dropped. What the host does with it ([intelligence.md](intelligence.md#a-pir-on-the-bench-board)): the latest readings are shown in the app and given to the language model while they are fresh (under 2 minutes old); a real, warm PIR on a robot whose radar data is simulated tells the brain whether someone is there.
 
+## Head
+
+The "looks" bench ([looks-bench.md](looks-bench.md), `MARVIN_HAS_HEAD`) turns its head with a servo towards the nearest LD2450 target. Angles are the head's yaw: 0 straight ahead, positive towards the device frame's +X ([Frames of reference](#frames-of-reference)), in 0.1° on the wire.
+
+**`HEAD` (0x09), robot → host, 10 bytes**, 5 times a second while linked, and at once when the mode, the tracking, a glance or the servo's state changes.
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 1 | Mode: 1 auto, 2 manual, 3 centre (the same codes as `HEAD_CTRL`) |
+| 1 | 1 | Flags: bit 0 the last LD2450 frame had a target (bytes 6 to 9 valid), bit 1 following a target (seen in the last 3 s), bit 2 an idle glance around, bit 3 the servo is driven (off for the first second after boot, and while the head rests) |
+| 2 | 2 | Yaw now, i16, 0.1° |
+| 4 | 2 | Goal: where the head is going, i16, 0.1° |
+| 6 | 2 | Target yaw from the head's centre, i16, 0.1° |
+| 8 | 2 | Target distance, u16, mm |
+
+Without bit 0 the target fields are sent as 0 and mean nothing. The host reads only these 10 bytes of a longer payload and ignores the modes and flags it does not know; a shorter payload is counted as bad and dropped. Both hosts decode it (`protocol.Head`, `Head` in the Java domain); nothing uses it yet beyond the link statistics.
+
+**`HEAD_CTRL` (0x87), host → robot, 3 bytes:** mode (u8), yaw (i16, 0.1°). Auto (1) follows the nearest target, returns slowly to the centre 3 s after losing it, and glances around now and then once nobody has been seen for 20 s. Manual (2) holds the yaw given (clamped to the head's limits) until another `HEAD_CTRL`, or until the robot loses the host, when it goes back to auto. Centre (3) looks straight ahead. Unknown modes are ignored. The robot answers with a `HEAD` at once.
+
+There is no `HELLO` flag for the head: bit 7 is kept for a second flags byte. A robot with a head sends `HEAD`, and a host that has received one may send `HEAD_CTRL`; a robot without a head ignores it like any unknown type.
+
 ## Camera
 
 The camera does not use UDP: the robot serves it over **HTTP on TCP port 81**, and the host builds the URL from the address the `HELLO` came from (`protocol.camera_url(ip)`), when `HELLO` flag bit 1 is set.
@@ -214,6 +237,7 @@ The host converts every point into the device frame (X right as seen facing the 
 | Vitals | 10 messages/s | 10 | 0.3 kB/s |
 | Face state (host → robot) | 10 messages/s | 10 | 0.3 kB/s |
 | Room sensors, `ENVIRONMENT` | every 5 s, and on motion | ≈ 0.2 | < 0.01 kB/s |
+| Head, `HEAD` | 5 messages/s | 5 | 0.13 kB/s |
 | Microphone, `AUDIO_IN` (while listening) | 16 000 samples/s | 50 | 32 kB/s (33 kB/s with headers) |
 | Speaker, `AUDIO_OUT` (while speaking) | 16 000 samples/s | 50 | 32 kB/s (33 kB/s with headers) |
 | Camera, MJPEG over TCP (while watched) | VGA, 10 frames/s | – | ≈ 250–400 kB/s |

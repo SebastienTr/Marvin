@@ -23,6 +23,7 @@ import marvin.host.domain.robot.Button;
 import marvin.host.domain.robot.Environment;
 import marvin.host.domain.robot.Extrinsics;
 import marvin.host.domain.robot.FaceState;
+import marvin.host.domain.robot.Head;
 import marvin.host.domain.robot.Header;
 import marvin.host.domain.robot.Hello;
 import marvin.host.domain.robot.HostMessages;
@@ -75,6 +76,15 @@ class ProtocolVectorsTest {
                 .containsExactly(Environment.MOTION, Environment.WARMING_UP, Environment.TEMPERATURE_VALID,
                         Environment.HUMIDITY_VALID, Environment.LIGHT_VALID, Environment.SIMULATED);
         assertThat(env.get("no_motion").asInt()).isEqualTo(Environment.NO_MOTION);
+        JsonNode head = c.get("head");
+        assertThat(head.get("size").asInt()).isEqualTo(Head.SIZE);
+        head.get("modes").properties().forEach(e -> assertThat(Head.modeName(Integer.parseInt(e.getKey())))
+                .isEqualTo(e.getValue().asString()));
+        assertThat(Head.modeNames()).hasSize(head.get("modes").size());
+        JsonNode hf = head.get("flags");
+        assertThat(List.of(hf.get("target").asInt(), hf.get("tracking").asInt(), hf.get("glancing").asInt(),
+                hf.get("servo_on").asInt()))
+                .containsExactly(Head.TARGET, Head.TRACKING, Head.GLANCING, Head.SERVO_ON);
         c.get("buttons").properties().forEach(e -> assertThat(Button.name(Integer.parseInt(e.getKey())))
                 .isEqualTo(e.getValue().asString()));
         assertThat(Button.names()).hasSize(c.get("buttons").size());
@@ -253,6 +263,31 @@ class ProtocolVectorsTest {
                     assertThat(r.encode()).as("re-encoded").isEqualTo(payload);
                 }
             }
+            case 0x09 -> {
+                if (e.has("error")) {
+                    assertThatThrownBy(() -> Head.decode(payload)).isInstanceOf(ProtocolException.class)
+                            .hasMessage("HEAD too short");
+                    return;
+                }
+                Head pose = Head.decode(payload);
+                assertThat(pose.mode()).isEqualTo(e.get("mode").asInt());
+                assertThat(Head.modeName(pose.mode())).isEqualTo(e.get("mode_name").isNull() ? null : e.get("mode_name").asString());
+                assertThat(pose.yawDeg()).isCloseTo(e.get("yaw_deg").asDouble(), within(1e-9));
+                assertThat(pose.goalDeg()).isCloseTo(e.get("goal_deg").asDouble(), within(1e-9));
+                if (e.get("target_yaw_deg").isNull()) {
+                    assertThat(pose.targetYawDeg()).isNull();
+                } else {
+                    assertThat(pose.targetYawDeg()).isCloseTo(e.get("target_yaw_deg").asDouble(), within(1e-9));
+                }
+                assertThat(pose.targetDistanceMm()).isEqualTo(e.get("target_distance_mm").isNull() ? null
+                        : e.get("target_distance_mm").asInt());
+                assertThat(pose.tracking()).isEqualTo(e.get("tracking").asBoolean());
+                assertThat(pose.glancing()).isEqualTo(e.get("glancing").asBoolean());
+                assertThat(pose.servoOn()).isEqualTo(e.get("servo_on").asBoolean());
+                if (payload.length == Head.SIZE && Head.modeName(pose.mode()) != null) {
+                    assertThat(pose.encode()).as("re-encoded").isEqualTo(payload);
+                }
+            }
             default -> throw new AssertionError("no check for type " + vec.get("type"));
         }
     }
@@ -315,6 +350,7 @@ class ProtocolVectorsTest {
                 assertThat(HostMessages.sound(e.get("id").asInt())).isEqualTo(expected);
                 yield HostMessages.sound(e.get("sound").asString());
             }
+            case 0x87 -> HostMessages.headCtrl(e.get("mode").asInt(), e.get("yaw_deg").asDouble());
             default -> throw new AssertionError("no check for type " + type);
         };
         JsonNode h = vec.get("header");

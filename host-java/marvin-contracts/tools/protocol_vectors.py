@@ -195,6 +195,27 @@ def robot_to_host() -> list[dict]:
     short = bytes.fromhex("0104ea00e001000000")
     out.append(vec("environment_too_short", protocol.ENVIRONMENT, 1010, 6_000_000, short,
                    {"error": error(protocol.Environment.decode, short)}, "counted as bad, dropped"))
+    # HEAD
+    H = protocol.Head
+    for name, payload, note in [
+        ("head_tracking", H(yaw_deg=-12.3, goal_deg=-12.5, target_yaw_deg=-12.6, target_distance_mm=1234,
+                            tracking=True, servo_on=True).encode(), "following someone on the left"),
+        ("head_resting_centre", H().encode(), "nobody, the servo resting at the centre"),
+        ("head_glancing", H(yaw_deg=14.2, goal_deg=25.0, glancing=True, servo_on=True).encode(), "an idle glance"),
+        ("head_manual", H(mode=protocol.HEAD_MANUAL, yaw_deg=-45.0, goal_deg=-45.0, target_yaw_deg=30.0,
+                          target_distance_mm=900, servo_on=True).encode(), "held by the host, someone elsewhere"),
+        ("head_longer_unknown_mode", bytes.fromhex("0974c8000000e803e803") + b"\xaa",
+         "an unknown mode and flag bits, target fields without their flag and a longer payload: the host reads "
+         "the first 10 bytes and the flags it knows"),
+    ]:
+        h = H.decode(payload)
+        out.append(vec(name, protocol.HEAD, 1011, 6_100_000, payload, {
+            "mode": h.mode, "mode_name": h.mode_name, "yaw_deg": h.yaw_deg, "goal_deg": h.goal_deg,
+            "target_yaw_deg": h.target_yaw_deg, "target_distance_mm": h.target_distance_mm, "tracking": h.tracking,
+            "glancing": h.glancing, "servo_on": h.servo_on}, note))
+    short = bytes.fromhex("010b85ff83ff82ffd2")
+    out.append(vec("head_too_short", protocol.HEAD, 1012, 6_200_000, short,
+                   {"error": error(protocol.Head.decode, short)}, "counted as bad, dropped"))
     return out
 
 
@@ -252,6 +273,13 @@ def host_to_robot() -> list[dict]:
     for sname, (sid, ms) in protocol.SOUNDS.items():
         out.append(vec(f"sound_{sname}", protocol.SOUND, 7, 1_400_000, protocol.sound(sname),
                        {"sound": sname, "id": sid, "duration_ms": ms}))
+    for name, mode, yaw in [("head_ctrl_auto", protocol.HEAD_AUTO, 0.0),
+                            ("head_ctrl_manual_left", protocol.HEAD_MANUAL, -45.0),
+                            ("head_ctrl_center", protocol.HEAD_CENTER, 0.0),
+                            ("head_ctrl_clamped", protocol.HEAD_MANUAL, 5000.0),
+                            ("head_ctrl_rounds_half_to_even", protocol.HEAD_MANUAL, 0.25)]:
+        out.append(vec(name, protocol.HEAD_CTRL, 8, 1_500_000, protocol.head_ctrl(mode, yaw),
+                       {"mode": mode, "yaw_deg": yaw}, "yaw in 0.1 degree, clamped to +-32767"))
     return out
 
 
@@ -285,6 +313,9 @@ def main() -> None:
                                                 "light_valid": protocol.ENV_LIGHT_VALID,
                                                 "simulated": protocol.ENV_SIMULATED},
                                       "no_motion": protocol.ENV_NO_MOTION},
+                      "head": {"size": protocol.Head.SIZE, "modes": protocol.HEAD_MODES,
+                               "flags": {"target": protocol.HEAD_TARGET, "tracking": protocol.HEAD_TRACKING,
+                                         "glancing": protocol.HEAD_GLANCING, "servo_on": protocol.HEAD_SERVO_ON}},
                       "face_event_codes": {k.value: v for k, v in protocol.FACE_EVENT_CODES.items()},
                       "sounds": {k: {"id": v[0], "duration_ms": v[1]} for k, v in protocol.SOUNDS.items()},
                       "audio": {"rate": protocol.AUDIO_RATE, "in_samples": protocol.AUDIO_IN_SAMPLES,
