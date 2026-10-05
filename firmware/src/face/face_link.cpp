@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "face_link.h"
 
+#include <math.h>
+
 #include "../protocol.h"
 
 namespace face {
@@ -30,6 +32,28 @@ bool decode_state(const uint8_t *p, size_t n, Presence &out) {
   return true;
 }
 
+size_t encode_state(const Presence &s, uint8_t *p) {
+  auto mm = [](double v) {
+    long r = lround(v);
+    return (uint16_t)(int16_t)(r < -32767 ? -32767 : (r > 32767 ? 32767 : r));
+  };
+  uint8_t flags = 0;
+  if (s.present) flags |= proto::FACE_PRESENT;
+  if (s.seated) flags |= proto::FACE_SEATED;
+  if (s.has_head) flags |= proto::FACE_HEAD;
+  if (s.has_position) flags |= proto::FACE_POSITION;
+  if (s.has_distance) flags |= proto::FACE_DISTANCE;
+  if (s.heart_rate > 0) flags |= proto::FACE_HEART_RATE;
+  p[0] = flags;
+  for (int k = 0; k < 3; k++) {
+    proto::put16(p + 1 + 2 * k, s.has_head ? mm(s.head[k]) : 0);
+    proto::put16(p + 7 + 2 * k, s.has_position ? mm(s.position[k]) : 0);
+  }
+  proto::put16(p + 13, s.has_distance ? (uint16_t)lround(s.distance_m * 1000.0) : 0);
+  proto::put16(p + 15, s.heart_rate > 0 ? (uint16_t)lround(s.heart_rate * 100.0) : 0);
+  return proto::FACE_STATE_SIZE;
+}
+
 bool decode_event(const uint8_t *p, size_t n, Event &out) {
   if (p == nullptr || n < 1 || p[0] == 0 || p[0] > EVENT_MAX) return false;
   out = (Event)p[0];
@@ -52,6 +76,12 @@ bool FaceLink::on_message(uint8_t type, const uint8_t *payload, size_t n, uint32
   return false;
 }
 
+void FaceLink::set_local(const Presence &s, uint32_t now_ms) {
+  local_ = s;
+  has_local_ = true;
+  last_local_ms_ = now_ms;
+}
+
 Rect FaceLink::frame(uint32_t now_ms, uint16_t *fb) {
   advance(now_ms);
   return face_.raster().render(fb);
@@ -62,7 +92,8 @@ const Face &FaceLink::advance(uint32_t now_ms) {
   has_clock_ = true;
   last_ms_ = now_ms;
   static const Presence nobody;
-  const Presence &s = host_alive(now_ms) ? state_ : nobody;
+  const bool local = has_local_ && (uint32_t)(now_ms - last_local_ms_) <= LOCAL_TIMEOUT_MS;
+  const Presence &s = host_alive(now_ms) ? state_ : (local ? local_ : nobody);
   face_.update(s, elapsed_ms_ / 1000.0);
   return face_;
 }

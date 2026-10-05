@@ -10,6 +10,7 @@
 //                          while (bench_io::next_press(&button)) send BUTTON
 //   UDP receive:           bench_io::on_message(type, payload, payload_len);
 //   HELLO flags:           bench_io::hello_flags()
+//   with a head:           bench_io::set_local_presence(...) per radar frame, play_bye()
 //
 // - OLED (I2C, 400 kHz): found at 0x3C or 0x3D. The eyes (bench/eyes.h) run in their own FreeRTOS
 //   task (core 0, low priority, MARVIN_OLED_FPS frames/s), so a frame's ~25 ms of I2C never blocks
@@ -53,6 +54,14 @@ void on_message(uint8_t type, const uint8_t *payload, size_t n);
 
 // Plays a SOUND id locally (and shows its mood in the eyes). False for an unknown id or without a buzzer.
 bool play_sound(uint8_t id);
+
+// The head's soft "bye" (bench::Chime::bye), when someone leaves. Nothing without a buzzer.
+void play_bye();
+
+// The board's own idea of who is there (the head's LD2450 target, head/head_io.h): the eyes follow
+// it while the host sends no FACE_STATE (before linking, or a host that stopped). position_mm is a
+// device-frame point (face/face.h), ignored when nobody is present. Call it per radar frame.
+void set_local_presence(bool present, const double position_mm[3]);
 
 // Takes the next button press waiting to go to the host (proto::ButtonId). False when none.
 bool next_press(uint8_t *button);

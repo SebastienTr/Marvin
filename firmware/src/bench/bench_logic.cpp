@@ -30,6 +30,7 @@ bool Chime::start(uint8_t id, uint32_t now_ms) {
   for (size_t i = 0; i < n; i++) tones_[i] = t[i];
   count_ = n;
   start_ms_ = now_ms;
+  soft_ = false;
   return true;
 }
 
@@ -38,6 +39,16 @@ void Chime::click(uint32_t now_ms) {
   tones_[0] = Tone{CLICK_HZ, CLICK_HZ, CLICK_MS};
   count_ = 1;
   start_ms_ = now_ms;
+  soft_ = false;
+}
+
+void Chime::bye(uint32_t now_ms) {
+  tones_[0] = Tone{784, 784, 90};
+  tones_[1] = Tone{0, 0, 40};
+  tones_[2] = Tone{523, 523, 180};
+  count_ = 3;
+  start_ms_ = now_ms;
+  soft_ = true;
 }
 
 uint16_t Chime::freq(uint32_t now_ms) {

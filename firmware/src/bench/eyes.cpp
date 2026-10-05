@@ -44,6 +44,13 @@ bool Eyes::on_message(uint8_t type, const uint8_t *payload, size_t n, uint32_t n
   return link_.on_message(type, payload, n, now_ms);
 }
 
+bool Eyes::on_local_state(const uint8_t *payload, size_t n, uint32_t now_ms) {
+  face::Presence s;
+  if (!face::decode_state(payload, n, s)) return false;
+  link_.set_local(s, now_ms);
+  return true;
+}
+
 void Eyes::on_sound(uint8_t id, uint32_t now_ms) {
   if (has_clock_) elapsed_ms_ += (uint32_t)(now_ms - last_ms_);
   has_clock_ = true;

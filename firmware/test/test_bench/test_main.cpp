@@ -1,6 +1,6 @@
 // Tests of the bench board's portable parts: `pio test -e native`.
 // Button debouncing, the buzzer's tone sequencer, the status LED patterns, the OLED eyes' layout
-// and moods, and the BUTTON payload.
+// and moods, the BUTTON payload, the eyes following the board's own radar and the soft "bye".
 // SPDX-License-Identifier: MIT
 #include <unity.h>
 
@@ -9,6 +9,7 @@
 #include "audio/earcons.h"
 #include "bench/bench_logic.h"
 #include "bench/eyes.h"
+#include "face/face_link.h"
 #include "protocol.h"
 
 using bench::Button;
@@ -266,6 +267,46 @@ static void test_button_payload() {
   TEST_ASSERT_EQUAL_UINT8(0x20, proto::FLAG_FACE);
 }
 
+// ---- The board's own presence and the soft bye --------------------------------------------------
+
+static void test_local_presence_round_trip_and_priority() {
+  face::Presence s;
+  s.present = true;
+  s.has_position = true;
+  s.position[0] = 250;
+  s.position[1] = -900;
+  s.position[2] = 300;
+  uint8_t p[proto::FACE_STATE_SIZE];
+  TEST_ASSERT_EQUAL(proto::FACE_STATE_SIZE, face::encode_state(s, p));
+  face::Presence d;
+  TEST_ASSERT_TRUE(face::decode_state(p, sizeof(p), d));
+  TEST_ASSERT_TRUE(d.present && d.has_position && !d.has_head);
+  TEST_ASSERT_TRUE(250 == d.position[0]);
+  TEST_ASSERT_TRUE(-900 == d.position[1]);
+  // the eyes follow the local target while the host is quiet, and look elsewhere once it expires
+  bench::Eyes eyes(7);
+  bench::EyesLayout l;
+  for (uint32_t ms = 0; ms < 3000; ms += 40) {
+    eyes.on_local_state(p, sizeof(p), ms);
+    eyes.frame(ms, 32, l);
+  }
+  TEST_ASSERT_TRUE(eyes.link().face().gaze_x() > 5);  // looking to the right, at them
+  TEST_ASSERT_FALSE(eyes.link().host_alive(3000));
+}
+
+static void test_chime_bye_is_soft() {
+  bench::Chime c;
+  c.bye(0);
+  TEST_ASSERT_TRUE(c.soft());
+  TEST_ASSERT_EQUAL_UINT16(784, c.freq(10));
+  TEST_ASSERT_EQUAL_UINT16(0, c.freq(100));
+  TEST_ASSERT_EQUAL_UINT16(523, c.freq(200));
+  TEST_ASSERT_EQUAL_UINT16(0, c.freq(400));
+  TEST_ASSERT_FALSE(c.soft());
+  c.start(6, 500);  // hello: not soft
+  TEST_ASSERT_FALSE(c.soft());
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_button_press_counts_once_after_debounce);
@@ -284,5 +325,7 @@ int main() {
   RUN_TEST(test_eyes_ignore_unknown_sounds_and_messages);
   RUN_TEST(test_eyes_follow_the_head);
   RUN_TEST(test_button_payload);
+  RUN_TEST(test_local_presence_round_trip_and_priority);
+  RUN_TEST(test_chime_bye_is_soft);
   return UNITY_END();
 }

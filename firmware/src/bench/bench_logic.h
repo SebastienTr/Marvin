@@ -47,7 +47,12 @@ class Chime {
   bool start(uint8_t id, uint32_t now_ms);
   // A key click, unless a sound is playing.
   void click(uint32_t now_ms);
+  // The head's "bye" when someone leaves (head/head_io.h): two notes down, lower and played soft()
+  // (a narrow pulse: quieter on a passive buzzer) so it does not startle. Replaces what is playing.
+  void bye(uint32_t now_ms);
   void stop() { count_ = 0; }
+  // The sound playing should be quieter (the caller narrows the buzzer's duty cycle).
+  bool soft() const { return soft_ && active(); }
 
   // The frequency to play at now_ms, 0 for silence. Past the end, 0 and inactive.
   uint16_t freq(uint32_t now_ms);
@@ -61,6 +66,7 @@ class Chime {
   Tone tones_[MAX_TONES];
   size_t count_ = 0;
   uint32_t start_ms_ = 0;
+  bool soft_ = false;
 };
 
 // Where the link is, for the status LED and the OLED's status line.

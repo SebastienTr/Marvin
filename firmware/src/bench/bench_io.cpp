@@ -59,6 +59,10 @@ constexpr uint16_t I2C_TIMEOUT_MS = 20;
 
 // ---- OLED: the eyes' task ---------------------------------------------------------------------
 
+// The eyes' queue also carries the board's own presence (set_local_presence), as a FACE_STATE
+// payload under a type no host message has.
+constexpr uint8_t LOCAL_STATE = 0x00;
+
 struct Msg {
   uint8_t type;
   uint8_t n;
@@ -179,7 +183,10 @@ void task(void *) {
   for (;;) {
     const uint32_t now = millis();
     Msg m;
-    while (xQueueReceive(queue, &m, 0) == pdTRUE) eyes->on_message(m.type, m.data, m.n, now);
+    while (xQueueReceive(queue, &m, 0) == pdTRUE) {
+      if (m.type == LOCAL_STATE) eyes->on_local_state(m.data, m.n, now);
+      else eyes->on_message(m.type, m.data, m.n, now);
+    }
 
     if (!oled_present) {
       if ((int32_t)(now - next_probe) >= 0) {
@@ -348,6 +355,7 @@ void step(uint32_t now_ms) {
     if (hz != playing_hz) {
       playing_hz = hz;
       ledcWriteTone(MARVIN_BUZZER_LEDC_CHANNEL, hz);  // 0: silent
+      if (hz && chime.soft()) ledcWrite(MARVIN_BUZZER_LEDC_CHANNEL, 64);  // 1/16 duty instead of 1/2: quieter
     }
   }
   status_led(now_ms);
@@ -364,6 +372,21 @@ void on_message(uint8_t type, const uint8_t *payload, size_t n) {
 bool play_sound(uint8_t id) {
   queue_for_eyes(proto::SOUND, &id, 1);
   return HAS_BUZZER && chime.start(id, millis());
+}
+
+void play_bye() {
+  if (HAS_BUZZER) chime.bye(millis());
+}
+
+void set_local_presence(bool present, const double position_mm[3]) {
+  face::Presence s;
+  s.present = present;
+  if (present && position_mm) {
+    s.has_position = true;
+    for (int k = 0; k < 3; k++) s.position[k] = position_mm[k];
+  }
+  uint8_t p[proto::FACE_STATE_SIZE];
+  queue_for_eyes(LOCAL_STATE, p, face::encode_state(s, p));
 }
 
 bool next_press(uint8_t *button) {

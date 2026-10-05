@@ -10,7 +10,8 @@
 //   SOUND hello  happy: lower lids raised (1.5 s)
 //
 // Other sound ids and unknown messages are ignored. With no FACE_STATE (no host, or before the
-// first one), nobody is there: the face looks around, gets sleepy and falls asleep, as on the robot.
+// first one), the face follows the board's own radar when it has one (on_local_state, the "looks"
+// bench's head); otherwise nobody is there: it looks around, gets sleepy and falls asleep, as on the robot.
 //
 // Portable C++ (no Arduino), unit-tested natively; bench/bench_io.cpp draws the layout with U8g2.
 #pragma once
@@ -52,6 +53,8 @@ class Eyes {
   // A host -> robot message: FACE_STATE and FACE_EVENT go to the face, SOUND sets a mood.
   // Returns true if it was understood.
   bool on_message(uint8_t type, const uint8_t *payload, size_t n, uint32_t now_ms);
+  // The board's own presence as a FACE_STATE payload (face::FaceLink::set_local). False if too short.
+  bool on_local_state(const uint8_t *payload, size_t n, uint32_t now_ms);
   // A sound played (by the host's SOUND, or locally): sets the matching mood, if any.
   void on_sound(uint8_t id, uint32_t now_ms);
 
