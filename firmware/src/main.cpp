@@ -267,7 +267,7 @@ void on_host_ack() {
   Serial.printf("linked to host %s\n", host.toString().c_str());
   char msg[96];
 #if MARVIN_REAL_SENSORS
-  snprintf(msg, sizeof(msg), "firmware %s up, real %s lidar, LD2450 %s", MARVIN_FW_VERSION,
+  snprintf(msg, sizeof(msg), "firmware %s up, real sensors, %s lidar, LD2450 %s", MARVIN_FW_VERSION,
            lidar_name(LIDAR_MODEL), ld2450_configured ? "in multi-target mode" : "did not answer at boot");
 #else
   snprintf(msg, sizeof(msg), "firmware %s up, simulated %s lidar", MARVIN_FW_VERSION, lidar_name(LIDAR_MODEL));
@@ -582,12 +582,17 @@ void report_stats(uint32_t ms) {
   real::Counters c = real::counters(), &p = last_counters;
   float s = (ms - last_stats_ms) / 1000.0f;
   char msg[160];
-  snprintf(msg, sizeof(msg),
-           "lidar %.0f pkt/s, %lu CRC err, %lu B dropped; LD2450 %.1f frame/s, %lu bad; %lu UART overflows",
-           (c.lidar_packets - p.lidar_packets) / s, (unsigned long)(c.lidar_crc_errors - p.lidar_crc_errors),
-           (unsigned long)(c.lidar_dropped_bytes - p.lidar_dropped_bytes),
-           (c.ld2450_frames - p.ld2450_frames) / s, (unsigned long)(c.ld2450_bad_frames - p.ld2450_bad_frames),
-           (unsigned long)(c.uart_overflows - p.uart_overflows));
+  if (LIDAR_MODEL == 0)  // the LD2450 only
+    snprintf(msg, sizeof(msg), "LD2450 %.1f frame/s, %lu bad; %lu UART overflows",
+             (c.ld2450_frames - p.ld2450_frames) / s, (unsigned long)(c.ld2450_bad_frames - p.ld2450_bad_frames),
+             (unsigned long)(c.uart_overflows - p.uart_overflows));
+  else
+    snprintf(msg, sizeof(msg),
+             "lidar %.0f pkt/s, %lu CRC err, %lu B dropped; LD2450 %.1f frame/s, %lu bad; %lu UART overflows",
+             (c.lidar_packets - p.lidar_packets) / s, (unsigned long)(c.lidar_crc_errors - p.lidar_crc_errors),
+             (unsigned long)(c.lidar_dropped_bytes - p.lidar_dropped_bytes),
+             (c.ld2450_frames - p.ld2450_frames) / s, (unsigned long)(c.ld2450_bad_frames - p.ld2450_bad_frames),
+             (unsigned long)(c.uart_overflows - p.uart_overflows));
   Serial.println(msg);
   if (linked) send_log(msg);
   last_counters = c;
