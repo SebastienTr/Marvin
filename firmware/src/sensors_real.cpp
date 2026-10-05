@@ -11,7 +11,8 @@ namespace real {
 namespace {
 
 #if CONFIG_IDF_TARGET_ESP32
-// Classic ESP32 DevKit (not wired or tested yet): UART0 is the USB bridge's, so the lidar reads on UART2.
+// Classic ESP32 DevKit: UART0 is the USB bridge's, so the lidar reads on UART2. The LD2450 pins are
+// the "looks" bench's (esp32dev_looks, docs/looks-bench.md).
 constexpr int LIDAR_RX = 16;          // GPIO16, UART2 RX
 constexpr int LD2450_RX = 26;         // GPIO26, UART1 RX  <- LD2450 TX
 constexpr int LD2450_TX = 27;         // GPIO27, UART1 TX  -> LD2450 RX
@@ -38,6 +39,7 @@ HardwareSerial &radar_uart = Serial1;
 
 framing::LidarFramer lidar;
 framing::Ld2450Framer radar;
+bool has_lidar = false;
 volatile uint32_t overflows = 0;
 
 void count_overflow(hardwareSerial_error_t err) {
@@ -88,9 +90,12 @@ bool configure_ld2450() {
 uint32_t lidar_baud(uint8_t lidar_model) { return lidar_model == 2 ? 921600 : 230400; }
 
 bool begin(uint8_t lidar_model) {
-  lidar_uart.setRxBufferSize(LIDAR_RX_BUFFER);        // must come before begin()
-  lidar_uart.begin(lidar_baud(lidar_model), SERIAL_8N1, LIDAR_RX, -1);
-  lidar_uart.onReceiveError(count_overflow);
+  has_lidar = lidar_model != 0;
+  if (has_lidar) {
+    lidar_uart.setRxBufferSize(LIDAR_RX_BUFFER);      // must come before begin()
+    lidar_uart.begin(lidar_baud(lidar_model), SERIAL_8N1, LIDAR_RX, -1);
+    lidar_uart.onReceiveError(count_overflow);
+  }
   radar_uart.setRxBufferSize(LD2450_RX_BUFFER);
   radar_uart.begin(LD2450_BAUD, SERIAL_8N1, LD2450_RX, LD2450_TX);
   radar_uart.onReceiveError(count_overflow);
@@ -104,7 +109,7 @@ void poll(FrameFn on_lidar, FrameFn on_ld2450) {
     if (kind == framing::Ld2450Framer::TARGETS && on_ld2450) on_ld2450(f);
   };
   // Bounded work per call: at most what was already buffered when we started.
-  for (size_t left = lidar_uart.available(); left;) {
+  for (size_t left = has_lidar ? lidar_uart.available() : 0; left;) {
     size_t n = lidar_uart.read(in, left < sizeof(in) ? left : sizeof(in));
     if (!n) break;
     lidar.feed(in, n, lidar_cb);

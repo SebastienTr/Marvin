@@ -1,5 +1,5 @@
 // The robot's real sensors on the ESP32-S3 UARTs (built only for ESP32 targets):
-// - lidar (LDROBOT D500 / D800) on UART0, RX only on GPIO44 (XIAO D7);
+// - lidar (LDROBOT D500 / D800) on UART0, RX only on GPIO44 (XIAO D7); none with model 0;
 // - HLK-LD2450 on UART1, RX GPIO5 (D4), TX GPIO6 (D5), 256 000 baud, set to multi-target
 //   tracking at boot.
 // Frames are cut and validated by sensor_framing.h, and handed over raw, as the protocol sends them.
@@ -26,7 +26,7 @@ struct Counters {
 // 1 = D500 (230 400 baud), 2 = D800 (921 600 baud).
 uint32_t lidar_baud(uint8_t lidar_model);
 
-// Opens both UARTs and configures the LD2450 (enable configuration, multi-target tracking, end
+// Opens both UARTs (only the LD2450's for lidar_model 0: no lidar fitted) and configures the LD2450 (enable configuration, multi-target tracking, end
 // configuration, each ACK checked, with retries). Blocks for up to ~3 s if the LD2450 does not
 // answer. Returns true if the LD2450 acknowledged the whole sequence; the stream is read either way.
 bool begin(uint8_t lidar_model);

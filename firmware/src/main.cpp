@@ -8,6 +8,7 @@
 //   SIM  (default) simulated lidar, LD2450 and vital signs; HELLO carries the "simulated" flag.
 //   REAL (ESP32 only) the lidar on UART0 and the LD2450 on UART1 (sensors_real.h); no VITALS,
 //        the MR60BHA2 kit has its own bridge. A LOG with the sensor counters every 5 s.
+//        MARVIN_LIDAR_MODEL=0: no lidar, the LD2450 only (the "looks" bench, esp32dev_looks).
 //
 // Optional media on the XIAO ESP32S3 Sense (flags in platformio.ini), announced in HELLO's flags:
 //   MARVIN_HAS_AUDIO   speaker and microphone over UDP (audio/audio_app.h): AUDIO_OUT, AUDIO_CTRL
@@ -133,7 +134,7 @@ constexpr uint32_t STATS_PERIOD_MS = 5000;      // real sensors: counters LOG pe
 constexpr uint32_t MEDIA_STATS_PERIOD_MS = 10000;  // audio / camera counters LOG period, when in use
 constexpr uint8_t LIDAR_MODEL = MARVIN_REAL_SENSORS ? MARVIN_LIDAR_MODEL : MARVIN_SIM_LIDAR_MODEL;
 
-const char *lidar_name(uint8_t model) { return model == 2 ? "D800" : "D500"; }
+const char *lidar_name(uint8_t model) { return model == 0 ? "no" : model == 2 ? "D800" : "D500"; }
 
 // ---- Link: Wi-Fi, HELLO / HOST_ACK, sending ---------------------------------------------------
 
@@ -519,10 +520,12 @@ void report_stats(uint32_t ms) {
 }
 
 void sensors_begin() {
-  Serial.printf("lidar %s on UART0 RX GPIO44 at %lu baud\n", lidar_name(LIDAR_MODEL),
-                (unsigned long)real::lidar_baud(LIDAR_MODEL));
+  if (LIDAR_MODEL == 0) Serial.println("no lidar (MARVIN_LIDAR_MODEL=0)");
+  else
+    Serial.printf("lidar %s on its UART at %lu baud\n", lidar_name(LIDAR_MODEL),
+                  (unsigned long)real::lidar_baud(LIDAR_MODEL));
   ld2450_configured = real::begin(LIDAR_MODEL);
-  Serial.printf("LD2450 on UART1 (RX GPIO5, TX GPIO6) at 256000 baud: %s\n",
+  Serial.printf("LD2450 on UART1 at 256000 baud: %s\n",
                 ld2450_configured ? "multi-target tracking set" : "no answer, reading its stream anyway");
 }
 
