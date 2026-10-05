@@ -24,6 +24,11 @@
 // a DHT11 and, once wired, a light sensor (MARVIN_HAS_LDR), sent as ENVIRONMENT every 5 s and at once
 // when motion starts or ends. Announced in HELLO's flags.
 //
+// Head on the "looks" bench (MARVIN_HAS_HEAD, head/head_io.h, docs/looks-bench.md): a servo turning
+// towards the nearest LD2450 target, read whether linked or not; HEAD to the host (5 Hz and on a
+// change), HEAD_CTRL from it. Someone arriving or leaving plays a chirp on the buzzer
+// (MARVIN_PRESENCE_CHIRPS, 1), and the OLED eyes follow the target while the host sends no FACE_STATE.
+//
 // SPDX-License-Identifier: MIT
 #include <Arduino.h>
 
@@ -59,6 +64,9 @@
 #if defined(MARVIN_HAS_ROOM_SENSORS)
 #include "room/room_io.h"
 #endif
+#if defined(MARVIN_HAS_HEAD)
+#include "head/head_io.h"
+#endif
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -85,6 +93,12 @@
 #endif
 #ifndef MARVIN_BOOT_SOUND
 #define MARVIN_BOOT_SOUND 1                     // with audio: the "hello" earcon on the first link
+#endif
+#ifndef MARVIN_PRESENCE_CHIRPS
+#define MARVIN_PRESENCE_CHIRPS 1                // with a head and a buzzer: "hello" and "bye" chirps (0: mute)
+#endif
+#ifndef MARVIN_EYES_TARGET_Z_MM
+#define MARVIN_EYES_TARGET_Z_MM 300             // with a head: the height the eyes look at, above the desk
 #endif
 
 // MARVIN_SENSORS=SIM or MARVIN_SENSORS=REAL, turned into a number the preprocessor can compare.
@@ -119,6 +133,10 @@
 
 #if defined(MARVIN_HAS_BENCH_IO) && defined(MARVIN_HAS_AUDIO)
 #error "MARVIN_HAS_BENCH_IO's buzzer and MARVIN_HAS_AUDIO's speaker would both play SOUND: build one of them."
+#endif
+
+#if defined(MARVIN_HAS_HEAD) && !defined(ARDUINO_ARCH_ESP32)
+#error "MARVIN_HAS_HEAD is for the ESP32 DevKits (esp32dev_looks; pins in docs/looks-bench.md)."
 #endif
 
 #if MARVIN_REAL_SENSORS && !defined(ARDUINO_ARCH_ESP32)
@@ -280,6 +298,11 @@ void poll_host() {
         if (from_host) audio_app::on_message(in[3], in + proto::HEADER_SIZE, n - proto::HEADER_SIZE);
         break;
 #endif
+#if defined(MARVIN_HAS_HEAD)
+      case proto::HEAD_CTRL:
+        if (from_host) head_io::on_message(in[3], in + proto::HEADER_SIZE, n - proto::HEADER_SIZE, millis());
+        break;
+#endif
       default:
         // other host -> robot messages are dispatched here
         // (type in[3], payload in + proto::HEADER_SIZE, n - proto::HEADER_SIZE bytes, sender udp.remoteIP())
@@ -295,6 +318,9 @@ void poll_host() {
   }
 }
 
+void head_frame(const uint8_t *frame, size_t n);
+void head_step(uint32_t ms);
+
 void connect_wifi() {
   WiFi.mode(WIFI_STA);
 #if defined(ESP8266)
@@ -309,6 +335,11 @@ void connect_wifi() {
     bench_io::step(millis());       // the LED blinks slowly; the eyes run in their own task
 #if defined(MARVIN_HAS_ROOM_SENSORS)
     room_io::step(millis());        // the PIR's warm-up counts from here
+#endif
+#if defined(MARVIN_HAS_HEAD) && MARVIN_REAL_SENSORS
+    // the head already follows people, Wi-Fi or not
+    real::poll(nullptr, [](const uint8_t *f) { head_frame(f, framing::LD2450_FRAME); });
+    head_step(millis());
 #endif
     delay(10);
     if (i % 20 == 19) Serial.print('.');
@@ -374,6 +405,48 @@ void room_step(uint32_t ms) {
 
 #else
 void room_step(uint32_t) {}
+#endif
+
+// ---- Head (the "looks" bench) -----------------------------------------------------------------
+
+#if defined(MARVIN_HAS_HEAD)
+
+// Every LD2450 frame, linked or not: the head, the presence chirps, and the eyes' own target.
+void head_frame(const uint8_t *frame, size_t n) {
+  head_io::on_ld2450(frame, n, millis());
+#if defined(MARVIN_HAS_BENCH_IO)
+  double p[3];
+  const bool present = head_io::eyes_point(MARVIN_EYES_TARGET_Z_MM, p);
+  bench_io::set_local_presence(present, present ? p : nullptr);
+#endif
+}
+
+void on_presence(head::PresenceEvent ev) {
+  const bool hello = ev == head::PresenceEvent::HELLO;
+  Serial.println(hello ? "head: someone arrived" : "head: they left");
+#if defined(MARVIN_HAS_BENCH_IO) && MARVIN_PRESENCE_CHIRPS
+  if (hello) bench_io::play_sound(audio::SOUND_HELLO);  // and a happy look in the eyes
+  else bench_io::play_bye();
+#endif
+}
+
+// The servo, the presence events, and HEAD to the host (HEAD_PERIOD_MS, and at once on a change).
+void head_step(uint32_t ms) {
+  static uint32_t next_send = 0;
+  head_io::set_linked(linked, ms);
+  head_io::step(ms);
+  head::PresenceEvent ev;
+  while (head_io::next_event(&ev)) on_presence(ev);
+  const bool now = head_io::changed();
+  if (!linked || !(now || (int32_t)(ms - next_send) >= 0)) return;
+  size_t n = head_io::payload(buf + proto::HEADER_SIZE);
+  if (n) send(proto::HEAD, n);
+  next_send = ms + head_io::HEAD_PERIOD_MS;
+}
+
+#else
+void head_frame(const uint8_t *, size_t) {}
+void head_step(uint32_t) {}
 #endif
 
 // ---- Media: audio and camera (XIAO ESP32S3 Sense) ---------------------------------------------
@@ -458,6 +531,7 @@ void sensors_step(uint32_t ms) {
 
   if ((int32_t)(ms - next_radar) >= 0) {
     sim::ld2450_frame(t, buf + proto::HEADER_SIZE);
+    head_frame(buf + proto::HEADER_SIZE, sim::LD2450_FRAME);
     send(proto::LD2450, sim::LD2450_FRAME);
     send(proto::VITALS, sim::vitals(t, buf + proto::HEADER_SIZE));
     next_radar = ms + 100;
@@ -497,6 +571,7 @@ void on_lidar_packet(const uint8_t *packet) {
 }
 
 void on_ld2450_frame(const uint8_t *frame) {
+  head_frame(frame, framing::LD2450_FRAME);
   if (!linked) return;
   memcpy(buf + proto::HEADER_SIZE, frame, framing::LD2450_FRAME);
   send(proto::LD2450, framing::LD2450_FRAME);
@@ -564,6 +639,9 @@ void setup() {
   // the DHT11 is read in its own task from here on; the PIR and the light from the loop
   if (!room_io::begin()) Serial.println("room: the DHT11's task did not start");
 #endif
+#if defined(MARVIN_HAS_HEAD)
+  head_io::begin(esp_random());  // the servo stays silent for its first second
+#endif
 #if defined(MARVIN_HAS_SCREEN)
   // the face runs in its own task from here on, asleep until the host says someone is there
   if (!face_app::begin()) Serial.println("face: screen init failed");
@@ -590,6 +668,7 @@ void loop() {
   uint32_t ms = millis();
   link_step(ms);
   room_step(ms);
+  head_step(ms);
   media_step(ms);
   sensors_step(ms);
   // Simulated sensors idle for 10 ms while searching for the host; real ones must keep the UARTs drained.
