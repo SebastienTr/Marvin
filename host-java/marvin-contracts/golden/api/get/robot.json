@@ -691,8 +691,10 @@
       },
       "radar": {
         "half_angle_deg": 60,
-        "range_cm": 600
-      }
+        "range_cm": 600,
+        "age_s": 0.04
+      },
+      "head": null
     }
   },
   "shape": {
@@ -770,8 +772,10 @@
       },
       "radar": {
         "half_angle_deg": "number",
-        "range_cm": "number"
-      }
+        "range_cm": "number",
+        "age_s": "number"
+      },
+      "head": "null"
     }
   }
 }
