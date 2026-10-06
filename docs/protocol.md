@@ -196,7 +196,7 @@ The "looks" bench ([looks-bench.md](looks-bench.md), `MARVIN_HAS_HEAD`) turns it
 | 6 | 2 | Target yaw from the head's centre, i16, 0.1° |
 | 8 | 2 | Target distance, u16, mm |
 
-Without bit 0 the target fields are sent as 0 and mean nothing. The host reads only these 10 bytes of a longer payload and ignores the modes and flags it does not know; a shorter payload is counted as bad and dropped. Both hosts decode it (`protocol.Head`, `Head` in the Java domain); nothing uses it yet beyond the link statistics.
+Without bit 0 the target fields are sent as 0 and mean nothing. The host reads only these 10 bytes of a longer payload and ignores the modes and flags it does not know; a shorter payload is counted as bad and dropped. Both hosts decode it (`protocol.Head`, `Head` in the Java domain); the Java host shows the last one in the app (`scene.head`, Senses > Radar).
 
 **`HEAD_CTRL` (0x87), host → robot, 3 bytes:** mode (u8), yaw (i16, 0.1°). Auto (1) follows the nearest target, returns slowly to the centre 3 s after losing it, and glances around now and then once nobody has been seen for 20 s. Manual (2) holds the yaw given (clamped to the head's limits) until another `HEAD_CTRL`, or until the robot loses the host, when it goes back to auto. Centre (3) looks straight ahead. Unknown modes are ignored. The robot answers with a `HEAD` at once.
 

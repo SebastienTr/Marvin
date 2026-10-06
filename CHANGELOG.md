@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### The radar in 3D (2026-10-06)
+- Senses > Radar shows the LD2450 in 3D: a desk with the radar on it, the floor with a ring every metre, its field of view (±60° side to side, ±35° up and down, 6 m) cut by the floor, the plane it measures in, each person as a silhouette labelled with distance, angle (left or right as you see it, facing the radar) and speed, their last five seconds as a fading line, and where Marvin's head looks. Views from your seat, behind the radar, above and the side; drag and zoom. A **mounting** choice (upright, flat face up, upright turned 90°) turns the board and its field and moves the people, each with a line that says what it means. Under the view, each target's raw numbers, frames per second and the last frame's age; the old 2D fan stays one click away. three.js r170 (MIT) is vendored in the app and loaded only when the view is first shown (`docs/ui.md`, "The radar in 3D").
+- API: `scene.head` (where the servo head looks, from the last `HEAD`; `null` without one in the last 2 s) and `scene.radar.age_s` (the last LD2450 frame's age) in `/api/robot`, `/api/senses` and their streams. The host now uses `HEAD`.
+
 ### The "looks" bench: a head that turns to look at you (2026-10-05)
 - A new bench build, `esp32dev_looks` (and `esp32dev_looks_ota`), on the classic ESP32 DevKit: a real HLK-LD2450 (UART1, RX GPIO26, TX GPIO27) and no lidar (`MARVIN_LIDAR_MODEL=0`), a 9 g servo on GPIO13, the passive buzzer on GPIO25, the Talk button on GPIO32, the optional OLED on GPIO21/22, an optional WS2812 strip on GPIO18 (off by default). `docs/looks-bench.md`: parts, wiring, mounting, flashing, what it does, troubleshooting.
 - The servo head (`MARVIN_HAS_HEAD`, `firmware/src/head/`): turns towards the nearest radar target, smoothed, with a deadband and a speed limit; nobody for 3 s, a slow return to the centre; nobody for 20 s, an occasional small glance around. Silent for its first second and started at the centre, resting once still, against USB brownouts. Works before Wi-Fi and without a host.
