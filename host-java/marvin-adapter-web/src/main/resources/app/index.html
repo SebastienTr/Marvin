@@ -541,6 +541,57 @@
         </section>
 
         <h2 class="senses-h" id="sees-h">Sees</h2>
+        <section class="panel radar-panel" aria-labelledby="s-radar-h">
+          <div class="panel-head wrap">
+            <div class="radar-title"><h3 id="s-radar-h">Radar</h3><span class="small muted mono" id="s-radar-meta"></span></div>
+            <div class="segmented compact" role="radiogroup" aria-label="Radar view" id="s-radar-mode">
+              <label><input type="radio" name="s-radar-mode" value="3d" checked><span>3D</span></label>
+              <label><input type="radio" name="s-radar-mode" value="2d"><span>2D</span></label>
+            </div>
+          </div>
+          <div class="radar-body" id="s-radar-body">
+            <div class="radar-3d" id="s-radar-3d">
+              <div class="radar-bar">
+                <div class="segmented compact" role="radiogroup" aria-label="Look from">
+                  <label><input type="radio" name="s-radar-cam" value="seat"><span>Your seat</span></label>
+                  <label><input type="radio" name="s-radar-cam" value="behind"><span>Behind the radar</span></label>
+                  <label><input type="radio" name="s-radar-cam" value="above" checked><span>Above</span></label>
+                  <label><input type="radio" name="s-radar-cam" value="side"><span>Side</span></label>
+                </div>
+              </div>
+              <div class="radar-stage" id="s-radar-stage" role="img" aria-label="The LD2450 radar in 3D on a desk: its field of view as a translucent wedge, each person it tracks as a silhouette with their distance and angle, their last five seconds as a fading line, and where Marvin's head looks.">
+                <p class="radar-stage-note small muted" id="s-radar-status">Loading the 3D view…</p>
+                <div class="radar-labels" id="s-radar-labels" aria-hidden="true"></div>
+                <p class="radar-viewnote" id="s-radar-viewnote"></p>
+                <p class="radar-nobody" id="s-radar-nobody" hidden>Nobody in front of the radar. Sit in front of it, within 6 m.</p>
+              </div>
+              <p class="small muted radar-help">Drag to turn, scroll or pinch to zoom. The radar is drawn three times its size.</p>
+              <div class="radar-mount">
+                <p class="kv-label" id="s-mount-h">How is the radar mounted?</p>
+                <div class="segmented compact" role="radiogroup" aria-labelledby="s-mount-h">
+                  <label><input type="radio" name="s-radar-mount" value="upright" checked><span>Upright</span></label>
+                  <label><input type="radio" name="s-radar-mount" value="flat"><span>Flat, face up</span></label>
+                  <label><input type="radio" name="s-radar-mount" value="side"><span>Upright, turned 90°</span></label>
+                </div>
+                <p class="small" id="s-mount-hint"></p>
+              </div>
+            </div>
+            <canvas class="scope radar-scope" id="s-radar" role="img" aria-label="The LD2450 radar's field of view from above, with the people it tracks and their last five seconds." hidden></canvas>
+            <p class="small muted" id="s-radar-2dnote" hidden>From above, behind the radar, as it sees the room: your right is on the left here.</p>
+            <p class="small muted" id="s-radar-fallback" hidden>The 3D view needs WebGL, which this browser does not offer here: this is the view from above.</p>
+            <div class="radar-data">
+              <table class="radar-table mono" id="s-radar-table" hidden>
+                <thead><tr><th scope="col">#</th><th scope="col"><abbr title="Sideways, positive to your right">x</abbr> cm</th><th scope="col"><abbr title="Straight out from the radar's face">y</abbr> cm</th><th scope="col">Distance</th><th scope="col">Angle</th><th scope="col">Speed</th></tr></thead>
+                <tbody id="s-targets"></tbody>
+              </table>
+              <p class="empty-line muted" id="s-radar-none" hidden>Nobody in front of the radar. Sit in front of it, within 6 m.</p>
+              <p class="small muted" id="s-radar-key">x: sideways, positive to your right. y: straight out from the radar’s face. Left and right as you see them, sitting facing the radar.</p>
+              <p class="small mono radar-foot" id="s-radar-foot"></p>
+            </div>
+          </div>
+          <p class="empty-line muted" id="s-radar-empty" hidden>No radar connected. An LD2450 follows up to three people; an MR60BHA2 reads breathing and heart rate.</p>
+        </section>
+
         <div class="senses-grid" role="group" aria-labelledby="sees-h">
           <section class="panel" aria-labelledby="s-lidar-h">
             <div class="panel-head wrap"><h3 id="s-lidar-h">Lidar</h3><span class="small muted mono" id="s-lidar-meta"></span></div>
@@ -555,12 +606,6 @@
             <canvas class="scope" id="s-lidar" role="img" aria-label="Top view from the lidar: the robot in the middle facing up, each return as a dot, the nearest one circled."></canvas>
             <dl class="metrics" id="s-lidar-metrics"></dl>
             <p class="empty-line muted" id="s-lidar-empty" hidden>No lidar connected. A lidar on the robot, or on a USB adapter beside this computer, shows its scan here.</p>
-          </section>
-          <section class="panel" aria-labelledby="s-radar-h">
-            <div class="panel-head"><h3 id="s-radar-h">Radar</h3><span class="small muted mono" id="s-radar-meta"></span></div>
-            <canvas class="scope radar-scope" id="s-radar" role="img" aria-label="The LD2450 radar's field of view with the people it tracks and their last five seconds."></canvas>
-            <ul class="target-list mono" id="s-targets"></ul>
-            <p class="empty-line muted" id="s-radar-empty" hidden>No radar connected. An LD2450 follows up to three people; an MR60BHA2 reads breathing and heart rate.</p>
           </section>
           <section class="panel" aria-labelledby="s-cam-h">
             <div class="panel-head"><h3 id="s-cam-h">Camera</h3><span class="pill" id="s-cam-pill">–</span></div>

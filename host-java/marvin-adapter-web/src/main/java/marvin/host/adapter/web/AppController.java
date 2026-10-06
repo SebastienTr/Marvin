@@ -23,7 +23,10 @@ import marvin.host.application.face.port.in.FaceImage;
 @RestController
 public class AppController {
     private static final Logger log = LoggerFactory.getLogger(AppController.class);
-    /** The app's files: the page, its style, its scripts (ES modules) and the manifest. Nothing else is served. */
+    /**
+     * The app's files: the page, its style, its scripts (ES modules) and the manifest, and three.js (vendored, with its
+     * licence) for the radar's 3D view. Nothing else is served.
+     */
     static final Map<String, String> STATIC_TYPES = Map.ofEntries(
             Map.entry("index.html", "text/html; charset=utf-8"),
             Map.entry("style.css", "text/css; charset=utf-8"),
@@ -32,7 +35,9 @@ public class AppController {
             script("memdata.js"), script("inspector.js"), script("convo.js"), script("home.js"), script("talk.js"),
             script("memory.js"), script("memviews.js"), script("memtools.js"), script("worker.js"), script("activity.js"),
             script("marvin.js"), script("system.js"), script("attach.js"), script("camera.js"), script("tasks.js"),
-            script("markdown.js"), script("ears.js"), script("sensorviews.js"), script("senses.js"));
+            script("markdown.js"), script("ears.js"), script("sensorviews.js"), script("senses.js"), script("radar3d.js"),
+            script("three.module.min.js"), script("three-orbit-controls.js"),
+            Map.entry("three-LICENSE.txt", "text/plain; charset=utf-8"));
 
     private static Map.Entry<String, String> script(String name) {
         return Map.entry(name, "text/javascript; charset=utf-8");

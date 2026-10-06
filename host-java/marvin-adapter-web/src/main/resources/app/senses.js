@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Senses: everything Marvin sees, hears and feels, live, for an engineer (docs/ui.md, "Senses"). The lidar with its
-// range, the radar, the camera on demand (a live preview only when asked, a few pictures a minute, never kept), what
+// range, the radar in 3D (radar3d.js, loaded when first shown; the flat 2D fan one click away), the camera on demand (a live preview only when asked, a few pictures a minute, never kept), what
 // the vision model said last; the microphone's level, the voice activity, the end-of-turn decisions, what was heard
 // and what became of it; presence and the evidence for it, the room, the vital signs; what Marvin thinks with and how
 // long the last answer took; every device and its link. One stream (/api/senses/stream), open only while this screen
@@ -8,11 +8,26 @@
 
 import { $, app, el, api, on, local, canvas2d, fmtSeconds, fmtTime, timeEl } from "./core.js";
 import {
-  palette, drawLidar, drawRadar, deviceItem, metric, fmtRate, fmtDistance, radarLive, LIDAR_RANGES,
+  palette, drawLidar, drawRadar, deviceItem, metric, fmtRate, fmtDistance, radarLive, describeTarget, LIDAR_RANGES,
 } from "./sensorviews.js";
 import { timingSegments } from "./inspector.js";
 
 const RANGE_KEY = "marvin.senses.range";
+const RADAR_MODE_KEY = "marvin.senses.radar.mode";
+const RADAR_MOUNT_KEY = "marvin.senses.radar.mount";
+const RADAR_VIEW_KEY = "marvin.senses.radar.view";
+const VIEW_NOTES = {
+  seat: "From your seat, looking at the radar: left and right are yours.",
+  behind: "From behind the radar, as it sees you: your right is on the left here.",
+  above: "From above, on your side of the desk: left and right are yours.",
+  side: "From your left: the radar on the left, you on the right.",
+  own: "Your own view. Pick one above to go back.",
+};
+const MOUNT_HINTS = {
+  upright: "Upright, as Hi-Link intends: the gold antennas face you, the long side lies flat. It sees 120° from side to side and 70° up and down, and puts each person on the floor plan. The right choice for Marvin.",
+  flat: "Flat, face up: it looks at the ceiling. What it calls “ahead” becomes “up”, so the same numbers put a person in the air above the desk, and someone sitting in front of it is at the edge of its view or outside it.",
+  side: "Upright, turned 90°: it faces you with its long side standing. Its wide 120° now goes up and down and only 70° from side to side, and its “left and right” becomes “up and down”: it can no longer tell where you are across the room.",
+};
 const LEVEL_WINDOW_S = 10;
 const PREVIEW_EVERY_MS = 2000;
 const MAX_UTTERANCES = 20;
@@ -50,16 +65,86 @@ function renderLidar() {
   );
 }
 
+// the radar: 3D (radar3d.js and three.js, loaded the first time it is shown) or the flat 2D fan
+
+const radar3d = { view: null, loading: null, failed: false };
+const pick = (key, values, fallback) => { const v = local.get(key, fallback); return values.includes(v) ? v : fallback; };
+const radarMode = () => pick(RADAR_MODE_KEY, ["3d", "2d"], "3d");
+const radarMount = () => pick(RADAR_MOUNT_KEY, ["upright", "flat", "side"], "upright");
+const radarView = () => pick(RADAR_VIEW_KEY, ["seat", "behind", "above", "side"], "above");
+
+function load3d() {
+  if (!radar3d.loading) {
+    radar3d.loading = import("./radar3d.js").then((m) => {
+      radar3d.view = m.createRadar3D($("s-radar-stage"), $("s-radar-labels"), {
+        onUserMove() {
+          for (const r of document.querySelectorAll('input[name="s-radar-cam"]')) r.checked = false;
+          $("s-radar-viewnote").textContent = VIEW_NOTES.own;
+        },
+      });
+      radar3d.view.setMount(radarMount());
+      radar3d.view.setView(radarView(), false);
+      $("s-radar-status").hidden = true;
+      drawSees();
+    }).catch((e) => {
+      radar3d.failed = true;
+      console.warn("radar 3D view", e);
+      drawSees();
+    });
+  }
+}
+
+const fmtAge = (a) => (a == null ? "none yet" : a < 1 ? `${Math.round(a * 1000)} ms ago` : `${a.toFixed(1)} s ago`);
+
+function headLine(h) {
+  if (!h) return "";
+  const a = Math.round(h.angle_deg);
+  const where = Math.abs(a) < 3 ? "straight ahead" : `${Math.abs(a)}° to your ${a > 0 ? "right" : "left"}`;
+  const doing = !h.servo_on ? "resting" : h.tracking ? "following the nearest person" : h.glancing ? "glancing around"
+    : h.mode === "manual" ? "held where it was told" : h.mode === "center" ? "kept straight" : "waiting for someone";
+  return `Marvin’s head looks ${where}, ${doing}${h.mode ? ` (${h.mode})` : ""}.`;
+}
+
 function renderRadar() {
   const live = radarLive(s.devices);
-  const targets = (s.scene && s.scene.targets) || [];
-  const { nearest_m: near } = drawRadar($("s-radar"), s.scene);
-  $("s-radar").hidden = !live && !targets.length;
-  $("s-radar-empty").hidden = live || targets.length > 0;
-  $("s-radar-meta").textContent = !live && !targets.length ? "" : targets.length
+  const scene = s.scene;
+  const targets = (scene && scene.targets) || [];
+  const has = live || targets.length > 0;
+  $("s-radar-body").hidden = !has;
+  $("s-radar-mode").hidden = !has;
+  $("s-radar-empty").hidden = has;
+  const near = targets.length ? Math.min(...targets.map(([r, f]) => Math.hypot(r, f))) / 100 : null;
+  $("s-radar-meta").textContent = !has ? "" : targets.length
     ? `${targets.length} ${targets.length === 1 ? "person" : "people"} · nearest ${near.toFixed(2)} m` : "nobody in view";
-  $("s-targets").replaceChildren(...targets.map(([r, f, v], i) => el("li", null,
-    `#${i + 1}  ${(Math.hypot(r, f) / 100).toFixed(2)} m  ${Math.round(Math.atan2(r, f) * 180 / Math.PI)}°  ${v == null ? "" : `${v} cm/s`}`)));
+  if (!has) return;
+  const three = radarMode() === "3d" && !radar3d.failed;
+  $("s-radar-3d").hidden = !three;
+  $("s-radar").hidden = three;
+  $("s-radar-fallback").hidden = !(radarMode() === "3d" && radar3d.failed);
+  $("s-radar-2dnote").hidden = three;
+  if (three) {
+    if (radar3d.view) radar3d.view.update(scene);
+    else load3d();
+  } else {
+    drawRadar($("s-radar"), scene);
+  }
+  $("s-radar-nobody").hidden = targets.length > 0 || !radar3d.view || !three;
+  $("s-radar-none").hidden = targets.length > 0 || three;
+  $("s-radar-table").hidden = !targets.length;
+  const mount = three ? radarMount() : "upright";
+  $("s-targets").replaceChildren(...targets.map(([r, f, v], i) => {
+    const x = -r, y = f;                                    // the radar's own x (to your right) and y (out of its face)
+    const { dist, dir } = describeTarget(x, y, mount);
+    const tr = el("tr");
+    for (const c of [String(i + 1), String(x), String(y), dist, dir, v == null ? "–" : `${v} cm/s`]) tr.append(el("td", null, c));
+    return tr;
+  }));
+  const rate = s.devices.filter((d) => d.online && d.rates && d.rates.radar > 0).reduce((a, d) => a + d.rates.radar, 0);
+  const age = scene && scene.radar ? scene.radar.age_s : null;
+  const foot = $("s-radar-foot");
+  foot.replaceChildren(`${fmtRate(rate)} frames/s · last frame ${fmtAge(age)}`);
+  const hl = headLine(scene && scene.head);
+  if (hl) foot.append(el("br"), hl);
 }
 
 let frame = 0;
@@ -511,7 +596,33 @@ export function setup() {
   $("s-cam-take").addEventListener("click", () => preview.shoot());
   $("s-cam-preview").addEventListener("change", (ev) => { if (ev.target.checked) preview.start(); else preview.stop(); });
   on("view", () => stream.update());
-  on("theme", () => { if (visible()) renderAll(); });
+  for (const input of document.querySelectorAll('input[name="s-radar-mode"]')) {
+    input.checked = input.value === radarMode();
+    input.addEventListener("change", () => { if (input.checked) { local.set(RADAR_MODE_KEY, input.value); renderRadar(); } });
+  }
+  $("s-radar-viewnote").textContent = VIEW_NOTES[radarView()];
+  const hint = () => { $("s-mount-hint").textContent = MOUNT_HINTS[radarMount()]; };
+  hint();
+  for (const input of document.querySelectorAll('input[name="s-radar-mount"]')) {
+    input.checked = input.value === radarMount();
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      local.set(RADAR_MOUNT_KEY, input.value);
+      hint();
+      if (radar3d.view) radar3d.view.setMount(input.value);
+      renderRadar();
+    });
+  }
+  for (const input of document.querySelectorAll('input[name="s-radar-cam"]')) {
+    input.checked = input.value === radarView();
+    // a click, not only a change: the view chosen again after a drag goes back to it
+    input.addEventListener("click", () => {
+      local.set(RADAR_VIEW_KEY, input.value);
+      $("s-radar-viewnote").textContent = VIEW_NOTES[input.value];
+      if (radar3d.view) radar3d.view.setView(input.value);
+    });
+  }
+  on("theme", () => { if (radar3d.view) radar3d.view.theme(); if (visible()) renderAll(); });
   on("resize", () => { if (visible()) { renderLidar(); renderRadar(); drawLevels(); } });
   document.addEventListener("visibilitychange", () => stream.update());
 }

@@ -27,9 +27,11 @@ import org.junit.jupiter.api.Test;
  */
 class AppFilesTest {
     private static final Pattern STATIC_REF = Pattern.compile("(?:src|href)=\"/static/([^\"]+)\"");
-    private static final Pattern IMPORT = Pattern.compile("(?:import|from)\\s+\"\\./([^\"]+)\"");
+    /** {@code import "./x.js"}, {@code from "./x.js"}, and a module loaded when needed: {@code import("./x.js")}. */
+    private static final Pattern IMPORT = Pattern.compile("(?:import|from)\\s*\\(?\\s*\"\\./([^\"]+)\"");
     private static final Pattern URL = Pattern.compile("https?://[^\\s\"'`)]+");
-    private static final Set<String> ALLOWED_URLS = Set.of("http://www.w3.org/2000/svg");
+    /** XML namespaces, not addresses: SVG (the app), XHTML (three.js creates its canvas with it). */
+    private static final Set<String> ALLOWED_URLS = Set.of("http://www.w3.org/2000/svg", "http://www.w3.org/1999/xhtml");
 
     static Path appDir() throws URISyntaxException {
         return Path.of(AppFilesTest.class.getResource("/app/index.html").toURI()).getParent();

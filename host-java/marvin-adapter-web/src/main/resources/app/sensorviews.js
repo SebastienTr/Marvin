@@ -131,6 +131,21 @@ export function drawLidar(canvas, scene, { range = "auto", radar = false } = {})
 
 // ------------------------------------------------------------------ radar
 
+/**
+ * Where the radar puts someone, in plain words: the distance from the radar and the way, from the radar's own x
+ * (sideways, positive to the right of someone facing it) and y (out of its face), in cm. For a radar mounted flat
+ * ("flat") its y points up; turned 90° ("side"), its x points up. Returns { dist, dir, angle } (angle in degrees,
+ * positive to the right, or up when turned).
+ */
+export function describeTarget(x, y, mount = "upright") {
+  const d = Math.hypot(x, y) / 100;
+  const a = Math.round(Math.atan2(x, y) * 180 / Math.PI);
+  const dist = `${d.toFixed(2)} m`;
+  if (Math.abs(a) < 3) return { dist, dir: mount === "flat" ? "straight up" : "straight ahead", angle: a };
+  const side = mount === "side" ? (a > 0 ? "up" : "down") : a > 0 ? "right" : "left";
+  return { dist, dir: mount === "flat" ? `${Math.abs(a)}° ${side} of up` : `${Math.abs(a)}° ${side}`, angle: a };
+}
+
 function drawPerson(ctx, x, y, col) {
   ctx.globalAlpha = 0.22;
   ctx.fillStyle = col.accent;

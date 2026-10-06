@@ -932,6 +932,49 @@ dialog .actions { justify-content: space-between; }
 .range-choice span { min-height: 36px; padding: 0 11px; font-family: var(--mono); font-size: 12px; }
 .radar-scope { aspect-ratio: 1.6; }
 .target-list { display: grid; gap: 4px; font-size: 12px; margin-top: 10px; }
+/* the radar in 3D: a stage of fixed proportions (nothing moves when the view loads), labels drawn over it */
+.radar-panel { margin-bottom: 20px; }
+.radar-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.segmented.compact span { min-height: 34px; padding: 0 11px; font-size: 12px; }
+.radar-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.radar-stage {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: var(--bg);
+  border: 1px solid var(--line); touch-action: none;
+}
+.radar-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; cursor: grab; }
+.radar-stage canvas:active { cursor: grabbing; }
+.radar-stage-note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+.radar-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.radar-label {
+  position: absolute; left: 0; top: 0; white-space: nowrap; font: 12px/1.3 var(--mono); color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 3px 8px; will-change: transform;
+  box-shadow: 0 2px 8px var(--shadow);
+}
+.radar-label b { font-weight: 600; color: var(--attention); margin-right: 6px; }
+.radar-label.ring { background: transparent; border: 0; box-shadow: none; padding: 0; color: var(--muted); font-size: 11px; }
+.radar-label.tag { background: transparent; border: 0; box-shadow: none; padding: 0; color: var(--muted); font: 11px/1.3 var(--sans); }
+.radar-nobody {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); max-width: calc(100% - 28px); text-align: center;
+  font-size: 13px; padding: 7px 14px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+}
+.radar-viewnote {
+  position: absolute; left: 12px; top: 12px; max-width: calc(100% - 24px); font-size: 12px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 4px 9px; pointer-events: none;
+}
+.radar-viewnote:empty { display: none; }
+.radar-panel .radar-scope { max-width: 720px; margin: 0 auto; }
+#s-radar-2dnote, #s-radar-fallback { text-align: center; margin-top: 6px; }
+.radar-help { margin-top: 8px; }
+.radar-mount { margin-top: 14px; display: grid; gap: 8px; justify-items: start; }
+.radar-mount .kv-label { margin: 0; }
+#s-mount-hint { max-width: 70ch; }
+.radar-data { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.radar-table { border-collapse: collapse; font-size: 12px; width: 100%; max-width: 640px; }
+.radar-table th { font: 12px var(--sans); color: var(--muted); text-align: right; padding: 4px 10px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.radar-table td { text-align: right; padding: 5px 10px 5px 0; white-space: nowrap; }
+.radar-table th:first-child, .radar-table td:first-child { text-align: left; }
+.radar-table abbr { text-decoration: underline dotted; cursor: help; }
+.radar-foot { color: var(--muted); }
 .cam-frame { margin: 12px 0 0; }
 .cam-frame img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 14px; background: var(--soft); }
 .cam-frame figcaption { margin-top: 6px; }
@@ -1058,6 +1101,9 @@ dialog .actions { justify-content: space-between; }
   }
   .page-header .live-pill { display: none; }
   .senses-h { font-size: 23px; margin: 28px 0 12px; }
+  .radar-stage { aspect-ratio: 1; }
+  .radar-viewnote { left: 8px; top: 8px; font-size: 11px; padding: 3px 7px; }
+  .radar-table th, .radar-table td { padding-right: 7px; }
   .kv-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
   .range-choice { display: flex; }
   .range-choice label { flex: 1; }
