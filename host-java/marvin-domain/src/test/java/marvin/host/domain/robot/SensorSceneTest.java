@@ -58,4 +58,41 @@ class SensorSceneTest {
         scene.record(targets(bench, 2500), 2.5);
         assertThat(scene.view(2.5, false).targets()).singleElement().satisfies(t -> assertThat(t[1]).isEqualTo(250));
     }
+
+    @Test
+    void theRadarsLastFrameHasAnAgeEvenWithoutTargets() {
+        assertThat(scene.view(0.0, false).radarAgeS()).isNull();
+        scene.record(new SensorFrame.RadarTargets(usb, 0, List.of(), List.of()), 1.0);
+        assertThat(scene.view(1.25, false).radarAgeS()).isEqualTo(0.25);
+        assertThat(scene.view(1.25, false).targets()).isEmpty();
+    }
+
+    @Test
+    void theLastHeadIsShownWhileFreshThenDropped() {
+        assertThat(scene.view(0.0, false).head()).isNull();
+        Head h = new Head(Head.AUTO, -21.46, -24.0, -25.3, 1318, true, false, true);
+        scene.record(new SensorFrame.HeadPose(bench, 0, h), 10.0);
+        SensorScene.HeadView v = scene.view(10.5, false).head();
+        assertThat(v).isNotNull();
+        assertThat(v.angleDeg()).isEqualTo(-21.5);
+        assertThat(v.goalDeg()).isEqualTo(-24.0);
+        assertThat(v.targetDeg()).isEqualTo(-25.3);
+        assertThat(v.targetDistanceCm()).isEqualTo(132);
+        assertThat(v.mode()).isEqualTo("auto");
+        assertThat(v.tracking()).isTrue();
+        assertThat(v.servoOn()).isTrue();
+        assertThat(v.ageS()).isEqualTo(0.5);
+        assertThat(scene.view(12.0, false).head()).as("2 s old").isNotNull();
+        assertThat(scene.view(12.1, false).head()).as("stale").isNull();
+    }
+
+    @Test
+    void aHeadWithoutTargetOrWithAnUnknownModeHasNulls() {
+        scene.record(new SensorFrame.HeadPose(bench, 0, new Head(9, 3.0, 0.0, null, null, false, true, false)), 1.0);
+        SensorScene.HeadView v = scene.view(1.0, false).head();
+        assertThat(v.mode()).isNull();
+        assertThat(v.targetDeg()).isNull();
+        assertThat(v.targetDistanceCm()).isNull();
+        assertThat(v.glancing()).isTrue();
+    }
 }

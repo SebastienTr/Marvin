@@ -109,7 +109,7 @@ public final class DeviceMonitor {
                 // counted in the datagrams; the room keeps the readings
             }
             case SensorFrame.HeadPose h -> {
-                // counted in the datagrams; nothing on the host uses the head yet
+                // counted in the datagrams; the scene keeps the last one for the app
             }
         }
     }

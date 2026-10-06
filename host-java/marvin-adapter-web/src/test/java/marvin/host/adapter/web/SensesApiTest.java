@@ -45,6 +45,7 @@ class SensesApiTest {
     static final class Robot implements RobotLinkQuery {
         volatile boolean radar;
         volatile RoomState room;
+        volatile SensorScene.HeadView head;
 
         @Override
         public List<DeviceStatus> devices() {
@@ -65,7 +66,7 @@ class SensesApiTest {
             int[] ranges = new int[SensorScene.LIDAR_BINS];
             Arrays.fill(ranges, 45);
             ranges[61] = 13;                         // a mug, close
-            return new SensorScene.View(new SensorScene.Lidar(0.05, ranges, 2131), List.of(), List.of(), null);
+            return new SensorScene.View(new SensorScene.Lidar(0.05, ranges, 2131), List.of(), List.of(), null, head, head == null ? null : 0.1);
         }
 
         @Override
@@ -229,6 +230,25 @@ class SensesApiTest {
         String body = mvc.perform(get("/api/senses").header("Host", "localhost:8765")).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         return (Map<String, Object>) JsonText.parse(body);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void theSceneSaysWhereTheHeadLooksAndIsNullWithoutOne() throws Exception {
+        Map<String, Object> scene = (Map<String, Object>) getSenses().get("scene");
+        assertThat(scene).containsEntry("head", null).containsKeys("lidar", "targets", "trail", "vitals", "radar");
+        assertThat((Map<String, Object>) scene.get("radar")).containsEntry("half_angle_deg", 60L).containsEntry("age_s", null);
+        robot.head = new SensorScene.HeadView(-21.5, -24.0, -25.3, 132, "auto", true, false, true, 0.12);
+        scene = (Map<String, Object>) getSenses().get("scene");
+        assertThat((Map<String, Object>) scene.get("head")).containsEntry("angle_deg", -21.5).containsEntry("goal_deg", -24.0)
+                .containsEntry("target_deg", -25.3).containsEntry("target_distance_cm", 132L).containsEntry("mode", "auto")
+                .containsEntry("tracking", true).containsEntry("glancing", false).containsEntry("servo_on", true)
+                .containsEntry("age_s", 0.12);
+        assertThat((Map<String, Object>) scene.get("radar")).containsEntry("age_s", 0.1);
+        robot.head = new SensorScene.HeadView(0.0, 0.0, null, null, null, false, true, false, 1.5);
+        scene = (Map<String, Object>) getSenses().get("scene");
+        assertThat((Map<String, Object>) scene.get("head")).containsEntry("target_deg", null).containsEntry("mode", null)
+                .containsEntry("angle_deg", 0.0);
     }
 
     @Test

@@ -8,8 +8,9 @@ import java.util.List;
 
 /**
  * The sensor mini-views of the app's Robot panel (the Python {@code UISink.scene()}): the last lidar
- * scan reduced to 360 ranges (one per degree), the LD2450 targets with short trails, and the MR60BHA2
- * vital signs (rates over the last minutes, waves over the last seconds).
+ * scan reduced to 360 ranges (one per degree), the LD2450 targets with short trails, the MR60BHA2
+ * vital signs (rates over the last minutes, waves over the last seconds), and where the servo head looks
+ * (the last {@code HEAD}, while fresh).
  *
  * <p>{@link #record} keeps references and appends to short queues (O(1)); the work happens in
  * {@link #view}, when someone looks. The scan reduction is cached per scan. Times are the host's
@@ -33,6 +34,8 @@ public final class SensorScene {
     public static final int RADAR_RANGE_CM = 600;
     /** How long a real sensor's scan or targets keep a simulated device's out of the views. */
     public static final double PREFER_REAL_S = 2.0;
+    /** A {@code HEAD} older than this is not shown (the robot sends one 5 times a second). */
+    public static final double HEAD_STALE_S = 2.0;
 
     private final Extrinsics extrinsics;
 
@@ -52,6 +55,8 @@ public final class SensorScene {
     private Vitals vitals;
     private final Deque<double[]> waves = new ArrayDeque<>();      // {t, breath, heart, valid}
     private final Deque<Double[]> rates = new ArrayDeque<>();      // {t, breath|null, heart|null}
+    private Head head;
+    private double headT;
 
     private record Trail(double t, List<double[]> points) {
     }
@@ -108,6 +113,10 @@ public final class SensorScene {
                     }
                 }
             }
+            case SensorFrame.HeadPose h -> {
+                head = h.head();
+                headT = now;
+            }
             default -> {
             }
         }
@@ -162,7 +171,16 @@ public final class SensorScene {
                     v.valid() ? round(v.heartRate(), 1) : null,
                     v.distanceMm() != 0 ? (int) Math.rint(v.distanceMm() / 10.0) : null, w, r);
         }
-        return new View(lidar, tg, tr, vv);
+        HeadView hv = null;
+        if (head != null && now - headT <= HEAD_STALE_S) {
+            Head h = head;
+            hv = new HeadView(round(h.yawDeg(), 1), round(h.goalDeg(), 1),
+                    h.targetYawDeg() == null ? null : round(h.targetYawDeg(), 1),
+                    h.targetDistanceMm() == null ? null : (int) Math.rint(h.targetDistanceMm() / 10.0),
+                    Head.modeName(h.mode()), h.tracking(), h.glancing(), h.servoOn(), round(now - headT, 2));
+        }
+        Double radarAge = targets == null ? null : round(now - targetsT, 2);
+        return new View(lidar, tg, tr, vv, hv, radarAge);
     }
 
     /**
@@ -170,8 +188,30 @@ public final class SensorScene {
      * @param targets {right cm, fwd cm, speed cm/s} of the targets seen in the last 2 s
      * @param trail   {age s, right cm, fwd cm}, a point every 0.2 s over the last 5 s
      * @param vitals  {@code null} without a reading in the last 10 s
+     * @param head    {@code null} without a {@code HEAD} in the last {@link #HEAD_STALE_S} seconds
+     * @param radarAgeS how old the last LD2450 frame shown is (with or without targets), {@code null} before the first
      */
-    public record View(Lidar lidar, List<int[]> targets, List<double[]> trail, VitalsView vitals) {
+    public record View(Lidar lidar, List<int[]> targets, List<double[]> trail, VitalsView vitals, HeadView head,
+                       Double radarAgeS) {
+        /** A view without a head or a radar frame. */
+        public View(Lidar lidar, List<int[]> targets, List<double[]> trail, VitalsView vitals) {
+            this(lidar, targets, trail, vitals, null, null);
+        }
+    }
+
+    /**
+     * Where the servo head looks. Angles in degrees, 0 straight ahead, positive towards the device frame's +X (the
+     * robot's left, the right of someone facing it), as {@link Head}.
+     *
+     * @param angleDeg         the yaw now
+     * @param goalDeg          where the head is going
+     * @param targetDeg        the nearest target's yaw, {@code null} without one
+     * @param targetDistanceCm the nearest target's distance, {@code null} without one
+     * @param mode             {@code auto}, {@code manual}, {@code center}, or {@code null} for a mode this host does not know
+     * @param ageS             how old the last {@code HEAD} is
+     */
+    public record HeadView(double angleDeg, double goalDeg, Double targetDeg, Integer targetDistanceCm, String mode,
+                           boolean tracking, boolean glancing, boolean servoOn, double ageS) {
     }
 
     /** @param rangesCm the nearest return per degree, clockwise from the front; 0 where nothing was seen */

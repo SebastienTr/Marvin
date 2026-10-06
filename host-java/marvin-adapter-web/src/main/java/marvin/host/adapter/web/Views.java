@@ -174,7 +174,27 @@ public final class Views {
         Map<String, Object> radar = new LinkedHashMap<>();
         radar.put("half_angle_deg", SensorScene.RADAR_HALF_ANGLE_DEG);
         radar.put("range_cm", SensorScene.RADAR_RANGE_CM);
+        radar.put("age_s", v.radarAgeS());
         m.put("radar", radar);
+        m.put("head", head(v.head()));
+        return m;
+    }
+
+    /** Where the servo head looks, or {@code null} without a fresh {@code HEAD}. */
+    static Map<String, Object> head(SensorScene.HeadView h) {
+        if (h == null) {
+            return null;
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("angle_deg", h.angleDeg());
+        m.put("goal_deg", h.goalDeg());
+        m.put("target_deg", h.targetDeg());
+        m.put("target_distance_cm", h.targetDistanceCm());
+        m.put("mode", h.mode());
+        m.put("tracking", h.tracking());
+        m.put("glancing", h.glancing());
+        m.put("servo_on", h.servoOn());
+        m.put("age_s", h.ageS());
         return m;
     }
 }
