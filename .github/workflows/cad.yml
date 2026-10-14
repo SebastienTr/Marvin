@@ -7,16 +7,29 @@ on:
     paths: ["hardware/**", ".github/workflows/cad.yml"]
 
 jobs:
-  export-stl:
+  export-and-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install OpenSCAD
-        run: sudo apt-get update && sudo apt-get install -y openscad
+      - name: Install OpenSCAD and numpy
+        run: sudo apt-get update && sudo apt-get install -y openscad python3-numpy
       - name: Export every part
-        run: bash hardware/scripts/export_stl.sh
-      - name: Upload STLs
+        run: OUT=build/stl OUT_DXF=build/dxf bash hardware/scripts/export_stl.sh
+      - name: Check the head (fits, interface, screws, manifold, bed, overhangs, walls)
+        run: python3 hardware/scripts/check_head.py --jobs 4
+      - name: Check the proposed C8 amendment too
+        run: python3 hardware/scripts/check_head.py --amend --jobs 4
+      - name: Check the Bambu Studio project in the repository
+        run: python3 hardware/scripts/build_3mf.py --check hardware/bambu/marvin_A1.3mf
+      - name: Rebuild the Bambu Studio project from the exported STLs and check it
+        run: |
+          cp build/stl/*.stl hardware/stl/
+          python3 hardware/scripts/build_3mf.py --no-studio build/marvin_A1.3mf
+      - name: Upload STLs, DXF and project
         uses: actions/upload-artifact@v4
         with:
-          name: marvin-stl
-          path: hardware/stl/*.stl
+          name: marvin-cad
+          path: |
+            build/stl/*.stl
+            build/dxf/*.dxf
+            build/marvin_A1.3mf
