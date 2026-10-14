@@ -335,7 +335,16 @@ class MemoryApiIT {
                 embed.add(r.embedSeconds());
             }
             assertThat(r.problem()).isEmpty();
-            assertThat(r.facts()).isNotEmpty().allSatisfy(l -> assertThat(l.text()).contains("sailing"));
+            // the sailing facts come first. Unrelated ones may follow at the bottom: the stand-in embedding counts
+            // shared words, so "detail number ... in passing" gives every fact a cosine of about 0.375, above the
+            // 0.35 floor of the default embedding model (qwen3-embedding, RetrievalScoring.floorFor); a real model
+            // puts them far lower. The context assembler's budget cuts the bottom anyway.
+            assertThat(r.facts()).hasSizeGreaterThanOrEqualTo(5);
+            assertThat(r.facts().subList(0, 5)).allSatisfy(l -> assertThat(l.text()).contains("sailing"));
+            double unrelated = r.facts().stream().filter(l -> !l.text().contains("sailing"))
+                    .mapToDouble(RecallMemory.Line::score).max().orElse(Double.NEGATIVE_INFINITY);
+            assertThat(r.facts().stream().filter(l -> l.text().contains("sailing")).limit(5))
+                    .allSatisfy(l -> assertThat(l.score()).isGreaterThan(unrelated));
         }
         whole.sort(Double::compare);
         search.sort(Double::compare);
