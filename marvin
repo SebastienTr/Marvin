@@ -11,6 +11,8 @@
 #   ./marvin status    what is running, and the host's health
 #   ./marvin logs      follow the host's log (-n N: the last N lines and exit)
 #   ./marvin doctor    check this machine and say how to fix what is missing
+#   ./marvin report    one paste for a bug report: versions, doctor, devices, self-test, latency, errors
+#                      (nothing personal; --no-doctor: quicker; --out FILE: also save it)
 #   ./marvin usb-sensors  the USB sensor bridge in the foreground (--detect: what is plugged in, and exit)
 #
 # A lidar or a radar on a USB-serial adapter (docs/usb-sensors.md) is bridged by `up` and `restart`: when an
@@ -22,7 +24,8 @@
 #
 # Environment: MARVIN_DATA_DIR (default ~/.local/share/marvin), MARVIN_PORT (8765), MARVIN_BIND
 # (0.0.0.0), MARVIN_DB (auto | docker | embedded; auto keeps the one used the first time),
-# MARVIN_PG_PORT (5433, the Docker database), MARVIN_JAVA_HOME (a JDK 25 to use), MARVIN_JAVA_OPTS
+# MARVIN_PG_PORT (5433, the Docker database; MARVIN_PG_CONTAINER and MARVIN_PG_VOLUME name its container and
+# volume, default marvin-postgres and marvin-pgdata), MARVIN_JAVA_HOME (a JDK 25 to use), MARVIN_JAVA_OPTS
 # (the host JVM's options; default: the serial collector and a 384 MB heap).
 # USB sensors: MARVIN_USB_SENSORS (auto | off), MARVIN_USB_PORTS (comma-separated ports or globs to look at,
 # instead of /dev/cu.usbserial-*, /dev/cu.SLAB_USBtoUART*, /dev/cu.wchusbserial*, /dev/ttyUSB*).
@@ -53,8 +56,8 @@ USB_STATUS_FILE="$RUN_DIR/usb-sensors.json"
 USB_LOG_FILE="$LOG_DIR/usb-sensors.log"
 PORT=${MARVIN_PORT:-8765}
 BIND=${MARVIN_BIND:-0.0.0.0}
-PG_CONTAINER=marvin-postgres
-PG_VOLUME=marvin-pgdata
+PG_CONTAINER=${MARVIN_PG_CONTAINER:-marvin-postgres}
+PG_VOLUME=${MARVIN_PG_VOLUME:-marvin-pgdata}
 PG_IMAGE=pgvector/pgvector:pg18
 PG_PORT=${MARVIN_PG_PORT:-5433}
 DB_MODE_FILE="$DATA_DIR/db_mode"
@@ -699,7 +702,7 @@ stop_usb_sensors() {
 # ------------------------------------------------------------------------------------ commands
 
 usage() {
-    sed -n '4,18p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '4,20p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 cmd_up() {
@@ -809,6 +812,23 @@ cmd_usb_sensors() {
     fi
     cd "$ROOT/host"
     exec "$py" -m marvin_host.usb_sensors --port "$UDP_PORT" "$@"
+}
+
+# report: tools/marvin_report.py does the work (Python's standard library only); without Python, the basics
+cmd_report() {
+    if python_ok; then
+        java=
+        if find_jdk 2>/dev/null; then java="$JAVA_HOME/bin/java"; fi
+        MARVIN_REPORT_ROOT="$ROOT" MARVIN_PORT="$PORT" MARVIN_DATA_DIR="$DATA_DIR" MARVIN_REPORT_LOG="$LOG_FILE" \
+            MARVIN_REPORT_JAVA="$java" python3 "$ROOT/tools/marvin_report.py" "$@"
+    else
+        say "# Marvin report (no Python 3.10+: the short one)"
+        say "marvin: $(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo '?'), $(uname -sm)"
+        cmd_status
+        say "health: $(health || echo 'not answering')"
+        [ -f "$LOG_FILE" ] && grep -E 'ERROR|WARN|Exception' "$LOG_FILE" | tail -n 20 | sed "s|$HOME|~|g"
+        return 0
+    fi
 }
 
 # doctor: one line per check; FAILED counts what blocks `./marvin up`
@@ -1059,6 +1079,7 @@ main() {
         status) cmd_status ;;
         logs | log) cmd_logs "$@" ;;
         doctor) cmd_doctor ;;
+        report) cmd_report "$@" ;;
         usb-sensors | usb) cmd_usb_sensors "$@" ;;
         help | -h | --help) usage ;;
         *) usage >&2; exit 2 ;;
