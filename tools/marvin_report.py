@@ -57,9 +57,7 @@ class Redactor:
             text = re.sub(rf"(?<![\w-]){re.escape(self.user)}(?![\w-])", "<user>", text)
         text = re.sub(r"[\w.+-]+@[\w-]+(\.[\w-]+)+", "<email>", text)
         text = re.sub(r"\b([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b", "<mac>", text)
-        text = re.sub(r"\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b",
-                      lambda m: m.group(0) if m.group(1) == "127" or m.group(0) == "0.0.0.0"
-                      else f"x.x.x.{m.group(4)}", text)
+        text = re.sub(r"\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b", self._address, text)
         # Wi-Fi names: `joining "MyWifi"`, `SSID MyWifi`, `ssid=MyWifi`
         text = re.sub(r"(joining|ssid[=:]?|SSID[=:]?|network)\s+\"[^\"]*\"", r'\1 "<wifi>"', text)
         text = re.sub(r"(joining|ssid[=:]|SSID[=:])\s*(?!\"<wifi>\")([^\s,.\"]+)", r"\1 <wifi>", text)
@@ -67,6 +65,25 @@ class Redactor:
         for w in self.words:
             text = re.sub(rf"(?<!\w){re.escape(w)}(?!\w)", "<owner>", text, flags=re.I)
         return text
+
+
+    @staticmethod
+    def _address(m: re.Match) -> str:
+        """An IPv4 address keeps its last byte (which device), not a version number (Java 25.0.4.1)."""
+        before = m.string[max(0, m.start() - 12):m.start()].lower()
+        if m.group(1) == "127" or m.group(0) == "0.0.0.0" or "version" in before or before.endswith(("v", "-")) \
+                or any(int(g) > 255 for g in m.groups()):
+            return m.group(0)
+        return f"x.x.x.{m.group(4)}"
+
+
+def show(v) -> str:
+    """A value as the report prints it: null, true/false, or the value."""
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    return str(v)
 
 
 def clip(line: str) -> str:
@@ -234,7 +251,8 @@ def report(args) -> str:
         if isinstance(voice, dict):
             v, s = voice.get("voice") or {}, voice.get("settings") or {}
             host.append(f"voice: {v.get('state')}/{v.get('status')}, model {v.get('model') or s.get('llm_model')}, "
-                        f"stt {s.get('stt')} {s.get('stt_model') or ''}, tts {s.get('tts')}, wake {s.get('wake')}"
+                        f"stt {s.get('stt')}{' ' + s['stt_model'] if s.get('stt_model') else ''}, tts {s.get('tts')}, "
+                        f"wake {show(s.get('wake'))}"
                         + (f", error: {v.get('error')}" if v.get("error") else ""))
     else:
         host.append(f"not answering on {base} (./marvin status, ./marvin logs)")
@@ -258,7 +276,7 @@ def report(args) -> str:
         devices.append(
             f"{d.get('name')} [{d.get('role')}] {d.get('board')}, firmware {d.get('firmware')}, "
             f"{'online' if d.get('online') else 'offline'} (age {d.get('age_s')} s), uptime {d.get('uptime_s')} s, "
-            f"RSSI {d.get('rssi')} dBm, {'simulated' if d.get('simulated') else 'real'} sensors, "
+            f"RSSI {show(d.get('rssi'))} dBm, {'simulated' if d.get('simulated') else 'real'} sensors, "
             f"loss {d.get('loss_pct')} %, bad {d.get('bad')}, crc {d.get('crc_errors')}, "
             f"rates {', '.join(f'{k} {v}' for k, v in rates.items())}")
     section("Devices", devices if health else ["(host not running)"])
@@ -278,8 +296,8 @@ def report(args) -> str:
     for d in lat:
         t = time.strftime("%m-%d %H:%M:%S", time.localtime(d["t"])) if isinstance(d.get("t"), (int, float)) else "?"
         extra = {k: v for k, v in d.items() if k.endswith("_ms") and k not in LATENCY_FIELDS}
-        lines.append(f"{t} " + " ".join(f"{k}={d.get(k)}" for k in LATENCY_FIELDS)
-                     + ("".join(f" {k}={v}" for k, v in extra.items())))
+        lines.append(f"{t} " + " ".join(f"{k}={show(d.get(k))}" for k in LATENCY_FIELDS)
+                     + ("".join(f" {k}={show(v)}" for k, v in extra.items())))
     totals = [d["total_ms"] for d in lat if isinstance(d.get("total_ms"), (int, float))]
     if totals:
         lines.append(f"first word over {len(totals)} turns: p50 {percentile(totals, .5):.0f} ms, "
