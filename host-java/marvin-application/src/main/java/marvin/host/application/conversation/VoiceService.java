@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: MIT
 package marvin.host.application.conversation;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,15 +8,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -38,46 +31,26 @@ import marvin.host.application.conversation.port.out.ToolSource;
 import marvin.host.application.conversation.port.out.VoiceListener;
 import marvin.host.application.conversation.port.out.VoiceSettingsStore;
 import marvin.host.application.conversation.port.out.VoiceSidecar;
-import marvin.host.application.conversation.tools.LookTool;
-import marvin.host.application.conversation.tools.MemoryTools;
-import marvin.host.application.conversation.tools.ToolRegistry;
-import marvin.host.application.conversation.tools.WeatherTool;
 import marvin.host.application.conversation.task.ModelLane;
 import marvin.host.application.conversation.task.TaskService;
 import marvin.host.application.presence.port.in.PresenceQuery;
 import marvin.host.application.system.port.out.Tracing;
 import marvin.host.application.vision.port.in.Camera;
 import marvin.host.domain.conversation.AudioDeviceProfile;
-import marvin.host.domain.conversation.ChatMessage;
 import marvin.host.domain.conversation.ContextAssembler;
 import marvin.host.domain.conversation.ConversationEntry;
 import marvin.host.domain.conversation.ConversationMemory;
 import marvin.host.domain.conversation.ImageAttachment;
-import marvin.host.domain.conversation.Persona;
-import marvin.host.domain.conversation.ProactiveSpeech;
-import marvin.host.domain.conversation.ReasoningSettings;
-import marvin.host.domain.conversation.SentenceSplitter;
-import marvin.host.domain.conversation.SpeechLanguage;
 import marvin.host.domain.conversation.SpeechText;
 import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.conversation.VoiceSettings.VoiceConfig;
 import marvin.host.domain.conversation.VoiceSnapshot;
 import marvin.host.domain.conversation.Voiceprint;
-import marvin.host.domain.conversation.task.Task;
-import marvin.host.domain.conversation.task.TaskIntent;
-import marvin.host.domain.conversation.tool.Look;
-import marvin.host.domain.conversation.tool.TaskTools;
-import marvin.host.domain.conversation.tool.ToolError;
-import marvin.host.domain.conversation.tool.ToolResult;
-import marvin.host.domain.conversation.tool.ToolSurface;
 import marvin.host.domain.presence.event.PresenceEvent;
-import marvin.host.domain.presence.event.PresenceState;
 import marvin.host.domain.robot.event.RoomState;
 import marvin.host.domain.shared.Clocks;
-import marvin.host.domain.shared.LanguageTokens;
 import marvin.host.domain.shared.LocalDays;
 import marvin.host.domain.shared.PyNumbers;
-import marvin.host.domain.shared.TokenEstimator;
 
 /**
  * Marvin's voice and conversation (the Python host's {@code VoiceController} and the conversation half of
@@ -118,6 +91,11 @@ import marvin.host.domain.shared.TokenEstimator;
  * and not talking with Marvin, or mentioned at the start of the next answer. The voice tells the {@link ModelLane} when a
  * conversation is going on, so a task's request gives way to it. Turns think as the owner's reasoning setting says (off
  * by default); their thinking is never spoken, and is kept in the reply for the inspector.
+ *
+ * <p>The work is shared with collaborators: {@link VoiceTranscript} (the entries and live signals),
+ * {@link VoiceRouting} (models, tools, the system prompt, the warm-up), {@link VoiceTurns} (the questions and their
+ * answers), {@link TurnContext} (memory and the "now" section in the question's message) and {@link VoiceProactive}
+ * (Marvin speaking first). This class keeps the voice's life, its settings, its commands and its state.
  */
 public final class VoiceService implements VoiceControl {
     private static final Logger log = Logger.getLogger("marvin.voice");
@@ -156,103 +134,63 @@ public final class VoiceService implements VoiceControl {
     /** How long an image waits for the question it goes with, then it is dropped. */
     static final double IMAGE_WAIT_S = 600.0;
 
-    private final VoiceSidecar voice;
-    private final LanguageModel model;
+    final VoiceSidecar voice;
     private final VoiceSettingsStore settingsStore;
-    private final JsonFetcher fetch;
-    private final ConversationStore store;
-    private final PresenceQuery presence;
-    private volatile Supplier<RoomState> room = () -> null;
+    final PresenceQuery presence;
+    volatile Supplier<RoomState> room = () -> null;
     /** The people whose voice Marvin knows, sent with the voice's settings (voice calibration). */
     private volatile Supplier<List<Voiceprint>> voiceprints = List::of;
     /** Where the voice calibration's progress goes ({@link VoiceEnrollmentService}). */
     private volatile Consumer<VoiceSidecar.EnrollProgress> enrollment = p -> { };
-    private final Clocks clocks;
-    private final LocalDays days;
-    private final String platform;
+    final Clocks clocks;
+    final LocalDays days;
     private final Supplier<Optional<String>> audioRobot;
-    private final AnswerLoop loop;
-    private final List<VoiceListener> listeners = new CopyOnWriteArrayList<>();
     private final ExecutorService control = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("marvin-voice-control").factory());
-    private final ExecutorService answers = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("marvin-voice-answer-", 0).factory());
+    final ExecutorService answers = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("marvin-voice-answer-", 0).factory());
 
-    private final Object lock = new Object();
-    private final Deque<ConversationEntry> transcript = new ArrayDeque<>();
-    private final Deque<Map<String, Object>> hearings = new ArrayDeque<>();
+    final Object lock = new Object();
     private volatile Map<String, Object> lastLevel;
-    private final AtomicLong ids;
-    private final AtomicLong replyIds = new AtomicLong(1);
-    private final Map<Long, Turn> turns = new ConcurrentHashMap<>();
-    /** The last turns by utterance uid, finished or not: what a question that continues them needs to know. */
-    private final Map<Long, Turn> recentTurns = Collections.synchronizedMap(new LinkedHashMap<>() {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<Long, Turn> eldest) {
-            return size() > 32;
-        }
-    });
-    /** The last turn heard: each turn builds its messages only once the one before is over (Python's single worker). */
-    private Turn lastTurn;
-    private final Map<Long, String> proactiveReplies = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> toolSupport = new ConcurrentHashMap<>();
-    /** What each model can do, by host and model (Ollama's capabilities): asked once, again after a settings change. */
-    private final Map<String, Set<String>> capabilities = new ConcurrentHashMap<>();
+    final AtomicLong replyIds = new AtomicLong(1);
     /** The image waiting for the next question. */
     private final AtomicReference<PendingImage> pendingImage = new AtomicReference<>();
-    private final ConversationMemory memory;
+    final ConversationMemory memory;
 
-    private volatile String state = OFF;
+    final VoiceTranscript transcript;
+    final VoiceRouting routing;
+    final TurnContext context;
+    final VoiceTurns turns;
+    final VoiceProactive proactive;
+
+    volatile String state = OFF;
     private volatile String error = "";
     private volatile String fix = "";
     private volatile boolean muted;
-    private volatile VoiceSidecar.Status status;
+    volatile VoiceSidecar.Status status;
     /** When {@link #status} came (monotonic seconds): {@code listen_s} counts down from there. */
     private volatile double statusAt;
-    private volatile boolean opened;
+    volatile boolean opened;
     /** The settings the voice session was last opened with. */
     private volatile VoiceSidecar.Settings openedWith;
-    private volatile boolean closed;
-    private volatile String language;
-    private volatile VoiceConfig config;
-    private volatile ToolRegistry tools;
-    /** The camera ({@code null}: none on this host), and whether {@link #tools} offers {@code look}. */
-    private volatile Camera camera;
-    private volatile boolean toolsLook;
-    private volatile ProactiveSpeech proactive;
-    private volatile Tracing tracing = Tracing.NONE;
-    private volatile MemoryContext memoryContext = MemoryContext.NONE;
+    volatile boolean closed;
+    volatile String language;
+    volatile VoiceConfig config;
+    volatile Tracing tracing = Tracing.NONE;
+    volatile MemoryContext memoryContext = MemoryContext.NONE;
     /** The memory sections' shared budget (tokens), {@link ContextAssembler#MEMORY_BUDGET} unless the host sets it. */
-    private volatile int memoryBudget = ContextAssembler.MEMORY_BUDGET;
-    /** Characters per token by language, calibrated from the model server's counts. */
-    private volatile LanguageTokens tokenEstimates = LanguageTokens.initial();
-    /** The messages of the last request that filled the model server's cache (to know what it evaluated again). */
-    private final Object promptLock = new Object();
-    private List<ChatMessage> lastPrompt = List.of();
+    volatile int memoryBudget = ContextAssembler.MEMORY_BUDGET;
     /** Questions heard so far (a {@code forget} is confirmed in a later turn than the one that proposed it). */
-    private final AtomicLong turnSeq = new AtomicLong();
+    final AtomicLong turnSeq = new AtomicLong();
     /** A warm-up asked for while the owner was talking: it runs once the voice is idle again. */
-    private final java.util.concurrent.atomic.AtomicBoolean rewarmPending = new java.util.concurrent.atomic.AtomicBoolean();
+    private final AtomicBoolean rewarmPending = new AtomicBoolean();
     /**
      * Moves on when the history must go (a guest came in, something was forgotten): a turn that began before does not
      * add its messages, which may hold what must not be sent again.
      */
-    private final AtomicLong historyEpoch = new AtomicLong();
-    /** Background tasks, the lane the voice shares the model with them on, tools from outside, quiet hours. */
-    private volatile TaskService tasks;
+    final AtomicLong historyEpoch = new AtomicLong();
+    /** Background tasks, and the lane the voice shares the model with them on. */
+    volatile TaskService tasks;
     private volatile ModelLane lane;
-    private final List<ToolSource> toolSources = new CopyOnWriteArrayList<>();
-    private volatile java.util.function.BooleanSupplier quiet = () -> false;
-    /** Whether {@link #tools} offers the task tools, and which tools the sources gave it. */
-    private volatile boolean toolsTasks;
-    private volatile String toolsSources = "";
-    /** When someone last asked something (monotonic seconds). */
-    private volatile double lastTalkAt = Double.NEGATIVE_INFINITY;
-    /** The last question answered, for "do it in the background" said after it. */
-    private volatile String lastQuestion = "";
     private volatile boolean laneBusy;
-    /** Whether the last question was asked with someone else in the room. */
-    private volatile boolean othersBefore;
-    /** Memory searches started on a speculative transcript, by utterance. */
-    private final Map<Long, Prefetch> prefetches = new ConcurrentHashMap<>();
     private volatile CompletableFuture<VoiceSidecar.Status> ready;
     private volatile long statusSeq;
     /** Each start, stop or restart supersedes the ones before it (they run one at a time, in order). */
@@ -266,41 +204,26 @@ public final class VoiceService implements VoiceControl {
                         ConversationStore store, PresenceQuery presence, Clocks clocks, LocalDays days,
                         String platform, Supplier<Optional<String>> audioRobot) {
         this.voice = Objects.requireNonNull(voice, "voice");
-        this.model = Objects.requireNonNull(model, "model");
+        Objects.requireNonNull(model, "model");
         this.settingsStore = settingsStore;
-        this.fetch = fetch;
-        this.store = store;
         this.presence = presence;
         this.clocks = clocks;
         this.days = days;
-        this.platform = platform;
         this.audioRobot = audioRobot;
-        this.loop = new AnswerLoop(model, clocks::monotonicSeconds);
+        this.routing = new VoiceRouting(this, model, fetch, platform);
+        this.context = new TurnContext(this);
+        this.turns = new VoiceTurns(this, new AnswerLoop(model, clocks::monotonicSeconds));
+        this.proactive = new VoiceProactive(this);
         VoiceConfig c = VoiceSettings.config(settings());
         this.memory = new ConversationMemory(c.memoryTurns(), c.memoryResetS(), HISTORY_TOKENS,
-                text -> tokenEstimates.estimate(language, text));
+                text -> context.estimate(language, text));
         this.language = c.language() != null ? c.language() : c.defaultLanguage();
-        // ids keep growing across restarts, above everything already stored, so an open page never mistakes a
-        // new entry for one it already shows
-        this.ids = new AtomicLong(Math.max((long) (clocks.wallSeconds() * 1000), store.maxId() + 1));
-        restoreToday();
-    }
-
-    private void restoreToday() {
-        double now = clocks.wallSeconds();
-        double[] b = days.bounds(days.dayOf(now));
-        try {
-            List<ConversationEntry> past = store.between(b[0], now + 86400, HISTORY);
-            synchronized (lock) {
-                transcript.addAll(past);
-            }
-        } catch (RuntimeException e) {
-            log.log(Level.WARNING, "could not read the conversation history", e);
-        }
+        this.transcript = new VoiceTranscript(store, clocks, lock);
+        transcript.restoreToday(days);
     }
 
     public void addListener(VoiceListener l) {
-        listeners.add(l);
+        transcript.addListener(l);
     }
 
     /**
@@ -324,7 +247,7 @@ public final class VoiceService implements VoiceControl {
      * voice starts; none by default.
      */
     public void setCamera(Camera c) {
-        camera = Objects.requireNonNull(c, "camera");
+        routing.setCamera(Objects.requireNonNull(c, "camera"));
     }
 
     /**
@@ -335,17 +258,17 @@ public final class VoiceService implements VoiceControl {
     public void setTasks(TaskService t) {
         tasks = Objects.requireNonNull(t, "tasks");
         lane = t.lane();
-        t.setHost(new TaskHost());
+        t.setHost(proactive.new TaskHost());
     }
 
     /** Tools from outside the conversation (a connector): offered where they say, from the next question on. */
     public void addToolSource(ToolSource s) {
-        toolSources.add(Objects.requireNonNull(s, "source"));
+        routing.addToolSource(Objects.requireNonNull(s, "source"));
     }
 
     /** Quiet hours: Marvin says nothing about tasks on its own then (the app's setting). */
-    public void setQuiet(java.util.function.BooleanSupplier q) {
-        quiet = Objects.requireNonNull(q, "quiet");
+    public void setQuiet(BooleanSupplier q) {
+        proactive.setQuiet(Objects.requireNonNull(q, "quiet"));
     }
 
     /** The memory sections' shared budget in tokens (what memory may add to each question's prompt). */
@@ -355,7 +278,7 @@ public final class VoiceService implements VoiceControl {
 
     /** Characters per token by language, as calibrated so far. */
     public Map<String, Double> tokenRatios() {
-        return tokenEstimates.ratios();
+        return context.tokenRatios();
     }
 
     /** Where each question's trace goes (a span from the end of speech to the last word said). */
@@ -399,7 +322,7 @@ public final class VoiceService implements VoiceControl {
         Map<String, Object> values = VoiceSettings.validate(update);
         settingsStore.save(values);
         if (!values.isEmpty()) {
-            capabilities.clear();               // a model may have been pulled again, or another chosen
+            routing.forgetCapabilities();       // a model may have been pulled again, or another chosen
             reload("Voice settings saved");
         }
         return appSettings();
@@ -411,7 +334,7 @@ public final class VoiceService implements VoiceControl {
      */
     public void reload(String why) {
         boolean running = ON.equals(state) || STARTING.equals(state);
-        note(why + (running ? ": restarting" : ""));
+        transcript.note(why + (running ? ": restarting" : ""));
         if (running) {
             long gen = generation.incrementAndGet();
             setState(STARTING);
@@ -473,7 +396,7 @@ public final class VoiceService implements VoiceControl {
                 setState(OFF);
             }
             if (was) {
-                note("Voice off");
+                transcript.note("Voice off");
             }
         });
     }
@@ -493,20 +416,20 @@ public final class VoiceService implements VoiceControl {
     }
 
     /** Someone is talking with Marvin: a turn in progress, or the voice listening, thinking or speaking. */
-    private boolean conversing() {
+    boolean conversing() {
         VoiceSidecar.Status s = status;
-        return !turns.isEmpty() || s != null && ("listening".equals(s.state()) || "thinking".equals(s.state())
+        return turns.active() || s != null && ("listening".equals(s.state()) || "thinking".equals(s.state())
                 || "speaking".equals(s.state()));
     }
 
-    private void maybeRewarm() {
+    void maybeRewarm() {
         VoiceConfig c = config;
         if (!rewarmPending.get() || conversing() || closed || c == null || !ON.equals(state)) {
             return;
         }
         answers.execute(() -> {
             if (ON.equals(state) && !conversing() && rewarmPending.compareAndSet(true, false)) {
-                warmUp(c);
+                routing.warmUp(c);
             }
         });
     }
@@ -538,9 +461,9 @@ public final class VoiceService implements VoiceControl {
     }
 
     private void teardown() {
-        proactive = null;
+        proactive.stop();
         pendingImage.set(null);
-        turns.values().forEach(t -> t.cancel("off"));
+        turns.cancelAll("off");
         if (opened) {
             voice.close();
         }
@@ -576,7 +499,7 @@ public final class VoiceService implements VoiceControl {
             failed(gen, "The voice failed to start: " + e.getMessage(), "See the Log panel for details.");
             return;
         }
-        String[] modelProblem = checkModel(c);
+        String[] modelProblem = routing.checkModel(c);
         if (modelProblem != null) {
             VoiceSidecar.Status first = null;
             try {
@@ -600,12 +523,9 @@ public final class VoiceService implements VoiceControl {
         if (c.language() != null) {
             language = c.language();
         }
-        toolsLook = cameraAvailable();
-        toolsTasks = tasks != null && tasksOn();
-        toolsSources = sourcesSignature();
-        tools = registry(c.tools(), c.internet(), c.homePlace(), toolsLook);
-        proactive = new ProactiveSpeech(c.reminders(), c.welcomeBack());
-        CompletableFuture<Void> warm = CompletableFuture.runAsync(() -> warmUp(c), answers);
+        routing.makeTools(c);
+        proactive.start(c);
+        CompletableFuture<Void> warm = CompletableFuture.runAsync(() -> routing.warmUp(c), answers);
         VoiceSidecar.Status s;
         try {
             s = r.get((long) (READY_TIMEOUT_S * 1000), TimeUnit.MILLISECONDS);
@@ -632,22 +552,7 @@ public final class VoiceService implements VoiceControl {
         error = "";
         fix = "";
         setState(ON);
-        note("Voice on: " + (c.wake() ? "say “Marvin, …”" : "just talk"));
-    }
-
-    /** What is wrong with the model server for these settings ({error, fix}), or {@code null}. */
-    private String[] checkModel(VoiceConfig c) {
-        try {
-            List<String> models = model.models(c.ollamaHost());
-            if (!models.contains(c.llmModel()) && !models.contains(c.llmModel() + ":latest")) {
-                return new String[] {"Ollama has no model " + c.llmModel(), "ollama pull " + c.llmModel()};
-            }
-            return null;
-        } catch (LanguageModel.Unavailable e) {
-            return new String[] {"Ollama is not running at " + c.ollamaHost() + " (" + e.getMessage() + ")",
-                    "Install Ollama (https://ollama.com/download or `brew install ollama`), then start it: "
-                            + "`ollama serve` or the Ollama app."};
-        }
+        transcript.note("Voice on: " + (c.wake() ? "say “Marvin, …”" : "just talk"));
     }
 
     private void failed(long gen, String message, String how) {
@@ -719,227 +624,6 @@ public final class VoiceService implements VoiceControl {
         return running && w != null && w.device().hasEarcons() ? "device" : "buzzer";
     }
 
-    /**
-     * The built-in tools, memory's when it is there, and {@code look} when {@code look} (a camera can take a picture),
-     * switched on or off by the settings.
-     */
-    private ToolRegistry registry(boolean enabled, boolean internet, String homePlace, boolean look) {
-        List<ToolRegistry.Tool> all = new ArrayList<>();
-        all.add(WeatherTool.tool(homePlace, fetch, clocks::monotonicSeconds));
-        MemoryContext m = memoryContext;
-        if (m.available()) {
-            all.addAll(MemoryTools.tools(m));
-        }
-        Camera cam = camera;
-        if (look && cam != null) {
-            all.add(LookTool.tool(cam, this::describe));
-        }
-        all.addAll(ToolRegistry.fromSources(toolSources, ToolSurface.CONVERSATION));
-        all.addAll(ToolRegistry.fromSources(toolSources, ToolSurface.TASK).stream()
-                .filter(t -> !t.offeredIn(ToolSurface.CONVERSATION)).toList());       // a task's registry keeps them
-        TaskService ts = tasks;
-        if (ts != null && tasksOn()) {
-            all.addAll(ts.conversationTools());
-        }
-        return new ToolRegistry(all, enabled, internet, clocks::monotonicSeconds);
-    }
-
-    private boolean tasksOn() {
-        try {
-            return ReasoningSettings.of(settings()).tasksOn();
-        } catch (RuntimeException e) {
-            return false;
-        }
-    }
-
-    private String sourcesSignature() {
-        if (toolSources.isEmpty()) {
-            return "";
-        }
-        StringBuilder b = new StringBuilder();
-        for (ToolSurface surface : ToolSurface.values()) {
-            ToolRegistry.fromSources(toolSources, surface).forEach(t -> b.append(surface).append(':').append(t.spec().name())
-                    .append(' '));
-        }
-        return b.toString();
-    }
-
-    private boolean cameraAvailable() {
-        Camera cam = camera;
-        try {
-            return cam != null && cam.available();
-        } catch (RuntimeException e) {
-            log.log(Level.WARNING, "could not tell whether a camera is there", e);
-            return false;
-        }
-    }
-
-    /**
-     * The tools for the next question: when a camera came or went since they were made (a robot with a camera
-     * connected, the computer's camera chosen), they are made again with or without {@code look}, and the system prompt
-     * changes with them.
-     */
-    private ToolRegistry currentTools() {
-        VoiceConfig c = config;
-        ToolRegistry reg = tools;
-        if (c == null || reg == null) {
-            return reg;
-        }
-        boolean look = camera != null ? cameraAvailable() : toolsLook;
-        boolean withTasks = tasks != null && tasksOn();
-        String sources = sourcesSignature();
-        if (look != toolsLook || withTasks != toolsTasks || !sources.equals(toolsSources)) {
-            synchronized (this) {
-                if (look != toolsLook || withTasks != toolsTasks || !sources.equals(toolsSources)) {
-                    if (look != toolsLook) {
-                        log.info(look ? "a camera can take pictures: Marvin may look" : "no camera now: Marvin cannot look");
-                    }
-                    if (withTasks != toolsTasks) {
-                        log.info(withTasks ? "background tasks on: Marvin may start them" : "background tasks off");
-                    }
-                    toolsLook = look;
-                    toolsTasks = withTasks;
-                    toolsSources = sources;
-                    tools = registry(c.tools(), c.internet(), c.homePlace(), look);
-                }
-                reg = tools;
-            }
-        }
-        return reg;
-    }
-
-    /**
-     * The {@code look} tool's eyes: the model for images describes the picture, answering the question when there is
-     * one. The picture goes in that one request, never in the conversation.
-     */
-    String describe(ImageAttachment picture, String question) {
-        VoiceConfig c = config != null ? config : VoiceSettings.config(settings());
-        String m = c.imageModel();
-        try {
-            if (!canSee(c.ollamaHost(), m)) {
-                throw new ToolError(m + " cannot see pictures: the owner can choose a vision model in Marvin > Voice & models");
-            }
-        } catch (LanguageModel.Unavailable e) {
-            throw new ToolError("the model for pictures cannot be reached (" + e.getMessage() + ")");
-        }
-        List<ChatMessage> messages = List.of(ChatMessage.system(Look.SYSTEM_PROMPT),
-                ChatMessage.user(Look.visionMessage(question), List.of(picture.base64())));
-        StringBuilder text = new StringBuilder();
-        try {
-            model.streamChat(c.ollamaHost(), m, messages, null, Look.DESCRIBE_S, new LanguageModel.Stream() {
-                @Override
-                public void text(String piece) {
-                    text.append(piece);
-                }
-
-                @Override
-                public void toolCall(marvin.host.domain.conversation.ToolCall call) {
-                    // no tools were offered: nothing to do
-                }
-
-                @Override
-                public boolean cancelled() {
-                    return Thread.currentThread().isInterrupted();
-                }
-            });
-        } catch (LanguageModel.Unavailable e) {
-            throw new ToolError("the model for pictures failed (" + e.getMessage() + ")");
-        }
-        String seen = SpeechText.stripThinking(text.toString()).strip();
-        log.info("looked with " + m + ": " + marvin.host.domain.conversation.tool.ToolResult.shorten(seen, 160));
-        return seen;
-    }
-
-    /**
-     * The system prompt: the persona, the memory tools' rules when they are offered, the profile. Byte-identical from
-     * one question to the next until the tools or the profile's version change. With memory it does not name the
-     * language either (the question's message does): a French question after an English one keeps the model server's
-     * cached prompt. Without memory it is the Python host's, which names it.
-     */
-    private String systemPrompt(String lang, boolean offer, ToolRegistry reg, MemoryContext.Profile profile) {
-        boolean memoryTools = offer && reg != null && reg.get("remember") != null;
-        boolean look = offer && reg != null && reg.get(Look.NAME) != null;
-        boolean withTasks = offer && reg != null && reg.get(TaskTools.START) != null;
-        return Persona.systemPrompt(memoryContext.available() ? null : lang, offer, memoryTools, look, withTasks, profile.text());
-    }
-
-    private MemoryContext.Profile profile() {
-        try {
-            return memoryContext.profile();
-        } catch (RuntimeException e) {
-            log.log(Level.WARNING, "could not read the profile", e);
-            return MemoryContext.Profile.NONE;
-        }
-    }
-
-    /** Loads the model and fills the model server's prompt cache by rehearsing a real first question, twice. */
-    private void warmUp(VoiceConfig c) {
-        String key = c.ollamaHost() + " " + c.llmModel();
-        ToolRegistry reg = currentTools();
-        boolean offer = reg != null && reg.ollamaTools() != null && toolSupport.getOrDefault(key, true);
-        LocalDateTime now = LocalDateTime.ofInstant(Instant.ofEpochMilli((long) (clocks.wallSeconds() * 1000)), days.zone());
-        String user = Persona.userMessage("Bonjour.", Persona.contextBlock(null, List.of(), now, ""), null);
-        long asked = turnSeq.get();
-        java.util.function.BooleanSupplier question = () -> turnSeq.get() != asked;     // a question came: give way
-        for (int attempt = 0; attempt < 2; attempt++) {
-            List<ChatMessage> messages = List.of(ChatMessage.system(systemPrompt(c.defaultLanguage(), offer, reg, profile())),
-                    ChatMessage.user(user));
-            List<Map<String, Object>> schemas = offer ? reg.ollamaTools() : null;
-            try {
-                double t = clocks.monotonicSeconds();
-                firstToken(c, messages, schemas, question);
-                double loaded = clocks.monotonicSeconds() - t;
-                double t2 = clocks.monotonicSeconds();
-                firstToken(c, messages, schemas, question);
-                double again = clocks.monotonicSeconds() - t2;
-                if (question.getAsBoolean()) {
-                    return;                 // the question's own request fills the cache; its prompt stays the last one
-                }
-                synchronized (promptLock) {
-                    lastPrompt = messages;
-                }
-                log.info("model " + c.llmModel() + " ready (prompt cached) in " + PyNumbers.fixed(loaded, 1)
-                        + " s; first token now " + PyNumbers.fixed(again, 2) + " s");
-                if (again > 1.5 && again > 0.5 * loaded) {
-                    log.warning("Ollama did not reuse the cached prompt (first token still " + PyNumbers.fixed(again, 1)
-                            + " s): the first question will be slow");
-                }
-                return;
-            } catch (LanguageModel.ToolsUnsupported e) {
-                log.warning(e.getMessage() + ": answering without tools");
-                toolSupport.put(key, false);
-                offer = false;
-            } catch (LanguageModel.Unavailable e) {
-                log.warning(e.getMessage() + ". " + e.hint());
-                return;
-            }
-        }
-    }
-
-    private void firstToken(VoiceConfig c, List<ChatMessage> messages, List<Map<String, Object>> schemas,
-                            java.util.function.BooleanSupplier abandon) {
-        if (abandon.getAsBoolean()) {
-            return;
-        }
-        boolean[] got = {false};
-        model.streamChat(c.ollamaHost(), c.llmModel(), messages, schemas, READY_TIMEOUT_S, new LanguageModel.Stream() {
-            @Override
-            public void text(String piece) {
-                got[0] = true;
-            }
-
-            @Override
-            public void toolCall(marvin.host.domain.conversation.ToolCall call) {
-                got[0] = true;
-            }
-
-            @Override
-            public boolean cancelled() {
-                return got[0] || abandon.getAsBoolean();
-            }
-        });
-    }
-
     // ------------------------------------------------------------------ commands
 
     private void running() {
@@ -991,7 +675,7 @@ public final class VoiceService implements VoiceControl {
     // ------------------------------------------------------------------ an image for the next question
 
     /** An image waiting for its question, and the model that will look at it. */
-    private record PendingImage(ImageAttachment image, String model, double at) {
+    record PendingImage(ImageAttachment image, String model, double at) {
 
         /** What the app and the conversation entry show of it. */
         Map<String, Object> info() {
@@ -1009,7 +693,7 @@ public final class VoiceService implements VoiceControl {
         String m = c.imageModel();
         boolean sees;
         try {
-            sees = canSee(c.ollamaHost(), m);
+            sees = routing.canSee(c.ollamaHost(), m);
         } catch (LanguageModel.Unavailable e) {
             throw new ImageRefused("Cannot tell whether " + m + " can see images: " + e.getMessage());
         }
@@ -1020,7 +704,7 @@ public final class VoiceService implements VoiceControl {
         pendingImage.set(p);
         log.info("an image waits for the next question: " + image.width() + "x" + image.height() + ", " + image.bytes()
                 + " bytes, for " + m);
-        publish("voice", snapshot().toMap());
+        transcript.publish("voice", snapshot().toMap());
         return p.info();
     }
 
@@ -1033,19 +717,8 @@ public final class VoiceService implements VoiceControl {
     @Override
     public void removeImage() {
         if (pendingImage.getAndSet(null) != null) {
-            publish("voice", snapshot().toMap());
+            transcript.publish("voice", snapshot().toMap());
         }
-    }
-
-    /** Whether {@code model} can look at images (the model server's capabilities, asked once per model). */
-    boolean canSee(String host, String model) {
-        String key = host + " " + model;
-        Set<String> caps = capabilities.get(key);
-        if (caps == null) {
-            caps = Set.copyOf(this.model.capabilities(host, model));
-            capabilities.put(key, caps);
-        }
-        return caps.contains(LanguageModel.VISION);
     }
 
     /** The image waiting for a question, unless it waited too long. */
@@ -1060,10 +733,10 @@ public final class VoiceService implements VoiceControl {
     }
 
     /** The question heard now takes the waiting image. */
-    private PendingImage takeImage() {
+    PendingImage takeImage() {
         PendingImage p = waitingImage();
         if (p != null && pendingImage.compareAndSet(p, null)) {
-            publish("voice", snapshot().toMap());
+            transcript.publish("voice", snapshot().toMap());
             return p;
         }
         return null;
@@ -1077,7 +750,7 @@ public final class VoiceService implements VoiceControl {
             voice.send(new VoiceSidecar.Mute(m));
             awaitStatus(seq, 0.3);
         } else {
-            publish("voice", snapshot().toMap());
+            transcript.publish("voice", snapshot().toMap());
         }
     }
 
@@ -1130,46 +803,13 @@ public final class VoiceService implements VoiceControl {
             state = s;
         }
         if (changed) {
-            publish("voice", snapshot().toMap());
+            transcript.publish("voice", snapshot().toMap());
         }
     }
 
     @Override
     public List<ConversationEntry> recent(long since) {
-        synchronized (lock) {
-            return transcript.stream().filter(e -> e.id() > since).sorted(Comparator.comparingLong(ConversationEntry::id)).toList();
-        }
-    }
-
-    private ConversationEntry entry(String kind, double t, String text, Map<String, Object> data) {
-        ConversationEntry e = new ConversationEntry(ids.getAndIncrement(), t, kind, text, data);
-        synchronized (lock) {
-            transcript.addLast(e);
-            while (transcript.size() > HISTORY) {
-                transcript.removeFirst();
-            }
-        }
-        try {
-            store.add(e);
-        } catch (RuntimeException ex) {
-            log.log(Level.WARNING, "could not save a conversation entry", ex);
-        }
-        publish("transcript", e.toLiveMap());
-        return e;
-    }
-
-    private void note(String text) {
-        entry("note", clocks.wallSeconds(), text, Map.of());
-    }
-
-    private void publish(String kind, Map<String, Object> payload) {
-        for (VoiceListener l : listeners) {
-            try {
-                l.onVoice(kind, payload);
-            } catch (RuntimeException e) {
-                log.log(Level.WARNING, "voice listener failed", e);
-            }
-        }
+        return transcript.recent(since);
     }
 
     // ------------------------------------------------------------------ what the voice reports
@@ -1177,50 +817,41 @@ public final class VoiceService implements VoiceControl {
     void onSignal(VoiceSidecar.Signal signal) {
         switch (signal) {
             case VoiceSidecar.Status s -> onStatus(s);
-            case VoiceSidecar.Heard h -> onHeard(h);
+            case VoiceSidecar.Heard h -> turns.onHeard(h);
             case VoiceSidecar.Ignored i -> {
                 Map<String, Object> d = new LinkedHashMap<>();
                 d.put("reason", i.reason());
                 if (i.dbfs() != null) {
                     d.put("dbfs", i.dbfs());
                 }
-                entry("ignored", clocks.wallSeconds(), i.text(), d);
+                transcript.entry("ignored", clocks.wallSeconds(), i.text(), d);
             }
-            case VoiceSidecar.Level l -> lastLevel = live("level", "mic", l.mic(), "speech", l.speech(), "gated", l.gated(),
-                    "dbfs", l.dbfs());
-            case VoiceSidecar.Hearing h -> onHearing(h);
-            case VoiceSidecar.Utterance u -> live("utterance", "state", u.state(), "uid", u.uid());
+            case VoiceSidecar.Level l -> lastLevel = transcript.live("level", "mic", l.mic(), "speech", l.speech(),
+                    "gated", l.gated(), "dbfs", l.dbfs());
+            case VoiceSidecar.Hearing h -> transcript.onHearing(h);
+            case VoiceSidecar.Utterance u -> transcript.live("utterance", "state", u.state(), "uid", u.uid());
             case VoiceSidecar.Partial p -> {
-                prefetch(p.uid(), p.text());
-                live("partial", "uid", p.uid(), "text", p.text());
+                context.prefetch(p.uid(), p.text());
+                transcript.live("partial", "uid", p.uid(), "text", p.text());
             }
-            case VoiceSidecar.SayProgress p -> live("say", "text", p.text(), "seconds", p.seconds(), "envelope", p.envelope());
-            case VoiceSidecar.Interrupted i -> onInterrupted(i);
-            case VoiceSidecar.ReplySpoken r -> onSpoken(r);
+            case VoiceSidecar.SayProgress p -> transcript.live("say", "text", p.text(), "seconds", p.seconds(),
+                    "envelope", p.envelope());
+            case VoiceSidecar.Interrupted i -> {
+                if (i.utteranceUid() != 0) {
+                    turns.onInterrupted(i.utteranceUid(), i.reason());
+                } else {
+                    proactive.onInterrupted(i.replyId(), i.reason());
+                }
+            }
+            case VoiceSidecar.ReplySpoken r -> {
+                if (r.utteranceUid() != 0) {
+                    turns.onSpoken(r);
+                } else {
+                    proactive.onSpoken(r);
+                }
+            }
             case VoiceSidecar.EnrollProgress p -> enrollment.accept(p);
         }
-    }
-
-    private Map<String, Object> live(String kind, Object... kv) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        for (int i = 0; i < kv.length; i += 2) {
-            m.put((String) kv[i], kv[i + 1]);
-        }
-        m.put("t", clocks.wallSeconds());
-        publish(kind, m);
-        return m;
-    }
-
-    /** The ears' diagnostics: the last {@link #HEARINGS} kept in memory for the app, each passed on as it comes. */
-    private void onHearing(VoiceSidecar.Hearing h) {
-        Map<String, Object> m = h.toMap();
-        synchronized (hearings) {
-            hearings.addLast(m);
-            while (hearings.size() > HEARINGS) {
-                hearings.removeFirst();
-            }
-        }
-        publish("hearing", m);
     }
 
     @Override
@@ -1232,9 +863,7 @@ public final class VoiceService implements VoiceControl {
         m.put("tts", running ? st.tts() : "");
         m.put("device", running ? st.device() : "");
         m.put("level", running ? lastLevel : null);
-        synchronized (hearings) {
-            m.put("recent", List.copyOf(hearings));
-        }
+        m.put("recent", transcript.hearings());
         return m;
     }
 
@@ -1266,7 +895,7 @@ public final class VoiceService implements VoiceControl {
             }
         }
         if (before == null || !before.equals(s)) {
-            publish("voice", snapshot().toMap());
+            transcript.publish("voice", snapshot().toMap());
         }
         maybeRewarm();
         laneUpdate();
@@ -1276,7 +905,7 @@ public final class VoiceService implements VoiceControl {
      * Tells the tasks' lane whether a conversation is going on (a task's request gives way to it); when one ends, a task
      * that finished meanwhile may be said.
      */
-    private void laneUpdate() {
+    void laneUpdate() {
         ModelLane l = lane;
         if (l == null) {
             return;
@@ -1291,886 +920,27 @@ public final class VoiceService implements VoiceControl {
         }
     }
 
-    // ------------------------------------------------------------------ turns
+    // ------------------------------------------------------------------ turns and proactive speech
 
-    /** One question and its answer. */
-    private final class Turn {
-        final VoiceSidecar.Heard heard;
-        /** The conversation entry of what was heard (written late for a question that continues others). */
-        volatile long said;
-        final long replyId;
-        final long number = turnSeq.incrementAndGet();
-        /** The memory candidates for this question, searched while it was still being recognised when possible. */
-        volatile CompletableFuture<MemoryContext.Recollection> recollection;
-        volatile boolean othersPresent;
-        final CompletableFuture<VoiceSidecar.ReplySpoken> spoken = new CompletableFuture<>();
-        /** Complete once this turn is over: said (or dropped) and remembered. */
-        final CompletableFuture<Void> done = new CompletableFuture<>();
-        volatile boolean superseded;
-        volatile boolean cancelled;
-        volatile double cancelledAt;
-        /** Why it was cancelled first ({@code merged}: a question that continues it follows). */
-        volatile String cancelReason;
-        /** The user message sent to the model, once built. */
-        volatile String userMessage;
-        /** It is in the history (and was the last question there when it was put). */
-        volatile boolean remembered;
-        /** A reply entry was written for it. */
-        volatile boolean replied;
-        /** The image the owner showed with it ({@code null}: none). */
-        volatile PendingImage image;
-
-        Turn(VoiceSidecar.Heard heard, long replyId) {
-            this.heard = heard;
-            this.replyId = replyId;
-        }
-
-        void cancel(String reason) {
-            if (!cancelled) {
-                cancelledAt = clocks.monotonicSeconds();
-                cancelReason = reason;
-            }
-            cancelled = true;
-        }
-
-        boolean merged() {
-            return cancelled && "merged".equals(cancelReason);
-        }
-    }
-
-    private void onHeard(VoiceSidecar.Heard h) {
-        language = h.language() == null || h.language().isEmpty() ? language : h.language();
-        boolean continues = !h.continues().isEmpty();
-        Turn turn = new Turn(h, replyIds.getAndIncrement());
-        turn.image = takeImage();
-        for (long uid : h.continues()) {
-            // a question said in several breaths keeps the image its first part took
-            Turn t = recentTurns.get(uid);
-            if (turn.image == null && t != null && t.image != null) {
-                turn.image = t.image;
-            }
-        }
-        if (!continues) {
-            turn.said = heardEntry(h, turn.image).id();
-        }
-        recentTurns.put(h.uid(), turn);
-        startRecollection(turn);
-        Turn previous;
-        synchronized (lock) {
-            previous = lastTurn;
-            lastTurn = turn;
-        }
-        if (previous != null) {
-            previous.superseded = true;
-        }
-        turns.put(h.uid(), turn);
-        lastTalkAt = clocks.monotonicSeconds();
-        laneUpdate();                           // a task's request gives way to the question at once
-        answers.execute(() -> {
-            try {
-                if (previous != null) {
-                    previous.done.join();       // its answer (even cut short) is in the history first
-                }
-                if (continues) {
-                    // after what the questions it continues left (a cut answer): one bubble, in order
-                    turn.said = heardEntry(h, turn.image).id();
-                }
-                if (turn.cancelled) {
-                    return;                     // dropped by the voice before its turn came: nothing to answer
-                }
-                Map<String, String> attributes = new LinkedHashMap<>();
-                attributes.put("utterance", Long.toString(h.uid()));
-                attributes.put("source", h.source().isEmpty() ? "voice" : h.source());
-                VoiceConfig c = config;
-                attributes.put("audio_route", c == null ? "" : sidecarSettings(c).robot() ? "robot" : "computer");
-                try (Tracing.Span span = tracing.start("marvin.question", attributes)) {
-                    answer(turn, span);
-                }
-            } catch (RuntimeException e) {
-                log.log(Level.SEVERE, "the answer failed", e);
-            } finally {
-                turns.remove(h.uid());
-                turn.done.complete(null);
-                maybeRewarm();
-                laneUpdate();
-            }
-        });
-    }
-
-    /** The conversation entry of a question heard; with what it continues, when it continues earlier ones. */
-    private ConversationEntry heardEntry(VoiceSidecar.Heard h, PendingImage image) {
-        Map<String, Object> d = new LinkedHashMap<>();
-        d.put("language", h.language());
-        d.put("source", h.source().isEmpty() ? "voice" : h.source());
-        if (h.raw() != null && !h.raw().isEmpty()) {
-            d.put("raw", h.raw());
-        }
-        if (!h.speaker().isEmpty()) {
-            d.put("speaker", h.speaker());      // whose voice (a name, or unknown), and how sure
-            d.put("speaker_score", h.speakerScore());
-        }
-        if (image != null) {
-            d.put("image", image.image().describe());      // what it was, never the image
-        }
-        if (!h.continues().isEmpty()) {
-            List<Long> replaces = new ArrayList<>();
-            List<Long> goesOn = new ArrayList<>();
-            for (long uid : h.continues()) {
-                Turn t = recentTurns.get(uid);
-                if (t != null && t.said != 0) {
-                    (t.replied ? goesOn : replaces).add(t.said);
-                }
-            }
-            d.put("joined", h.continues().size() + 1);
-            d.put("replaces", replaces);        // their bubbles give way to this one: nothing was answered in between
-            d.put("continues", goesOn);         // this one goes on after their (cut) answers
-            log.info("joined " + (h.continues().size() + 1) + " utterances: " + h.text());
-        }
-        return entry("heard", h.wallTime() > 0 ? h.wallTime() : clocks.wallSeconds(), h.text(), d);
-    }
-
-    private void onInterrupted(VoiceSidecar.Interrupted i) {
-        if (i.utteranceUid() != 0) {
-            Turn t = turns.get(i.utteranceUid());
-            if (t != null) {
-                t.cancel(i.reason());
-            }
-        } else if (proactiveReplies.remove(i.replyId()) != null) {
-            log.fine("proactive speech skipped: " + i.reason());
-        }
-    }
-
-    private void onSpoken(VoiceSidecar.ReplySpoken r) {
-        if (r.utteranceUid() != 0) {
-            Turn t = turns.get(r.utteranceUid());
-            if (t != null) {
-                t.spoken.complete(r);
-            }
-            return;
-        }
-        String lang = proactiveReplies.remove(r.replyId());
-        if (lang != null && !r.interrupted()) {
-            Map<String, Object> d = new LinkedHashMap<>();
-            d.put("language", lang);
-            d.put("latency", Map.of());
-            d.put("first_word_s", null);
-            d.put("interrupted", false);
-            d.put("proactive", true);
-            d.put("error", null);
-            d.put("hint", "");
-            entry("reply", clocks.wallSeconds(), r.text(), d);
-        }
-    }
-
-    private void answer(Turn turn, Tracing.Span span) {
-        VoiceSidecar.Heard h = turn.heard;
-        VoiceConfig c = config != null ? config : VoiceSettings.config(settings());
-        ToolRegistry reg = currentTools();
-        PendingImage image = turn.image;
-        String modelName = image != null ? image.model() : c.llmModel();
-        String key = c.ollamaHost() + " " + modelName;
-        boolean offer = reg != null && reg.ollamaTools() != null && toolSupport.getOrDefault(key, true);
-        String lang = h.language() == null || h.language().isEmpty() ? language : h.language();
-        double now = clocks.monotonicSeconds();
-        if (turn.othersPresent && !othersBefore) {
-            // a guest came in: the earlier questions' memory sections may hold what the guest must not hear
-            clearHistory();
-        }
-        othersBefore = turn.othersPresent;
-        long epoch = historyEpoch.get();
-        List<ChatMessage> history;
-        synchronized (memory) {
-            for (long uid : h.continues()) {
-                // a question whose answer this one cut: this one says it all again, the cut turn leaves the history
-                Turn t = recentTurns.get(uid);
-                if (t != null && t.remembered && t.userMessage != null) {
-                    t.remembered = !memory.forgetLast(t.userMessage);
-                }
-            }
-            history = memory.messages(now);
-        }
-        LocalDateTime local = LocalDateTime.ofInstant(Instant.ofEpochMilli((long) (clocks.wallSeconds() * 1000)), days.zone());
-        MemoryContext.Profile profile = profile();
-        Assembled asm = assemble(turn, lang, local, offer ? c.homePlace() : "");
-        if (asm.recollection() != null) {
-            // what memory cost this question, on its trace (docs/design.md 10.4)
-            asm.recollection().timings().forEach((k, v) -> span.attribute("marvin.memory." + k + "_s", v));
-            span.attribute("marvin.memory.waited_s", asm.waitedS());
-            span.attribute("marvin.memory.timed_out", Boolean.toString(asm.timedOut()));
-            span.attribute("marvin.memory.tokens", asm.estimatedTokens());
-        }
-        String context = asm.context();
-        // background tasks: "do it in the background" starts one at once; finished ones are mentioned first; words that
-        // usually announce work in several steps get a hint (the model decides)
-        boolean taskTools = offer && reg != null && reg.get(TaskTools.START) != null;
-        String explicitGoal = taskTools && TaskIntent.explicit(h.text()) ? TaskIntent.goal(h.text(), lastQuestion) : null;
-        TaskService ts = tasks;
-        List<Task> mention = ts != null && image == null ? ts.toMention() : List.of();
-        List<String> taskNotes = new ArrayList<>();
-        String finished = Persona.finishedTasksNote(mention);
-        if (finished != null) {
-            taskNotes.add(finished);
-        }
-        if (taskTools && explicitGoal == null && TaskIntent.likely(h.text())) {
-            taskNotes.add(Persona.TASK_HINT);
-        }
-        String user = Persona.userMessage(h.text(), context, lang, notes(image != null ? Persona.IMAGE_NOTE : null, taskNotes));
-        // the history keeps the text with a note, never the image (later questions do not send it again), nor the notes
-        // about tasks (they were for this answer)
-        String kept = image != null ? Persona.userMessage(h.text(), context, lang, Persona.IMAGE_SHOWN_NOTE)
-                : taskNotes.isEmpty() ? user : Persona.userMessage(h.text(), context, lang);
-        turn.userMessage = kept;
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(systemPrompt(lang, offer, reg, profile)));
-        messages.addAll(history);
-        messages.add(image != null ? ChatMessage.user(user, List.of(image.image().base64())) : ChatMessage.user(user));
-        List<ChatMessage> previous;
-        synchronized (promptLock) {
-            previous = lastPrompt;
-            lastPrompt = List.copyOf(messages);
-        }
-        if (!asm.usedFacts().isEmpty()) {
-            memoryContext.used(asm.usedFacts());
-        }
-        Map<String, Object> toolContext = new LinkedHashMap<>();
-        toolContext.put(MemoryTools.TURN, turn.number);
-        toolContext.put(MemoryTools.SAID, turn.said);
-        toolContext.put(MemoryTools.OTHERS_PRESENT, turn.othersPresent);
-        toolContext.put("source", h.source().isEmpty() ? "voice" : h.source());
-
-        voice.send(new VoiceSidecar.ReplyStart(turn.replyId, lang, false, h.uid()));
-        AnswerLoop.Speaker speaker = new AnswerLoop.Speaker() {
-            @Override
-            public void say(String sentence) {
-                for (SpeechLanguage.Clause cl : SpeechLanguage.clauses(SpeechText.cleanForSpeech(sentence), lang)) {
-                    voice.send(new VoiceSidecar.Text(turn.replyId, cl.text(), cl.language()));
-                }
-            }
-
-            @Override
-            public void filler(String text) {
-                voice.send(new VoiceSidecar.Filler(turn.replyId, text, lang));
-            }
-        };
-        AnswerLoop.Outcome out = explicitGoal != null ? startTask(reg, explicitGoal, lang, toolContext, speaker) : null;
-        if (out == null) {
-            LanguageModel.Thinking thinking = LanguageModel.Thinking.chat(ReasoningSettings.of(settings()).chat());
-            out = loop.answer(c.ollamaHost(), modelName, messages, reg, offer, lang, c.maxToolRounds(), MODEL_TIMEOUT_S,
-                    () -> turn.cancelled, speaker, () -> toolSupport.put(key, false), toolContext, thinking);
-        }
-        Map<String, Object> usage = usage(out, previous, messages, lang, span);
-        if (out.failure() != null && out.saidAnswer().isEmpty() && !turn.cancelled) {
-            // nothing was said: the voice says why, in a sentence of the persona's (it has no words of its own)
-            String why = Persona.phrase("llm_down".equals(out.failure()) ? "llm_down" : "error", lang);
-            voice.send(new VoiceSidecar.Text(turn.replyId, why, lang));
-        }
-        voice.send(new VoiceSidecar.ReplyEnd(turn.replyId, out.failure() == null ? "" : out.failure()));
-
-        VoiceSidecar.ReplySpoken spoken = awaitSpoken(turn);
-        if (spoken == null) {
-            return;                             // dropped before it was said: nothing to record
-        }
-        boolean interrupted = turn.cancelled || spoken.interrupted();
-        int joined = h.continues().isEmpty() ? 0 : h.continues().size() + 1;
-        if (turn.merged() || interrupted && SpeechText.cleanForSpeech(spoken.text()).isEmpty()) {
-            // the owner went on talking (merged), or cut it before Marvin said a word (Talk now or Stop while it
-            // thought): this one is not remembered, and shows only if Marvin had started saying something. A question
-            // that continues it replaces its bubble (nothing was answered in between)
-            if (!SpeechText.cleanForSpeech(spoken.text()).isEmpty()) {
-                reply(spoken.text(), lang, latency(h.latency(), out.latency(), spoken.latency()), true, out, context, user,
-                        modelName, image, null, "", asm.report(profile, usage), joined);
-                turn.replied = true;
-            }
-            return;
-        }
-        String said = out.saidAnswer();
-        Map<String, Double> lat = latency(h.latency(), out.latency(), spoken.latency());
-        lat.forEach((k, v) -> span.attribute("marvin.latency." + k, v));
-        log.info(latencyLine(lat));
-        span.attribute("marvin.language", lang);
-        span.attribute("marvin.interrupted", Boolean.toString(turn.cancelled || spoken.interrupted()));
-        if (out.failure() != null) {
-            span.error(out.failure());
-            reply(spoken.text(), lang, lat, false, out, context, user, modelName, image, out.failure(), out.hint(),
-                    asm.report(profile, usage), joined);
-            turn.replied = true;
-            return;
-        }
-        synchronized (memory) {
-            // cleared during this turn (something was forgotten, maybe by this very turn): its messages stay out
-            boolean keep = historyEpoch.get() == epoch;
-            if (keep && interrupted) {
-                if (!said.isEmpty() || !out.exchange().isEmpty()) {
-                    memory.remember(kept, (said + " …").strip(), out.exchange(), clocks.monotonicSeconds());
-                    turn.remembered = true;
-                }
-            } else if (keep) {
-                memory.remember(kept, said, out.exchange(), clocks.monotonicSeconds());
-                turn.remembered = true;
-            }
-        }
-        reply(spoken.text(), lang, lat, interrupted, out, context, user, modelName, image, null, "",
-                asm.report(profile, usage), joined);
-        turn.replied = true;
-        lastQuestion = explicitGoal != null ? explicitGoal : h.text();
-        if (!mention.isEmpty() && !interrupted && ts != null) {
-            ts.mentioned(mention);
-        }
-    }
-
-    /** The notes of a question's message, one per line ({@code null} when none). */
-    private static String notes(String first, List<String> more) {
-        List<String> all = new ArrayList<>();
-        if (first != null) {
-            all.add(first);
-        }
-        all.addAll(more);
-        return all.isEmpty() ? null : String.join("\n", all);
-    }
-
-    /**
-     * "Do it in the background": the task starts without asking the model, and Marvin says it will take care of it.
-     * {@code null} when it could not start (tasks off, too many): the model answers as usual, and can say why.
-     */
-    private AnswerLoop.Outcome startTask(ToolRegistry reg, String goal, String lang, Map<String, Object> toolContext,
-                                         AnswerLoop.Speaker speaker) {
-        Map<String, Object> ctx = new LinkedHashMap<>(toolContext);
-        ctx.put("language", lang);
-        ToolResult r = reg.call(TaskTools.START, Map.of("goal", goal), ctx);
-        String say = r.finalSay();
-        if (say == null) {
-            log.info("could not start the task asked for: " + r.error());
-            return null;
-        }
-        List<String> said = SentenceSplitter.split(say);
-        said.forEach(speaker::say);
-        List<ChatMessage> exchange = List.of(
-                ChatMessage.assistant("", List.of(new marvin.host.domain.conversation.ToolCall(TaskTools.START,
-                        Map.of("goal", goal), null))),
-                ChatMessage.tool(TaskTools.START, r.content()), ChatMessage.assistant(say));
-        Map<String, Double> lat = new LinkedHashMap<>();
-        lat.put("tools", r.seconds());
-        return new AnswerLoop.Outcome(said, exchange, List.of(r.record()), null, "", lat);
-    }
-
-    private VoiceSidecar.ReplySpoken awaitSpoken(Turn turn) {
-        while (true) {
-            try {
-                return turn.spoken.get(250, TimeUnit.MILLISECONDS);
-            } catch (TimeoutException e) {
-                double grace = turn.superseded ? SUPERSEDED_GRACE_S : SPOKEN_GRACE_S;
-                if (turn.cancelled && clocks.monotonicSeconds() - turn.cancelledAt > grace) {
-                    return null;
-                }
-                if (closed || !opened) {
-                    return null;
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
-            } catch (ExecutionException e) {
-                return null;
-            }
-        }
-    }
-
-    /**
-     * When the first word was heard after the person stopped talking (seconds, 2 decimals): the end of speech plus
-     * the time to the answer's first sound on the speaker (the speaker's own start when the voice measured it, else
-     * when the sound was queued); {@code null} when nothing was said.
-     */
+    /** See {@link VoiceTurns#firstWord}. */
     static Double firstWord(Map<String, Double> lat) {
-        Double heard = lat.containsKey("playback_start") ? lat.get("playback_start") : lat.get("audio_start");
-        return heard == null ? null : PyNumbers.round(lat.getOrDefault("endpoint", 0.0) + heard, 2);
+        return VoiceTurns.firstWord(lat);
     }
 
-    /**
-     * Where the time went, one line for the log: end of speech, recognition, the model's first token, the first clause,
-     * its synthesis, the speaker.
-     */
+    /** See {@link VoiceTurns#latencyLine}. */
     static String latencyLine(Map<String, Double> lat) {
-        StringBuilder b = new StringBuilder();
-        Double first = firstWord(lat);
-        b.append("first word ").append(first == null ? "-" : String.format(java.util.Locale.ROOT, "%.2f s", first))
-                .append(" after the end of speech:");
-        String[][] stages = {{"endpoint", "end of speech"}, {"stt", "recognition"}, {"llm_first_token", "model first token"},
-                {"tools", "tools"}, {"first_chunk", "first clause"}, {"tts", "synthesis"}};
-        for (String[] st : stages) {
-            if (lat.containsKey(st[0])) {
-                b.append(' ').append(st[1]).append(String.format(java.util.Locale.ROOT, " %.2f,", lat.get(st[0])));
-            }
-        }
-        if (lat.containsKey("playback_start") && lat.containsKey("audio_start")) {
-            b.append(String.format(java.util.Locale.ROOT, " speaker %.2f,", lat.get("playback_start") - lat.get("audio_start")));
-        }
-        String line = b.toString().replaceAll(",$", "");
-        return lat.getOrDefault("speculative", 0.0) > 0 ? line + " (recognition started during the pause)" : line;
+        return VoiceTurns.latencyLine(lat);
     }
-
-    /** {@code text} as the voice says it: its sentences, each cut where it changes language. */
-    static List<SpeechLanguage.Clause> clauses(String text, String language) {
-        List<SpeechLanguage.Clause> out = new ArrayList<>();
-        for (String sentence : SentenceSplitter.split(SpeechText.cleanForSpeech(text))) {
-            out.addAll(SpeechLanguage.clauses(sentence, language));
-        }
-        return out;
-    }
-
-    /** The latency breakdown: listening stages, then the model's, then the speaking stages (seconds, 3 decimals). */
-    static Map<String, Double> latency(Map<String, Double> heard, Map<String, Double> core, Map<String, Double> spoken) {
-        Map<String, Double> lat = new LinkedHashMap<>();
-        List<String> order = List.of("endpoint", "queue", "stt", "speculative", "wake");
-        for (String k : order) {
-            if (heard.containsKey(k)) {
-                lat.put(k, heard.get(k));
-            }
-        }
-        heard.forEach(lat::putIfAbsent);
-        core.forEach(lat::put);
-        spoken.forEach((k, v) -> {
-            if (!"reply_start".equals(k) && !("first_chunk".equals(k) && lat.containsKey(k))) {
-                lat.put(k, v);
-            }
-        });
-        Map<String, Double> out = new LinkedHashMap<>();
-        lat.forEach((k, v) -> out.put(k, PyNumbers.round(v, 3)));
-        return out;
-    }
-
-    private void reply(String text, String lang, Map<String, Double> lat, boolean interrupted, AnswerLoop.Outcome out,
-                       String context, String prompt, String modelName, PendingImage image, String failure, String hint,
-                       Map<String, Object> memoryReport, int joined) {
-        Map<String, Object> d = new LinkedHashMap<>();
-        d.put("language", lang);
-        d.put("latency", lat);
-        d.put("first_word_s", firstWord(lat));
-        d.put("interrupted", interrupted);
-        d.put("proactive", false);
-        d.put("error", failure);
-        d.put("hint", hint);
-        d.put("context", context);
-        d.put("prompt", prompt);
-        d.put("model", modelName);
-        if (image != null) {
-            d.put("image", image.info());      // what the model was shown (never the image) and which model it was
-        }
-        if (!out.calls().isEmpty()) {
-            d.put("tools", out.calls());
-        }
-        if (memoryReport != null) {
-            d.put("memory", memoryReport);
-        }
-        if (!out.thinking().isBlank()) {
-            d.put("thinking", ToolResult.shorten(out.thinking().strip(), 6000));      // the inspector shows it, never spoken
-        }
-        if (joined > 1) {
-            d.put("joined", joined);            // the question was said in this many breaths (the inspector says so)
-        }
-        entry("reply", clocks.wallSeconds(), text, d);
-    }
-
-    // ------------------------------------------------------------------ memory in the prompt
-
-    /** A memory search started on a speculative transcript. */
-    private record Prefetch(String text, boolean othersPresent, CompletableFuture<MemoryContext.Recollection> result) {
-    }
-
-    private static String normal(String text) {
-        return text == null ? "" : String.join(" ", text.strip().toLowerCase(java.util.Locale.ROOT).split("\\s+"));
-    }
-
-    private RoomState room() {
-        try {
-            return room.get();
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    private boolean othersPresent() {
-        try {
-            PresenceState st = presence.state();
-            return st != null && st.targets() > 1;
-        } catch (RuntimeException e) {
-            return false;
-        }
-    }
-
-    private CompletableFuture<MemoryContext.Recollection> search(String text, boolean others) {
-        MemoryContext m = memoryContext;
-        return CompletableFuture.supplyAsync(() -> m.recollect(text, new MemoryContext.Audience(others, false)), answers);
-    }
-
-    /**
-     * The speculative transcript of an utterance: its memory search starts now, overlapping the end of recognition;
-     * the final transcript reuses it when the words are the same.
-     */
-    private void prefetch(long uid, String text) {
-        if (!memoryContext.available() || text == null || text.isBlank()) {
-            return;
-        }
-        Prefetch p = prefetches.get(uid);
-        if (p != null && p.text().equals(normal(text))) {
-            return;
-        }
-        boolean others = othersPresent();
-        prefetches.put(uid, new Prefetch(normal(text), others, search(text, others)));
-        if (prefetches.size() > 16) {                   // utterances that were never heard (dropped, noise)
-            prefetches.keySet().stream().sorted().limit(prefetches.size() - 8L).toList().forEach(prefetches::remove);
-        }
-    }
-
-    /** The question's memory search: the speculative one when it searched the same words, else a new one. */
-    private void startRecollection(Turn turn) {
-        Prefetch p = prefetches.remove(turn.heard.uid());
-        if (!memoryContext.available()) {
-            return;
-        }
-        boolean others = othersPresent();
-        if (p != null && p.text().equals(normal(turn.heard.text())) && p.othersPresent() == others) {
-            turn.othersPresent = p.othersPresent();
-            turn.recollection = p.result();
-            return;
-        }
-        turn.othersPresent = others;
-        turn.recollection = search(turn.heard.text(), others);
-    }
-
-    /**
-     * The question's context, assembled within its budgets (docs/design.md 5.3).
-     *
-     * @param usedFacts the facts sent (their keys)
-     */
-    private record Assembled(String context, List<ContextAssembler.Cut> sections, MemoryContext.Recollection recollection,
-                             double waitedS, boolean timedOut, List<String> usedFacts, int estimatedTokens) {
-
-        /** What the reply inspector shows; {@code null} without memory. */
-        Map<String, Object> report(MemoryContext.Profile profile, Map<String, Object> usage) {
-            if (recollection == null) {
-                return null;
-            }
-            Map<String, Object> m = new LinkedHashMap<>();
-            Map<String, Object> p = new LinkedHashMap<>();
-            p.put("version", profile.version());
-            p.put("chars", profile.text().length());
-            m.put("profile", p);
-            m.put("sections", sections.stream().map(ContextAssembler.Cut::report).toList());
-            m.put("tokens", estimatedTokens);
-            Map<String, Object> t = new LinkedHashMap<>();
-            recollection.timings().forEach((k, v) -> t.put(k, PyNumbers.round(v, 4)));
-            t.put("waited", PyNumbers.round(waitedS, 4));
-            m.put("timings", t);
-            String problem = timedOut ? "memory took longer than " + (int) (MEMORY_WAIT_S * 1000) + " ms: answered without it"
-                    : recollection.problem();
-            m.put("problem", problem);
-            if (usage != null) {
-                m.put("usage", usage);
-            }
-            return m;
-        }
-    }
-
-    private Assembled assemble(Turn turn, String lang, LocalDateTime local, String home) {
-        TokenEstimator est = tokenEstimates.of(lang);
-        CompletableFuture<MemoryContext.Recollection> f = turn.recollection;
-        if (f == null) {
-            // no memory: the "now" section as it always was (no budget without the memory sections beside it)
-            String speaker = Persona.speakerFact(turn.heard.speaker());
-            return new Assembled(Persona.contextBlock(presence.state(), presence.recentEvents(), local, home, room())
-                    + (speaker == null ? "" : "\n- " + speaker), List.of(), null, 0, false, List.of(), 0);
-        }
-        double t0 = clocks.monotonicSeconds();
-        MemoryContext.Recollection r;
-        boolean timedOut = false;
-        try {
-            r = f.get((long) (MEMORY_WAIT_S * 1000), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            r = MemoryContext.Recollection.EMPTY;
-            timedOut = true;
-            log.warning("memory took longer than " + (int) (MEMORY_WAIT_S * 1000) + " ms: answering without it");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            r = MemoryContext.Recollection.EMPTY;
-        } catch (ExecutionException e) {
-            log.log(Level.WARNING, "memory failed", e.getCause());
-            r = MemoryContext.Recollection.EMPTY;
-        }
-        double waited = clocks.monotonicSeconds() - t0;
-        List<ContextAssembler.Item> nowItems = new ArrayList<>(Persona.contextItems(presence.state(), presence.recentEvents(),
-                local, home, room()));
-        String speaker = Persona.speakerFact(turn.heard.speaker());
-        if (speaker != null) {
-            nowItems.add(ContextAssembler.Item.of("speaker", speaker, 0.95));     // whose voice: memory attributes by it
-        }
-        ContextAssembler.Cut now = ContextAssembler.cut(new ContextAssembler.Section("now", Persona.NOW_HEADING,
-                ContextAssembler.NOW_BUDGET, nowItems), est);
-        // the memory sections share one budget: it bounds what memory adds to every question's prompt evaluation
-        List<ContextAssembler.Cut> mem = ContextAssembler.cutTogether(List.of(
-                new ContextAssembler.Section("today", Persona.GIST_HEADING, ContextAssembler.GIST_BUDGET, r.gist()),
-                new ContextAssembler.Section("facts", Persona.FACTS_HEADING, ContextAssembler.FACTS_BUDGET, r.facts())),
-                memoryBudget, est);
-        ContextAssembler.Cut gist = mem.get(0);
-        ContextAssembler.Cut facts = mem.get(1);
-        String context = Persona.context(List.of(ContextAssembler.render(now), ContextAssembler.render(gist),
-                ContextAssembler.render(facts)));
-        List<String> used = facts.kept().stream().map(ContextAssembler.Item::key).toList();
-        return new Assembled(context, List.of(now, gist, facts), r, waited, timedOut, used,
-                now.tokens() + gist.tokens() + facts.tokens());
-    }
-
-    /**
-     * The model server's counts for the question's first request: logged, traced, shown in the reply inspector, and
-     * used to calibrate the token estimate of the language. With the prompt cache, the count covers only what was
-     * evaluated again: the messages after those the previous request shared with this one (each message also costs
-     * the chat template's few tokens).
-     */
-    private Map<String, Object> usage(AnswerLoop.Outcome out, List<ChatMessage> previous, List<ChatMessage> messages, String lang,
-                                      Tracing.Span span) {
-        if (out.usage().isEmpty()) {
-            return null;
-        }
-        LanguageModel.Usage u = out.usage().getFirst();
-        int shared = 0;
-        while (shared < previous.size() && shared < messages.size() - 1 && previous.get(shared).equals(messages.get(shared))) {
-            shared++;
-        }
-        int chars = 0;
-        for (int i = shared; i < messages.size(); i++) {
-            chars += messages.get(i).content().length();
-        }
-        int templateTokens = TEMPLATE_TOKENS_PER_MESSAGE * (messages.size() - shared) + TEMPLATE_TOKENS_REPLY;
-        if (shared > 0 && chars >= CALIBRATION_MIN_CHARS && u.promptEvalCount() > templateTokens) {
-            tokenEstimates = tokenEstimates.calibrated(lang, chars, u.promptEvalCount() - templateTokens);
-        }
-        double rate = u.promptEvalSeconds() > 0 ? u.promptEvalCount() / u.promptEvalSeconds() : 0;
-        int reused = shared;
-        log.info(() -> "prompt: " + u.promptEvalCount() + " tokens evaluated in " + PyNumbers.fixed(u.promptEvalSeconds(), 3)
-                + " s (" + PyNumbers.fixed(rate, 0) + " tokens/s), " + messages.size() + " messages, " + (messages.size()
-                - reused) + " new");
-        span.attribute("marvin.prompt_eval_count", u.promptEvalCount());
-        span.attribute("marvin.prompt_eval_s", u.promptEvalSeconds());
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("prompt_eval_count", u.promptEvalCount());
-        m.put("prompt_eval_s", PyNumbers.round(u.promptEvalSeconds(), 4));
-        m.put("eval_count", u.evalCount());
-        m.put("eval_s", PyNumbers.round(u.evalSeconds(), 4));
-        m.put("load_s", PyNumbers.round(u.loadSeconds(), 4));
-        m.put("messages_reused", shared);
-        m.put("chars_evaluated", chars);
-        return m;
-    }
-
-    /** Qwen's chat template: {@code <|im_start|>role\n ... <|im_end|>\n} per message, then the reply's opening. */
-    static final int TEMPLATE_TOKENS_PER_MESSAGE = 5;
-    static final int TEMPLATE_TOKENS_REPLY = 3;
-    /** Shorter prompts than this give a ratio too noisy to learn from. */
-    static final int CALIBRATION_MIN_CHARS = 200;
-
-    // ------------------------------------------------------------------ proactive speech
 
     /** A brain event: maybe a break reminder or "welcome back" (never during a conversation). */
     public void onPresenceEvent(PresenceEvent event) {
-        TaskService ts = tasks;
-        if (ts != null && event.kind() == marvin.host.domain.presence.event.EventKind.ARRIVED && !closed) {
-            answers.execute(ts::tryAnnounce);           // a task finished while they were away
-        }
-        ProactiveSpeech p = proactive;
-        if (p == null || !ON.equals(state) || !opened) {
-            return;
-        }
-        String lang = language;
-        double now = clocks.monotonicSeconds();
-        String text = p.onEvent(event, lang, now).orElse(null);
-        if (text == null) {
-            return;
-        }
-        VoiceSidecar.Status s = status;
-        if (!turns.isEmpty() || s != null && ("thinking".equals(s.state()) || "speaking".equals(s.state()))) {
-            log.fine("proactive speech skipped during a conversation: " + text);
-            return;
-        }
-        long id = replyIds.getAndIncrement();
-        proactiveReplies.put(id, lang);
-        voice.send(new VoiceSidecar.Say(id, text, lang, false, true, clauses(text, lang)));
-        p.spoken(now);
-    }
-
-    // ------------------------------------------------------------------ what the tasks need of the conversation
-
-    /** The conversation as background tasks see it: its model and tools, the profile, the voice, who is there. */
-    private final class TaskHost implements TaskService.Host {
-        @Override
-        public VoiceConfig config() {
-            VoiceConfig c = config;
-            return c != null ? c : VoiceSettings.config(settings());
-        }
-
-        @Override
-        public ToolRegistry tools() {
-            ToolRegistry reg = currentTools();
-            if (reg == null) {
-                VoiceConfig c = config();
-                reg = registry(c.tools(), c.internet(), c.homePlace(), cameraAvailable());
-            }
-            return reg;
-        }
-
-        @Override
-        public String profile() {
-            return VoiceService.this.profile().text();
-        }
-
-        @Override
-        public boolean voiceOn() {
-            return ON.equals(state) && opened;
-        }
-
-        @Override
-        public boolean conversing() {
-            return VoiceService.this.conversing();
-        }
-
-        @Override
-        public boolean speak(String text, String language) {
-            return speakProactively(text, language);
-        }
-
-        @Override
-        public Boolean present() {
-            try {
-                PresenceState st = presence.state();
-                if (st == null || st.tUs() == 0) {
-                    return null;                    // no presence sensor has said anything
-                }
-                return st.present() || st.motionPresence();
-            } catch (RuntimeException e) {
-                return null;
-            }
-        }
-
-        @Override
-        public double sinceTalkS() {
-            double t = lastTalkAt;
-            return t == Double.NEGATIVE_INFINITY ? Double.POSITIVE_INFINITY : clocks.monotonicSeconds() - t;
-        }
-
-        @Override
-        public boolean quiet() {
-            try {
-                return quiet.getAsBoolean();
-            } catch (RuntimeException e) {
-                return false;
-            }
-        }
-    }
-
-    /** Says {@code text} on Marvin's own initiative, now: false when the voice is off or a conversation is going on. */
-    boolean speakProactively(String text, String lang) {
-        if (!ON.equals(state) || !opened || conversing()) {
-            return false;
-        }
-        long id = replyIds.getAndIncrement();
-        proactiveReplies.put(id, lang);
-        voice.send(new VoiceSidecar.Say(id, text, lang, false, true, clauses(text, lang)));
-        return true;
+        proactive.onPresenceEvent(event);
     }
 
     // ------------------------------------------------------------------ options
 
     @Override
     public Map<String, Object> options() {
-        Map<String, Object> s = settings();
-        VoiceConfig c = VoiceSettings.config(s);
-        Map<String, Object> ollama = new LinkedHashMap<>();
-        List<String> models;
-        try {
-            models = model.models(c.ollamaHost()).stream().sorted().toList();
-            ollama.put("ok", true);
-            ollama.put("error", "");
-            ollama.put("fix", "");
-        } catch (LanguageModel.Unavailable e) {
-            models = List.of();
-            ollama.put("ok", false);
-            ollama.put("error", "Ollama is not running at " + c.ollamaHost() + " (" + e.getMessage() + ")");
-            ollama.put("fix", "Install Ollama (https://ollama.com/download or `brew install ollama`), then start it: "
-                    + "`ollama serve` or the Ollama app.");
-        }
-        ollama.put("host", c.ollamaHost());
-        VoiceSidecar.Options o = voice.options().orElse(null);
-        List<Map<String, Object>> tts = new ArrayList<>();
-        List<Map<String, Object>> piper = new ArrayList<>();
-        List<Map<String, Object>> say = new ArrayList<>();
-        List<Map<String, Object>> qwen = new ArrayList<>();
-        boolean piperOk = false;
-        if (o != null) {
-            for (VoiceSidecar.Backend b : o.tts()) {
-                tts.add(ordered("name", b.name(), "available", b.installed()));
-                piperOk |= "piper".equals(b.name()) && b.installed();
-            }
-            for (VoiceSidecar.Voice v : o.voices()) {
-                if ("piper".equals(v.engine())) {
-                    piper.add(ordered("name", v.id(), "installed", v.installed()));
-                } else if ("say".equals(v.engine())) {
-                    say.add(ordered("name", v.id(), "locale", v.locale().isEmpty() ? v.language() : v.locale()));
-                } else if ("qwen".equals(v.engine())) {
-                    qwen.add(ordered("name", v.id(), "installed", v.installed()));
-                }
-            }
-        } else {
-            for (String name : VoiceSettings.TTS_CHOICES) {
-                tts.add(ordered("name", name, "available", "auto".equals(name)));
-            }
-        }
-        Map<String, Object> voices = new LinkedHashMap<>();
-        voices.put("piper", piperOk ? piper : List.of());
-        voices.put("say", say);
-        voices.put("qwen", qwen);
-        List<String> sttModels = new ArrayList<>(List.of("auto"));
-        sttModels.addAll(VoiceSettings.STT_MODELS);
-        List<Map<String, Object>> catalog = new ArrayList<>();
-        for (ToolRegistry.Tool t : registry(true, true, "", camera != null).all()) {
-            catalog.add(ordered("name", t.spec().name(), "description", t.spec().description(), "online", t.spec().online()));
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("llm_models", models);
-        out.put("ollama", ollama);
-        out.put("stt_backends", VoiceSettings.STT_CHOICES);
-        out.put("stt_models", sttModels);
-        out.put("tts_backends", tts);
-        out.put("voices", voices);
-        out.put("languages", List.of("auto", "fr", "en"));
-        out.put("platform", platform);
-        out.put("tools", catalog);
-        out.put("vision", vision(c, Boolean.TRUE.equals(ollama.get("ok"))));
-        out.put("ears", o == null ? List.of() : o.ears().stream()
-                .map(b -> ordered("name", b.name(), "installed", b.installed(), "why", b.why())).toList());
-        return out;
-    }
-
-    /** Whether the model for images can see them, for the settings panel ({@code sees} {@code null}: unknown). */
-    private Map<String, Object> vision(VoiceConfig c, boolean ollamaOk) {
-        Map<String, Object> v = new LinkedHashMap<>();
-        v.put("model", c.imageModel());
-        v.put("own_model", !c.visionModel().isBlank());
-        Boolean sees = null;
-        String problem = "";
-        if (ollamaOk) {
-            try {
-                sees = canSee(c.ollamaHost(), c.imageModel());
-            } catch (LanguageModel.Unavailable e) {
-                problem = e.getMessage();
-            }
-        }
-        v.put("sees", sees);
-        v.put("error", sees == null ? problem : sees ? "" : refusal(c));
-        return v;
-    }
-
-    private static Map<String, Object> ordered(Object... kv) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        for (int i = 0; i < kv.length; i += 2) {
-            m.put((String) kv[i], kv[i + 1]);
-        }
-        return m;
+        return routing.options(voice);
     }
 }
