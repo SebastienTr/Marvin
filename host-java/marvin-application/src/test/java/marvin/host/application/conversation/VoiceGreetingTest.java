@@ -11,6 +11,9 @@ import org.junit.jupiter.api.Test;
 
 import marvin.host.application.conversation.port.out.VoiceSidecar;
 import marvin.host.domain.conversation.Greeting;
+import marvin.host.domain.presence.Brain;
+import marvin.host.domain.presence.BrainConfig;
+import marvin.host.domain.presence.TargetSighting;
 import marvin.host.domain.presence.event.EventKind;
 import marvin.host.domain.presence.event.PresenceEvent;
 import marvin.host.domain.presence.event.PresenceState;
@@ -70,6 +73,49 @@ class VoiceGreetingTest {
         v.onPresenceEvent(ev(EventKind.ARRIVED));
         v.onPresenceEvent(ev(EventKind.SAT_DOWN));
         assertThat(said()).hasSize(2);
+    }
+
+    /**
+     * The replay (criterion 7): the brain with the host's defaults on a seated session as the LD2450 reports it at
+     * 0.6 m (jitter, the point jumping to another part of the body now and then), after the owner was away; the voice
+     * greets once, within 5 s of the person sitting down, and not again while they stay.
+     */
+    @Test
+    void replaySitDownThenGreetOnceWithinFiveSeconds() throws InterruptedException {
+        VoiceService v = started();
+        Brain brain = new Brain(BrainConfig.DEFAULT);
+        java.util.Random r = new java.util.Random(7);
+        double sitAt = 8.0;
+        Double greetedAt = null;
+        double jumpUntil = -1;
+        double jumpDy = 0;
+        for (double ft = 0; ft < sitAt + 60; ft += 0.1) {
+            List<TargetSighting> seen;
+            if (ft < 3) {
+                seen = List.of();
+            } else if (ft < sitAt) {
+                double k = (ft - 3) / (sitAt - 3);
+                seen = List.of(new TargetSighting(40 + r.nextGaussian() * 30, -3000 + k * 2400 + r.nextGaussian() * 30, 160,
+                        -48 + r.nextGaussian() * 8));
+            } else {
+                if (ft > jumpUntil && r.nextDouble() < 0.04) {
+                    jumpUntil = ft + 0.2 + r.nextDouble() * 0.8;
+                    jumpDy = (r.nextBoolean() ? 1 : -1) * (250 + r.nextDouble() * 130);
+                }
+                boolean jump = ft <= jumpUntil;
+                seen = List.of(new TargetSighting(40 + r.nextGaussian() * 20, -600 + (jump ? jumpDy : 0) + r.nextGaussian() * 20,
+                        160, jump ? 40 : r.nextGaussian() * 6));
+            }
+            t.clock.mono = 1000 + ft;
+            for (PresenceEvent e : brain.onTargets(Math.round(ft * 1e6), false, seen)) {
+                v.onPresenceEvent(e);
+            }
+            if (greetedAt == null && !said().isEmpty()) {
+                greetedAt = ft;
+            }
+        }
+        assertThat(said()).extracting(VoiceSidecar.Say::text).containsExactly("Bonjour Sébastien !");
+        assertThat(greetedAt - sitAt).as("greeted within 5 s of sitting down").isBetween(0.0, 5.0);
     }
 
     @Test
