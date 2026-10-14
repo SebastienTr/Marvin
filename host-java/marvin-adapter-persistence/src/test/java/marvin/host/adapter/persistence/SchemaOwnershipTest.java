@@ -35,7 +35,8 @@ class SchemaOwnershipTest {
             Map.entry("JdbcEpisodeStore.java", "memory"),
             Map.entry("JdbcProfileStore.java", "memory"),
             Map.entry("JdbcMemoryState.java", "memory"),
-            Map.entry("MemoryRows.java", "memory"));
+            Map.entry("MemoryRows.java", "memory"),
+            Map.entry("JdbcSoulStore.java", "memory"));
 
     static final Pattern SCHEMA = Pattern.compile("\\b(" + String.join("|", ContextMigrations.SCHEMAS) + ")\\.[a-z_]+");
 
