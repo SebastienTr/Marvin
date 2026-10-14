@@ -115,7 +115,7 @@ marvin:
     # file; the demo keeps them in memory only
     secrets: ${MARVIN_SECRETS:auto}
     google:
-      # the owner's own OAuth desktop client, as Google Cloud's console downloads it (docs/connectors.md)
+      # the owner's own OAuth desktop client, as Google Cloud's console downloads it (docs/intelligence.md, Connecting Google)
       client-file: ${MARVIN_GOOGLE_CLIENT:${marvin.data-dir}/google-oauth-client.json}
       # empty: Google; a stand-in's address for tests
       base: ${MARVIN_GOOGLE_BASE:}

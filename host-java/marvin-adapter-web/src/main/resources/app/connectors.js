@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-// Connectors (docs/design.md 7; docs/connectors.md): Google Calendar (read only) and Gmail (search, and drafts after
-// your approval), with your own Google OAuth client. Connecting opens Google's consent page in a new tab of this
-// computer's browser; Google sends it back to Marvin's host. Tokens stay in the Keychain (or a file only you can read);
+// Connectors (docs/design.md 7; docs/intelligence.md, Connecting Google): Google Calendar (read only) and Gmail
+// (search, and drafts after your approval), with your own Google OAuth client. Connecting opens Google's consent page
+// in a new tab of this computer's browser; Google sends it back to Marvin's host. Tokens stay in the Keychain (or a file only you can read);
 // Disconnect revokes them. Marvin never asks for a permission to send or delete.
 //
 // setup(root) renders into `root` (W5 places it, under Marvin); load() reads /api/connectors.
@@ -103,7 +103,7 @@ function render() {
     n.append(el("p", "notice-title", "First, your own Google OAuth client"));
     n.append(el("p", "small", "Marvin connects with a Google OAuth client you create (about 10 minutes, once): a "
       + "“Desktop app” client in Google Cloud’s console, its JSON file saved as google-oauth-client.json in Marvin’s "
-      + "data folder. The steps are in docs/connectors.md."));
+      + "data folder. The steps are in docs/intelligence.md, Connecting Google."));
     root.append(n);
   }
   const ul = el("ul", "connectors-list stack");

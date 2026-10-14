@@ -88,11 +88,12 @@ goal is the question before when nothing else is said), and words that usually a
 hint to the question, never a decision. The app's Activity has a form for it too.
 
 **How it runs.** One task at a time, with the conversation's model at the task's reasoning level and the conversation's
-tools that stay on this computer: `recall`, `remember`, `look` (with a camera), the weather (with the internet), and
-whatever a connector adds later (the `ToolSource` port; each tool says what it does to the world, and one that writes
-outside this computer would wait for an approval, which does not exist yet, so no task gets one). `forget` stays in the
-conversation: it needs your yes. The task's prompt names its tools and says it has no other: no web, no email, no
-calendar, never an invented source or number. It finishes with `final_answer`: a sentence or two Marvin can say, and the
+tools: `recall`, `remember`, `look` (with a camera), the weather (with the internet), and the connectors' when they are
+connected ([below](#connecting-google)): `calendar_list_events`, `gmail_search`, and `gmail_create_draft`, the only
+one that writes outside this computer. Each tool says what it does to the world (read, write here, write outside); a
+call that writes outside waits for your approval ([below](#approvals)). `forget` stays in the conversation: it needs
+your yes. The task's prompt names its tools and says it has no other (no web unless a tool does it, never an invented
+source or number) and that it can never send, delete or forward an email. It finishes with `final_answer`: a sentence or two Marvin can say, and the
 result in Markdown. Budgets: 12 requests to the model, 20 minutes, 40 000 tokens written (thinking included); when one
 is nearly spent the model is asked to finish, and a task that spends one fails with what it had. Every request (with
 the model's reasoning) and every tool run is a step, kept in PostgreSQL; a task that was running when the host stopped
@@ -104,6 +105,24 @@ wait a minute. Instead, as soon as a question is heard (or Marvin listens, think
 Ollama drops it when the connection closes, and the task makes it again two seconds after the conversation is over;
 the cut request does not count. With a model Ollama does run in parallel, `OLLAMA_NUM_PARALLEL=2` and
 `MARVIN_LLM_PARALLEL=2` let tasks run beside the conversation instead (`./marvin doctor` says which case applies).
+
+### Approvals
+
+A task that wants to write outside this computer (in v1: create a Gmail draft) asks first. The call waits as an
+approval, with a preview of exactly what will be written (to, subject, body); the task shows *Waiting for your
+approval* (`needs_approval`) and lets the next task run meanwhile. Marvin says it once if you are there ("Pour « … »,
+j'ai besoin de ton accord dans l'appli."), never again. In the app you **approve** (the draft is created as shown, and
+the approval links to it in Gmail) or **reject** (with a reason if you like: the task is told and goes on without it).
+Nobody answers within an hour, the task is cancelled, or the host stops: the approval expires and nothing is written.
+The wait does not count against the task's 20 minutes.
+
+**Marvin never sends an email.** There is no tool that sends, forwards, replies, deletes, trashes, pays or shares: the
+tool filter refuses any such tool from any source, and below it the Gmail client only knows the calls it needs (search,
+read headers, create a draft). You send drafts from Gmail yourself. A tool that writes outside is never offered in the
+conversation itself: only in a task, where each call can be approved.
+
+When a task ends, what it found also goes to memory's event log, so the day's summary mentions it
+([memory.md](memory.md#the-event-log)).
 
 **Thinking levels.** What reaches Ollama is the level the model lists: Qwen3.8 accepts `false`, `low`, `medium` and
 `xhigh`, and Ollama turns any other value, `"high"` and `true` included, into its default for it, `medium`. So *high*
@@ -117,6 +136,52 @@ conversation it waits for its end; when you are away, during quiet hours or with
 mentions it first (and it is said when the sensor sees you arrive). "C'est quoi le résultat ?" works at any time
 (`task_result`). The app shows every task live in Activity, with its result and its steps, and the Log panel a line when
 one ends.
+
+## The soul
+
+Marvin's character has two parts ([design.md](design.md#8-soul)). The **core** is yours: its character, what it will
+not do, how it speaks to you (Marvin > Soul; it starts as "Calm, grown-up, dry humour. Calls the owner by their first
+name. Answers in the language it is spoken to in. Never pretends to sense what it cannot."). The **learned** part is
+what Marvin learned about how to be with you: "Prefers short answers in the morning", "Does not want break reminders
+during calls". Both are kept in English, about 150 tokens each, and sit in the system prompt right after the rules.
+
+Once a week (Sunday from 21:00, or the first quiet moment after when the Mac slept), the **reflection** reads the week's
+day summaries and what you said about how Marvin behaves ("tais-toi", "too long", "don't remind me during calls") and
+proposes a new learned part. The app shows it as a diff, with why and from which of your words. Nothing changes until you
+approve it; you can also edit the learned part yourself, reject, or go back to any version (each one is kept).
+
+The **guardrails** are rules in the code, not only in a prompt, checked on every proposal and every edit of the learned
+part: no manipulation (persuasion, flattery as a strategy, invented feelings), no dependency (more time with Marvin,
+discouraging other people or help, speaking up more), honesty (never claiming what it does not sense or know), and
+bounds (the size, no tool or permission granted, no rule lifted, nothing that negates the core). A proposal that breaks
+one is shown to you as refused, with the reason.
+
+## Connecting Google
+
+Marvin reads your Google Calendar and searches your Gmail, and drafts emails you approve, with **your own** Google OAuth
+client: no shared app, no server between you and Google. Tokens stay in the macOS Keychain (on Linux, in
+`~/.local/share/marvin/secrets.json`, readable by you only). It asks only for `calendar.readonly`, `gmail.readonly`
+and `gmail.compose` (the narrowest permission that can create a draft); never `gmail.send` or a permission to delete.
+
+Once, about ten minutes, in a browser:
+
+1. Open [console.cloud.google.com](https://console.cloud.google.com/), sign in with the Google account Marvin will use,
+   and create a project (*Marvin*).
+2. *APIs & Services > Library*: enable the **Gmail API** and the **Google Calendar API**.
+3. *Google Auth Platform* (the OAuth consent screen): *Branding*: app name *Marvin*, your address as the support and
+   contact email. *Audience*: *External*; add your own address as a **test user**. *Data access* (optional, Marvin asks
+   for them anyway): `.../auth/calendar.readonly`, `.../auth/gmail.readonly`, `.../auth/gmail.compose`.
+4. *Clients > Create client*: application type **Desktop app**, name *Marvin host*. *Download JSON*.
+5. Save that file as `~/.local/share/marvin/google-oauth-client.json` (Marvin's data folder; `MARVIN_GOOGLE_CLIENT`
+   points elsewhere), then `chmod 600` it.
+6. In Marvin's app **on the Mac** (the consent comes back to `127.0.0.1`): Marvin > Connectors > *Connect* Google
+   Calendar, then Gmail. Google warns that it has not verified the app: it is yours, choose to continue, tick every box.
+
+While the consent screen's publishing status is *Testing*, Google lets a refresh token live 7 days: Marvin then shows
+the connector as needing attention, and *Connect again* fixes it. To avoid it, *Audience > Publish app* (*In
+production*): for an app with a few users Google does not require its verification, and keeps showing you the
+"unverified app" warning instead. Disconnect revokes Marvin's access at Google; you can also remove it from your Google
+account's *Security > Third-party access*.
 
 ## Emergent behaviours we can hope for
 
@@ -145,7 +210,10 @@ Data comes first: nothing at level 2 or 3 is possible without weeks of recording
 - [ ] First build: measure the MR60BHA2's heart-rate quality while typing.
 - [x] Look on demand: one picture from the robot's or the computer's camera, described by the local vision model ([vision.md](vision.md)).
 - [x] Reasoning levels and background tasks: one model, the conversation at once, tasks thinking hard with Marvin's tools ([above](#thinking-and-background-tasks)).
-- [ ] Tasks: approvals for tools that write outside this computer (email drafts, calendar events), task results in memory's log.
+- [x] Tasks: approvals for tools that write outside this computer (email drafts), task results in memory's log.
+- [x] Connectors: Google Calendar (read) and Gmail (search, drafts after an approval), with the owner's OAuth client.
+- [x] The soul: the owner's core, the learned part, the weekly reflection as a diff, the guardrails.
+- [ ] Connectors' ingestion into memory (calendar as live context, email metadata), MCP as their transport (v1.1).
 - [ ] Level 1 vision: face recognition and pose on the MJPEG stream, as new brain inputs.
 - [ ] Level 1 sound: sound-event classifier; "on a call" detection (voices heard, one person seen).
 - [ ] Background model of the room from the camera, "I was moved" event (the lidar's jobs, without the lidar).

@@ -102,8 +102,8 @@ public final class ConnectorService implements ConnectorControl, ConnectorAccess
     public String connect(String id, String redirectUri) {
         Connector c = Connector.of(id);
         if (!clientInstalled()) {
-            throw new NotReady("Install your Google OAuth client first (docs/connectors.md): Marvin uses your own, never a "
-                    + "shared one");
+            throw new NotReady("Install your Google OAuth client first (docs/intelligence.md, Connecting Google): "
+                    + "Marvin uses your own, never a shared one");
         }
         double now = clocks.wallSeconds();
         pending.values().removeIf(p -> now - p.created() > PENDING_S);

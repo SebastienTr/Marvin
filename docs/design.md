@@ -593,10 +593,12 @@ voice), so the agent is the conversation's model at a high reasoning level rathe
 `start_task(goal)`, with `task_result` to ask about tasks. Tasks live in the conversation context for now
 (`application.conversation.task`: they share its model port, its tools and its persona; a separate `agent` context would
 need a tool port both sides use without a cycle) and in the conversation's schema (`task`, `task_step`). States: queued,
-running, done, failed, cancelled, interrupted (after a restart); no `needs_approval` yet, since no task is offered a tool
-that writes outside the computer. Instead of `paused`, a task's request is cut when the voice needs the model and made
-again after. Budgets: 12 requests, 20 minutes, 40 000 tokens. Details in [intelligence.md](intelligence.md#thinking-and-background-tasks)
-and [host-java/NOTES.md](../host-java/NOTES.md).
+running, needs_approval (Marvin v1, October 2026: a call of a tool that writes outside this computer waits for the
+owner, [6.3](#63-side-effects-and-approvals)), done, failed, cancelled, interrupted (after a restart). Instead of
+`paused`, a task's request is cut when the voice needs the model and made again after. Budgets: 12 requests, 20
+minutes, 40 000 tokens; the wait for an approval does not count. A finished task's result goes to memory's event log
+(source `task`, [memory.md](memory.md#the-event-log)). Details in
+[intelligence.md](intelligence.md#thinking-and-background-tasks) and [host-java/NOTES.md](../host-java/NOTES.md).
 
 ### 6.2 Lifecycle
 
@@ -635,6 +637,19 @@ Tools are classified:
 
 **Marvin never sends an email.** It creates a draft through the connector; the approval shows the draft and "Open in Gmail" (or the client in use); sending is the owner's click, outside Marvin. Approvals appear in the app's **Tasks** section and, discreetly, as one line in the Talk panel; Marvin may mention a pending approval by voice once, never nag.
 
+**As built (Marvin v1, October 2026).** The classes are frozen as `ToolAccess` (`READ`, `LOCAL_WRITE`,
+`EXTERNAL_WRITE`; no irreversible class exists). The **tool filter** (`ToolPolicy`, applied by the tool registry to every
+tool, built in or from a connector) refuses any tool whose name has a word for an irreversible or outward action
+(`send`, `delete`, `trash`, `forward`, `reply`, `pay`, `share` ... and the stems `send`, `delet`, `trash`, `forward`,
+`purge`, `erase` anywhere), whatever class it claims, and never offers an `EXTERNAL_WRITE` tool in the conversation: only
+in a background task whose registry asks for approvals. There, each call waits as an `Approval` (`conversation.approval`:
+pending, then approved, rejected or expired) with a preview (`email_draft`: to, subject, body; the draft's link once
+made); the task shows `needs_approval` and gives its turn to the next task meanwhile; the call runs only once approved,
+with exactly the arguments shown. Rejected, expired (an hour without an answer, the task cancelled, the host stopped):
+the call is not made and the model is told why. API: `GET /api/approvals`, `POST /api/approvals/{id}/approve`,
+`POST /api/approvals/{id}/reject`; the stream's `approval` event. Below the filter, the Gmail connector's HTTP client
+only knows the calls it needs (the allow-list in [7.3](#73-scopes-and-secrets)).
+
 ### 6.4 Notifications
 
 A `Notifier` port with channels: the app (SSE, always), the robot (an earcon, or a sentence when someone is present, not in quiet hours, not during a call), and optional push to the phone (for example a self-hosted ntfy server; off by default). One rule for all proactive speech, as today: at most one unsolicited sentence every 10 minutes, never during a conversation. The "when to talk" bandit in [intelligence.md](intelligence.md) plugs in here later.
@@ -643,7 +658,7 @@ A `Notifier` port with channels: the app (SSE, always), the robot (an earcon, or
 
 | Job | Default (local, Ollama) | Optional |
 |---|---|---|
-| Conversation | `qwen3:4b-instruct` (as today), 8B if the Mac allows | — |
+| Conversation | `qwen3.8:27b-mxfp8` (the owner's Mac; one model for the voice and the tasks, [intelligence.md](intelligence.md#thinking-and-background-tasks)) | — |
 | Background agents | The largest local model that fits (8B–32B) | A cloud model per task, with consent |
 | Memory worker, reflection | Same as agents, run at night | Never cloud by default (it reads everything) |
 | Embeddings | qwen3-embedding:8b (multilingual, first on the MTEB multilingual leaderboard at release, 70.6), asked for 1024 dimensions through Ollama's `dimensions` (it is trained to keep its first components meaningful), so the tables and the pgvector HNSW index (2000 dimensions at most) stay the same; searches carry a task instruction, stored facts do not. Smaller machines: qwen3-embedding:0.6b (1024 natively) | — |
@@ -681,6 +696,31 @@ Each ingested item becomes an `event_log` row with `source = connector:<id>`, th
 - OAuth tokens and API keys go through the `SecretStore`: the macOS Keychain natively; mounted secrets in Docker and Kubernetes; a 0600 file as the last resort. They never enter the database, the logs, the event log or a prompt. The app shows only "connected as ..." and a Disconnect button that revokes the token.
 - OAuth runs in the browser from the app, with a localhost redirect to the host.
 
+**As built (Marvin v1, October 2026).** No MCP in v1 (the owner's decision of 14 October 2026): Google's own REST APIs
+with the owner's own OAuth **desktop** client (its JSON file in the data folder; Marvin never ships a client), in the
+`marvin-adapter-connectors` module behind the same ports (`ToolSource` for the tools; the connector context's
+`OAuthProvider` and `SecretStore`). Two connectors, connected one at a time with only their own scopes:
+
+| Connector | Scopes | Tools |
+|---|---|---|
+| Google Calendar | `calendar.readonly` | `calendar_list_events` (read: titles, times, places, attendees' names only) |
+| Gmail | `gmail.readonly`, `gmail.compose` | `gmail_search` (read: sender, recipients, subject, date, snippet), `gmail_create_draft` (external write, tasks only, after an approval) |
+
+- **Scopes** are an allow-list (`ScopePolicy`): a token granted anything else is revoked at once and not kept.
+  `gmail.compose` is the narrowest scope that can create a draft, and Google lets it send drafts too, so the
+  **calls** are an allow-list as well (`GoogleGuard`): read a calendar's events and the primary calendar, read Gmail's
+  profile, list and read messages (metadata), create a draft. Every other call (`drafts.send`, `messages.send`, any
+  `DELETE`, trash, modify, import, settings ...) is refused before it leaves the computer.
+- **Connecting**: authorization code with PKCE (S256) and a one-time state, the redirect to
+  `http://127.0.0.1:<port>/api/connectors/callback`; so the consent runs in the browser of the host's computer.
+- **Tokens** in the `SecretStore`: the macOS Keychain through Apple's `security` tool (the secret written on its standard
+  input, never on a command line), else `<data-dir>/secrets.json` (0600 in a 0700 folder), in memory in the demo.
+  Refreshed a minute before they expire; a refused refresh or call puts the connector in error and hides its tools until
+  it is connected again; Disconnect revokes the token at Google.
+- **Ingestion** (7.2) waits for v1.1: in v1 the connectors are tools only.
+- API: `GET /api/connectors`, `POST /api/connectors/{id}/connect` (`{auth_url}`), `GET /api/connectors/callback`,
+  `POST /api/connectors/{id}/disconnect`. Setting up the OAuth client: [intelligence.md](intelligence.md#connecting-google).
+
 ## 8. Soul
 
 ### 8.1 Two parts
@@ -703,6 +743,21 @@ Checked by rules in the domain (not only by prompting), on every proposal and ev
 - **Honesty**: Marvin says what it does not know, never claims observations beyond its sensors and memory (the rule in `persona.py` today), and can always say where a memory came from.
 - **Bounded**: the learned part cannot contradict the core, cannot grant itself tools or permissions, and has a hard size limit.
 - A proposal that fails a rule is shown to the owner as rejected, with the reason, not silently dropped.
+
+**As built (Marvin v1, October 2026).** A context of its own (`domain/soul`, `application/soul`; tables in memory's
+schema: `soul_version`, `soul_proposal`, `soul_state`). The core starts as "Calm, grown-up, dry humour. Calls the owner
+by their first name. Answers in the language it is spoken to in. Never pretends to sense what it cannot." until the
+owner writes their own; both parts are stored in English and limited to about 150 tokens. The weekly reflection runs from
+Sunday 21:00 at the first moment the model is free (the laptop may sleep: the first chance after), on the shared model
+lane like a task; it reads the week's day summaries and the owner's lines that read as feedback ("be quiet", "trop
+long", "don't remind me during calls"), and answers a JSON object (the learned statements, a rationale, the event ids
+behind it; ids it did not read are dropped). A proposal that changes nothing is not made; a newer one supersedes the one
+waiting; one made before the owner edited the learned part cannot overwrite the edit. The guardrails (`Guardrails`) are
+rules in English and French with adversarial tests: `no_manipulation`, `no_dependency` (speaking up more counts),
+`honesty`, `bounded` (size, no tool, permission or rule granted or lifted, no statement that negates the core's). API:
+`GET /api/soul`, `POST /api/soul/core`, `/learned` (422 with the verdicts when a rule fails), `/proposal/{id}/approve`,
+`/proposal/{id}/reject`, `/revert` `{part, version}`, `/reflect`. The conversation reads the soul through the soul's
+`SoulPrompt` port (its text and a key that changes with it), to place right after the rules.
 
 ## 9. The app
 

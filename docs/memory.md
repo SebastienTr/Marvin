@@ -46,8 +46,9 @@ is written and versioned, but no prompt reads it yet.
 ## The event log
 
 Everything memory knows comes from one append-only table, `memory.event_log`: when it happened (`ts`), where it comes
-from (`source`: `conversation`, `brain`, `owner`), what it is (`kind`), a sensitivity label, a human-readable `body`,
-structured `data`, and `external_ref`, the original's id (`conversation:<entry id>`, `presence:<event id>`).
+from (`source`: `conversation`, `brain`, `owner`, `task`), what it is (`kind`), a sensitivity label, a human-readable
+`body`, structured `data`, and `external_ref`, the original's id (`conversation:<entry id>`, `presence:<event id>`,
+`task:<task id>`).
 `(source, external_ref)` is unique: the same record fed twice is kept once, which is what makes the catch-up safe to
 run beside the live feed.
 
@@ -74,7 +75,10 @@ sequenceDiagram
   references only (`forgotten_feed`), and a catch-up never brings it back.
 - **What is kept.** Heard and reply lines (with language, source, tool calls, errors; not the context and prompt the
   conversation keeps for its inspector). Brain events except the host's own markers (`host_started` ...). Owner
-  actions. Notes and ignored utterances are not kept.
+  actions. A background task that finished (`task_done`, `task_failed`): its title, the goal, the sentence Marvin said
+  and the start of its result (1 500 characters; the task keeps all of it), fed by `TaskMemoryFeed` (boot module) when
+  the task ends. It goes into the day's summary; facts are not extracted from it (a task reads the world, not the
+  owner). Notes and ignored utterances are not kept.
 - **Labels at the source** (design 5.7): vital signs are `sensitive` by rule; conversation lines start `normal`, and
   become `sensitive` when a sensitive fact is learned from their conversation (the whole batch: the fact's sources).
 - **Secrets are never stored**: card numbers (Luhn-checked), IBANs, and values said after "password", "PIN", "code",
@@ -203,8 +207,10 @@ took out for them leave the older versions too.
 (or learned); below 0.05 it is archived (out of automatic retrieval, still found by `recall`, never deleted). Pinned
 facts and the owner's own never fade.
 
-**Retention** (step 7): brain events older than `retention_days` (365) are deleted once their day is summarised,
-unless a fact came from them. The conversation is kept until the owner forgets it.
+**Retention** (step 7): events older than `retention_days` (365) are deleted once their day is summarised, unless a
+fact came from them: brain events, the conversation's text (the owner's decision of 14 October 2026: kept a year, then
+summarised and dropped) and the tasks' results. What a fact was learned from stays, so it can always say where it came
+from. The conversation context keeps its own history (the app's Talk and Activity) apart from memory's log.
 
 ## The read path: memory in the prompt
 
@@ -442,13 +448,23 @@ model, on the machine that runs Ollama:
 
 ```bash
 cd host-java
-MARVIN_EVAL_OLLAMA=http://localhost:11434 MARVIN_EVAL_MODEL=qwen3:4b-instruct MARVIN_EVAL_EMBED=qwen3-embedding:8b \
+MARVIN_EVAL_OLLAMA=http://localhost:11434 MARVIN_EVAL_MODEL=qwen3.8:27b-mxfp8 MARVIN_EVAL_EMBED=qwen3-embedding:8b \
   ./mvnw -q -pl marvin-adapter-llm -am test -Dtest=MemoryEvaluationTest -Dsurefire.failIfNoSpecifiedTests=false
 cat marvin-adapter-llm/target/memory-eval-report.txt
 ```
 
 Add `MARVIN_EVAL_MIN_RECALL=0.7` (and `MARVIN_EVAL_MIN_PRECISION`) to make it fail below a score. Change the prompts
 only with a report before and after.
+
+## The soul
+
+Beside what Marvin knows about the owner, memory's schema keeps how Marvin is with them: the soul
+([design.md](design.md#8-soul) 8; [intelligence.md](intelligence.md#the-soul)). `memory.soul_version` holds every
+version of its two parts (the core, the owner's only; the learned part), `memory.soul_proposal` the weekly reflection's
+proposals with their diff, the event ids behind them and the guardrails' verdicts, and `memory.soul_state` when the
+reflection last ran. The reflection reads the week through memory's ports: the day summaries (`EpisodeStore`) and the
+owner's lines that read as feedback (`EventLog`, `heard` events, never sensitive ones). The soul is a context of its
+own (`domain/soul`, `application/soul`); it reaches memory only through those ports, wired in `SoulWiring`.
 
 ## Where the code is
 
@@ -458,9 +474,9 @@ only with a report before and after.
 | Use cases: log feed and catch-up, consolidator, worker, nightly pass, owner control, export; `MemoryGuard` (owner changes vs worker writes), `ProfileRemovals`, `ForgottenFeed` | `marvin-application/.../application/memory/` |
 | Ports | `application/memory/port/in`, `application/memory/port/out` |
 | Schema | `marvin-adapter-persistence/src/main/resources/db/migration/memory/` |
-| Stores | `JdbcEventLog`, `JdbcFactStore`, `JdbcEpisodeStore`, `JdbcProfileStore`, `JdbcMemoryState` |
+| Stores | `JdbcEventLog`, `JdbcFactStore`, `JdbcEpisodeStore`, `JdbcProfileStore`, `JdbcMemoryState`, `JdbcSoulStore` (the soul) |
 | Ollama | `OllamaMemoryModel`, `OllamaEmbedder`, prompts in `marvin/memory/prompts/v1/` |
-| Wiring, feeds, voice activity | `marvin-app/.../MemoryWiring`, `MemoryFeeds`, `VoiceActivityTracker` |
+| Wiring, feeds, voice activity | `marvin-app/.../MemoryWiring`, `MemoryFeeds`, `VoiceActivityTracker`; task results: `TaskMemoryFeed` (wired in `SoulWiring`) |
 | Read path | `MemoryRecallService`, `ForgetConfirmations`, `CachedProfiles` (application); `RetrievalScoring`, `MemoryText`, `RecallWindow` (domain); the conversation's `MemoryContext` port, `ContextAssembler`, `MemoryTools`, `VoiceService`; `MemoryForConversation` (boot module) |
 | Memory API | `marvin-adapter-web/.../MemoryController` |
 | Seeing memory | `MemoryViewsService` (application); `MemoryGraph`, `Projection`, `FactTimeline` (domain); the app's `memviews.js`; tests `MemoryViewsTest`, `MemoryViewsServiceTest`, `MemoryViewsApiTest` |
