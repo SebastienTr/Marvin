@@ -17,8 +17,10 @@ import marvin.host.domain.robot.SensorFrame;
 /**
  * A robot's buttons ({@code BUTTON}, the bench board: docs/wiring-bench.md), translated into the voice's commands,
  * as the app's buttons do: Talk is Talk now (it opens a listening window, or closes the one that is open), Mute
- * mutes or unmutes the microphone. Talk while the voice is off plays the error sound on that robot. The robot and
- * conversation contexts only meet here, through their ports.
+ * mutes or unmutes the microphone. The robot's knob is a Talk button with a long press (docs/protocol.md, "Buttons"):
+ * a tap is Talk now, a long press mutes or unmutes the microphone, the voice's earcons saying which. Talk while the
+ * voice is off plays the error sound on that robot. The robot and conversation contexts only meet here, through their
+ * ports.
  *
  * <p>The voice's commands wait a little for its new state: they run off the dispatch thread ({@code run}).
  */
@@ -42,22 +44,26 @@ public final class ButtonFeed implements SensorFrameListener {
 
     @Override
     public void onFrame(SensorFrame frame) {
-        if (!(frame instanceof SensorFrame.ButtonPress b) || b.action() != Button.PRESS) {
+        if (!(frame instanceof SensorFrame.ButtonPress b)) {
             return;
+        }
+        boolean longPress = b.action() == Button.LONG_PRESS && b.button() == Button.TALK;
+        if (b.action() != Button.PRESS && !longPress) {
+            return;                     // an action this host does not know, or a long press on a button without one
         }
         String name = Button.name(b.button());
         if (name == null) {
             return;                     // a button this host does not know
         }
-        log.info("{}: {} button", b.device().name(), name);
+        log.info("{}: {} button{}", b.device().name(), name, longPress ? ", long press" : "");
         String device = b.device().name();
-        run.accept(() -> act(device, b.button()));
+        run.accept(() -> act(device, b.button(), longPress));
     }
 
-    private void act(String device, int button) {
+    private void act(String device, int button, boolean longPress) {
         VoiceControl v = voice.get();
         try {
-            if (button == Button.MUTE) {
+            if (button == Button.MUTE || longPress) {
                 v.mute(!v.snapshot().muted());
             } else {
                 v.listenNow(!"listening".equals(v.snapshot().status()));
