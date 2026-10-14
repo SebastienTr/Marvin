@@ -20,7 +20,7 @@ import marvin.host.domain.presence.event.PresenceEvent;
  * spike, then a real stand-up and walk out. With {@link BrainConfig#PYTHON} it flaps; with {@link BrainConfig#DEFAULT}
  * it sits once (within 5 s for the median session, 7 s at worst), and stands once, when the person really does.
  *
- * <p>When H1 records a real session ({@code marvin-host record}), replay it the same way (docs/voice.md "Presence
+ * <p>When H1 records a real session ({@code MARVIN_RECORD=...mvrec.gz ./marvin up}), replay it the same way (docs/voice.md "Presence
  * tuning") and add it here with its expected events.
  */
 class BrainPostureReplayTest {

@@ -5,7 +5,7 @@ package marvin.host.domain.presence;
  * Checks {@link BrainConfig#radarSpeedSign()} on real frames: the LD2450's own speed against how fast the nearest
  * person's distance actually changes. The brain wants the state's speed positive moving away; the simulator sends
  * the LD2450 speed positive approaching (sign -1, the default), while ESPHome's ld2450 component reads a real one as
- * positive moving away (sign +1). Feed it a recording's frames ({@code marvin-host record}, H1) and read
+ * positive moving away (sign +1). Feed it a recording's frames ({@code MARVIN_RECORD}, H1) and read
  * {@link #sign()}. The sign only changes how the speed is shown: every brain rule uses its absolute value.
  *
  * <p>Only clear movements count: both frames within {@link #MAX_DT_S}, the distance changing faster than
