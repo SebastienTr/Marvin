@@ -63,6 +63,7 @@
 #endif
 #include <WiFiUdp.h>
 
+#include "audio/earcons.h"  // the SOUND ids, portable
 #include "head/head_logic.h"
 #include "health.h"
 #include "knob.h"
