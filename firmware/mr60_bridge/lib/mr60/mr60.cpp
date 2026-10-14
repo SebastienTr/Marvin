@@ -65,7 +65,7 @@ bool Parser::step(uint8_t byte) {
 
 size_t encode_vitals(const Vitals &v, uint8_t *out) {
   uint8_t *p = out;
-  *p++ = v.valid ? 1 : 0;
+  *p++ = VITALS_QUALITY_REPORTED | (v.valid ? VITALS_VALID : 0) | (v.valid && v.steady ? VITALS_STEADY : 0);
   auto rate = [](float r) -> uint16_t {
     if (!finite(r) || r <= 0) return 0;
     float c = roundf(r * 100);
@@ -126,12 +126,19 @@ bool Tracker::apply(uint16_t type, const uint8_t *d, size_t len, uint32_t now) {
       has_breath_ = finite(breath_) && breath_ > 0;    // the radar reports 0 while it has no estimate
       breath_ms_ = now;
       return true;
-    case HEART_RATE:
+    case HEART_RATE: {
       if (len < 4) return false;
-      heart_ = lef32(d);
-      has_heart_ = finite(heart_) && heart_ > 0;
+      float hr = lef32(d);
+      bool ok = finite(hr) && hr > 0;
+      if (ok && has_heart_ && fabsf(hr - heart_) > HEART_JUMP) {
+        jumped_ = true;
+        jump_ms_ = now;
+      }
+      heart_ = hr;
+      has_heart_ = ok;
       heart_ms_ = now;
       return true;
+    }
     case DISTANCE:
       if (len < 8) return false;
       distance_cm_ = lef32(d + 4);
@@ -176,11 +183,29 @@ Vitals Tracker::vitals(uint32_t now) const {
     v.breath_wave = breath_wave_;
     v.heart_wave = heart_wave_;
   }
-  if (fresh(has_distance_, distance_ms_, now, DISTANCE_STALE_MS)) {
+  bool range = fresh(has_distance_, distance_ms_, now, DISTANCE_STALE_MS);
+  if (range) {
     float mm = distance_cm_ * CM_TO_MM;
     v.distance_mm = mm > 65535 ? 65535 : (uint16_t)lroundf(mm);
   }
+  v.steady = v.valid && range && distance_cm_ <= STEADY_MAX_CM
+             && fresh(has_breath_, breath_ms_, now, STEADY_FRESH_MS) && fresh(has_heart_, heart_ms_, now, STEADY_FRESH_MS)
+             && breath_ >= BREATH_MIN && breath_ <= BREATH_MAX && heart_ >= HEART_MIN && heart_ <= HEART_MAX
+             && !(jumped_ && now - jump_ms_ < STEADY_HOLD_MS);
   return v;
+}
+
+bool Backoff::due(uint32_t now) {
+  if (!started_) {
+    started_ = true;
+    delay_ = first_;
+    next_ms_ = now + delay_;
+    return true;
+  }
+  if ((int32_t)(now - next_ms_) < 0) return false;
+  delay_ = delay_ > max_ / 2 ? max_ : delay_ * 2;
+  next_ms_ = now + delay_;
+  return true;
 }
 
 }  // namespace mr60

@@ -217,18 +217,100 @@ static void test_wave_scaler() {
 }
 
 static void test_encode_vitals() {
-  mr60::Vitals v{true, 14.25f, 68.5f, 0.5f, -2.0f, 812};
+  mr60::Vitals v{true, 14.25f, 68.5f, 0.5f, -2.0f, 812, false};
   uint8_t out[mr60::VITALS_SIZE];
   TEST_ASSERT_EQUAL(11, mr60::encode_vitals(v, out));
-  const uint8_t want[11] = {1,    0x91, 0x05,   // 1425
+  const uint8_t want[11] = {0x03, 0x91, 0x05,   // valid + quality reported, not steady; 1425
                             0xC2, 0x1A,         // 6850
                             0x00, 0x40,         // round(0.5 * 32767) = 16384
                             0x01, 0x80,         // clamped to -1 -> -32767
                             0x2C, 0x03};        // 812
   TEST_ASSERT_EQUAL_HEX8_ARRAY(want, out, 11);
-  mr60::Vitals z{false, NAN, -3, NAN, 0, 0};
+  v.steady = true;
+  mr60::encode_vitals(v, out);
+  TEST_ASSERT_EQUAL_HEX8(0x07, out[0]);
+  mr60::Vitals z{false, NAN, -3, NAN, 0, 0, true};    // steady never goes out without valid
   mr60::encode_vitals(z, out);
-  for (uint8_t b : out) TEST_ASSERT_EQUAL_HEX8(0, b);
+  TEST_ASSERT_EQUAL_HEX8(mr60::VITALS_QUALITY_REPORTED, out[0]);
+  for (int i = 1; i < 11; i++) TEST_ASSERT_EQUAL_HEX8(0, out[i]);
+}
+
+// A seated person at `cm`, rates reported at `ms`.
+static void seated(mr60::Tracker &t, uint32_t ms, float cm, float br = 14, float hr = 70) {
+  apply(t, frame(mr60::PRESENCE, {1, 0}), ms);
+  apply(t, frame(mr60::DISTANCE, cat({u32(1), f32(cm)})), ms);
+  apply(t, frame(mr60::BREATH_RATE, f32(br)), ms);
+  apply(t, frame(mr60::HEART_RATE, f32(hr)), ms);
+}
+
+static void test_steady_needs_range_and_fresh_rates() {
+  mr60::Tracker t;
+  seated(t, 0, 80);
+  TEST_ASSERT_TRUE(t.vitals(10).steady);
+  // rates still valid (5 s) but no longer fresh enough to be steady (3 s)
+  apply(t, frame(mr60::PRESENCE, {1, 0}), 3500);
+  apply(t, frame(mr60::DISTANCE, cat({u32(1), f32(80)})), 3500);
+  mr60::Vitals v = t.vitals(3500);
+  TEST_ASSERT_TRUE(v.valid);
+  TEST_ASSERT_FALSE(v.steady);
+  // too far for the vital-signs zone
+  mr60::Tracker far;
+  seated(far, 0, 180);
+  TEST_ASSERT_TRUE(far.vitals(10).valid);
+  TEST_ASSERT_FALSE(far.vitals(10).steady);
+  // no range at all (older radar firmware with presence frames but no range yet)
+  mr60::Tracker blind;
+  apply(blind, frame(mr60::PRESENCE, {1, 0}), 0);
+  apply(blind, frame(mr60::BREATH_RATE, f32(14)), 0);
+  apply(blind, frame(mr60::HEART_RATE, f32(70)), 0);
+  TEST_ASSERT_TRUE(blind.vitals(10).valid);
+  TEST_ASSERT_FALSE(blind.vitals(10).steady);
+}
+
+static void test_steady_needs_plausible_rates() {
+  mr60::Tracker t;
+  seated(t, 0, 80, 14, 180);
+  TEST_ASSERT_TRUE(t.vitals(10).valid);               // valid says the radar produced them...
+  TEST_ASSERT_FALSE(t.vitals(10).steady);             // ...steady that they look like a resting person
+  mr60::Tracker slow;
+  seated(slow, 0, 80, 3, 70);
+  TEST_ASSERT_FALSE(slow.vitals(10).steady);
+}
+
+static void test_heart_rate_jump_holds_steady_off() {
+  mr60::Tracker t;
+  seated(t, 0, 80, 14, 70);
+  seated(t, 1000, 80, 14, 72);
+  TEST_ASSERT_TRUE(t.vitals(1000).steady);
+  seated(t, 2000, 80, 14, 95);                        // +23 bpm in one report
+  TEST_ASSERT_FALSE(t.vitals(2000).steady);
+  seated(t, 6000, 80, 14, 94);
+  TEST_ASSERT_FALSE(t.vitals(6900).steady);           // held for STEADY_HOLD_MS after the jump
+  seated(t, 7000, 80, 14, 94);
+  TEST_ASSERT_TRUE(t.vitals(7000).steady);
+}
+
+static void test_backoff() {
+  mr60::Backoff b(1000, 8000);
+  TEST_ASSERT_TRUE(b.due(0));                         // first attempt at once
+  TEST_ASSERT_FALSE(b.due(999));
+  TEST_ASSERT_TRUE(b.due(1000));                      // then 1 s, 2 s, 4 s, 8 s, 8 s...
+  TEST_ASSERT_FALSE(b.due(2999));
+  TEST_ASSERT_TRUE(b.due(3000));
+  TEST_ASSERT_TRUE(b.due(7000));
+  TEST_ASSERT_EQUAL_UINT32(8000, b.delay_ms());
+  TEST_ASSERT_TRUE(b.due(15000));
+  TEST_ASSERT_EQUAL_UINT32(8000, b.delay_ms());
+  b.succeeded();
+  TEST_ASSERT_TRUE(b.due(15001));                     // a new failure starts over
+  TEST_ASSERT_EQUAL_UINT32(1000, b.delay_ms());
+  TEST_ASSERT_FALSE(b.due(16000));
+  TEST_ASSERT_TRUE(b.due(16001));
+  // millis() wraps after 49 days
+  mr60::Backoff w(1000, 8000);
+  TEST_ASSERT_TRUE(w.due(0xFFFFFF00u));
+  TEST_ASSERT_FALSE(w.due(0x00000010u));
+  TEST_ASSERT_TRUE(w.due(0x000002F0u));
 }
 
 int main() {
@@ -249,5 +331,9 @@ int main() {
   RUN_TEST(test_short_payload_ignored);
   RUN_TEST(test_wave_scaler);
   RUN_TEST(test_encode_vitals);
+  RUN_TEST(test_steady_needs_range_and_fresh_rates);
+  RUN_TEST(test_steady_needs_plausible_rates);
+  RUN_TEST(test_heart_rate_jump_holds_steady_off);
+  RUN_TEST(test_backoff);
   return UNITY_END();
 }

@@ -65,6 +65,7 @@ class Parser {
 };
 
 // Same fields as proto VITALS / host Vitals: rates in 1/min, waves in -1..1, distance in mm.
+// steady: the bridge's own signal-quality flag (see Tracker::vitals), only ever set with valid.
 struct Vitals {
   bool valid;
   float breath_rate;
@@ -72,11 +73,35 @@ struct Vitals {
   float breath_wave;
   float heart_wave;
   uint16_t distance_mm;
+  bool steady;
 };
+
+// Flags byte, the first byte of VITALS. Bit 0 is protocol v1's "valid"; decoders read only that bit, so
+// the bridge uses two of the free ones: bit 1 says this sender reports a signal quality at all, bit 2
+// is that quality ("steady"). A sender without bit 1 (the simulators) says nothing about quality.
+constexpr uint8_t VITALS_VALID = 0x01;
+constexpr uint8_t VITALS_QUALITY_REPORTED = 0x02;
+constexpr uint8_t VITALS_STEADY = 0x04;
 
 constexpr size_t VITALS_SIZE = 11;
 // Writes the 11-byte VITALS payload of Marvin protocol v1, returns its size.
 size_t encode_vitals(const Vitals &v, uint8_t *out);
+
+// Retry delays for something that fails until it works (the Wi-Fi join, the radar's UART): starts at
+// `first_ms`, doubles at each failure up to `max_ms`, back to `first_ms` after a success.
+class Backoff {
+ public:
+  Backoff(uint32_t first_ms, uint32_t max_ms) : first_(first_ms), max_(max_ms), delay_(first_ms) {}
+  // True when an attempt is due at `now_ms` (the first call always is); the next one is then scheduled.
+  bool due(uint32_t now_ms);
+  void succeeded() { delay_ = first_; started_ = false; }
+  uint32_t delay_ms() const { return delay_; }
+
+ private:
+  uint32_t first_, max_, delay_;
+  bool started_ = false;
+  uint32_t next_ms_ = 0;
+};
 
 // Rescales a phase signal to -1..1: removes its slow offset, then divides by a decaying peak
 // (automatic gain), so the host sees the shape of the wave whatever the radar's raw amplitude.
@@ -105,7 +130,17 @@ class Tracker {
   static constexpr uint32_t WAVE_STALE_MS = 1000;
   static constexpr uint32_t DISTANCE_STALE_MS = 3000;
   static constexpr uint32_t SILENT_MS = 3000;          // no frame at all for this long: radar lost
+  // The radar's range (0x0A16) is in centimetres: ESPHome's seeed_mr60bha2 component (written with Seeed)
+  // publishes that float as is with unit_of_measurement cm; Seeed's Arduino library passes it on raw.
   static constexpr float CM_TO_MM = 10.0f;
+  // steady (the signal-quality flag) needs, on top of valid: both rates refreshed by the radar this
+  // recently, a range known and within the radar's vital-signs zone (Seeed: chest within 1.5 m), rates
+  // in a plausible human range, and no jump in the heart rate in the last STEADY_HOLD_MS.
+  static constexpr uint32_t STEADY_FRESH_MS = 3000;
+  static constexpr float STEADY_MAX_CM = 150.0f;
+  static constexpr float BREATH_MIN = 6, BREATH_MAX = 30, HEART_MIN = 40, HEART_MAX = 140;
+  static constexpr float HEART_JUMP = 15.0f;            // beats per minute between two reports
+  static constexpr uint32_t STEADY_HOLD_MS = 5000;
 
   Tracker();
   // Applies one frame's payload. Returns false for unknown types or short payloads.
@@ -126,6 +161,8 @@ class Tracker {
   bool has_breath_ = false, has_heart_ = false, has_phase_ = false, has_distance_ = false;
   float breath_ = 0, heart_ = 0, breath_wave_ = 0, heart_wave_ = 0, distance_cm_ = 0;
   uint32_t breath_ms_ = 0, heart_ms_ = 0, phase_ms_ = 0, distance_ms_ = 0;
+  bool jumped_ = false;
+  uint32_t jump_ms_ = 0;
   WaveScaler breath_scale_, heart_scale_;
   bool has_fw_ = false;
   FirmwareVersion fw_{};
