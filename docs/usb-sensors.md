@@ -2,7 +2,7 @@
 
 **A lidar on a 2 € USB-serial adapter, plugged into the computer that runs Marvin's host: its scan is live in the app within seconds of `./marvin up`.** No board to flash, no Wi-Fi: a small Python process, the *USB sensor bridge*, reads the adapter and sends the sensor's frames to the host exactly as a robot board does (protocol v1, [protocol.md](protocol.md)). The host sees one more device, board id 6, with real (not simulated) data.
 
-It is how the lidar is tried before the robot exists, or while its board is away. The same adapter can later carry an HLK-LD2450 radar instead: the bridge finds out which sensor is there.
+Marvin itself has no lidar since rev F (14 October 2026); the bridge keeps reading one, for the bench and for other projects. The same adapter can later carry an HLK-LD2450 radar instead: the bridge finds out which sensor is there.
 
 Code: [`host/marvin_host/usb_sensors.py`](../host/marvin_host/usb_sensors.py) (the bridge) and [`host/marvin_host/sensor_framing.py`](../host/marvin_host/sensor_framing.py) (the Python mirror of the firmware's framers, [`firmware/src/sensor_framing.cpp`](../firmware/src/sensor_framing.cpp)).
 

@@ -1,8 +1,10 @@
 # Wiring
 
-**29 connections, and the only soldering is two header strips.** This guide assumes you have never wired electronics before.
+**25 connections, and the only soldering is two header strips.** This guide assumes you have never wired electronics before.
 
-A bench board first (an ESP32 DevKit with Marvin's eyes on a small OLED, a Talk button, a buzzer, a PIR and a DHT11, no soldering)? See [wiring-bench.md](wiring-bench.md).
+The same parts on a breadboard first, with a boot self-test that says what answers? See [xiao-bench.md](xiao-bench.md). A bench board instead (an ESP32 DevKit with Marvin's eyes on a small OLED, a Talk button, a buzzer, a PIR and a DHT11, no soldering)? See [wiring-bench.md](wiring-bench.md).
+
+Rev F has **no lidar** (since 14 October 2026): the two radars and the camera sense the room. D7 stays free.
 
 ## The idea in one paragraph
 
@@ -19,7 +21,6 @@ Body heights come from the rev F CAD; head heights are planned until the head CA
 
 | Part | Place | Height above the desk |
 |---|---|---:|
-| Lidar | On top of the head, cable down through the lidar ring | ≈ 133 mm |
 | XIAO ESP32S3 Sense | Face frame, tilted 20°, camera above the screen | ≈ 113 mm |
 | Screen | Face frame, vertical, behind the acrylic window | ≈ 92 mm |
 | MR60BHA2 kit | Body, upper part of the sensor sled, tilted 20° | 42 mm |
@@ -28,7 +29,7 @@ Body heights come from the rev F CAD; head heights are planned until the head CA
 | Speaker | Body, against the dot grille in the right wall | 18 mm |
 | HLK-LD2450 | Body, bottom front of the sensor sled, tilted 10° | 16 mm |
 
-Everything between head and body (XIAO power and data, screen, lidar) runs through the neck damper. Every run fits the 20 cm Dupont jumpers. The USB-C power cable enters at the back of the plinth and climbs through the neck to the XIAO.
+Everything between head and body (XIAO power and data, screen) runs through the neck damper. Every run fits the 20 cm Dupont jumpers. The USB-C power cable enters at the back of the plinth and climbs through the neck to the XIAO.
 
 ## Three rules
 
@@ -43,7 +44,7 @@ flowchart LR
   BANK["Charger or power bank"] -- "USB-C cable, 90° plug" --> XIAO
 
   subgraph XIAO["XIAO ESP32S3 Sense (built-in mic)"]
-    P5V["5V"]; PGND["GND"]; P33["3V3"]; D7["D7 / GPIO44"]; D4["D4 / GPIO5"]; D5["D5 / GPIO6"]
+    P5V["5V"]; PGND["GND"]; P33["3V3"]; D4["D4 / GPIO5"]; D5["D5 / GPIO6"]
     D0["D0 / GPIO1"]; D1["D1 / GPIO2"]; D3["D3 / GPIO4"]; D8["D8 / GPIO7"]; D10["D10 / GPIO9"]
     D2["D2 / GPIO3"]; D6["D6 / GPIO43"]; D9["D9 / GPIO8"]
   end
@@ -53,14 +54,6 @@ flowchart LR
   PGND --> WGA
   WGA -- "link wire" --- WGB
   P33 --> W33
-
-  subgraph LID["Lidar (D800 / D500)"]
-    L5["P5V"]; LG["GND"]; LP["PWM"]; LT["Tx"]
-  end
-  W5 --> L5
-  WGA --> LG
-  WGA --> LP
-  LT --> D7
 
   subgraph RAD["HLK-LD2450"]
     R5["5V"]; RG["GND"]; RT["TX"]; RR["RX"]
@@ -109,31 +102,27 @@ Tick each line as you go.
 | 2 | XIAO **GND** | WAGO GND-A | Same as above |
 | 3 | XIAO **3V3** | WAGO 3V3 | Same as above |
 | 4 | Link wire | WAGO GND-A ↔ WAGO GND-B | A short stripped wire joining the two GND connectors |
-| 5 | Lidar **P5V** | WAGO 5V | Cut the Dupont plug off, strip |
-| 6 | Lidar **GND** | WAGO GND-A | Cut, strip |
-| 7 | Lidar **PWM** | WAGO GND-A | Yes, to ground: the lidar spins at its default speed |
-| 8 | Lidar **Tx** | XIAO **D7** | Push the Dupont plug on |
-| 9 | LD2450 **5V** | WAGO 5V | Cut, strip |
-| 10 | LD2450 **GND** | WAGO GND-A | Cut, strip |
-| 11 | LD2450 **TX** | XIAO **D4** | Push the Dupont plug on |
-| 12 | LD2450 **RX** | XIAO **D5** | Push the Dupont plug on |
-| 13 | USB-C pigtail **red** | WAGO 5V | Usually pre-stripped. The plug goes into the MR60BHA2 kit. |
-| 14 | USB-C pigtail **black** | WAGO GND-B | Same as above |
-| 15 | Screen **VCC** | WAGO 3V3 | Cut, strip. **3V3, not 5V**: the screen's logic must match the ESP32's 3.3 V. |
-| 16 | Screen **BL** | WAGO 3V3 | Cut, strip. The backlight stays on at full brightness; the eyes dim in software by drawing darker colours. |
-| 17 | Screen **GND** | WAGO GND-B | Cut, strip |
-| 18 | Screen **DIN** | XIAO **D10** | Push the Dupont plug on (SPI data) |
-| 19 | Screen **CLK** | XIAO **D8** | Push the Dupont plug on (SPI clock) |
-| 20 | Screen **CS** | XIAO **D0** | Push the Dupont plug on |
-| 21 | Screen **DC** | XIAO **D1** | Push the Dupont plug on |
-| 22 | Screen **RST** | XIAO **D3** | Push the Dupont plug on |
-| 23 | Amp **VIN** | WAGO 5V | Dupont female on the amp pin, other end cut and stripped |
-| 24 | Amp **GND** | WAGO GND-B | Same as above |
-| 25 | Amp **BCLK** | XIAO **D9** | Dupont female–female |
-| 26 | Amp **LRC** | XIAO **D6** | Dupont female–female |
-| 27 | Amp **DIN** | XIAO **D2** | Dupont female–female |
-| 28 | Speaker **+** | Amp terminal **+** | Screw terminal on the amp |
-| 29 | Speaker **−** | Amp terminal **−** | Screw terminal on the amp |
+| 5 | LD2450 **5V** | WAGO 5V | Cut, strip |
+| 6 | LD2450 **GND** | WAGO GND-A | Cut, strip |
+| 7 | LD2450 **TX** | XIAO **D4** | Push the Dupont plug on |
+| 8 | LD2450 **RX** | XIAO **D5** | Push the Dupont plug on |
+| 9 | USB-C pigtail **red** | WAGO 5V | Usually pre-stripped. The plug goes into the MR60BHA2 kit. |
+| 10 | USB-C pigtail **black** | WAGO GND-B | Same as above |
+| 11 | Screen **VCC** | WAGO 3V3 | Cut, strip. **3V3, not 5V**: the screen's logic must match the ESP32's 3.3 V. |
+| 12 | Screen **BL** | WAGO 3V3 | Cut, strip. The backlight stays on at full brightness; the eyes dim in software by drawing darker colours. |
+| 13 | Screen **GND** | WAGO GND-B | Cut, strip |
+| 14 | Screen **DIN** | XIAO **D10** | Push the Dupont plug on (SPI data) |
+| 15 | Screen **CLK** | XIAO **D8** | Push the Dupont plug on (SPI clock) |
+| 16 | Screen **CS** | XIAO **D0** | Push the Dupont plug on |
+| 17 | Screen **DC** | XIAO **D1** | Push the Dupont plug on |
+| 18 | Screen **RST** | XIAO **D3** | Push the Dupont plug on |
+| 19 | Amp **VIN** | WAGO 5V | Dupont female on the amp pin, other end cut and stripped |
+| 20 | Amp **GND** | WAGO GND-B | Same as above |
+| 21 | Amp **BCLK** | XIAO **D9** | Dupont female–female |
+| 22 | Amp **LRC** | XIAO **D6** | Dupont female–female |
+| 23 | Amp **DIN** | XIAO **D2** | Dupont female–female |
+| 24 | Speaker **+** | Amp terminal **+** | Screw terminal on the amp |
+| 25 | Speaker **−** | Amp terminal **−** | Screw terminal on the amp |
 
 The screen ships with a cable that ends in 8 labelled Dupont plugs. Leave the amp's **GAIN** and **SD** pins unconnected: the defaults give 9 dB of gain and a mono mix.
 
@@ -141,12 +130,12 @@ When you are done:
 
 | Connector | Wires | Ports used |
 |---|---|---|
-| WAGO 5V | XIAO, lidar, LD2450, MR60, amp | 5 / 5 |
-| WAGO GND-A | XIAO, lidar GND, lidar PWM, LD2450, link | 5 / 5 |
+| WAGO 5V | XIAO, LD2450, MR60, amp | 4 / 5 |
+| WAGO GND-A | XIAO, LD2450, link | 3 / 5 |
 | WAGO GND-B | link, MR60, screen, amp | 4 / 5 |
 | WAGO 3V3 | XIAO, screen VCC, screen BL | 3 / 5 |
 
-Every XIAO pin is used.
+Every XIAO pin is used but **D7 (GPIO44), spare**: leave it unconnected. The free WAGO ports are there for a later module.
 
 ## The only soldering
 
@@ -174,26 +163,24 @@ If in doubt, compare with Seeed's official pinout.
 
 | Link | ESP32-S3 peripheral | Settings | Logic level |
 |---|---|---|---|
-| Lidar → ESP32 | UART0 RX on GPIO44 (D7) | 921 600 baud (D800) or 230 400 baud (D500), 8N1, one-way | 3.3 V |
 | LD2450 ↔ ESP32 | UART1, RX on GPIO5 (D4), TX on GPIO6 (D5) | 256 000 baud, 8N1 | 3.3 V |
 | ESP32 → screen | SPI2 (FSPI): SCK GPIO7 (D8), MOSI GPIO9 (D10); CS GPIO1 (D0), DC GPIO2 (D1), RST GPIO4 (D3). Backlight tied to 3V3. | Up to 80 MHz | 3.3 V |
 | ESP32 → amp | I2S1 TX: BCLK GPIO8 (D9), LRC/WS GPIO43 (D6), DOUT GPIO3 (D2) | 16 kHz – 44.1 kHz, 16-bit | 3.3 V |
 | Microphone → ESP32 | Built-in PDM mic on the Sense board: CLK GPIO42, DATA GPIO41, on I2S0 | 16 kHz | internal |
 | MR60BHA2 → PC | Its own ESP32-C6 over Wi-Fi | — | — |
 
-The ESP32-S3 console uses native USB, which leaves UART0 free for the lidar. No level shifters are needed, because both sensors use 3.3 V UART levels.
+The ESP32-S3 console uses native USB, which leaves UART0's pins free: GPIO43 (D6) is the amp's LRC, GPIO44 (D7) is spare. No level shifters are needed: the LD2450 uses 3.3 V UART levels.
 
 ## Power budget
 
 | Load | Average | Peak |
 |---|---:|---:|
 | XIAO ESP32S3 + camera + Wi-Fi | 300 mA | 450 mA |
-| D800 lidar (STL-27L) | ≤ 290 mA | ≈ 350 mA (motor start) |
 | HLK-LD2450 | 120 mA | 200 mA |
 | MR60BHA2 kit | 160 mA | 300 mA |
 | 1.69" screen (from 3V3) | 60 mA | 90 mA |
 | MAX98357A + speaker | 20 mA idle | 400 mA (loud sound) |
-| **Total at 5 V** | **≈ 1.0 A** | **≈ 1.9 A** |
+| **Total at 5 V** | **≈ 0.7 A** | **≈ 1.5 A** |
 
 Pick a charger or power bank that delivers at least 2 A. Keep the speaker volume moderate in the firmware: a 1 W speaker can be overdriven by the amp at 5 V.
 

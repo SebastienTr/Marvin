@@ -14,11 +14,13 @@ Marvin sits on a desk and faces a seated person 0.65–1.1 m away.
 | **Microphone** (PDM) | Voice, plus the sound scene: a call in progress, silence, music, a door. | One microphone, so no direction | Voice (computer mic for now) | Essential |
 | **60 GHz radar** (MR60BHA2) | Breathing and heart rate at exactly the desk distance. | Ruined by movement (typing hurts heart rate most). The kit reports processed values only, no raw phase signal, so no heart-rate variability. | Yes, with a reliability gate | The core, but imperfect |
 | **24 GHz radar** (HLK-LD2450) | Arrivals, departures, someone approaching. Low power, works in the dark, sees no faces. | ±60° in front, 3 targets | Yes, drives the brain | The always-on trigger |
-| **Lidar** (D800) | 360° awareness: someone behind you or entering the room. Precise ranges. Notices when the robot is moved. | See below | No | The most questionable |
+| **Lidar** (D800) | 360° awareness: someone behind you or entering the room. Precise ranges. Notices when the robot is moved. | See below | No | **Removed from the robot** (14 October 2026) |
 | **PIR** (HC-SR501, bench board) | Someone moving nearby, for almost nothing, with no radar at all. | Movement only: no position, and someone sitting very still goes unnoticed; a minute to settle after power-on | Yes, as the presence of a board whose radar is simulated ([below](#a-pir-on-the-bench-board)) | A cheap stand-in |
 | **DHT11** and **light** (bench board) | The room itself: temperature, humidity, bright or dark. Context for the voice (*it is 27 °C in here*) and for later habits. | The DHT11 is slow and coarse (±2 °C, ±5 %); the light sensor is not wired yet | Shown in the app, given to the language model | Context, not presence |
 
 ### The lidar question
+
+> **Decided, 14 October 2026: rev F has no lidar.** The D800 moved to a separate project, a 3D room scanner. The jobs below go to the radars and the camera, or wait; the host still reads a lidar (the USB sensor bridge, a bench board), so this section stays as the record of why it was questioned.
 
 On a fixed desk the lidar is the most expensive part, the only one that makes noise and vibrates (hence the TPU neck), and the largest power draw. Its scan plane sits about 13 cm above the desk, so a monitor and desk clutter hide part of the room, depending on where the robot stands. As `brain.py` notes, a single slice at chest height cannot tell a person from a chair back without a background model of the room.
 
@@ -124,7 +126,7 @@ None of these is programmed directly. They come from combining sensors, a little
 - **Knowing your rhythm.** "You usually lose focus around 4 pm." "You've been arriving later since Monday."
 - **Finding correlations on its own.** Once a week the LLM reads the history and reports what it noticed: "after short nights you breathe faster at the desk", "your heart rate rises during some calls".
 - **A personality shaped by use.** It becomes chattier or quieter depending on what you reward, with no rule written for it.
-- **Self-awareness.** The lidar map changed: it was moved. Two sensors disagree: one is covered or misaligned.
+- **Self-awareness.** The camera's view of the room changed: it was moved. Two sensors disagree: one is covered or misaligned.
 
 What not to expect: real emotions, a reliable stress diagnosis, heart-rate variability, or a continuous stream of consciousness. The LLM reacts to events; it does not "live" in between. The illusion can still be very good.
 
@@ -140,13 +142,13 @@ What not to expect: real emotions, a reliable stress diagnosis, heart-rate varia
 Data comes first: nothing at level 2 or 3 is possible without weeks of recordings. The parts arrive around 9–10 October 2026.
 
 - [ ] Recordings: add camera keyframes and audio features (not raw audio) to `.mvrec` as new record kinds, plus a label stream (brain events and your feedback). Unknown kinds are already skipped, so the format stays version 1.
-- [ ] First build: measure lidar noise and vibration at the desk, and MR60BHA2 heart-rate quality while typing.
+- [ ] First build: measure the MR60BHA2's heart-rate quality while typing.
 - [x] Look on demand: one picture from the robot's or the computer's camera, described by the local vision model ([vision.md](vision.md)).
 - [x] Reasoning levels and background tasks: one model, the conversation at once, tasks thinking hard with Marvin's tools ([above](#thinking-and-background-tasks)).
 - [ ] Tasks: approvals for tools that write outside this computer (email drafts, calendar events), task results in memory's log.
 - [ ] Level 1 vision: face recognition and pose on the MJPEG stream, as new brain inputs.
 - [ ] Level 1 sound: sound-event classifier; "on a call" detection (voices heard, one person seen).
-- [ ] Lidar: background model of the room, tracking behind the robot, "I was moved" event.
+- [ ] Background model of the room from the camera, "I was moved" event (the lidar's jobs, without the lidar).
 - [ ] Level 2: personal baselines and anomaly events; feedback capture in the app and by voice.
 - [ ] Level 2: the "when to talk" bandit behind break reminders and remarks.
 - [ ] Level 3: camera-teaches-radar posture model, camera-off mode.

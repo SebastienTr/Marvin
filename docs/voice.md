@@ -456,7 +456,7 @@ computer's), and sends it with its profile
 |---|---|---|---|
 | Duplex | no | no | Neither cancels its echo |
 | Echo tail | 0.8 s + the speaker's latency | 0.5 s + 0.05 s | The robot's player says when it has really finished; the Mac's buffer adds its own latency |
-| VAD floor (`vad_min_dbfs`) | -60 dBFS | -55 dBFS | The robot's microphone has 12 dB of gain ([audio.md](audio.md)) and the lidar's motor turns a few centimetres away |
+| VAD floor (`vad_min_dbfs`) | -60 dBFS | -55 dBFS | The robot's microphone has 12 dB of gain ([audio.md](audio.md)) |
 | "Too quiet" (`speech_min_dbfs`) | -50 dBFS | -45 dBFS | Same |
 | VAD aggressiveness | 2 | 3 | Same (WebRTC only) |
 | Silero threshold (`vad_threshold`) | 0.5 | 0.5 | Raised by the calibration when the room's noise sounds like speech |

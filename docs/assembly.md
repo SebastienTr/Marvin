@@ -4,9 +4,9 @@
 
 You need a small screwdriver, a wire stripper and, for two header strips, a soldering iron. The whole build takes an evening.
 
-<p align="center"><img src="images/robot_section.png" alt="Section of the robot: upright shell, 24 GHz radar tilted 10° low in the body with the 60 GHz radar tilted 20° above it, screen vertical and camera tilted 20° in the head, lidar on top" width="760"></p>
+<p align="center"><img src="images/robot_section.png" alt="Section of the robot: upright shell, 24 GHz radar tilted 10° low in the body with the 60 GHz radar tilted 20° above it, screen vertical and camera tilted 20° in the head" width="760"></p>
 
-How it goes together: the **plinth** carries the **sensor sled** (both radars, the lever connectors and the amp) and slides up into the **body**, which is held by four screws through its back wall. The **head** sits on the body through a **TPU gasket and four TPU grommets**, so no rigid part links the lidar motor to the heart-rate radar. Every wire between head and body passes through the hole in the neck.
+How it goes together: the **plinth** carries the **sensor sled** (both radars, the lever connectors and the amp) and slides up into the **body**, which is held by four screws through its back wall. The **head** sits on the body through a **TPU gasket and four TPU grommets**, so no rigid part carries a knock on the head (or a turn of the knob) to the heart-rate radar. Every wire between head and body passes through the hole in the neck.
 
 The 24 GHz radar sits **below** the 60 GHz radar on purpose: the 60 GHz beam leaves the robot upwards, so nothing may stand in front of the upper part of that radar.
 
@@ -17,7 +17,6 @@ The 24 GHz radar sits **below** the 60 GHz radar on purpose: the 60 GHz beam lea
 | Plinth → sensor sled (from below) | M3 × 12 | 2 |
 | Body back wall → sensor sled | M3 × 10, button head | 4 |
 | Neck: grommets → head floor (from inside the body) | M3 × 14 + washer | 4 |
-| Lidar → head | M2.5 × 10 | 3 |
 
 All M3 screws thread-form into the printed pilot holes: no nuts.
 
@@ -25,16 +24,16 @@ All M3 screws thread-form into the printed pilot holes: no nuts.
 
 Solder the 2 × 7 header pins under the XIAO ESP32S3 Sense (long side of the pins pointing away from the camera board) and the 7-pin header on the MAX98357A amp. Skip this step if you bought them pre-soldered.
 
-## 1. Check the lidar on the template
+## 1. Try the electronics on a breadboard (optional)
 
-Lay the lidar on the printed template. Its three holes must fall inside the slots. If they don't, adjust `lidPairDY` / `lidSingleDY` in the CAD and please open an issue with your measurements.
+Before anything goes into the shell, wire the XIAO, the radar, the screen and the amp on a breadboard and flash the `xiao_bench` firmware: its boot self-test says which part answers ([xiao-bench.md](xiao-bench.md)).
 
 ## 2. Head (planned)
 
 1. Drill a 6 mm hole in the smoked acrylic for the camera, file the corners round, peel the film, and clip the window into the face frame.
 2. **Screen** into the face frame, glass against the acrylic, connector at the back.
 3. **XIAO ESP32S3 Sense** into its 20° cradle, lens right behind the hole in the acrylic.
-4. Face frame into the head shell; lidar cable up through the lidar ring; lidar on top with 3 × M2.5 × 10.
+4. Face frame into the head shell.
 
 ## 3. Neck
 
@@ -69,10 +68,9 @@ Plug the other end of the USB-C cable into a charger. You should see:
 
 - the ESP32 LED light up,
 - the MR60BHA2 kit's LED light up,
-- the screen backlight turn on,
-- the lidar start spinning.
+- the screen backlight turn on, then the eyes appear.
 
-If nothing happens, unplug and re-check lines 1 to 5 of the wiring table.
+If nothing happens, unplug and re-check lines 1 to 4 of the wiring table.
 
 ## Check on arrival
 
@@ -80,7 +78,6 @@ These dimensions are not guaranteed by the datasheets. Measure them before print
 
 | What | Designed for | Parameter |
 |---|---|---|
-| Lidar holes | the printed template (step 1) | `lidPairDY`, `lidSingleDY` |
 | MR60BHA2 kit in its case | 54 × 35 × 22 mm | `kitW`, `kitH`, `kitD` |
 | HLK-LD2450 board | 44 × 15 × 1.6 mm | `ldW`, `ldH`, `ldT` |
 | Speaker | 30 × 20 mm face, at most 5 mm deep | `spkL`, `spkH` |

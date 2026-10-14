@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Marvin</title>
-<meta name="description" content="Marvin, a compact open-source desk robot: a 360° lidar on its head, two radars behind its band, a camera and a face behind black glass, a voice. It sees, feels (even your heart rate), hears and speaks.">
+<meta name="description" content="Marvin, a compact open-source desk robot: two radars behind its band, a camera and a face behind black glass, a voice. It sees, feels (even your heart rate), hears and speaks.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,400..900,50..100&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -264,21 +264,21 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   <div>
     <div class="eyebrow"><span class="en">Meet Marvin · open-source desk companion · rev F</span><span class="fr">Voici Marvin · compagnon de bureau open source · rév. F</span></div>
     <h1 style="margin-top:14px"><span class="en">A small robot that <em>notices</em> how you are doing.</span><span class="fr">Un petit robot qui <em>remarque</em> comment tu vas.</span></h1>
-    <p class="lede"><span class="en">A spinning laser on its head maps the room. Two radars behind its band follow the people in it, and measure your breathing and heart rate while you work. A camera and a face live behind black glass. It hears you, and answers.</span><span class="fr">Un laser qui tourne sur sa tête cartographie la pièce. Deux radars derrière sa bande suivent les personnes présentes, et mesurent ta respiration et ton rythme cardiaque pendant que tu travailles. Une caméra et un visage vivent derrière une vitre noire. Il t'entend, et te répond.</span></p>
+    <p class="lede"><span class="en">Two radars behind its band follow the people in the room, and measure your breathing and heart rate while you work. A camera and a face live behind black glass. It hears you, and answers.</span><span class="fr">Deux radars derrière sa bande suivent les personnes présentes dans la pièce, et mesurent ta respiration et ton rythme cardiaque pendant que tu travailles. Une caméra et un visage vivent derrière une vitre noire. Il t'entend, et te répond.</span></p>
     <div class="verbs">
-      <span><b><span class="en">sees</span><span class="fr">voit</span></b> · lidar + <span class="en">camera</span><span class="fr">caméra</span></span>
+      <span><b><span class="en">sees</span><span class="fr">voit</span></b> · <span class="en">camera</span><span class="fr">caméra</span></span>
       <span><b><span class="en">feels</span><span class="fr">ressent</span></b> · radar 24 + 60 GHz</span>
       <span><b><span class="en">hears</span><span class="fr">écoute</span></b> · micro</span>
       <span><b><span class="en">speaks</span><span class="fr">parle</span></b> · <span class="en">voice + eyes</span><span class="fr">voix + yeux</span></span>
     </div>
     <div class="chips">
       <span class="chip state"><span class="en">Rev F · parts ordered, first build next</span><span class="fr">Rév. F · pièces en route, montage ensuite</span></span>
-      <span class="chip">≈ 230 €</span>
+      <span class="chip">≈ 115 €</span>
       <span class="chip">CERN-OHL-P · MIT · CC BY</span>
     </div>
   </div>
   <div class="stage">
-    <img src="images/robot_threequarter.png" alt="The Marvin robot: an upright warm-grey body with an anthracite band, a slightly wider head with a black glass face showing two eyes, an orange knob and a lidar turret on top" width="570" height="831">
+    <img src="images/robot_threequarter.png" alt="The Marvin robot: an upright warm-grey body with an anthracite band, a slightly wider head with a black glass face showing two eyes and an orange knob" width="570" height="831">
     <figure class="facebox" style="margin:0">
       <div class="window"><canvas id="face" width="480" height="560" aria-label="Animated simulation of the robot's face on its 1.69 inch screen"></canvas></div>
       <div class="moods" role="group" aria-label="Mood">
@@ -297,29 +297,27 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <div class="eyebrow"><span class="en">The robot</span><span class="fr">Le robot</span></div>
     <div>
       <h2><span class="en">Upright on the desk, sensors aimed where they matter</span><span class="fr">Droit sur le bureau, les capteurs visent là où il faut</span></h2>
-      <p><span class="en">To read your heart rate at the desk, the 60 GHz radar must aim at your chest, about 20° up. Instead of tilting the whole object, the shell stays upright and the sensors are tilted inside it. They look through a flat 1.6 mm PETG wall, half a wavelength at 60 GHz. The lidar sits on top, with nothing above its laser plane.</span><span class="fr">Pour lire ton rythme cardiaque au bureau, le radar 60 GHz doit viser ta poitrine, environ 20° vers le haut. Au lieu d'incliner tout l'objet, la coque reste droite et les capteurs sont inclinés à l'intérieur. Ils regardent à travers une paroi plate de 1,6 mm en PETG, une demi-longueur d'onde à 60 GHz. Le lidar est au sommet, sans rien au-dessus de son plan laser.</span></p>
+      <p><span class="en">To read your heart rate at the desk, the 60 GHz radar must aim at your chest, about 20° up. Instead of tilting the whole object, the shell stays upright and the sensors are tilted inside it. They look through a flat 1.6 mm PETG wall, half a wavelength at 60 GHz.</span><span class="fr">Pour lire ton rythme cardiaque au bureau, le radar 60 GHz doit viser ta poitrine, environ 20° vers le haut. Au lieu d'incliner tout l'objet, la coque reste droite et les capteurs sont inclinés à l'intérieur. Ils regardent à travers une paroi plate de 1,6 mm en PETG, une demi-longueur d'onde à 60 GHz.</span></p>
     </div>
   </div>
   <div class="gallery">
     <figure><img src="images/robot_front.png" alt="Front view: black glass face with two eyes, camera above them, anthracite band below" loading="lazy" width="685" height="837"><figcaption><span class="en">Front: face, camera, radar band</span><span class="fr">Face : visage, caméra, bande radar</span></figcaption></figure>
     <figure><img src="images/robot_side.png" alt="Side view: upright silhouette, the orange knob on the head" loading="lazy" width="732" height="751"><figcaption><span class="en">Side: upright, one orange knob</span><span class="fr">Profil : droit, une molette orange</span></figcaption></figure>
-    <figure><img src="images/robot_threequarter.png" alt="Three-quarter view of the robot" loading="lazy" width="570" height="831"><figcaption><span class="en">≈ 88 × 80 mm, 15 cm tall</span><span class="fr">≈ 88 × 80 mm, 15 cm de haut</span></figcaption></figure>
+    <figure><img src="images/robot_threequarter.png" alt="Three-quarter view of the robot" loading="lazy" width="570" height="831"><figcaption><span class="en">≈ 88 × 80 mm, 12.5 cm tall</span><span class="fr">≈ 88 × 80 mm, 12,5 cm de haut</span></figcaption></figure>
   </div>
   <div class="anatomy">
     <img src="images/robot_section.png" alt="Section: upright shell, 24 GHz radar tilted 10° low in the body with the 60 GHz radar tilted 20° above it, screen vertical and camera tilted 20° in the head; the radar beam reaches the chest of a seated person" loading="lazy" width="2115" height="662">
     <ul class="parts">
-        <li><i style="background:#1a1a1c"></i><div><b>Lidar</b> · <span><span class="en">on top of the head, turning ten times a second.</span><span class="fr">sur la tête, il tourne dix fois par seconde.</span></span></div></li>
         <li><i style="background:#2A2C30"></i><div><b><span class="en">Head</span><span class="fr">Tête</span></b> · <span><span class="en">screen behind smoked acrylic, camera tilted 20°, the orange knob.</span><span class="fr">écran derrière l'acrylique fumé, caméra inclinée de 20°, la molette orange.</span></span></div></li>
-        <li><i style="background:#7a7d82"></i><div><b><span class="en">Neck damper</span><span class="fr">Cou amortisseur</span></b> · <span><span class="en">TPU, keeps the lidar's vibration away from the heart-rate radar.</span><span class="fr">en TPU, il garde les vibrations du lidar loin du radar cardiaque.</span></span></div></li>
+        <li><i style="background:#7a7d82"></i><div><b><span class="en">Neck damper</span><span class="fr">Cou amortisseur</span></b> · <span><span class="en">TPU, keeps knocks on the head away from the heart-rate radar.</span><span class="fr">en TPU, il garde les chocs sur la tête loin du radar cardiaque.</span></span></div></li>
         <li><i style="background:linear-gradient(180deg,#C9C6C0 0 25%,#2A2C30 25% 75%,#C9C6C0 75%)"></i><div><b><span class="en">Body band</span><span class="fr">Bande du corps</span></b> · <span><span class="en">a filament change that hides both radars; the wall stays 1.6 mm.</span><span class="fr">un changement de filament qui cache les deux radars ; la paroi reste à 1,6 mm.</span></span></div></li>
         <li><i style="background:#CDB88F"></i><div><b><span class="en">Sensor sled</span><span class="fr">Support capteurs</span></b> · <span><span class="en">60 GHz radar at 20°, 24 GHz at 10°, connectors and amp behind.</span><span class="fr">radar 60 GHz à 20°, 24 GHz à 10°, connecteurs et ampli derrière.</span></span></div></li>
       </ul>
       <dl class="specs">
-        <dt><span class="en">Size</span><span class="fr">Taille</span></dt><dd class="mono">≈ 88 × 80 × 150 mm</dd>
-        <dt><span class="en">Laser plane</span><span class="fr">Plan laser</span></dt><dd class="mono">≈ 133 mm</dd>
+        <dt><span class="en">Size</span><span class="fr">Taille</span></dt><dd class="mono">≈ 88 × 80 × 125 mm</dd>
         <dt><span class="en">Gaze</span><span class="fr">Regard</span></dt><dd class="mono"><span class="en">60 GHz radar 20° up: your chest at 0.65–1.1 m</span><span class="fr">radar 60 GHz à 20° : ta poitrine à 0,65–1,1 m</span></dd>
-        <dt><span class="en">Power</span><span class="fr">Alimentation</span></dt><dd class="mono"><span class="en">USB-C 5 V · ≈ 1 A</span><span class="fr">USB-C 5 V · ≈ 1 A</span></dd>
-        <dt><span class="en">Print</span><span class="fr">Impression</span></dt><dd class="mono"><span class="en">≈ 9 parts · PETG + TPU · no supports</span><span class="fr">≈ 9 pièces · PETG + TPU · sans supports</span></dd>
+        <dt><span class="en">Power</span><span class="fr">Alimentation</span></dt><dd class="mono"><span class="en">USB-C 5 V · ≈ 0.7 A</span><span class="fr">USB-C 5 V · ≈ 0,7 A</span></dd>
+        <dt><span class="en">Print</span><span class="fr">Impression</span></dt><dd class="mono"><span class="en">≈ 8 parts · PETG + TPU · no supports</span><span class="fr">≈ 8 pièces · PETG + TPU · sans supports</span></dd>
         <dt><span class="en">Source</span><span class="fr">Source</span></dt><dd class="mono">OpenSCAD · Blender · STL</dd>
       </dl>
     
@@ -331,11 +329,11 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <div class="eyebrow"><span class="en">Four senses</span><span class="fr">Quatre sens</span></div>
     <div>
       <h2><span class="en">It sees, feels, hears and speaks</span><span class="fr">Il voit, ressent, écoute et parle</span></h2>
-      <p><span class="en">Every sensor alone is half-blind. A lidar draws perfect walls but can't tell a person from a coat rack. A radar knows who moves and who breathes, but can't draw the room. Together, on one clock, they make a companion that understands the space it lives in.</span><span class="fr">Chaque capteur seul est à moitié aveugle. Un lidar dessine des murs parfaits mais ne distingue pas une personne d'un portemanteau. Un radar sait qui bouge et qui respire, mais ne sait pas dessiner la pièce. Ensemble, sur une même horloge, ils font un compagnon qui comprend l'espace où il vit.</span></p>
+      <p><span class="en">Every sensor alone is half-blind. A radar knows who moves and who breathes, but can't see what they look like. A camera sees everything, but not distance or breath. Together, on one clock, they make a companion that understands the space it lives in.</span><span class="fr">Chaque capteur seul est à moitié aveugle. Un radar sait qui bouge et qui respire, mais ne voit pas à quoi ils ressemblent. Une caméra voit tout, sauf la distance et le souffle. Ensemble, sur une même horloge, ils font un compagnon qui comprend l'espace où il vit.</span></p>
     </div>
   </div>
   <div class="senses">
-    <article class="sense"><span class="k"><span class="en">Sees</span><span class="fr">Voit</span></span><h3><span class="en">Laser and lens</span><span class="fr">Laser et objectif</span></h3><p><span class="en">The lidar draws the room 360° around, 21 600 points a second. The camera streams to the computer; teaching it to understand what it sees comes next.</span><span class="fr">Le lidar dessine la pièce sur 360°, 21 600 points par seconde. La caméra envoie son image à l'ordinateur ; lui apprendre à comprendre ce qu'elle voit, c'est la suite.</span></p><div class="hw">D800 lidar · OV3660</div></article>
+    <article class="sense"><span class="k"><span class="en">Sees</span><span class="fr">Voit</span></span><h3><span class="en">A lens</span><span class="fr">Un objectif</span></h3><p><span class="en">The camera streams to the computer; teaching it to understand what it sees comes next.</span><span class="fr">La caméra envoie son image à l'ordinateur ; lui apprendre à comprendre ce qu'elle voit, c'est la suite.</span></p><div class="hw">OV3660</div></article>
     <article class="sense"><span class="k"><span class="en">Feels</span><span class="fr">Ressent</span></span><h3><span class="en">Behind the band</span><span class="fr">Derrière la bande</span></h3><p><span class="en">The 24 GHz radar follows up to three people and their speed. The 60 GHz radar, aimed at your chest, measures your breathing and heart rate while you sit at the desk. Numbers, not a diagnosis.</span><span class="fr">Le radar 24 GHz suit jusqu'à trois personnes et leur vitesse. Le radar 60 GHz, pointé vers ta poitrine, mesure ta respiration et ton rythme cardiaque quand tu es assis au bureau. Des mesures, pas un diagnostic.</span></p><div class="hw">HLK-LD2450 · MR60BHA2</div></article>
     <article class="sense"><span class="k"><span class="en">Hears</span><span class="fr">Écoute</span></span><h3><span class="en">A small ear</span><span class="fr">Une petite oreille</span></h3><p><span class="en">The camera board's microphone carries your voice to the computer. Until the robot is built, Marvin listens through the computer's own microphone.</span><span class="fr">Le micro de la carte caméra porte ta voix jusqu'à l'ordinateur. En attendant que le robot soit monté, Marvin écoute avec le micro de l'ordinateur.</span></p><div class="hw"><span class="en">built-in PDM mic</span><span class="fr">micro PDM intégré</span></div></article>
     <article class="sense"><span class="k"><span class="en">Speaks</span><span class="fr">Parle</span></span><h3><span class="en">Eyes and voice</span><span class="fr">Des yeux et une voix</span></h3><p><span class="en">Its eyes blink, follow you and fall asleep. Short sounds are built into the robot; words come from the computer, through its speakers today and the robot's side speaker once built.</span><span class="fr">Ses yeux clignent, te suivent et s'endorment. Les petits sons sont dans le robot ; les mots viennent de l'ordinateur, par ses haut-parleurs aujourd'hui, par le flanc du robot une fois monté.</span></p><div class="hw">1.69" ST7789 · MAX98357A</div></article>
@@ -351,13 +349,13 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
   <div class="sh">
     <div class="eyebrow"><span class="en">What it sees</span><span class="fr">Ce qu'il voit</span></div>
     <div>
-      <h2><span class="en">Five slices of the spectrum, one picture</span><span class="fr">Cinq tranches du spectre, une seule image</span></h2>
-      <p><span class="en">The app's Robot tab shows its world: the lidar outline of the room from above, the people tracked by radar, and breathing and heart rate when someone sits close. The same map on the robot's own screen comes later; here is a simulation of it.</span><span class="fr">L'onglet Robot de l'appli montre son monde : le contour lidar de la pièce vu de dessus, les personnes suivies au radar, et la respiration et le cœur quand quelqu'un est assis tout près. La même carte sur l'écran du robot viendra plus tard ; en voici une simulation.</span></p>
+      <h2><span class="en">Four slices of the spectrum, one picture</span><span class="fr">Quatre tranches du spectre, une seule image</span></h2>
+      <p><span class="en">The app's Robot tab shows its world: the people tracked by radar from above, and breathing and heart rate when someone sits close. The same map on the robot's own screen comes later; here is a simulation of it.</span><span class="fr">L'onglet Robot de l'appli montre son monde : les personnes suivies au radar, vues de dessus, et la respiration et le cœur quand quelqu'un est assis tout près. La même carte sur l'écran du robot viendra plus tard ; en voici une simulation.</span></p>
     </div>
   </div>
   <div class="mapgrid">
     <div class="mapside">
-      <div class="bezel"><canvas id="lcd" width="480" height="560" aria-label="Simulation of the planned map mode: top-down lidar map with two people tracked by radar"></canvas></div>
+      <div class="bezel"><canvas id="lcd" width="480" height="560" aria-label="Simulation of the planned map mode: top-down map with two people tracked by radar"></canvas></div>
       <p class="note"><span class="en">Simulated · on the robot's screen later</span><span class="fr">Simulation · sur l'écran du robot plus tard</span></p>
     </div>
     <div>
@@ -383,13 +381,11 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
           <text x="300" y="36" text-anchor="middle" class="lbl">MR60BHA2</text><text x="300" y="50" text-anchor="middle">60 GHz</text>
           <rect x="631.8" y="86" width="32.7" height="12" rx="3" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"/><line x1="648" y1="86" x2="648" y2="56" stroke="var(--muted)" stroke-dasharray="3 3"/>
           <text x="630" y="36" text-anchor="middle" class="lbl"><tspan class="en">thermal · later</tspan><tspan class="fr">thermique · plus tard</tspan></text><text x="630" y="50" text-anchor="middle">8–14 µm</text>
-          <circle cx="794.4" cy="92" r="7" fill="var(--red)"/><line x1="794.4" y1="85" x2="794.4" y2="56" stroke="var(--red)"/>
-          <text x="760" y="36" text-anchor="middle" class="lbl">Lidar D800</text><text x="760" y="50" text-anchor="middle">905 nm</text>
           <rect x="805.6" y="86" width="37.3" height="12" rx="3" fill="url(#vis)"/><line x1="824" y1="86" x2="824" y2="66" stroke="var(--muted)"/>
           <text x="850" y="62" text-anchor="middle" class="lbl"><tspan class="en">camera</tspan><tspan class="fr">caméra</tspan></text>
         </svg>
       </div>
-      <p class="note"><span class="en">Glass is invisible to the laser, but not to the radar. People are just shapes to the lidar, but the radar knows they breathe. That is why it carries all of them.</span><span class="fr">Une vitre est invisible pour le laser, pas pour le radar. Pour le lidar une personne n'est qu'une forme, le radar sait qu'elle respire. C'est pour ça qu'il les porte tous.</span></p>
+      <p class="note"><span class="en">The camera sees a face, but not that it breathes; the radars feel the breath through the wall, but see no face. That is why it carries both.</span><span class="fr">La caméra voit un visage, pas qu'il respire ; les radars sentent le souffle à travers la paroi, sans voir de visage. C'est pour ça qu'il porte les deux.</span></p>
     </div>
   </div>
 </section>
@@ -406,11 +402,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;display:flex;flex-wrap:
     <svg viewBox="0 0 980 256" role="img" aria-label="Data flow from the sensors to the ESP32-S3 inside the robot, then over Wi-Fi to the computer, and back as expressions and speech">
       <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
       <g font-size="13">
-        <rect x="10" y="14" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--red)"/><text x="24" y="34" class="h">Lidar D800</text><text x="24" y="50" class="s">UART 921 600 · 85 kB/s</text>
         <rect x="10" y="70" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--teal)"/><text x="24" y="90" class="h">Radar 24 GHz</text><text x="24" y="106" class="s">UART 256 000 · 10 Hz</text>
         <rect x="10" y="126" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--line)"/><text x="24" y="146" class="h"><tspan class="en">Camera + mic</tspan><tspan class="fr">Caméra + micro</tspan></text><text x="24" y="162" class="s">DVP · PDM</text>
         <rect x="10" y="190" width="190" height="44" rx="5" fill="var(--bg)" stroke="var(--violet)"/><text x="24" y="210" class="h">Radar 60 GHz</text><text x="24" y="226" class="s"><tspan class="en">own ESP32-C6 · 1 Hz</tspan><tspan class="fr">son propre ESP32-C6 · 1 Hz</tspan></text>
-        <path d="M200 36 H270 V96 H300" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
         <path d="M200 92 H300" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
         <path d="M200 148 H270 V112 H300" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
         <rect x="300" y="60" width="220" height="92" rx="6" fill="var(--bg)" stroke="var(--ink)" stroke-width="1.5"/>
@@ -523,10 +517,10 @@ pio run -e d1_mini -t upload</code><p><span class="en">A Wemos D1 mini (ESP8266)
     </div>
   </div>
   <div class="steps">
-    <div class="step"><div class="big">≈230<small>€</small></div><b><span class="en">Buy</span><span class="fr">Acheter</span></b><p><span class="en">Lidar, two radars, ESP32 camera board, screen, amp and speaker, connectors. Mostly AliExpress.</span><span class="fr">Lidar, deux radars, carte ESP32 caméra, écran, ampli et haut-parleur, connecteurs. Surtout sur AliExpress.</span></p><a href="bom.md"><span class="en">Bill of materials →</span><span class="fr">Liste d'achats →</span></a></div>
-    <div class="step"><div class="big">9<small><span class="en">parts</span><span class="fr">pièces</span></small></div><b><span class="en">Print</span><span class="fr">Imprimer</span></b><p><span class="en">Body, head, sled, frame, plinth, lidar ring, knob, TPU neck and feet. No supports; the band is a filament change. Plus a smoked acrylic window.</span><span class="fr">Corps, tête, support, cadre, socle, bague lidar, molette, cou et pieds en TPU. Sans supports ; la bande est un changement de filament. Plus une vitre en acrylique fumé.</span></p><a href="printing.md"><span class="en">Printing guide →</span><span class="fr">Guide d'impression →</span></a></div>
-    <div class="step"><div class="big">29<small><span class="en">links</span><span class="fr">liaisons</span></small></div><b><span class="en">Wire</span><span class="fr">Câbler</span></b><p><span class="en">Dupont plugs on the ESP32, four lever connectors on the back of the spine. A wire-by-wire table written for beginners.</span><span class="fr">Prises Dupont sur l'ESP32, quatre connecteurs à levier au dos de la colonne. Un tableau fil par fil écrit pour débutants.</span></p><a href="wiring.md"><span class="en">Wiring guide →</span><span class="fr">Guide de câblage →</span></a></div>
-    <div class="step"><div class="big">1<small><span class="en">evening</span><span class="fr">soirée</span></small></div><b><span class="en">Assemble</span><span class="fr">Assembler</span></b><p><span class="en">Radars on the sled, screen and XIAO in the head frame, wires through the neck, close the shells, lidar on top.</span><span class="fr">Radars sur le support, écran et XIAO dans le cadre de la tête, fils par le cou, on referme les coques, le lidar au sommet.</span></p><a href="assembly.md"><span class="en">Assembly guide →</span><span class="fr">Guide d'assemblage →</span></a></div>
+    <div class="step"><div class="big">≈115<small>€</small></div><b><span class="en">Buy</span><span class="fr">Acheter</span></b><p><span class="en">Two radars, ESP32 camera board, screen, amp and speaker, connectors. Mostly AliExpress.</span><span class="fr">Deux radars, carte ESP32 caméra, écran, ampli et haut-parleur, connecteurs. Surtout sur AliExpress.</span></p><a href="bom.md"><span class="en">Bill of materials →</span><span class="fr">Liste d'achats →</span></a></div>
+    <div class="step"><div class="big">8<small><span class="en">parts</span><span class="fr">pièces</span></small></div><b><span class="en">Print</span><span class="fr">Imprimer</span></b><p><span class="en">Body, head, sled, frame, plinth, knob, TPU neck and feet. No supports; the band is a filament change. Plus a smoked acrylic window.</span><span class="fr">Corps, tête, support, cadre, socle, molette, cou et pieds en TPU. Sans supports ; la bande est un changement de filament. Plus une vitre en acrylique fumé.</span></p><a href="printing.md"><span class="en">Printing guide →</span><span class="fr">Guide d'impression →</span></a></div>
+    <div class="step"><div class="big">25<small><span class="en">links</span><span class="fr">liaisons</span></small></div><b><span class="en">Wire</span><span class="fr">Câbler</span></b><p><span class="en">Dupont plugs on the ESP32, four lever connectors on the back of the spine. A wire-by-wire table written for beginners.</span><span class="fr">Prises Dupont sur l'ESP32, quatre connecteurs à levier au dos de la colonne. Un tableau fil par fil écrit pour débutants.</span></p><a href="wiring.md"><span class="en">Wiring guide →</span><span class="fr">Guide de câblage →</span></a></div>
+    <div class="step"><div class="big">1<small><span class="en">evening</span><span class="fr">soirée</span></small></div><b><span class="en">Assemble</span><span class="fr">Assembler</span></b><p><span class="en">Radars on the sled, screen and XIAO in the head frame, wires through the neck, close the shells.</span><span class="fr">Radars sur le support, écran et XIAO dans le cadre de la tête, fils par le cou, on referme les coques.</span></p><a href="assembly.md"><span class="en">Assembly guide →</span><span class="fr">Guide d'assemblage →</span></a></div>
   </div>
   <div class="stripes" aria-hidden="true"><span style="background:#C9C6C0;flex:2"></span><span style="background:#2A2C30;flex:3"></span><span style="background:#C9C6C0;flex:2"></span><span style="background:var(--red);flex:.4"></span></div>
 </section>
@@ -548,7 +542,7 @@ pio run -e d1_mini -t upload</code><p><span class="en">A Wemos D1 mini (ESP8266)
     <div><h2><span class="en">Roadmap</span><span class="fr">Feuille de route</span></h2></div>
   </div>
   <ol class="road">
-    <li class="done"><b><span class="en">Rev A–D · the sensor head</span><span class="fr">Rév. A–D · la tête de capteurs</span></b><span><span class="en">Enclosure, solderless wiring, screen, microphone and speaker, D800 lidar.</span><span class="fr">Boîtier, câblage sans soudure, écran, micro et haut-parleur, lidar D800.</span></span></li>
+    <li class="done"><b><span class="en">Rev A–D · the sensor head</span><span class="fr">Rév. A–D · la tête de capteurs</span></b><span><span class="en">Enclosure, solderless wiring, screen, microphone and speaker, a lidar (dropped in rev F).</span><span class="fr">Boîtier, câblage sans soudure, écran, micro et haut-parleur, un lidar (retiré en rév. F).</span></span></li>
     <li class="done"><b><span class="en">Rev E · Fanou</span><span class="fr">Rév. E · Fanou</span></b><span><span class="en">The desk lighthouse: radars behind the paint, a face, a voice in the island.</span><span class="fr">Le phare de bureau : radars derrière la peinture, un visage, une voix dans l'île.</span></span></li>
     <li class="done"><b><span class="en">Rev F · the upright robot (design)</span><span class="fr">Rév. F · le robot debout (design)</span></b><span><span class="en">Sensors tilted inside, heart rate at the desk, TPU neck damper, black glass face.</span><span class="fr">Capteurs inclinés à l'intérieur, cœur mesuré au bureau, cou amortisseur en TPU, visage en vitre noire.</span></span></li>
     <li class="done"><b><span class="en">Host software</span><span class="fr">Logiciel côté ordinateur</span></b><span><span class="en">Runs today, with a simulated robot: fusion and the Rerun view, presence events, the app, the voice with a local LLM, tools the model can call.</span><span class="fr">Tourne déjà, avec un robot simulé : fusion et vue Rerun, événements de présence, l'appli, la voix avec un LLM local, des outils que le modèle peut appeler.</span></span></li>
@@ -578,13 +572,12 @@ pio run -e d1_mini -t upload</code><p><span class="en">A Wemos D1 mini (ESP8266)
       <span class="k"><span class="en">01 · Hardware</span><span class="fr">01 · Matériel</span></span>
       <h3><span class="en">The robot itself</span><span class="fr">Le robot lui-même</span></h3>
       <ul class="items">
-        <li><div><b><span class="en">Head CAD</span><span class="fr">CAO de la tête</span></b><span><span class="en">Face frame, window, lidar ring and knob, once the screen is measured.</span><span class="fr">Cadre du visage, vitre, bague lidar et molette, une fois l'écran mesuré.</span></span></div><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span></li>
+        <li><div><b><span class="en">Head CAD</span><span class="fr">CAO de la tête</span></b><span><span class="en">Face frame, window and knob, once the screen is measured.</span><span class="fr">Cadre du visage, vitre et molette, une fois l'écran mesuré.</span></span></div><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span></li>
         <li><div><b><span class="en">First build</span><span class="fr">Premier montage</span></b><span><span class="en">Print, assemble, flash the XIAO ESP32-S3 and the MR60BHA2 bridge.</span><span class="fr">Imprimer, assembler, flasher la XIAO ESP32-S3 et la passerelle du MR60BHA2.</span></span></div><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span></li>
-        <li><div><b><span class="en">Checked on real hardware</span><span class="fr">Vérifié sur le vrai matériel</span></b><span><span class="en">Every sensor, the screen, the camera and the audio; lidar noise, heart rate while you type.</span><span class="fr">Chaque capteur, l'écran, la caméra et l'audio ; le bruit du lidar, le cœur pendant que tu tapes.</span></span></div><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span></li>
-        <li><div><b>Calibration</b><span><span class="en">Lidar, camera and radars placed in one frame.</span><span class="fr">Lidar, caméra et radars placés dans un même repère.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">Checked on real hardware</span><span class="fr">Vérifié sur le vrai matériel</span></b><span><span class="en">Every sensor, the screen, the camera and the audio (a breadboard self-test first); heart rate while you type.</span><span class="fr">Chaque capteur, l'écran, la caméra et l'audio (d'abord un auto-test sur breadboard) ; le cœur pendant que tu tapes.</span></span></div><span class="st next"><span class="en">Next</span><span class="fr">Bientôt</span></span></li>
+        <li><div><b>Calibration</b><span><span class="en">Camera and radars placed in one frame.</span><span class="fr">Caméra et radars placés dans un même repère.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
         <li><div><b><span class="en">The orange knob</span><span class="fr">La molette orange</span></b><span><span class="en">Turn it for the volume, tap it to wake Marvin.</span><span class="fr">Tourne-la pour le volume, appuie dessus pour réveiller Marvin.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
-        <li><div><b><span class="en">A quieter lidar</span><span class="fr">Un lidar plus discret</span></b><span><span class="en">On a later revision, its motor sleeps when nobody is there.</span><span class="fr">Sur une prochaine révision, son moteur dort quand personne n'est là.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
-        <li><div><b><span class="en">Variants</span><span class="fr">Variantes</span></b><span><span class="en">Vital signs over a wire instead of Wi-Fi; a 3D lidar.</span><span class="fr">Les signes vitaux par un fil plutôt qu'en Wi-Fi ; un lidar 3D.</span></span></div><span class="st idea"><span class="en">Idea</span><span class="fr">Idée</span></span></li>
+        <li><div><b><span class="en">Variants</span><span class="fr">Variantes</span></b><span><span class="en">Vital signs over a wire instead of Wi-Fi.</span><span class="fr">Les signes vitaux par un fil plutôt qu'en Wi-Fi.</span></span></div><span class="st idea"><span class="en">Idea</span><span class="fr">Idée</span></span></li>
       </ul>
     </article>
 
@@ -641,7 +634,7 @@ pio run -e d1_mini -t upload</code><p><span class="en">A Wemos D1 mini (ESP8266)
         <li><div><b><span class="en">Eyes on your face</span><span class="fr">Les yeux sur ton visage</span></b><span><span class="en">Its eyes follow your face, not only the radar target.</span><span class="fr">Ses yeux suivent ton visage, pas seulement la cible radar.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
         <li><div><b><span class="en">Who, and how you sit</span><span class="fr">Qui, et comment tu es assis</span></b><span><span class="en">Who is there and your posture, from the camera.</span><span class="fr">Qui est là et ta posture, grâce à la caméra.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
         <li><div><b><span class="en">The sounds of the room</span><span class="fr">Les sons de la pièce</span></b><span><span class="en">A door, music, a call in progress: it stays quiet during calls.</span><span class="fr">Une porte, de la musique, un appel en cours : il se tait pendant les appels.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
-        <li><div><b><span class="en">The empty room</span><span class="fr">La pièce vide</span></b><span><span class="en">A lidar model of the room, to tell a person from a chair.</span><span class="fr">Un modèle lidar de la pièce, pour distinguer une personne d'une chaise.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
+        <li><div><b><span class="en">The empty room</span><span class="fr">La pièce vide</span></b><span><span class="en">A model of the room from the radars and the camera, to tell a person from a chair.</span><span class="fr">Un modèle de la pièce par les radars et la caméra, pour distinguer une personne d'une chaise.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
         <li><div><b><span class="en">Behind you</span><span class="fr">Derrière toi</span></b><span><span class="en">Someone coming in behind you; noticing when it has been moved.</span><span class="fr">Quelqu'un qui entre derrière toi ; remarquer qu'on l'a déplacé.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
         <li><div><b><span class="en">Camera off</span><span class="fr">Caméra coupée</span></b><span><span class="en">Radars taught by the camera, to follow you in the dark and without images.</span><span class="fr">Des radars formés par la caméra, pour te suivre dans le noir et sans image.</span></span></div><span class="st"><span class="en">Planned</span><span class="fr">Prévu</span></span></li>
         <li><div><b><span class="en">Pulse from the camera</span><span class="fr">Le pouls par la caméra</span></b><span><span class="en">A second heart rate read on your face, checked against the radar.</span><span class="fr">Un second rythme cardiaque lu sur ton visage, comparé au radar.</span></span></div><span class="st idea"><span class="en">Idea</span><span class="fr">Idée</span></span></li>
@@ -756,7 +749,7 @@ pio run -e d1_mini -t upload</code><p><span class="en">A Wemos D1 mini (ESP8266)
   if (reduce) draw(performance.now()); else requestAnimationFrame(draw);
 })();
 
-/* ---------- map mode: simulated lidar + radar view ---------- */
+/* ---------- map mode: simulated radar view ---------- */
 (function(){
   const cv = document.getElementById('lcd'); const g = cv.getContext('2d');
   const Wpx = cv.width, Hpx = cv.height;
@@ -823,17 +816,6 @@ pio run -e d1_mini -t upload</code><p><span class="en">A Wemos D1 mini (ESP8266)
     // radar fields of view (±60°)
     g.fillStyle = 'rgba(60,195,185,0.07)'; g.beginPath(); g.moveTo(X(0),Y(0)); g.arc(X(0),Y(0),6*scale,-Math.PI/2-Math.PI/3,-Math.PI/2+Math.PI/3); g.closePath(); g.fill();
     g.fillStyle = 'rgba(179,156,245,0.12)'; g.beginPath(); g.moveTo(X(0),Y(0)); g.arc(X(0),Y(0),1.5*scale,-Math.PI/2-Math.PI/3,-Math.PI/2+Math.PI/3); g.closePath(); g.fill();
-    // lidar points, fading with age
-    for (const p of pts){
-      const age = (now - p[2])/2200; if (age > 1) continue;
-      g.fillStyle = `rgba(127,227,218,${(1-age)*0.95+0.05})`;
-      g.fillRect(X(p[0])-1.6, Y(p[1])-1.6, 3.2, 3.2);
-    }
-    // sweep line
-    const sx = Math.sin(sweep), sy = -Math.cos(sweep);
-    const grd = g.createLinearGradient(X(0),Y(0),X(sx*7),Y(sy*7));
-    grd.addColorStop(0, C.sweep+'0.9)'); grd.addColorStop(1, C.sweep+'0)');
-    g.strokeStyle = grd; g.lineWidth = 2; g.beginPath(); g.moveTo(X(0),Y(0)); g.lineTo(X(sx*7),Y(sy*7)); g.stroke();
     // radar targets
     g.font = '500 17px "IBM Plex Mono", monospace';
     let vital = null;
@@ -867,7 +849,7 @@ pio run -e d1_mini -t upload</code><p><span class="en">A Wemos D1 mini (ESP8266)
       g.stroke();
     } else {
       g.fillStyle = C.dim; g.fillText('60 GHz · nobody within 1.5 m', 16, py+22);
-      g.fillText('D800 · 21 600 pts/s · 24 GHz · 2 targets', 16, py+44);
+      g.fillText('24 GHz · 2 targets · 10 Hz', 16, py+44);
     }
   }
 

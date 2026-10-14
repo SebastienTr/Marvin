@@ -242,7 +242,7 @@ The host converts every point into the device frame (X right as seen facing the 
 | Speaker, `AUDIO_OUT` (while speaking) | 16 000 samples/s | 50 | 32 kB/s (33 kB/s with headers) |
 | Camera, MJPEG over TCP (while watched) | VGA, 10 frames/s | – | ≈ 250–400 kB/s |
 
-Even the D800 uses under 1 Mbit/s, well within an ESP8266's Wi-Fi. On the robot, the D800, both audio directions and the camera add up to about 4 Mbit/s: comfortable on a good 2.4 GHz link, and the camera (the largest part) only streams while someone watches.
+Even a D800 lidar uses under 1 Mbit/s, well within an ESP8266's Wi-Fi. On the robot (rev F, no lidar), the radar, both audio directions and the camera add up to about 3.5 Mbit/s: comfortable on a good 2.4 GHz link, and the camera (the largest part) only streams while someone watches.
 
 ## Planned
 

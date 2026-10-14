@@ -2,7 +2,7 @@
 
 All parts come from one parametric OpenSCAD source, [`hardware/cad/marvin.scad`](../hardware/cad/marvin.scad). The STLs in [`hardware/stl/`](../hardware/stl/) are exported already oriented for the print bed, and **none of them needs supports**. Every part fits a 180 × 180 mm bed (Bambu A1 mini and up).
 
-> **Rev F status:** the body half is ready to print (lidar template, body, plinth, sensor sled, TPU parts). The head (face frame, window, lidar ring, knob) comes next, once the 1.69" screen is measured on arrival. The rev E lighthouse parts are archived in [`hardware/archive/rev-e/`](../hardware/archive/rev-e/).
+> **Rev F status:** the body half is ready to print (body, plinth, sensor sled, TPU parts). The head (face frame, window, knob) comes next, once the 1.69" screen is measured on arrival. The rev E lighthouse parts are archived in [`hardware/archive/rev-e/`](../hardware/archive/rev-e/).
 
 ## Bambu Studio project (A1 + AMS lite)
 
@@ -10,10 +10,9 @@ All parts come from one parametric OpenSCAD source, [`hardware/cad/marvin.scad`]
 
 | Plate | Parts | Filament | Time (Bambu Studio estimate) |
 |---|---|---|---:|
-| 1 | Lidar template, **print it first** | PETG anthracite | 12 min |
-| 2 | Body + sensor sled | PETG warm grey, anthracite band from 14 to 44 mm | 2 h 27 |
-| 3 | Plinth | PETG anthracite | 30 min |
-| 4 | Neck gasket, 4 grommets, 4 feet | TPU 95A, **external spool** (not the AMS lite) | 59 min |
+| 1 | Body + sensor sled | PETG warm grey, anthracite band from 14 to 44 mm | 2 h 27 |
+| 2 | Plinth | PETG anthracite | 30 min |
+| 3 | Neck gasket, 4 grommets, 4 feet | TPU 95A, **external spool** (not the AMS lite) | 59 min |
 
 Slots: 1 = PETG warm grey, 2 = PETG anthracite, 3 = TPU black. Textured PEI plate, 0.4 mm nozzle, 0.20 mm layers. The sled also changes colour inside the band: it is hidden in the body, so it does not matter.
 
@@ -23,13 +22,12 @@ Slots: 1 = PETG warm grey, 2 = PETG anthracite, 3 = TPU black. Textured PEI plat
 
 | File | Part | Material | Suggested settings | Notes |
 |---|---|---|---|---|
-| `0_lidar_template.stl` | Lidar template | PLA | 0.2 mm, 2 walls | About 5 min. **Print this first** and test-fit the lidar on it. |
 | `1_body.stl` | Body shell | **PETG**, warm grey + anthracite | 0.2 mm, **4 walls of 0.4 mm = exactly 1.6 mm**, 15 % infill | Printed upside down, deck on the bed. The front wall in front of the radars must stay 1.6 mm and flat. The anthracite band is a filament change (see below). |
 | `2_plinth.stl` | Plinth | PETG or PLA, anthracite | 0.2 mm, 3 walls, 20 % | Closes the body from below. The USB-C cable leaves through the notch at the back. |
 | `3_sensor_sled.stl` | Sensor sled | PETG | 0.2 mm, 3 walls, 20 % | Printed standing, as installed. Carries the 24 GHz radar at 10° and the 60 GHz radar at 20°; the lever connectors and the amp stick on its back plate. |
-| `4_tpu_neck_grommets_feet.stl` | Neck gasket, 4 grommets, 4 feet | **TPU 95A**, black | 0.2 mm, 3 walls, 15 % gyroid, slow (≤ 40 mm/s) | Decouples the head (lidar motor) from the body (heart-rate radar). On the A1, feed it from the external spool holder, not the AMS lite. |
+| `4_tpu_neck_grommets_feet.stl` | Neck gasket, 4 grommets, 4 feet | **TPU 95A**, black | 0.2 mm, 3 walls, 15 % gyroid, slow (≤ 40 mm/s) | Decouples the head from the body (heart-rate radar). On the A1, feed it from the external spool holder, not the AMS lite. |
 
-Coming with the head: head shell, face frame (screen + XIAO cradle), lidar ring and knob. The face window is not printed: it is cut from the 2.3 mm smoked acrylic.
+Coming with the head: head shell, face frame (screen + XIAO cradle) and knob. Rev F has no lidar, so no lidar ring and no lidar template (rev E's is archived). The face window is not printed: it is cut from the 2.3 mm smoked acrylic.
 
 ## The anthracite band
 

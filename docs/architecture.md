@@ -8,7 +8,6 @@ The robot collects, timestamps and forwards data, and it performs: eyes on the s
 flowchart TB
   subgraph Device["Marvin robot"]
     direction LR
-    LID["D800 lidar<br/>≈ 21 600 pts/s"] -->|UART0 921600| FW
     LD2450["LD2450<br/>3 targets @ 10 Hz"] -->|UART1 256000| FW
     CAM["OV3660 camera"] -->|DVP| FW
     MIC["PDM mic"] -->|I2S0| FW
@@ -17,7 +16,7 @@ flowchart TB
     FW -->|"SPI"| LCD["1.69in screen<br/>eyes + mini-map"]
     MR60["MR60BHA2 kit<br/>ESP32-C6"]
   end
-  FW -->|"UDP: lidar + radar frames"| HOST
+  FW -->|"UDP: radar frames + audio"| HOST
   FW -->|"HTTP MJPEG stream"| HOST
   HOST -->|"expressions + speech"| FW
   MR60 -->|"Wi-Fi: vitals"| HOST
@@ -32,14 +31,12 @@ flowchart TB
 
 | Stream | Rate | Bandwidth |
 |---|---|---|
-| Lidar point packets, D800 (12 points each) | ≈ 1 800 packets/s × 47 bytes | ≈ 85 kB/s |
-| Lidar point packets, D500 | ≈ 420 packets/s × 47 bytes | ≈ 20 kB/s |
 | Microphone, 16 kHz 16-bit mono (when streamed) | — | 32 kB/s |
 | LD2450 target frames | 10 Hz × 30 bytes | < 1 kB/s |
 | Camera, MJPEG VGA | ≈ 10–15 fps | ≈ 300–600 kB/s |
 | MR60BHA2 vitals | ≈ 1 Hz | negligible |
 
-Everything fits comfortably in the ESP32-S3's Wi-Fi throughput.
+Everything fits comfortably in the ESP32-S3's Wi-Fi throughput. (Rev F has no lidar. A D800 on the spare D7 pin, as the firmware still supports for the bench, adds about 1 800 packets/s × 47 bytes, ≈ 85 kB/s; a D500 ≈ 20 kB/s.)
 
 ## Design decisions
 
@@ -50,7 +47,8 @@ Everything fits comfortably in the ESP32-S3's Wi-Fi throughput.
 | **WAGO lever connectors** | Solderless, reliable and reusable. | Soldered perfboard |
 | **An upright robot, sensors tilted inside** | To measure heart rate at a desk, the 60 GHz radar must aim at a seated chest, about 20° up. Tilting the whole object (rev E and the early robot sketches) made it look like it was falling backwards. Keeping the shell vertical and tilting the sensors on an internal sled gives the same aim with a calm silhouette. | Tilted face panel (robot v1–v2), lighthouse taper (rev E) |
 | **Radars behind a flat, uniform wall** | No holes in front of the radars keeps the design clean. A 1.6 mm PETG wall is half a wavelength at 60 GHz; seen at 20° incidence it is only about 3 % thicker electrically, which costs almost nothing. The anthracite band is a colour change, not a thickness change. | Open radar windows (rev A–D) |
-| **Head and body decoupled by a TPU damper** | The radar measures sub-millimetre chest motion; the lidar motor spins at 10 Hz on top of the head. The damper keeps that vibration out of the body. | Rigid neck |
+| **No lidar on the robot** (14 October 2026) | The D800 moved to a separate project, a 3D room scanner. Marvin senses people with its two radars and sees with its camera; without the lidar it costs about €115 less, has no motor spinning above the heart-rate radar, and stands about 2 cm lower. The firmware and the host still read a lidar, for the bench and the USB tooling. | The D800 on top of the head (rev D to the first rev F design) |
+| **Head and body decoupled by a TPU damper** | The radar measures sub-millimetre chest motion. The damper keeps a knock on the head, a turn of the knob or the speaker's buzz out of the body. | Rigid neck |
 | **Screen vertical, camera tilted** | An IPS screen reads fine from 20° below, but a camera with a ~65° field of view at desk height would frame your chest. Tilting the XIAO by 20° centres your face. | Tilting the whole face |
 | **Smoked acrylic face window** | Gives the black-glass look while letting the screen through; printed black PETG would be opaque. | Open screen cut-out with a bezel |
 | **Grown-up design language** | The companion is for adults: warm grey, anthracite, one orange knob. Personality comes from the eyes and behaviour, not from decoration. | Cute toy styling (robot v2) |
@@ -71,7 +69,6 @@ Sensor positions (extrinsics) for rev F. Body values come from `hardware/cad/mar
 
 | Sensor | Position (X, Y, Z) mm | Facing |
 |---|---|---|
-| Lidar rotation centre | (0, ≈ 0, ≈ 133) | 360°, 0° to be calibrated. Planned. |
 | Camera | (0, ≈ −38, ≈ 113) | −Y, tilted 20° up. Planned. |
 | Screen centre | (0, ≈ −38, ≈ 92) | −Y, vertical. Planned. |
 | MR60BHA2 case, face centre | (0, −28.4, 41.7) | −Y, tilted 20° up. The antenna is off-centre inside the case (about 7 mm to one side). |
@@ -90,7 +87,9 @@ The 24 GHz radar sits below the 60 GHz one, not above it: the 60 GHz beam leaves
 - [x] Rev E: Fanou, the desk lighthouse companion
 - [x] Rev F design: the upright robot, sensors tilted inside
 - [x] Rev F CAD, body half: body, plinth, sensor sled, TPU neck
-- [ ] Rev F CAD, head: face frame, window, lidar ring, knob (after measuring the screen)
+- [x] Rev F without the lidar (October 2026): two radars, camera, mic, screen, speaker
+- [ ] Rev F CAD, head: face frame, window, knob (after measuring the screen)
+- [x] Firmware: the XIAO bench with a boot self-test ([xiao-bench.md](xiao-bench.md))
 - [ ] First physical build and dimension check
 - [x] Protocol v1, simulated robot on a Wemos D1 mini, host receiver and Rerun viewer
 - [x] Firmware: UART readers, the face on the screen, MR60BHA2 bridge (untested on hardware)
@@ -100,8 +99,8 @@ The 24 GHz radar sits below the 60 GHz one, not above it: the 60 GHz beam leaves
 - [x] Host: Marvin looks on demand, through the robot's camera or the computer's ([vision.md](vision.md))
 - [x] Host: Marvin's own voice (Qwen3-TTS), the voice's device and defaults decided by the Java host, the Python conversation retired
 - [x] Host: reasoning levels and background tasks (one model; tasks with budgets, steps kept, cancel, the voice first), see [intelligence.md](intelligence.md#thinking-and-background-tasks)
-- [ ] Host: camera/lidar extrinsic calibration
+- [ ] Host: camera/radar extrinsic calibration
 - [ ] Companion: tested daily on the real robot, voice through the robot
 - [ ] Companion: perception and learning, see [intelligence.md](intelligence.md)
 - [ ] Next-generation host (Java core, long-term memory, agents, connectors, soul), see [design.md](design.md)
-- [ ] Optional: MR60BHA2 data over UART, 3D lidar variant
+- [ ] Optional: MR60BHA2 data over UART

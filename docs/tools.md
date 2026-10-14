@@ -1,6 +1,6 @@
 # Tools: OTA updates, recordings, calibration
 
-Three things you need once the robot is assembled: flashing it without opening the shell, recording a session to work on it later, and telling the host how the lidar is mounted.
+Three things you need once the robot is assembled: flashing it without opening the shell, recording a session to work on it later, and, when a lidar is used (a bench board or the USB sensor bridge; rev F itself has none), telling the host how it is mounted.
 
 ## Over-the-air firmware updates
 

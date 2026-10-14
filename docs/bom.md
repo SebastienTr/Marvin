@@ -2,17 +2,15 @@
 
 Prices are indicative. They were checked in September 2026 and move often. Pick the best-rated listing rather than the cheapest one, and allow 2–4 weeks for delivery.
 
-**Total: about €230 in parts with the D800 lidar, or about €190 with the D500** (prices checked 26 September 2026, before import fees, see below), in one AliExpress order. Seeed Studio's own shop (Germany warehouse) can be cheaper for the MR60BHA2 kit and the XIAO ESP32S3 Sense when they are in stock there. You provide the USB-C power source: a phone charger or a power bank.
+**Total: about €115 in parts** (prices checked 26 September 2026, before import fees, see below), in one AliExpress order. Seeed Studio's own shop (Germany warehouse) can be cheaper for the MR60BHA2 kit and the XIAO ESP32S3 Sense when they are in stock there. You provide the USB-C power source: a phone charger or a power bank.
 
-Rev F (the upright robot) uses exactly the same electronics as rev D and rev E. It only adds a smoked acrylic face window and a little TPU for the vibration damper.
+Rev F (the upright robot) uses the electronics of rev D and rev E **without the lidar**: since 14 October 2026 Marvin senses the room with its two radars and its camera only. It adds a smoked acrylic face window and a little TPU for the neck damper. (The D800 lidar moved to a separate project, a 3D room scanner. The firmware and the host still read a D500 or D800, on the robot's spare D7 pin or on a USB-serial adapter: [usb-sensors.md](usb-sensors.md).)
 
 ## Sensors and controller
 
 | Part | Qty | Purpose | ≈ € |
 |---|---:|---|---:|
 | [Seeed XIAO ESP32S3 Sense](https://fr.aliexpress.com/item/1005006988111963.html) (official Seeed store on AliExpress, variant "1pc", +€5.44 shipping) | 1 | Controller, camera (OV3660), **built-in PDM microphone** and Wi-Fi. It sits in the head, tilted 20° so the camera sees your face. Ships with loose header pins to solder; the [pre-soldered version](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32S3-Sense-Pre-Soldered-p-6335.html) avoids that step. | 22 |
-| [LDROBOT **D800** lidar kit (STL-27L)](https://fr.aliexpress.com/item/1005010728254952.html), variant "D800 lidar" | 1 | Reference lidar: 360°, 25 m, 21 600 points/s, UART at 921 600 baud. It sits on top of the head. Its footprint (54 × 46.29 mm) matches the LD19 family; check it on the printed template. | 111 |
-| *Cheaper option:* same listing, variant "D500 lidar kit" (STL-19P) | — | 12 m, 5 000 points/s, UART at 230 400 baud, same footprint and connector. | 68 |
 | [Hi-Link HLK-LD2450, KIT-A](https://fr.aliexpress.com/item/1005007316768708.html) (official Hi-Link store) | 1 | 24 GHz radar, tracks up to 3 people. Behind the body band, tilted 10°. KIT-A ships with its cable. | 8 |
 | [Seeed MR60BHA2 kit with XIAO ESP32C6](https://fr.aliexpress.com/item/1005008715574827.html) (Elshare store on AliExpress, variant "MR60BHA2 Sensor", free shipping) | 1 | 60 GHz radar for breathing and heart rate. Behind the body band, on a sled tilted 20° towards the chest of a seated person. It has its own ESP32-C6 and sends data over Wi-Fi. Kept in Seeed's 54 × 35 × 22 mm case, printed from [Seeed's published files](https://www.printables.com/model/1326287-3d-print-enclosure-for-xiao-60ghz-mmwave-sensors-m). | 47 |
 | [1.69" IPS LCD module, 240×280, ST7789](https://fr.aliexpress.com/item/1005007987731480.html), variant "1.69 Inch" | 1 | The face: expressive eyes behind the smoked window, and a mini-map or status on demand. Generic SPI module (the Waveshare one works too, for €15). Measure its board and mounting holes before printing the head frame. | 3 |
@@ -31,7 +29,6 @@ The microphone is already on the XIAO Sense board: nothing to buy.
 
 | Part | Qty | Purpose | ≈ € |
 |---|---:|---|---:|
-| [JST-ZH 1.5 mm 4-pin → Dupont female cables](https://fr.aliexpress.com/item/1005005840702851.html), variant "ZH1.5 to Dupont / 4Pin 10 pieces" | 1 pack | Lidar to ESP32. | 5 |
 | [Dupont jumper wires, female–female, 20 cm](https://fr.aliexpress.com/item/1005012095727159.html) | 1 lot | ESP32 power pins to the lever connectors, the amp's I2S lines, and the runs through the neck. | 2 |
 | [5-port lever connectors, 221-415 type](https://fr.aliexpress.com/item/1005007171193407.html), variant "10pcs-415-Bag" | 1 bag of 10 | Four buses: 5 V, GND-A, GND-B, 3V3 (0.15–4 mm² wire). No tools needed. | 3 |
 | [USB-C male pigtail, 2 wires, 90° plug](https://fr.aliexpress.com/item/1005010089226136.html) | 1 | Powers the MR60BHA2 kit from the 5 V bus; the right-angle plug fits under the kit. | 2 |
@@ -42,8 +39,7 @@ The microphone is already on the XIAO Sense board: nothing to buy.
 | Part | Qty | Purpose | ≈ € |
 |---|---:|---|---:|
 | [Tinted acrylic sheet, 10 × 20 cm, 2.3 mm](https://fr.aliexpress.com/item/1005006782700043.html), variant "Transparent Black" | 1 | The black-glass face window, about 74 × 44 mm (the CAD uses 2.3 mm). Cut with a fine saw or score-and-snap, then file the corners round. Black PETG would hide the screen. | 5 |
-| [TPU filament 95A, 200 g](https://fr.aliexpress.com/item/1005008589285483.html), variant "Black 200g" | ~15 g used | The neck gasket, the four grommets between head and body, and the feet. It keeps the lidar motor's vibration away from the 60 GHz radar. Print it on the A1 outside the AMS. | 13 |
-| M2.5×10 screws | 3 | Lidar on top of the head. They thread-form into the plastic: no nuts. | from your kit |
+| [TPU filament 95A, 200 g](https://fr.aliexpress.com/item/1005008589285483.html), variant "Black 200g" | ~15 g used | The neck gasket, the four grommets between head and body, and the feet. It keeps the head's knocks and the speaker's buzz away from the 60 GHz radar, which measures sub-millimetre chest motion. Print it on the A1 outside the AMS. | 13 |
 | M3 screws | 2 × M3×12, 4 × M3×10 button head, 4 × M3×14 + 4 washers | Plinth to sled, body back wall to sled, neck (through the TPU grommets into the head floor). They thread-form into the plastic: no nuts. See [assembly](assembly.md#screws). | from your kit |
 | [3 mm double-sided foam strips](https://fr.aliexpress.com/item/1005008290401897.html), variant "Square 20X150mm 5pcs" | 1 | Cut into pads that hold both radars on the sled, and the lever connectors, amp and speaker. | 2 |
 
@@ -60,9 +56,9 @@ The microphone is already on the XIAO Sense board: nothing to buy.
 ## Power requirements
 
 - USB-C, 5 V, **at least 2 A**. Any phone charger or modern power bank qualifies.
-- At about 1 A average draw, a 10 000 mAh power bank lasts roughly 5 hours. On a desk, a wall charger is simpler.
+- At about 0.7 A average draw, a 10 000 mAh power bank lasts roughly 7 hours. On a desk, a wall charger is simpler.
 - To flash the firmware, plug the same cable into your computer instead. Never connect both at once.
 
 ## Import fees
 
-AliExpress splits the cart into one order per seller, and since July 2026 each parcel entering the EU pays a small flat import fee (about €1–4, shown only after checkout in each order's details). Ordered from about 15 sellers, the parts above add **roughly €40 of import fees** to the cart total. Buying several items from the same seller keeps it down.
+AliExpress splits the cart into one order per seller, and since July 2026 each parcel entering the EU pays a small flat import fee (about €1–4, shown only after checkout in each order's details). Ordered from about 13 sellers, the parts above add **roughly €35 of import fees** to the cart total. Buying several items from the same seller keeps it down.
