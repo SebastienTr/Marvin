@@ -16,6 +16,9 @@
 //   MARVIN_HAS_CAMERA  MJPEG over HTTP on port 81 (camera/camera_app.h).
 // A LOG with their counters every 10 s while they are in use.
 //
+// The robot's knob (MARVIN_KNOB_PIN, D7 on the XIAO, knob.h): a tap sends BUTTON Talk action 1 on
+// release, holding it 1.5 s sends action 2 once (the host: Talk now, mute). HELLO flag bit 3.
+//
 // Bench parts on the ESP32 DevKits (MARVIN_HAS_BENCH_IO, bench/bench_io.h, docs/wiring-bench.md):
 // the eyes on an SSD1306 OLED (FACE_STATE, FACE_EVENT and SOUND in), Talk and Mute buttons (BUTTON
 // out), a buzzer playing SOUND, and the status LED. Announced in HELLO's flags.
@@ -49,6 +52,7 @@
 #include <WiFiUdp.h>
 
 #include "head/head_logic.h"
+#include "knob.h"
 #include "protocol.h"
 #include "self_test.h"
 #include "sensor_framing.h"
@@ -117,6 +121,10 @@
 #ifndef MARVIN_SELF_TEST
 #define MARVIN_SELF_TEST 0                      // 1: the boot self-test (the XIAO bench)
 #endif
+#ifndef MARVIN_KNOB_PIN
+#define MARVIN_KNOB_PIN -1                      // the robot's knob, a tact switch to GND: 44 (D7) on the XIAO
+#endif
+#define MARVIN_HAS_KNOB (MARVIN_KNOB_PIN >= 0)
 
 // MARVIN_SENSORS=SIM or MARVIN_SENSORS=REAL, turned into a number the preprocessor can compare.
 #ifndef MARVIN_SENSORS
@@ -158,6 +166,14 @@
 
 #if MARVIN_SELF_TEST && !(defined(CONFIG_IDF_TARGET_ESP32S3) && MARVIN_SENSORS_ID == MARVIN_SENSORS_ID_REAL)
 #error "MARVIN_SELF_TEST is for the XIAO bench (xiao_bench: a XIAO ESP32S3 Sense with real sensors, docs/xiao-bench.md)."
+#endif
+
+#if MARVIN_HAS_KNOB && defined(MARVIN_HAS_BENCH_IO)
+#error "MARVIN_KNOB_PIN is the robot's knob; the bench boards have their own Talk and Mute buttons (MARVIN_BUTTON_TALK)."
+#endif
+
+#if MARVIN_HAS_KNOB && MARVIN_KNOB_PIN == 44 && MARVIN_SENSORS_ID == MARVIN_SENSORS_ID_REAL && MARVIN_LIDAR_MODEL != 0
+#error "D7 (GPIO44) is either the knob or a lidar's RX: build with MARVIN_LIDAR_MODEL=0 or MARVIN_KNOB_PIN=-1."
 #endif
 
 #if MARVIN_REAL_SENSORS && !defined(ARDUINO_ARCH_ESP32)
@@ -255,6 +271,9 @@ void send_hello() {
 #endif
 #if defined(MARVIN_HAS_ROOM_SENSORS)
   flags |= room_io::hello_flags();
+#endif
+#if MARVIN_HAS_KNOB
+  flags |= proto::FLAG_BUTTONS;  // the knob: Talk, tap and long press
 #endif
   size_t n = proto::hello(buf + proto::HEADER_SIZE, mac, MARVIN_BOARD, flags, (int8_t)WiFi.RSSI(),
                           millis(), MARVIN_FW_VERSION);
@@ -455,6 +474,36 @@ void link_step(uint32_t ms) {
   }
 #endif
 }
+
+// ---- The knob (the robot) -----------------------------------------------------------------------
+
+#if MARVIN_HAS_KNOB
+knob::Knob the_knob;
+
+void knob_begin() {
+  pinMode(MARVIN_KNOB_PIN, INPUT_PULLUP);  // GPIO44 is UART0 RX at reset: this makes it a plain input
+  the_knob.update(digitalRead(MARVIN_KNOB_PIN) == LOW, millis());
+}
+
+// Tap: BUTTON Talk action 1, long press: action 2 (the host decides: Talk now, mute). No host: the
+// error sound, so a press is never silently lost.
+void knob_step(uint32_t ms) {
+  const knob::Action a = the_knob.update(digitalRead(MARVIN_KNOB_PIN) == LOW, ms);
+  if (a == knob::Action::NONE) return;
+  if (linked) {
+    send(proto::BUTTON, proto::button(buf + proto::HEADER_SIZE, proto::BUTTON_TALK, (uint8_t)a));
+    Serial.printf("knob: %s\n", knob::action_name(a));
+  } else {
+#if defined(MARVIN_HAS_AUDIO)
+    audio_app::play_sound(audio::SOUND_ERROR);
+#endif
+    Serial.printf("knob: %s, but no host yet\n", knob::action_name(a));
+  }
+}
+#else
+void knob_begin() {}
+void knob_step(uint32_t) {}
+#endif
 
 // ---- Room sensors (ESP32 DevKits) -------------------------------------------------------------
 
@@ -863,6 +912,7 @@ void setup() {
 #if MARVIN_SELF_TEST
   audio_begin();  // the chime and the mic level, before Wi-Fi
 #endif
+  knob_begin();
   sensors_begin();
   connect_wifi();
   WiFi.macAddress(mac);
@@ -884,6 +934,7 @@ void loop() {
 #endif
   uint32_t ms = millis();
   link_step(ms);
+  knob_step(ms);
   self_test_step(ms);
   room_step(ms);
   head_step(ms);
