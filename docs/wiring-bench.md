@@ -2,7 +2,7 @@
 
 **A second Marvin on the desk, before the robot: 8 jumper wires on a classic ESP32 DevKit, 6 more for the room sensors, no soldering.** The board runs the simulated sensors and a few real parts: Marvin's eyes on a small OLED screen, a **Talk** button (the app's *Talk now*), a **Mute** button, a buzzer for the chimes, and room sensors: a **PIR** motion sensor, a **DHT11** for the temperature and humidity and, later, a **light sensor**. The host treats it like a robot: the eyes follow the person the brain sees, the buttons drive the voice, and the PIR tells the brain whether someone is really there (the board's radar is simulated).
 
-A variant with a real radar and a servo head that turns to look at you, no PIR or DHT11: [looks-bench.md](looks-bench.md).
+A variant with a real radar and a servo head that turns to look at you, no PIR or DHT11: [looks-bench.md](looks-bench.md). The robot's own XIAO and parts on a breadboard, with a boot self-test: [xiao-bench.md](xiao-bench.md).
 
 Firmware: `MARVIN_HAS_BENCH_IO` ([`firmware/src/bench/`](../firmware/src/bench/)) and `MARVIN_HAS_ROOM_SENSORS` ([`firmware/src/room/`](../firmware/src/room/)), built by the `esp32dev` and `esp32s3` envs. Protocol: the `HELLO` flags, the `BUTTON` message ([protocol.md](protocol.md#buttons)) and the `ENVIRONMENT` message ([protocol.md](protocol.md#room-sensors)).
 
