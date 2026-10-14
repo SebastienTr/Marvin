@@ -81,7 +81,7 @@ These are design constraints, checked in code review and, where possible, in tes
 4. **Sensitivity labels on everything.** Each event and fact carries one of `normal`, `personal`, `sensitive` (health including vital signs, finances, third parties' private matters), `secret` (credentials, codes, never stored: dropped at ingestion). `sensitive` data never goes to a cloud model and is never spoken while someone else is detected in the room.
 5. **Third parties.** People mentioned in email or conversation are remembered only in relation to the owner ("the owner's brother lives in Lyon"), never profiled.
 6. **Export.** One button exports everything as a zip of JSON (machine-readable, the full schema) and Markdown (readable: profile, soul, facts, episodes).
-7. **No dark patterns.** Marvin does not try to increase how much it is used (see [Soul guardrails](#guardrails)).
+7. **No dark patterns.** Marvin does not try to increase how much it is used (see [Soul guardrails](#83-guardrails)).
 
 ## 3. Architecture overview
 
