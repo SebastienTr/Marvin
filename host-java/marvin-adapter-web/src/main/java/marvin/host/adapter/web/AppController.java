@@ -37,7 +37,8 @@ public class AppController {
             script("marvin.js"), script("system.js"), script("attach.js"), script("camera.js"), script("tasks.js"),
             script("markdown.js"), script("ears.js"), script("sensorviews.js"), script("senses.js"), script("radar3d.js"),
             script("three.module.min.js"), script("three-orbit-controls.js"),
-            Map.entry("three-LICENSE.txt", "text/plain; charset=utf-8"));
+            Map.entry("three-LICENSE.txt", "text/plain; charset=utf-8"),
+            script("soul.js"), script("connectors.js"), script("approvals.js"));
 
     private static Map.Entry<String, String> script(String name) {
         return Map.entry(name, "text/javascript; charset=utf-8");
