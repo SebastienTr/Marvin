@@ -36,7 +36,7 @@ flowchart TB
 | Camera, MJPEG VGA | ≈ 10–15 fps | ≈ 300–600 kB/s |
 | MR60BHA2 vitals | ≈ 1 Hz | negligible |
 
-Everything fits comfortably in the ESP32-S3's Wi-Fi throughput. (Rev F has no lidar. A D800 on the spare D7 pin, as the firmware still supports for the bench, adds about 1 800 packets/s × 47 bytes, ≈ 85 kB/s; a D500 ≈ 20 kB/s.)
+Everything fits comfortably in the ESP32-S3's Wi-Fi throughput. (Rev F has no lidar. A D800 on a bench board, as the firmware still supports, adds about 1 800 packets/s × 47 bytes, ≈ 85 kB/s; a D500 ≈ 20 kB/s.)
 
 ## Design decisions
 
@@ -48,7 +48,8 @@ Everything fits comfortably in the ESP32-S3's Wi-Fi throughput. (Rev F has no li
 | **An upright robot, sensors tilted inside** | To measure heart rate at a desk, the 60 GHz radar must aim at a seated chest, about 20° up. Tilting the whole object (rev E and the early robot sketches) made it look like it was falling backwards. Keeping the shell vertical and tilting the sensors on an internal sled gives the same aim with a calm silhouette. | Tilted face panel (robot v1–v2), lighthouse taper (rev E) |
 | **Radars behind a flat, uniform wall** | No holes in front of the radars keeps the design clean. A 1.6 mm PETG wall is half a wavelength at 60 GHz; seen at 20° incidence it is only about 3 % thicker electrically, which costs almost nothing. The anthracite band is a colour change, not a thickness change. | Open radar windows (rev A–D) |
 | **No lidar on the robot** (14 October 2026) | The D800 moved to a separate project, a 3D room scanner. Marvin senses people with its two radars and sees with its camera; without the lidar it costs about €115 less, has no motor spinning above the heart-rate radar, and stands about 2 cm lower. The firmware and the host still read a lidar, for the bench and the USB tooling. | The D800 on top of the head (rev D to the first rev F design) |
-| **Head and body decoupled by a TPU damper** | The radar measures sub-millimetre chest motion. The damper keeps a knock on the head, a turn of the knob or the speaker's buzz out of the body. | Rigid neck |
+| **Head and body decoupled by a TPU damper** | The radar measures sub-millimetre chest motion. The damper keeps a knock on the head, a press on the knob or the speaker's buzz out of the body. | Rigid neck |
+| **The knob is a button** (14 October 2026) | D7 was the last free pin. A tap is the quickest way to talk without saying "Marvin", a long press (1.5 s) mutes the microphone where you can see it; a tact switch costs nothing and needs no new protocol message (`BUTTON`, action 2 for the long press). The volume stays in the app. | A rotary encoder for the volume (two pins: none left); a decorative knob |
 | **Screen vertical, camera tilted** | An IPS screen reads fine from 20° below, but a camera with a ~65° field of view at desk height would frame your chest. Tilting the XIAO by 20° centres your face. | Tilting the whole face |
 | **Smoked acrylic face window** | Gives the black-glass look while letting the screen through; printed black PETG would be opaque. | Open screen cut-out with a bezel |
 | **Grown-up design language** | The companion is for adults: warm grey, anthracite, one orange knob. Personality comes from the eyes and behaviour, not from decoration. | Cute toy styling (robot v2) |
@@ -89,20 +90,23 @@ The 24 GHz radar sits below the 60 GHz one, not above it: the 60 GHz beam leaves
 - [x] Rev E: Fanou, the desk lighthouse companion
 - [x] Rev F design: the upright robot, sensors tilted inside
 - [x] Rev F CAD, body half: body, plinth, sensor sled, TPU neck
-- [x] Rev F without the lidar (October 2026): two radars, camera, mic, screen, speaker
+- [x] Rev F without the lidar (October 2026): two radars, camera, mic, screen, speaker, and the knob on D7
 - [ ] Rev F CAD, head: face frame, window, knob (after measuring the screen)
-- [x] Firmware: the XIAO bench with a boot self-test ([xiao-bench.md](xiao-bench.md))
 - [ ] First physical build and dimension check
 - [x] Protocol v1, simulated robot on a Wemos D1 mini, host receiver and Rerun viewer
 - [x] Firmware: UART readers, the face on the screen, MR60BHA2 bridge (untested on hardware)
 - [x] Firmware: audio, MJPEG camera, OTA (untested on hardware)
-- [x] Host: voice (local), the app, recording and replay, lidar calibration
+- [x] Firmware: the XIAO bench with a boot self-test ([xiao-bench.md](xiao-bench.md))
+- [ ] Firmware: the knob (tap: Talk now, hold: mute), robust Wi-Fi reconnect, the self-test from the robot build
 - [x] Host: presence events (brain) and the face, on simulated data
+- [x] Host: the Java core, at parity with the Python host and now the default (`./marvin up`; design phases 0 to 2, [design.md](design.md#11-migration-plan))
+- [x] Host: memory v1, the new app (design phase 3, [memory.md](memory.md))
 - [x] Host: Marvin looks on demand, through the robot's camera or the computer's ([vision.md](vision.md))
 - [x] Host: Marvin's own voice (Qwen3-TTS), the voice's device and defaults decided by the Java host, the Python conversation retired
 - [x] Host: reasoning levels and background tasks (one model; tasks with budgets, steps kept, cancel, the voice first), see [intelligence.md](intelligence.md#thinking-and-background-tasks)
-- [ ] Host: camera/radar extrinsic calibration
+- [ ] Marvin v1: first-run setup in the app, trustworthy heart rate and breathing, greeting the owner by name, the Soul, approvals, Google Calendar (read) and Gmail drafts (never sent); the Python host's own app retired. Done when the [v1 acceptance checklist](test-plan.md) passes on the real robot
 - [ ] Companion: tested daily on the real robot, voice through the robot
+- [ ] Host: camera/radar extrinsic calibration
 - [ ] Companion: perception and learning, see [intelligence.md](intelligence.md)
-- [ ] Next-generation host (Java core, long-term memory, agents, connectors, soul), see [design.md](design.md)
+- [ ] After v1: connectors over MCP, Wi-Fi set up without `secrets.h`, containers (design phase 6)
 - [ ] Optional: MR60BHA2 data over UART
