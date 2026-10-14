@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Home: Marvin's face and the presence sentence, your decisions (always shown), your day, a small thing
-// remembered, the break timer and breathing, recent moments, the room (once a robot has room sensors: temperature,
+// remembered, the break timer and breathing, heart and breathing over 24 hours (vitals.js), recent moments, the room (once a robot has room sensors: temperature,
 // humidity, light, movement). The modules can be hidden, shown and reordered
 // (keyboard and touch, no dragging); the layout is kept in this browser only and never changes what Marvin
 // senses or does.
@@ -16,6 +16,7 @@ const MODULES = [
   { id: "day", name: "Your day" },
   { id: "memory", name: "A small thing remembered" },
   { id: "body", name: "Breaks and breathing" },
+  { id: "vitals", name: "Heart and breathing" },
   { id: "moments", name: "Recent moments" },
   { id: "room", name: "The room" },
 ];

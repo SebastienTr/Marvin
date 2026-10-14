@@ -61,7 +61,10 @@ class AppFilesTest {
         try (var list = Files.list(appDir())) {
             list.forEach(f -> files.add(f.getFileName().toString()));
         }
-        assertThat(files).isEqualTo(new TreeSet<>(AppController.STATIC_TYPES.keySet()));
+        Set<String> served = new TreeSet<>(AppController.STATIC_TYPES.keySet());
+        // the screens written later (AppController.LATER) are served once their file is there
+        AppController.LATER.stream().filter(f -> !files.contains(f)).forEach(served::remove);
+        assertThat(files).isEqualTo(served);
     }
 
     @Test
@@ -69,7 +72,7 @@ class AppFilesTest {
         Set<String> loaded = new LinkedHashSet<>(matches(STATIC_REF, read("index.html")));
         assertThat(loaded).contains("style.css", "theme.js", "app.js");
         for (String name : AppController.STATIC_TYPES.keySet()) {
-            if (name.endsWith(".js")) {
+            if (name.endsWith(".js") && present(name)) {
                 loaded.addAll(matches(IMPORT, read(name)));
             }
         }
@@ -83,9 +86,25 @@ class AppFilesTest {
         }
     }
 
+    static boolean present(String name) {
+        return AppFilesTest.class.getResource("/app/" + name) != null;
+    }
+
+    @Test
+    void theScreensWrittenLaterAreA404UntilTheirFileIsThere() {
+        for (String name : AppController.LATER) {
+            if (!present(name)) {
+                assertThat(new AppController(null).staticFile(name).getStatusCode().value()).as(name).isEqualTo(404);
+            }
+        }
+    }
+
     @Test
     void nothingComesFromTheNetworkAndNothingIsInline() throws Exception {
         for (String name : AppController.STATIC_TYPES.keySet()) {
+            if (!present(name)) {
+                continue;
+            }
             String text = read(name);
             for (String url : matches(URL, text)) {
                 assertThat(ALLOWED_URLS).as("%s refers to %s", name, url).contains(url);

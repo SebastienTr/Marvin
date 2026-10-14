@@ -94,6 +94,11 @@
           <button type="button" id="customize">Customize</button>
         </header>
 
+        <div class="notice page-notice setup-nudge" id="setup-nudge" role="status" hidden>
+          <p class="notice-title">Marvin is not fully set up yet.</p>
+          <p class="notice-text" id="setup-nudge-text"></p>
+          <a class="button small-button" href="#setup">Continue the setup</a>
+        </div>
         <div class="home-grid" id="home-modules">
           <section class="panel presence" data-module="presence" aria-labelledby="presence-h">
             <div class="orb" id="home-orb"><canvas class="orb-face" id="home-face" role="img" aria-label="Marvin"></canvas></div>
@@ -154,6 +159,21 @@
             </div>
           </section>
 
+          <section class="panel vitals-panel" data-module="vitals" id="vitals" aria-labelledby="vitals-h" data-empty>
+            <div class="panel-head wrap"><h3 id="vitals-h">Heart and breathing</h3><span class="pill" id="vitals-quality">–</span></div>
+            <dl class="day-stats vitals-now">
+              <div><dt>Heart rate</dt><dd id="vitals-hr">–</dd></div>
+              <div><dt>Breathing</dt><dd id="vitals-br">–</dd></div>
+              <div><dt>Distance</dt><dd id="vitals-distance">–</dd></div>
+            </dl>
+            <figure class="vitals-chart">
+              <svg id="vitals-chart" role="img" aria-labelledby="vitals-desc"></svg>
+              <figcaption id="vitals-desc" class="sr"></figcaption>
+              <div class="ticks" id="vitals-axis" aria-hidden="true"></div>
+            </figure>
+            <p class="small muted vitals-note" id="vitals-note">Measured by the MR60BHA2 while you sit still in front of it, one point per minute over the last 24 hours. A reading, not a diagnosis.</p>
+          </section>
+
           <section class="panel moments" data-module="moments" aria-labelledby="moments-h">
             <div class="panel-head"><h3 id="moments-h">Recent moments</h3><a class="small quiet-link" href="#activity">View all</a></div>
             <ol class="recent" id="events"></ol>
@@ -172,6 +192,47 @@
           </section>
         </div>
         <p class="footnote">Everything Marvin sees, hears and remembers stays on this computer.</p>
+      </section>
+
+      <!-- ============================================================ setup -->
+      <section class="view setup-view" data-view="setup" aria-labelledby="setup-title" hidden>
+        <header class="page-header">
+          <div>
+            <p class="label">First run · about ten minutes</p>
+            <h1 id="setup-title" tabindex="-1">Let’s set Marvin <em>up.</em></h1>
+            <p class="intro">Nine short steps: this computer, the robot, then you. Each says what it found and how to fix what is missing. Skip anything you do not have yet: you can come back here any time from Marvin &gt; Preferences.</p>
+          </div>
+          <button type="button" class="quiet" id="setup-later">Finish later</button>
+        </header>
+        <div class="setup-layout">
+          <nav class="panel setup-nav" aria-label="Setup steps">
+            <p class="label setup-progress-label" id="setup-progress-label">&nbsp;</p>
+            <div class="track setup-track" role="progressbar" id="setup-progress" aria-labelledby="setup-progress-label" aria-valuemin="0" aria-valuemax="9" aria-valuenow="0"><i id="setup-progress-fill"></i></div>
+            <ol class="setup-list" id="setup-list"></ol>
+          </nav>
+          <section class="panel setup-card" id="setup-card" aria-labelledby="setup-step-title">
+            <p class="label setup-group" id="setup-group">&nbsp;</p>
+            <h2 class="setup-step-title" id="setup-step-title" tabindex="-1">&nbsp;</h2>
+            <p class="setup-about" id="setup-about"></p>
+            <div class="setup-status" id="setup-status" data-state="checking" role="status" aria-live="polite">
+              <span class="setup-mark" aria-hidden="true"></span>
+              <div><p class="setup-state" id="setup-state">Checking…</p><p class="setup-detail" id="setup-detail"></p></div>
+            </div>
+            <div class="setup-fix" id="setup-fix" hidden>
+              <p class="kv-label">How to fix it</p>
+              <div class="setup-fix-row"><code id="setup-fix-text"></code><button type="button" class="small-button" id="setup-copy">Copy</button></div>
+            </div>
+            <div class="setup-body" id="setup-body"></div>
+            <p class="form-error" id="setup-error" role="alert" hidden></p>
+            <div class="setup-actions">
+              <button type="button" class="quiet" id="setup-back">Back</button>
+              <span class="setup-spacer"></span>
+              <button type="button" class="quiet" id="setup-skip">Skip for now</button>
+              <button type="button" id="setup-check">Check again</button>
+              <button type="button" class="primary" id="setup-next">Continue</button>
+            </div>
+          </section>
+        </div>
       </section>
 
       <!-- ============================================================ talk -->
@@ -589,23 +650,14 @@
               <p class="small mono radar-foot" id="s-radar-foot"></p>
             </div>
           </div>
-          <p class="empty-line muted" id="s-radar-empty" hidden>No radar connected. An LD2450 follows up to three people; an MR60BHA2 reads breathing and heart rate.</p>
+          <p class="empty-line muted" id="s-radar-empty" hidden>No radar connected. The robot’s HLK-LD2450 follows up to three people in front of it.</p>
         </section>
 
         <div class="senses-grid" role="group" aria-labelledby="sees-h">
-          <section class="panel" aria-labelledby="s-lidar-h">
-            <div class="panel-head wrap"><h3 id="s-lidar-h">Lidar</h3><span class="small muted mono" id="s-lidar-meta"></span></div>
-            <div class="segmented range-choice" role="radiogroup" aria-label="Lidar range">
-              <label><input type="radio" name="s-range" value="auto" checked><span>Auto</span></label>
-              <label><input type="radio" name="s-range" value="0.5"><span>0.5 m</span></label>
-              <label><input type="radio" name="s-range" value="1"><span>1 m</span></label>
-              <label><input type="radio" name="s-range" value="2"><span>2 m</span></label>
-              <label><input type="radio" name="s-range" value="4"><span>4 m</span></label>
-              <label><input type="radio" name="s-range" value="8"><span>8 m</span></label>
-            </div>
-            <canvas class="scope" id="s-lidar" role="img" aria-label="Top view from the lidar: the robot in the middle facing up, each return as a dot, the nearest one circled."></canvas>
-            <dl class="metrics" id="s-lidar-metrics"></dl>
-            <p class="empty-line muted" id="s-lidar-empty" hidden>No lidar connected. A lidar on the robot, or on a USB adapter beside this computer, shows its scan here.</p>
+          <section class="panel" aria-labelledby="s-vitals-h">
+            <div class="panel-head"><h3 id="s-vitals-h">Vital signs</h3><span class="small muted" id="s-vitals-meta"></span></div>
+            <dl class="metrics" id="s-vitals"></dl>
+            <p class="empty-line muted" id="s-vitals-empty" hidden>No vital-sign radar. An MR60BHA2 reads breathing and heart rate while someone sits still in front of Marvin.</p>
           </section>
           <section class="panel" aria-labelledby="s-cam-h">
             <div class="panel-head"><h3 id="s-cam-h">Camera</h3><span class="pill" id="s-cam-pill">–</span></div>
@@ -648,7 +700,7 @@
         </div>
 
         <h2 class="senses-h" id="feels-h">Feels</h2>
-        <div class="senses-grid three" role="group" aria-labelledby="feels-h">
+        <div class="senses-grid" role="group" aria-labelledby="feels-h">
           <section class="panel" aria-labelledby="s-presence-h">
             <div class="panel-head"><h3 id="s-presence-h">Presence</h3><span class="pill" id="s-presence-source">–</span></div>
             <p class="presence-word" id="s-presence-word">–</p>
@@ -660,10 +712,24 @@
             <dl class="metrics" id="s-room"></dl>
             <p class="empty-line muted" id="s-room-empty" hidden>No room sensors. The bench board's PIR and DHT11 add motion, temperature, humidity and light.</p>
           </section>
-          <section class="panel" aria-labelledby="s-vitals-h">
-            <div class="panel-head"><h3 id="s-vitals-h">Vital signs</h3><span class="small muted" id="s-vitals-meta"></span></div>
-            <dl class="metrics" id="s-vitals"></dl>
-            <p class="empty-line muted" id="s-vitals-empty" hidden>No vital-sign radar. An MR60BHA2 reads breathing and heart rate while someone sits still in front of Marvin.</p>
+        </div>
+
+        <div id="s-lidar-section" hidden>
+          <h2 class="senses-h" id="s-lidar-title">Lidar</h2>
+          <p class="small muted senses-sub">Marvin itself has no lidar: this is a lidar linked to this computer (on a USB adapter, or an older robot board).</p>
+          <section class="panel" aria-labelledby="s-lidar-h">
+            <div class="panel-head wrap"><h3 id="s-lidar-h">Lidar</h3><span class="small muted mono" id="s-lidar-meta"></span></div>
+            <div class="segmented range-choice" role="radiogroup" aria-label="Lidar range">
+              <label><input type="radio" name="s-range" value="auto" checked><span>Auto</span></label>
+              <label><input type="radio" name="s-range" value="0.5"><span>0.5 m</span></label>
+              <label><input type="radio" name="s-range" value="1"><span>1 m</span></label>
+              <label><input type="radio" name="s-range" value="2"><span>2 m</span></label>
+              <label><input type="radio" name="s-range" value="4"><span>4 m</span></label>
+              <label><input type="radio" name="s-range" value="8"><span>8 m</span></label>
+            </div>
+            <canvas class="scope" id="s-lidar" role="img" aria-label="Top view from the lidar: the robot in the middle facing up, each return as a dot, the nearest one circled."></canvas>
+            <dl class="metrics" id="s-lidar-metrics"></dl>
+            <p class="empty-line muted" id="s-lidar-empty" hidden>No scan yet from the lidar.</p>
           </section>
         </div>
 
@@ -698,10 +764,11 @@
             <section class="panel" aria-labelledby="rv-h">
               <h3 id="rv-h">Robot &amp; voice</h3>
               <div class="device-status"><span class="pill" id="device-pill">–</span><p id="device-line">–</p></div>
-              <div class="system-item"><div><h3>Room sensors</h3><p id="sensors-line">Lidar, presence and breathing</p></div><a class="button small-button" href="#marvin/robot">Inspect</a></div>
+              <div class="system-item"><div><h3>Sensors</h3><p id="sensors-line">Radar, camera, microphone; heart and breathing with the MR60BHA2 kit</p></div><a class="button small-button" href="#marvin/robot">Inspect</a></div>
               <div class="system-item"><div><h3>Voice</h3><p id="system-voice-line">–</p></div><a class="button small-button" href="#marvin/voice">Manage</a></div>
               <div class="system-item"><div><h3>Camera</h3><p id="camera-line">–</p></div><a class="button small-button" href="#marvin/voice">Test</a></div>
               <div class="system-item"><div><h3>System</h3><p id="system-line">Services, models, storage and the log</p></div><a class="button small-button" href="#marvin/system">Open</a></div>
+              <div class="system-item"><div><h3>Setup</h3><p id="setup-line">The first-run checks, any time</p></div><a class="button small-button" href="#setup">Open</a></div>
             </section>
             <section class="panel" aria-labelledby="soul-h">
               <div class="row"><h3 id="soul-h">Soul</h3><span class="pill">Coming later</span></div>
@@ -737,7 +804,7 @@
               <div class="panel-head"><h3 id="screen-h">The robot’s screen</h3><span class="small muted">now</span></div>
               <div class="screen"><img id="face" src="/face.png" width="240" height="280" alt="Marvin's face as the robot's screen shows it"></div>
             </section>
-            <section class="panel" aria-labelledby="lidar-h">
+            <section class="panel" aria-labelledby="lidar-h" id="lidar-panel" hidden>
               <div class="panel-head"><h3 id="lidar-h">Lidar</h3><span class="small muted" id="lidar-meta"></span></div>
               <canvas class="scope" id="lidar" role="img" aria-label="Top view of the room from the lidar: the robot in the middle facing up, the last scan around it, and the person the radar follows."></canvas>
               <p class="small muted">Top view, the robot faces up; the scale follows the scan and the nearest return is circled. Zoom, distances and rates in <a href="#senses">Senses</a>.</p>
@@ -975,6 +1042,28 @@
 
         <div class="sub" data-sub="preferences" data-of="marvin" hidden>
           <div class="system-grid">
+            <div class="stack">
+              <form class="panel form" id="owner-form" aria-labelledby="owner-h">
+                <h3 id="owner-h">You</h3>
+                <p class="hint">Marvin greets you by your name when you sit down, in the language you last spoke. Kept on this computer.</p>
+                <div class="field">
+                  <label for="o-name">Your name</label>
+                  <input id="o-name" type="text" maxlength="40" autocomplete="given-name" spellcheck="false">
+                </div>
+                <fieldset class="field">
+                  <legend>Languages you speak to Marvin</legend>
+                  <div class="chips lang-chips" id="o-languages"></div>
+                  <p class="hint">Up to four, the one you use most first.</p>
+                </fieldset>
+                <fieldset class="field" id="o-greetings">
+                  <legend>Greetings</legend>
+                  <label class="check"><input id="o-greet" type="checkbox"><span>Greet me by name when I sit down</span></label>
+                  <label class="check"><input id="o-welcome" type="checkbox"><span>Say “welcome back” after a break</span></label>
+                  <p class="hint" id="o-greet-hint">The voice’s settings: saving them restarts Marvin’s voice for a few seconds.</p>
+                </fieldset>
+                <p class="form-error" id="owner-error" role="alert" hidden></p>
+                <div class="actions"><span class="saved muted" id="owner-saved" role="status"></span><a class="button quiet" href="#setup">Run the setup again</a><button type="submit" class="primary">Save</button></div>
+              </form>
             <form class="panel form" id="settings-form" aria-labelledby="general-h">
               <h3 id="general-h">Breaks, clock and sounds</h3>
               <div class="field">
@@ -1001,6 +1090,7 @@
               <p class="form-error" id="settings-error" role="alert" hidden></p>
               <div class="actions"><span class="saved muted" id="settings-saved" role="status"></span><button type="submit" class="primary">Save</button></div>
             </form>
+            </div>
             <div class="stack">
               <section class="panel form" aria-labelledby="appearance-h">
                 <h3 id="appearance-h">Appearance</h3>

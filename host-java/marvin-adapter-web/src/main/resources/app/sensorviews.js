@@ -321,3 +321,9 @@ export function deviceItem(d) {
 
 /** Whether an LD2450 sends targets now (its field of view is worth drawing). */
 export const radarLive = (devices) => (devices || []).some((d) => d.online && d.rates && d.rates.radar > 0);
+/**
+ * A lidar is linked: a device sends scans (the USB sensor bridge, an older board), or the scene has a recent one.
+ * Marvin rev F has no lidar: its panels show only then.
+ */
+export const lidarLinked = (devices, scene) => (devices || []).some((d) => d.online && d.rates && d.rates.scans > 0)
+  || !!(scene && scene.lidar && scene.lidar.age_s != null && scene.lidar.age_s < 30);

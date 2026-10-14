@@ -106,7 +106,7 @@ final class Senses {
             }
             default -> out.add(k.lidar()
                     ? "No presence sensor: the lidar sees shapes, but cannot tell a person from furniture."
-                    : "No presence sensor connected: Marvin cannot tell whether someone is here.");
+                    : "No presence sensor connected: Marvin cannot tell whether someone is here. The robot's LD2450 radar does.");
         }
         if (s.vitalsSensor() || k.vitals()) {
             out.add(s.breathRate() != null || s.heartRate() != null

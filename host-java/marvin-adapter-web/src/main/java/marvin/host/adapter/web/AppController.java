@@ -36,9 +36,14 @@ public class AppController {
             script("memory.js"), script("memviews.js"), script("memtools.js"), script("worker.js"), script("activity.js"),
             script("marvin.js"), script("system.js"), script("attach.js"), script("camera.js"), script("tasks.js"),
             script("markdown.js"), script("ears.js"), script("sensorviews.js"), script("senses.js"), script("radar3d.js"),
-            script("three.module.min.js"), script("three-orbit-controls.js"),
-            Map.entry("three-LICENSE.txt", "text/plain; charset=utf-8"),
-            script("soul.js"), script("connectors.js"), script("approvals.js"));
+            script("three.module.min.js"), script("three-orbit-controls.js"), script("setup.js"), script("vitals.js"),
+            script("soul.js"), script("connectors.js"), script("approvals.js"),
+            Map.entry("three-LICENSE.txt", "text/plain; charset=utf-8"));
+    /**
+     * Screens another stream writes (Soul, connections, approvals: Marvin v1, W4), served once their file is there and
+     * wired into the app later: until then, a 404.
+     */
+    static final java.util.Set<String> LATER = java.util.Set.of("soul.js", "connectors.js", "approvals.js");
 
     private static Map.Entry<String, String> script(String name) {
         return Map.entry(name, "text/javascript; charset=utf-8");
@@ -55,7 +60,7 @@ public class AppController {
         this.face = face;
     }
 
-    @GetMapping({"/", "/index.html"})
+    @GetMapping({"/", "/index.html", "/setup"})
     public ResponseEntity<byte[]> index() {
         return file("index.html");
     }
@@ -115,6 +120,9 @@ public class AppController {
     private ResponseEntity<byte[]> file(String name) {
         String type = STATIC_TYPES.get(name);
         if (type == null) {
+            return Responses.error(404, "not found");
+        }
+        if (LATER.contains(name) && AppController.class.getResource("/app/" + name) == null) {
             return Responses.error(404, "not found");
         }
         byte[] body = files.computeIfAbsent(name, AppController::load);

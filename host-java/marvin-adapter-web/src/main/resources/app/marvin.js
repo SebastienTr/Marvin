@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
-// Marvin: the companion's capabilities and setup. An overview (robot and voice, Soul and connections as honest
-// "later" entries, preferences), the robot (devices with their link and firmware, the robot's own screen, lidar
-// top view, radar, vital signs; offline and stale shown as such), voice and models (the voice's settings, the camera
-// (camera.js), Ollama, memory's models), and the preferences (breaks, quiet hours, clock, sounds, appearance, Home layout, language,
-// tools and home place). System is system.js.
+// Marvin: the companion's capabilities and setup. An overview (robot and voice, the first-run setup, Soul and
+// connections as honest "later" entries, preferences), the robot (devices with their link and firmware, the robot's
+// own screen, radar, vital signs, and a lidar's top view when one is linked; offline and stale shown as such), voice and
+// models (the voice's settings, the camera (camera.js), Ollama, memory's models), and the preferences (you: name,
+// languages and greetings; breaks, quiet hours, clock, sounds, appearance, Home layout, language, tools and home
+// place). System is system.js.
 
 import { $, app, el, api, post, on, emit, toast } from "./core.js";
 import { earcons } from "./talk.js";
-import { deviceItem, drawLidar as drawLidarView, drawRadar as drawRadarView, drawSpark, drawWave, fmtDistance, radarLive } from "./sensorviews.js";
+import { deviceItem, drawLidar as drawLidarView, drawRadar as drawRadarView, drawSpark, drawWave, fmtDistance, radarLive, lidarLinked } from "./sensorviews.js";
+import { languageChips, chosenLanguages, status as setupStatus } from "./setup.js";
 import * as camera from "./camera.js";
 import * as ears from "./ears.js";
 
@@ -24,7 +26,7 @@ function renderOverview() {
   if (s && !s.online && robots.length) {
     // devices that sense no presence (a lidar alone, the USB sensor bridge): live, but nobody can be seen
     pill.textContent = "Sensors only";
-    line.textContent = `${robots.map((d) => d.label).join(", ")} connected: the lidar is live in Robot. Presence needs a radar (LD2450 or MR60BHA2).`;
+    line.textContent = `${robots.map((d) => d.label).join(", ")} connected, without a presence sensor. Presence needs a radar (the robot's LD2450, or the MR60BHA2 kit).`;
   } else if (!s || !s.online) {
     pill.textContent = "Not connected";
     line.textContent = devices.length ? "The robot stopped answering. It reconnects on its own when it is back on the network." : "No robot has said hello yet. Power it on, on the same network as this computer.";
@@ -40,6 +42,10 @@ function renderOverview() {
     : v.state === "error" ? `Unavailable: ${v.error}` : v.state === "unavailable" ? "Not available on this host" : v.state === "starting" ? "Starting…" : "Off";
   const vs = app.voiceSettings;
   $("internet-line").textContent = !vs ? "–" : vs.tools === false ? "Tools off: Marvin stays offline" : vs.internet === false ? "Off: Marvin stays fully offline" : "On: the weather asks Open-Meteo, with the place name only";
+  const st = setupStatus();
+  const ready = st ? st.steps.filter((x) => x.state !== "missing").length : null;
+  $("setup-line").textContent = !st ? "The first-run checks, any time" : st.done ? "Done: everything is ready or skipped"
+    : `${ready} of ${st.steps.length} steps ready or skipped`;
   $("break-line").textContent = `Every ${app.settings.break_interval_min || 50} minutes seated${app.settings.quiet_hours && app.settings.quiet_hours.enabled ? `, quiet ${app.settings.quiet_hours.start}–${app.settings.quiet_hours.end}` : ""}`;
 }
 
@@ -77,6 +83,9 @@ function renderRobotNotice() {
 // ------------------------------------------------------------------ robot: sensor views (drawn by sensorviews.js)
 
 function drawLidar() {
+  const linked = lidarLinked(devices, scene);
+  $("lidar-panel").hidden = !linked;
+  if (!linked) return;
   const { range, stats } = drawLidarView($("lidar"), scene, { radar: radarLive(devices) });
   const lidar = scene && scene.lidar;
   $("lidar-meta").textContent = !lidar ? "no scan yet"
@@ -181,6 +190,7 @@ async function loadSettings() {
     form.querySelector(`input[name="clock"][value="${s.clock}"]`).checked = true;
     $("f-sounds").checked = s.ui_sounds !== false;
     syncQuiet();
+    fillOwner(s);
     const about = $("about-data");
     about.replaceChildren();
     if (r.about && r.about.data_dir) {
@@ -330,6 +340,7 @@ async function loadVoiceForm() {
     app.voiceSettings = v.settings;
     fillVoiceForm(v.settings);
     fillWorld(v.settings);
+    fillGreetings(v.settings);
     if (v.settings) {
       voiceOptions = await api("/api/voice/options");
       ears.setOptions(voiceOptions);
@@ -430,6 +441,50 @@ function setupMemoryModels() {
   });
 }
 
+// ------------------------------------------------------------------ you: the owner (an app setting) and the greetings (voice settings)
+
+let ownerChips = null;
+
+function fillOwner(settings) {
+  const o = (settings && settings.owner) || { name: "", languages: [] };
+  $("o-name").value = o.name || "";
+  ownerChips = languageChips("o-lang", o.languages || []);
+  $("o-languages").replaceWith(ownerChips);
+  ownerChips.id = "o-languages";
+}
+
+function fillGreetings(v) {
+  const available = !!v;
+  for (const id of ["o-greet", "o-welcome"]) $(id).disabled = !available;
+  if (!available) { $("o-greet-hint").textContent = "The voice’s settings: available when the voice can run on this host."; return; }
+  $("o-greet").checked = v.greet_on_sit !== false;
+  $("o-welcome").checked = !!v.welcome_back;
+}
+
+function setupOwner() {
+  $("owner-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const err = $("owner-error");
+    err.hidden = true;
+    try {
+      const r = await post("/api/settings", { owner: { name: $("o-name").value.trim(), languages: chosenLanguages(ownerChips) } });
+      emit("settings", r.settings);
+      const v = app.voiceSettings;
+      let restarts = false;
+      if (v && !$("o-greet").disabled && (v.greet_on_sit !== $("o-greet").checked || !!v.welcome_back !== $("o-welcome").checked)) {
+        const rv = await post("/api/voice/settings", { greet_on_sit: $("o-greet").checked, welcome_back: $("o-welcome").checked });
+        app.voiceSettings = rv.settings;
+        emit("voice", rv.voice);
+        restarts = rv.voice.state === "on" || rv.voice.state === "starting";
+      }
+      flash("owner-saved", restarts ? "Saved. Marvin’s voice restarts." : "Saved");
+    } catch (e) {
+      err.textContent = e.message;
+      err.hidden = false;
+    }
+  });
+}
+
 // ------------------------------------------------------------------ language and the outside world (voice settings)
 
 function fillWorld(s) {
@@ -517,6 +572,8 @@ export function setup() {
   setupVoiceForm();
   setupMemoryModels();
   setupWorld();
+  setupOwner();
+  on("setup", renderOverview);
   on("state", renderOverview);
   on("state", () => { if (app.view === "marvin" && app.sub === "robot") renderRobotNotice(); });
   on("connection", () => { if (app.view === "marvin" && app.sub === "robot") renderRobotNotice(); });

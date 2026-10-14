@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
-// Senses: everything Marvin sees, hears and feels, live, for an engineer (docs/ui.md, "Senses"). The lidar with its
-// range, the radar in 3D (radar3d.js, loaded when first shown; the flat 2D fan one click away), the camera on demand (a live preview only when asked, a few pictures a minute, never kept), what
-// the vision model said last; the microphone's level, the voice activity, the end-of-turn decisions, what was heard
-// and what became of it; presence and the evidence for it, the room, the vital signs; what Marvin thinks with and how
-// long the last answer took; every device and its link. One stream (/api/senses/stream), open only while this screen
-// is on screen; nothing is stored.
+// Senses: everything Marvin sees, hears and feels, live, for an engineer (docs/ui.md, "Senses"), in the order of the
+// rev F robot's senses: the radar in 3D (radar3d.js, loaded when first shown; the flat 2D fan one click away), the
+// vital-signs radar (MR60BHA2), the camera on demand (a live preview only when asked, a few pictures a minute, never
+// kept) and what the vision model said last; the microphone's level, the voice activity, the end-of-turn decisions,
+// what was heard and what became of it; presence and the evidence for it, the room; a lidar with its range only when
+// one is linked (Marvin has none); what Marvin thinks with and how long the last answer took; every device and its
+// link. One stream (/api/senses/stream), open only while this screen is on screen; nothing is stored.
 
 import { $, app, el, api, on, local, canvas2d, fmtSeconds, fmtTime, timeEl } from "./core.js";
 import {
-  palette, drawLidar, drawRadar, deviceItem, metric, fmtRate, fmtDistance, radarLive, describeTarget, LIDAR_RANGES,
+  palette, drawLidar, drawRadar, deviceItem, metric, fmtRate, fmtDistance, radarLive, lidarLinked, describeTarget, LIDAR_RANGES,
 } from "./sensorviews.js";
 import { timingSegments } from "./inspector.js";
 
@@ -47,6 +48,9 @@ function range() {
 }
 
 function renderLidar() {
+  const linked = lidarLinked(s.devices, s.scene);
+  $("s-lidar-section").hidden = !linked;
+  if (!linked) return;
   const lidar = s.scene && s.scene.lidar;
   const lidarDevice = s.devices.some((d) => d.online && d.rates && d.rates.scans > 0);
   const { range: meters, stats } = drawLidar($("s-lidar"), s.scene, { range: range(), radar: radarLive(s.devices) });
@@ -379,7 +383,9 @@ function renderFeels() {
     : p.seated ? `Here, seated${p.distance_m != null ? ` · ${p.distance_m.toFixed(2)} m` : ""}` : `Here${p.distance_m != null ? ` · ${p.distance_m.toFixed(2)} m` : ""}`;
   $("s-reasons").replaceChildren(...p.reasoning.map((r) => el("li", null, r)));
   const k = f.sensors;
-  const chips = [["Lidar", k.lidar], ["Radar", k.radar], ["Vital signs", k.vitals], ["PIR", k.pir], ["Climate", k.climate], ["Light", k.light], ["Camera: not for presence", false]];
+  // the rev F robot's sensors first; a lidar only when one is linked (it sees shapes, not people)
+  const chips = [["Radar", k.radar], ["Vital signs", k.vitals], ["PIR", k.pir], ["Climate", k.climate], ["Light", k.light], ["Camera: not for presence", false]];
+  if (k.lidar || lidarLinked(s.devices, s.scene)) chips.push(["Lidar", k.lidar]);
   $("s-sensor-chips").replaceChildren(...chips.map(([n, on]) => {
     const li = el("li", on ? "on" : "", n);
     li.setAttribute("aria-label", `${n}: ${on ? "live" : "not connected"}`);
@@ -554,8 +560,8 @@ const stream = {
       es.addEventListener("scene", (m) => {
         s.scene = json(m);
         drawSees();
-        const scans = s.devices.filter((d) => d.online && d.rates && d.rates.scans > 0).reduce((a, d) => a + d.rates.scans, 0);
-        setLive("live", scans ? `Live · ${fmtRate(scans)} scans/s` : "Live");
+        const frames = s.devices.filter((d) => d.online && d.rates && d.rates.radar > 0).reduce((a, d) => a + d.rates.radar, 0);
+        setLive("live", frames ? `Live · radar ${fmtRate(frames)} frames/s` : "Live");
       });
       es.addEventListener("devices", (m) => { s.devices = json(m); renderDevices(); });
       es.addEventListener("senses", (m) => { applySummary(json(m)); renderFeels(); renderThinks(); renderEars(); });

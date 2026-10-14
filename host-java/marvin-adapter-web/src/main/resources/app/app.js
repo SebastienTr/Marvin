@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Marvin's app, the Java host's: the shell (six destinations, a rail on a computer and a bar on a phone), the
 // appearance, the connection, and the one event stream that feeds every screen. Each screen is its own module:
-// home.js, talk.js, memory.js, activity.js, senses.js (with its own stream, open while it is on screen), marvin.js. Plain ES modules, no build step, no network access
-// beyond this host.
+// home.js (with vitals.js), talk.js, memory.js, activity.js, senses.js (with its own stream, open while it is on screen),
+// marvin.js; and the first-run setup (setup.js, #setup or /setup), a full screen of its own, opened by itself until the
+// setup is done or put off. Plain ES modules, no build step, no network access beyond this host.
 
 import { $, app, api, emit, on, toast } from "./core.js";
 import { Face, setFaceState } from "./face.js";
@@ -14,8 +15,10 @@ import * as marvin from "./marvin.js";
 import * as senses from "./senses.js";
 import * as system from "./system.js";
 import * as tasks from "./tasks.js";
+import * as setupView from "./setup.js";
+import * as vitals from "./vitals.js";
 
-const VIEWS = ["home", "talk", "memory", "activity", "senses", "marvin"];
+const VIEWS = ["home", "talk", "memory", "activity", "senses", "marvin", "setup"];
 const SUBS = { activity: ["", "history"], marvin: ["", "robot", "voice", "system", "preferences"] };
 // earlier addresses, still honoured (bookmarks, the phone's home screen)
 const OLD = { robot: "marvin/robot", history: "activity/history", settings: "marvin/preferences", "activity/log": "marvin/system" };
@@ -23,7 +26,8 @@ const OLD = { robot: "marvin/robot", history: "activity/history", settings: "mar
 // ------------------------------------------------------------------ navigation
 
 function route() {
-  let h = (location.hash || "#home").slice(1);
+  // /setup, the address ./marvin prints for the first run, is the setup screen too
+  let h = (location.hash || (location.pathname === "/setup" ? "#setup" : "#home")).slice(1);
   if (OLD[h]) {
     h = OLD[h];
     history.replaceState(null, "", `#${h}`);
@@ -156,7 +160,7 @@ function connect() {
     if (app.state) setConnection(app.state.online ? "live" : "offline");
   });
   for (const name of ["today", "event", "settings", "voice", "level", "utterance", "partial", "say", "log", "devices", "memory", "camera",
-    "task", "task_step"]) {
+    "task", "task_step", "vitals"]) {
     es.addEventListener(name, (m) => emit(name, json(m)));
   }
   es.addEventListener("transcript", (m) => emit("transcript", { entry: json(m), fresh: true }));
@@ -211,6 +215,8 @@ async function init() {
   senses.setup();
   system.setup();
   tasks.setup();
+  setupView.setup();
+  vitals.setup();
   try {
     const r = await api("/api/state");
     app.settings = r.settings;
@@ -222,8 +228,10 @@ async function init() {
     setConnection("lost");
     toast("Cannot reach Marvin’s host.");
   }
+  // the first run: the setup opens by itself, until it is done or put off ("Finish later"); an address chosen wins
+  if (!location.hash && location.pathname !== "/setup" && await setupView.wanted()) history.replaceState(null, "", "#setup");
   setupNav();
-  await Promise.all([home.load(), talk.load(), memory.load(), activity.load(), tasks.load()].map((p) => p.catch(() => {})));
+  await Promise.all([home.load(), talk.load(), memory.load(), activity.load(), tasks.load(), vitals.load()].map((p) => p.catch(() => {})));
   connect();
   let resizeTimer;
   window.addEventListener("resize", () => {
