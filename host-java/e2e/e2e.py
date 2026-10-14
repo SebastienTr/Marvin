@@ -263,7 +263,10 @@ def home(browser):
     page.goto(BASE + "/#home")
     page.wait_for_timeout(500)
     order = page.eval_on_selector_all("#home-modules > *", "n => n.map(x => (x.dataset.module || x.id) + (x.hidden ? '-' : ''))")
-    check("Home layout reset", order == ["presence", "home-decision", "day", "memory", "body", "moments"], str(order))
+    # the vitals and room cards hide themselves without their sensor: only their place is checked
+    shown = [o.rstrip("-") if o.rstrip("-") in ("vitals", "room") else o for o in order]
+    check("Home layout reset", shown == ["presence", "home-decision", "day", "memory", "body", "vitals", "moments", "room"],
+          str(order))
     # a decision: a forget proposal made in the app waits on Home until confirmed or dropped
     listed = api("/api/memory/facts?filter=all")
     facts = listed["facts"]
