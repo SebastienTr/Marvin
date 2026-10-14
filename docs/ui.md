@@ -263,7 +263,7 @@ The Python host (`marvin-host run`, `marvin-host ui`) keeps the older app, on th
 </p>
 
 <p align="center">
-  <img src="images/ui_robot.png" alt="The Robot panel: the robot and the vital signs radar with board, firmware, Wi-Fi signal, link and rates; a lidar top view of the room; the LD2450 radar's field of view with the person; breathing and heart rate charts" width="800">
+  <img src="images/ui_robot.png" alt="The Robot panel: the robot and the vital signs radar with board, firmware, Wi-Fi signal, link and rates; a USB lidar's top view of the room; the LD2450 radar's field of view with the person; breathing and heart rate charts" width="800">
 </p>
 
 ### Try it
@@ -314,7 +314,7 @@ beside the face and the day, so the Talk tab disappears.
 | Problems | If the voice cannot start, the panel says why and how to fix it: the `voice` extra is not installed (`pip install -e ".[voice]"`), no microphone, Ollama not running (`ollama serve`), the model not pulled (`ollama pull qwen3:4b-instruct`). **Try again** after fixing it. |
 | **Robot** | |
 | Devices | Each device that said hello: the robot, the MR60BHA2 vital signs radar, the simulator. Board, firmware, address, uptime, Wi-Fi signal (bars and dBm), link (live, or how long since the last packet: a device that sends nothing for 6 s is offline), datagrams per second, loss, CRC errors, lidar scans per second and points, radar frames per second, and what it has (camera, speaker and microphone, simulated data). |
-| Lidar | A top view of the last scan (one range per degree), rings every metre, the robot in the middle facing up, and the person the LD2450 follows (orange) with their path over the last five seconds. |
+| Lidar | Only when a lidar is linked (a USB or bench one): a top view of the last scan (one range per degree), rings every metre, the robot in the middle facing up, and the person the LD2450 follows (orange) with their path over the last five seconds. |
 | Radar | The LD2450's field of view (±60°) with the people it tracks and their paths. |
 | Vital signs | Breathing and heart rate over the last five minutes, and their waves over the last fifteen seconds, while the MR60BHA2 can read them. |
 | Log | The brain's events, the devices' own messages (`LOG`, e.g. "firmware up"), devices connecting and disconnecting, the voice turning on and off, and the host's warnings and errors, newest first. Filter by Marvin, Devices, Voice or Warnings. |
@@ -362,7 +362,7 @@ variables; `host-java/e2e/e2e.py` walks it in a browser.
 | `worker.js` | Memory's worker, shown on Memory and Activity |
 | `activity.js` | Approvals (today: a request to forget), today's moments, History with the days and weeks in Marvin's words |
 | `tasks.js`, `markdown.js` | Background tasks in Activity (live, results, the steps' inspector, the form) and Thinking & tasks in Voice & models; a small Markdown reader built with DOM nodes only (a task's result) |
-| `senses.js`, `sensorviews.js` | Senses and its stream; the sensor views Senses and Marvin > Robot share (the lidar with its range and nearest return, the radar, the vital signs' sparklines, a device and its link) |
+| `senses.js`, `sensorviews.js` | Senses and its stream; the sensor views Senses and Marvin > Robot share (a USB or bench lidar with its range and nearest return, the radar, the vital signs' sparklines, a device and its link) |
 | `radar3d.js`, `three.module.min.js`, `three-orbit-controls.js` | The radar in 3D on Senses, loaded when first shown; three.js r170 and its OrbitControls, vendored (MIT, `three-LICENSE.txt`) |
 | `marvin.js`, `system.js` | The overview, the robot's page, voice and models, preferences; System (services, restart, the log) |
 

@@ -215,7 +215,7 @@ The camera does not use UDP: the robot serves it over **HTTP on TCP port 81**, a
 | `http://<ip>:81/capture` | One JPEG (`Content-Length`, `X-Marvin-Time-Us`) |
 | `http://<ip>:81/` | An HTML page showing the stream |
 
-Each part is `--marvinframe` CRLF, its headers, an empty line, the JPEG, CRLF. `X-Marvin-Time-Us` is the robot clock when the frame was captured, the same clock as the UDP headers' `t_us`, so frames line up with the lidar and radar data. VGA (640 × 480), at most 10 frames/s by default. Up to 4 clients at once share each frame; a fifth gets `503`. Responses carry `Access-Control-Allow-Origin: *`. Host client: [`host/marvin_host/camera_stream.py`](../host/marvin_host/camera_stream.py).
+Each part is `--marvinframe` CRLF, its headers, an empty line, the JPEG, CRLF. `X-Marvin-Time-Us` is the robot clock when the frame was captured, the same clock as the UDP headers' `t_us`, so frames line up with the radar data (and a bench lidar's). VGA (640 × 480), at most 10 frames/s by default. Up to 4 clients at once share each frame; a fifth gets `503`. Responses carry `Access-Control-Allow-Origin: *`. Host client: [`host/marvin_host/camera_stream.py`](../host/marvin_host/camera_stream.py).
 
 ## Sensor frames
 

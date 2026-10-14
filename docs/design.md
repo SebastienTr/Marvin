@@ -145,7 +145,7 @@ flowchart TB
 | Direction | Port | Adapter (first) | Notes |
 |---|---|---|---|
 | In | `WebApi` | Spring MVC, SSE | Same endpoints as today's app (see [ui.md](ui.md)), plus new sections |
-| In | `RobotInbound` | UDP 47100, protocol v1 | Handshake, parsing, loss counting, lidar revolutions |
+| In | `RobotInbound` | UDP 47100, protocol v1 | Handshake, parsing, loss counting, lidar revolutions (a USB or bench lidar) |
 | In | `Schedule` | Spring scheduling | Nightly consolidation, weekly reflection, connector sync, idle detection |
 | In | `VoiceEvents` | gRPC stream from the voice sidecar | `heard`, `ignored`, `status`, `level`, `partial`, `say` progress |
 | Out | `RobotOutbound` | UDP | `HOST_ACK`, `FACE_STATE`, `FACE_EVENT`, `AUDIO_OUT`, `AUDIO_CTRL`, `SOUND` |
@@ -261,7 +261,7 @@ Onion architecture already forbids adapter-to-adapter dependencies and any depen
 | UI API contract | The existing app keeps working unchanged | JSON snapshots of today's endpoints, recorded from the Python server in demo mode, replayed against the Java server |
 | LLM behaviour | Tool choice, extraction quality | A small evaluation set run on demand (not in CI): questions → expected tool calls; conversations → expected facts. Scored, tracked over time |
 
-**Golden files.** The Python tests generate their recordings on the fly (`record.write_simulated`); they are not in the repository. Phase 0 adds a script that writes a few small recordings (walk in, sit, stand up, leave; vitals acquired and lost; a lidar yaw offset) and, next to each, the Python brain's events and presence states as JSON Lines. These files are the contract: the Java brain must produce the same events at the same device times. They are regenerated only on purpose, and the diff is reviewed.
+**Golden files.** The Python tests generate their recordings on the fly (`record.write_simulated`); they are not in the repository. Phase 0 adds a script that writes a few small recordings (walk in, sit, stand up, leave; vitals acquired and lost; a bench lidar's yaw offset) and, next to each, the Python brain's events and presence states as JSON Lines. These files are the contract: the Java brain must produce the same events at the same device times. They are regenerated only on purpose, and the diff is reviewed.
 
 ## 4. The ML reality: sidecars
 

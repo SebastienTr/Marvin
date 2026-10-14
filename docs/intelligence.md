@@ -63,7 +63,7 @@ Assembly work, all local on Apple Silicon:
 
 ### Level 3: sensors teaching each other (the original part)
 
-- **The camera teaches the radars.** From synchronised recordings, a pose model labels every moment automatically (seated, leaning, standing, walking, head down, absent, who). A small model (1D CNN or GRU) then learns the same labels from radar and lidar alone. The result is a camera-off mode that works in the dark and respects privacy, with most of the same understanding.
+- **The camera teaches the radars.** From synchronised recordings, a pose model labels every moment automatically (seated, leaning, standing, walking, head down, absent, who). A small model (1D CNN or GRU) then learns the same labels from the radars alone (and a USB lidar's scans, where there is one). The result is a camera-off mode that works in the dark and respects privacy, with most of the same understanding.
 - **Two independent heart rates.** Remote photoplethysmography (rPPG) reads the pulse from tiny colour changes in the face. Compared with the 60 GHz radar, each one checks the other, and Marvin knows when its measurements can be trusted. rPPG through a compressed 10–15 fps stream at desk light is an experiment, not a promise.
 - **Discovered states.** Clustering the fused features over days (a hidden Markov model or similar) splits your time into recurring modes: focused, restless, tired, away. No labels are needed; you name the clusters afterwards, with the LLM's help.
 
