@@ -25,6 +25,9 @@ import urllib.request
 
 from playwright.sync_api import sync_playwright
 
+# the app opens the first-run setup on a fresh host: these checks start from Home
+SETUP_LATER = "try { localStorage.setItem(\'marvin.setup.later\', \'true\'); } catch (e) {}"
+
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8765"
 STUB_LOG = os.environ.get("STUB_LOG", "")
 OUT = os.environ.get("OUT", "tasks-shots")
@@ -73,6 +76,7 @@ def wait(cond, seconds=30):
 def context(browser, size, theme):
     viewport, dpr = SIZES[size]
     ctx = browser.new_context(viewport=viewport, device_scale_factor=dpr, is_mobile=size == "phone", has_touch=size == "phone")
+    ctx.add_init_script(SETUP_LATER)  # the first-run setup is setup.py's
     ctx.add_init_script(f"try {{ localStorage.setItem('marvin.appearance', JSON.stringify('{theme}')); }} catch (e) {{}}")
     page = ctx.new_page()
     page.on("console", lambda m: m.type == "error" and errors.append(f"{size}/{theme}: {m.text}"))

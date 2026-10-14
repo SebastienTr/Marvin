@@ -9,9 +9,17 @@ sensor bridge) and the voice sidecar in its test mode with scripted phrases (`MA
 - the empty states say what is missing (no radar, no room sensors, no vital-sign radar, no camera, the voice off);
 - Day and Night at 1440x900 and 390x844, 320 px without sideways scrolling, no console error.
 
+With `--no-lidar`, against a host without a lidar (the rev F robot; `./marvin demo` with `MARVIN_DEMO_SIMULATOR=false`,
+or the robot itself): the senses in the rev F order (the radar, the vital-signs radar and the camera under Sees, then
+Hears, then Feels), no lidar panel on Senses or Marvin > Robot, no lidar chip, no lidar in Marvin > Overview, both
+appearances at both sizes, 320 px.
+
 Screenshots go to `$OUT` (default `senses-shots/`)."""
 import json, os, sys, time, urllib.request
 from playwright.sync_api import sync_playwright
+
+# the app opens the first-run setup on a fresh host: these checks start from Home
+SETUP_LATER = "try { localStorage.setItem(\'marvin.setup.later\', \'true\'); } catch (e) {}"
 
 BASE = os.environ.get("BASE", "http://localhost:8765")
 OUT = os.environ.get("OUT", "senses-shots")
@@ -59,9 +67,25 @@ def wait_for(fn, timeout=30, step=0.3):
     return None
 
 
+def has_vitals_history():
+    try:
+        urllib.request.urlopen(BASE + "/api/vitals?hours=1", timeout=10).close()
+        return True
+    except Exception:
+        return False
+
+
+VITALS_HISTORY = has_vitals_history()
+
+
 def context(browser, size, theme):
     viewport, dpr = SIZES[size]
     ctx = browser.new_context(viewport=viewport, device_scale_factor=dpr, is_mobile=size == "phone", has_touch=size == "phone")
+    ctx.add_init_script(SETUP_LATER)  # the first-run setup is setup.py's
+    if not VITALS_HISTORY:
+        # Home asks for the vitals history (contract C3) before this host has it: an empty one, not a 404
+        ctx.route("**/api/vitals*", lambda r: r.fulfill(status=200, content_type="application/json",
+                                                         body='{"current": null, "minutes": []}'))
     # the appearance, and no calibration dialog over the screen
     ctx.add_init_script(f"try {{ localStorage.setItem('marvin.appearance', JSON.stringify('{theme}')); "
                         f"localStorage.setItem('marvin.ears.offered', '1'); }} catch (e) {{}}")
@@ -83,6 +107,7 @@ def lidar(page, size, theme):
     page.goto(BASE + "/#senses")
     ok = wait_for(lambda: page.evaluate(POINT_PIXELS, "s-lidar") > 150, 15)
     n = page.evaluate(POINT_PIXELS, "s-lidar")
+    check(f"{size}/{theme}: a linked lidar gets its panel", page.is_visible("#s-lidar-section"))
     check(f"{size}/{theme}: Senses draws the lidar's points", ok, f"{n} point pixels, {page.inner_text('#s-lidar-meta')}")
     nearest = page.inner_text("#s-lidar-metrics")
     check(f"{size}/{theme}: nearest obstacle and scans/s", "Nearest" in nearest and "cm" in nearest and "Scans" in nearest,
@@ -143,8 +168,34 @@ def hearing(page):
     api("/api/voice/on", {})
 
 
+ORDER_JS = """() => [...document.querySelectorAll('section.view[data-view="senses"] h2.senses-h, section.view[data-view="senses"] .panel h3')]
+  .filter((h) => h.offsetParent !== null).map((h) => h.textContent.trim())"""
+
+
+def without_lidar(page, size, theme):
+    page.goto(BASE + "/#senses")
+    check(f"{size}/{theme}: live", wait_for(lambda: page.get_attribute("#senses-live", "data-state") == "live", 15))
+    page.wait_for_timeout(1500)
+    order = page.evaluate(ORDER_JS)
+    want = ["Thinks", "Sees", "Radar", "Vital signs", "Camera", "Hears", "Microphone", "What it heard", "Feels", "Presence", "Room",
+            "Devices"]
+    check(f"{size}/{theme}: the rev F order", [h for h in order if h in want] == want, " > ".join(order))
+    check(f"{size}/{theme}: no lidar panel without a lidar", not page.is_visible("#s-lidar-section"))
+    chips = page.locator("#s-sensor-chips li").all_inner_texts()
+    check(f"{size}/{theme}: no lidar chip", "Lidar" not in chips, ", ".join(chips))
+    page.screenshot(path=f"{OUT}/senses-revf-{theme}-{size}.png", full_page=True)
+    page.goto(BASE + "/#marvin/robot")
+    page.wait_for_timeout(1500)
+    check(f"{size}/{theme}: Marvin > Robot without a lidar card", not page.is_visible("#lidar-panel"))
+    page.goto(BASE + "/#marvin")
+    page.wait_for_timeout(800)
+    overview = page.inner_text('.sub[data-sub=""][data-of="marvin"]')
+    check(f"{size}/{theme}: no lidar in Marvin > Overview", "lidar" not in overview.lower(), page.inner_text("#sensors-line"))
+
+
 def narrow(browser):
     ctx = browser.new_context(viewport={"width": 320, "height": 700})
+    ctx.add_init_script(SETUP_LATER)  # the first-run setup is setup.py's
     page = ctx.new_page()
     page.goto(BASE + "/#senses")
     page.wait_for_timeout(1500)
@@ -154,11 +205,16 @@ def narrow(browser):
 
 
 def main():
+    no_lidar = "--no-lidar" in sys.argv
     with sync_playwright() as p:
         browser = p.chromium.launch()
         for size in SIZES:
             for theme in ("day", "night"):
                 ctx, page = context(browser, size, theme)
+                if no_lidar:
+                    without_lidar(page, size, theme)
+                    ctx.close()
+                    continue
                 lidar(page, size, theme)
                 if size == "desktop" and theme == "day":
                     ranges(page)

@@ -10,6 +10,9 @@ banner, 320 px without sideways scrolling, console errors. The facts it adds are
 import json, os, sys, time, urllib.request
 from playwright.sync_api import sync_playwright
 
+# the app opens the first-run setup on a fresh host: these checks start from Home
+SETUP_LATER = "try { localStorage.setItem(\'marvin.setup.later\', \'true\'); } catch (e) {}"
+
 BASE = os.environ.get("BASE", "http://localhost:8765")
 OUT = os.environ.get("OUT", "final-shots")
 TAG = sys.argv[1] if len(sys.argv) > 1 else "demo"
@@ -48,6 +51,7 @@ def wait_for(fn, timeout=30, step=0.5):
 def context(browser, size, theme):
     viewport, dpr = SIZES[size]
     ctx = browser.new_context(viewport=viewport, device_scale_factor=dpr, is_mobile=size == "phone", has_touch=size == "phone")
+    ctx.add_init_script(SETUP_LATER)  # the first-run setup is setup.py's
     ctx.add_init_script(f"try {{ if (!sessionStorage.getItem('e2e')) {{ sessionStorage.setItem('e2e', '1'); "
                         f"localStorage.setItem('marvin.appearance', JSON.stringify('{theme}')); localStorage.removeItem('marvin.home'); localStorage.setItem('marvin.ears.offered', '1'); }} }} catch (e) {{}}")
     page = ctx.new_page()
@@ -211,6 +215,7 @@ def states(browser):
     ctx.close()
     del errors[seen:]                                  # the aborted stream is this check's own doing
     ctx = browser.new_context(viewport={"width": 320, "height": 700}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    ctx.add_init_script(SETUP_LATER)  # the first-run setup is setup.py's
     page = ctx.new_page()
     page.on("pageerror", lambda e: errors.append(f"320: pageerror {e}"))
     wide = []
