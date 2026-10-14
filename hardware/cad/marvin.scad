@@ -232,7 +232,7 @@ module ghosts(cut=false) {
 
 // Print orientations
 module print_body()     translate([0, 0, bodyZ1]) rotate([180, 0, 0]) body();
-module print_plinth()   plinth();
+module print_plinth()   translate([0, 0, floorZ]) rotate([180, 0, 0]) plinth();   // floor plate on the bed: no ledge to bridge
 module print_sled()     translate([0, 0, -floorZ]) sled();
 module print_tpu() {                      // gasket + 4 grommets + 4 feet, one TPU plate
     translate([0, 0, -bodyZ1]) neck();
