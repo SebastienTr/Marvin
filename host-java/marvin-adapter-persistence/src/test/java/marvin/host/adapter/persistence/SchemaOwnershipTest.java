@@ -28,6 +28,7 @@ class SchemaOwnershipTest {
             Map.entry("JdbcVitalsStore.java", "presence"),
             Map.entry("JdbcConversationStore.java", "conversation"),
             Map.entry("JdbcTaskStore.java", "conversation"),
+            Map.entry("JdbcApprovalStore.java", "conversation"),
             Map.entry("JdbcSettingsStore.java", "settings"),
             Map.entry("JdbcEventLog.java", "memory"),
             Map.entry("JdbcFactStore.java", "memory"),

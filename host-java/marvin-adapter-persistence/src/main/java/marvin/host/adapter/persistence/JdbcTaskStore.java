@@ -78,7 +78,7 @@ public class JdbcTaskStore implements TaskStore {
     @Override
     public int interruptUnfinished(double at, String error) {
         return jdbc.sql("UPDATE conversation.task SET status = 'interrupted', finished_at = ?, error = ? "
-                        + "WHERE status IN ('queued', 'running')")
+                        + "WHERE status IN ('queued', 'running', 'needs_approval')")
                 .params(at, error).update();
     }
 
