@@ -42,7 +42,8 @@
     "tasks_settings",
     "task_unknown",
     "senses",
-    "vitals"
+    "vitals",
+    "approvals"
   ],
   "post": [
     "settings_break_45",
@@ -102,11 +103,8 @@
     "get": {
       "setup": "W5",
       "soul": "W4",
-      "approvals": "W4",
       "connectors": "W4"
     },
-    "sse": {
-      "approval": "W4"
-    }
+    "sse": {}
   }
 }

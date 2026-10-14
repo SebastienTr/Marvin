@@ -56,6 +56,14 @@ public final class AccessFilter implements Filter {
             "/api/memory/forget/cancel", "/api/memory/forget-everything", "/api/memory/profile", "/api/memory/profile/restore",
             "/api/memory/settings", TaskController.START_PATH, TaskController.CANCEL_PATH, TaskController.SETTINGS_PATH);
     static final Set<String> PUBLIC = Set.of("/icon.png", "/favicon.ico", "/manifest.webmanifest");
+    /**
+     * The POST routes of the soul, the approvals and the connectors (docs/design.md 6.3, 7.3, 8), some with an id in the
+     * path.
+     */
+    static final java.util.regex.Pattern INTELLIGENCE_POSTS = java.util.regex.Pattern.compile(
+            "/api/soul/(core|learned|revert|reflect|proposal/\\d{1,18}/(approve|reject))"
+                    + "|/api/approvals/\\d{1,18}/(approve|reject)"
+                    + "|/api/connectors/[a-z_]{1,40}/(connect|disconnect)");
 
     static final byte[] LOCKED_PAGE = """
             <!doctype html>
@@ -113,7 +121,7 @@ public final class AccessFilter implements Filter {
                 denied(rs, why, path);
                 return;
             }
-            if (!POST_PATHS.contains(path)) {
+            if (!POST_PATHS.contains(path) && !INTELLIGENCE_POSTS.matcher(path).matches()) {
                 write(rs, 404, Responses.JSON, error("not found"));
                 return;
             }

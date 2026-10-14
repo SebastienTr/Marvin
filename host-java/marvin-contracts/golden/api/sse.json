@@ -1135,10 +1135,9 @@
         },
         "approval": {
           "count": 0,
-          "pending": "C4, W4: on every change of an approval",
           "sample": {
             "id": 12,
-            "task_id": 41,
+            "task_id": "5b0e2c1a-8f3d-4a6e-9c7b-1d2e3f4a5b6c",
             "state": "pending",
             "tool": "gmail_create_draft",
             "summary": "Draft a reply to the plumber saying Thursday works"
@@ -1146,7 +1145,7 @@
           "shapes": [
             {
               "id": "number",
-              "task_id": "number",
+              "task_id": "string",
               "state": "string",
               "tool": "string",
               "summary": "string"

@@ -2,7 +2,7 @@
   "contract": {
     "id": "C4",
     "owner": "W4",
-    "state": "pending",
+    "state": "implemented",
     "frozen": "2026-10-14",
     "notes": [
       "design.md 6.3. One approval per EXTERNAL_WRITE tool call of a task; the task waits in needs_approval.",
@@ -10,7 +10,8 @@
       "preview.kind: email_draft (to, subject, body, open_url once the draft exists) | calendar_event (later).",
       "Newest first; pending ones and the last 50 decided.",
       "POST /api/approvals/{id}/approve, POST /api/approvals/{id}/reject {reason?}.",
-      "SSE: /api/stream event 'approval' with {id, task_id, state, tool, summary} on every change."
+      "SSE: /api/stream event 'approval' with {id, task_id, state, tool, summary} on every change.",
+      "task_id is the task's id (a UUID string, as in /api/tasks); corrected from the number of the first draft of this contract (W4)."
     ]
   },
   "request": {
@@ -29,7 +30,7 @@
     "approvals": [
       {
         "id": 12,
-        "task_id": 41,
+        "task_id": "5b0e2c1a-8f3d-4a6e-9c7b-1d2e3f4a5b6c",
         "tool": "gmail_create_draft",
         "class": "EXTERNAL_WRITE",
         "state": "pending",
@@ -48,7 +49,7 @@
       },
       {
         "id": 11,
-        "task_id": 39,
+        "task_id": "9a8b7c6d-5e4f-4321-8fed-cba987654321",
         "tool": "gmail_create_draft",
         "class": "EXTERNAL_WRITE",
         "state": "approved",
@@ -71,7 +72,7 @@
     "approvals": [
       {
         "id": "number",
-        "task_id": "number",
+        "task_id": "string",
         "tool": "string",
         "class": "string",
         "state": "string",
@@ -90,7 +91,7 @@
       },
       {
         "id": "number",
-        "task_id": "number",
+        "task_id": "string",
         "tool": "string",
         "class": "string",
         "state": "string",
