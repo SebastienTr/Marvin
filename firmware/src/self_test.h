@@ -12,6 +12,7 @@
 //   host: linked (192.168.1.10)
 //
 // The radar and mic lines come back every 5 s. Plain ASCII, so every serial monitor shows them.
+// The robot build prints the same lines when `t` is typed in the serial monitor (main.cpp).
 // Portable C++ (no Arduino): only the wording lives here, unit-tested with `pio test -e native`.
 //
 // SPDX-License-Identifier: MIT
@@ -45,6 +46,10 @@ size_t mic_line(char *out, size_t cap, bool got_data, float level_dbfs, uint16_t
 enum CameraFailure : uint8_t { CAMERA_NOT_FOUND = 0, CAMERA_NO_PSRAM = 1 };
 size_t camera_line(char *out, size_t cap, bool ok, int width, int height, const char *sensor, const char *ip,
                    uint16_t port, CameraFailure why = CAMERA_NOT_FOUND);
+
+// "camera: waits for the Wi-Fi (its server starts once it is up)": the runtime self-test before
+// the robot has joined the network.
+size_t camera_waiting_line(char *out, size_t cap);
 
 // "radar: 10.1 frame/s" (with the bad frames and UART overflows when there were any), or
 // "radar: no frames - check TX->D4, RX->D5, 5V/GND" when no valid frame came in `seconds`.

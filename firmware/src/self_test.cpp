@@ -67,6 +67,10 @@ size_t camera_line(char *out, size_t cap, bool ok, int width, int height, const 
               cap);
 }
 
+size_t camera_waiting_line(char *out, size_t cap) {
+  return done(snprintf(out, cap, "camera: waits for the Wi-Fi (its server starts once it is up)"), cap);
+}
+
 size_t radar_line(char *out, size_t cap, uint32_t frames, float seconds, uint32_t bad_frames, uint32_t overflows) {
   if (frames == 0 || seconds <= 0) return done(snprintf(out, cap, "radar: no frames - check TX->D4, RX->D5, 5V/GND"), cap);
   int n = snprintf(out, cap, "radar: %.1f frame/s", frames / seconds);

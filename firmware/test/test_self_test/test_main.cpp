@@ -99,6 +99,11 @@ static void test_truncation() {
   TEST_ASSERT_EQUAL(11, strlen(small));
 }
 
+static void test_camera_waiting() {
+  selftest::camera_waiting_line(line, sizeof(line));
+  TEST_ASSERT_EQUAL_STRING("camera: waits for the Wi-Fi (its server starts once it is up)", line);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_screen);
@@ -109,5 +114,6 @@ int main() {
   RUN_TEST(test_radar);
   RUN_TEST(test_wifi_and_host);
   RUN_TEST(test_truncation);
+  RUN_TEST(test_camera_waiting);
   return UNITY_END();
 }

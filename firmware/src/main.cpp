@@ -32,6 +32,11 @@
 // a DHT11 and, once wired, a light sensor (MARVIN_HAS_LDR), sent as ENVIRONMENT every 5 s and at once
 // when motion starts or ends. Announced in HELLO's flags.
 //
+// Self-test on demand (a XIAO with real sensors: the robot and the bench): `t` in the serial monitor
+// prints the same lines in about 2 s, without restarting (the speaker's chime, the mic's level and
+// the radar's frame rate measured over 1.5 s, the Wi-Fi, the camera, the host), and sends them to
+// the host as LOG when linked; Enter prints the last ones again.
+//
 // Boot self-test on the XIAO bench (MARVIN_SELF_TEST, xiao_bench, docs/xiao-bench.md): one console
 // line per part as it starts (screen, speaker, mic, radar, wifi, camera, host; wording in
 // self_test.h), the radar and mic lines again every 5 s, all of them again on Enter. The screen
@@ -184,6 +189,13 @@
 
 #if defined(MARVIN_HAS_HEAD) && !defined(ARDUINO_ARCH_ESP32)
 #error "MARVIN_HAS_HEAD is for the ESP32 DevKits (esp32dev_looks; pins in docs/looks-bench.md)."
+#endif
+
+// The self-test on demand (`t` in the serial monitor): the robot and the bench, a XIAO with real sensors.
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && MARVIN_SENSORS_ID == MARVIN_SENSORS_ID_REAL
+#define MARVIN_RUNTIME_TEST 1
+#else
+#define MARVIN_RUNTIME_TEST 0
 #endif
 
 #if MARVIN_SELF_TEST && !(defined(CONFIG_IDF_TARGET_ESP32S3) && MARVIN_SENSORS_ID == MARVIN_SENSORS_ID_REAL)
@@ -386,10 +398,11 @@ void health_step(uint32_t ms) {
 
 // ---- Boot self-test (XIAO bench) ---------------------------------------------------------------
 
-#if MARVIN_SELF_TEST
+uint32_t wifi_up_ms = 0;  // when the Wi-Fi last came up (the host hint's "after N s")
+
+#if MARVIN_SELF_TEST || MARVIN_RUNTIME_TEST
 enum Part { PART_SCREEN, PART_SPEAKER, PART_MIC, PART_RADAR, PART_WIFI, PART_CAMERA, PART_HOST, PART_COUNT };
 char part_lines[PART_COUNT][224];
-uint32_t wifi_up_ms = 0;
 
 // Prints a part's line and keeps it for the replay (Enter).
 void part_line(Part part, const char *line) {
@@ -404,7 +417,7 @@ void replay_self_test() {
 }
 
 // The USB console only shows what is printed while the monitor is open: wait for it a little.
-void wait_for_console(uint32_t ms) {
+__attribute__((unused)) void wait_for_console(uint32_t ms) {
   for (uint32_t t0 = millis(); !Serial && millis() - t0 < ms;) delay(10);
 }
 #endif
@@ -598,6 +611,7 @@ void wifi_step(uint32_t ms) {
       WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
       break;
     case wifi::Reconnect::Step::UP:
+      wifi_up_ms = ms;
       if (wifi_rc.drops() > 0) {
         snprintf(wifi_note, sizeof(wifi_note), "wifi: back after %lu s, RSSI %d dBm (%lu drops since boot)",
                  (unsigned long)((ms - wifi_rc.down_since()) / 1000), (int)WiFi.RSSI(), (unsigned long)wifi_rc.drops());
@@ -749,7 +763,7 @@ void head_step(uint32_t) {}
 uint8_t mic_dgram[proto::HEADER_SIZE + audio_packets::AUDIO_IN_HEADER + 2 * proto::AUDIO_IN_SAMPLES];
 #endif
 
-#if defined(MARVIN_HAS_AUDIO) && MARVIN_SELF_TEST
+#if defined(MARVIN_HAS_AUDIO) && (MARVIN_SELF_TEST || MARVIN_RUNTIME_TEST)
 // The self-test's mic line: the level since the previous one.
 void report_mic() {
   double sum_sq;
@@ -1020,19 +1034,125 @@ void sensors_step(uint32_t ms) {
 
 #endif  // MARVIN_REAL_SENSORS
 
-#if MARVIN_SELF_TEST
-// Enter in the monitor prints the self-test again; while no host answers, a hint every 30 s.
-void self_test_step(uint32_t ms) {
-  static uint32_t last_replay = 0, next_host_hint = 0;
-  bool enter = false;
+#if MARVIN_RUNTIME_TEST
+// The self-test on demand: the quick lines at once, the measured ones (mic, radar) 1.5 s later.
+// Never blocks the loop for more than a camera frame grab.
+constexpr uint32_t RUNTIME_TEST_MS = 1500;
+constexpr uint32_t RUNTIME_TEST_SETTLE_MS = 500;  // the chime and the mic's warm-up: not measured
+uint32_t runtime_test_t0 = 0;
+uint8_t runtime_test_phase = 0;  // 0 idle, 1 chime playing, 2 measuring
+real::Counters runtime_test_c0;
+
+void runtime_line(Part part, const char *line) {
+  part_line(part, line);
+  if (linked) send_log(line);
+}
+
+void start_runtime_test(uint32_t ms) {
+  if (runtime_test_phase) return;  // already running
+  Serial.println("self-test: running, about 2 s (Enter shows the lines again)");
+  char line[224];
+#if defined(MARVIN_HAS_SCREEN)
+  selftest::screen_line(line, sizeof(line), face_app::screen_id());
+  runtime_line(PART_SCREEN, line);
+#endif
+#if defined(MARVIN_HAS_AUDIO)
+  const bool ok = audio_app::ready();
+  if (ok) {
+    audio_app::play_sound(audio::SOUND_WAKE);  // two notes up, 0.2 s
+    audio_app::set_mic_monitor(true);
+  }
+  selftest::speaker_line(line, sizeof(line), ok);
+  runtime_line(PART_SPEAKER, line);
+#endif
+  runtime_test_t0 = ms;
+  runtime_test_phase = 1;
+}
+
+void runtime_test_step(uint32_t ms) {
+  if (runtime_test_phase == 1 && ms - runtime_test_t0 >= RUNTIME_TEST_SETTLE_MS) {
+#if defined(MARVIN_HAS_AUDIO)
+    double sum_sq;
+    uint32_t samples;
+    uint16_t peak;
+    audio_app::mic_level(&sum_sq, &samples, &peak);  // forget what overlapped the chime
+#endif
+    runtime_test_c0 = real::counters();
+    runtime_test_t0 = ms;
+    runtime_test_phase = 2;
+    return;
+  }
+  if (runtime_test_phase != 2 || ms - runtime_test_t0 < RUNTIME_TEST_MS) return;
+  runtime_test_phase = 0;
+  char line[224];
+#if defined(MARVIN_HAS_AUDIO)
+  if (audio_app::ready()) {
+    report_mic();
+    if (!MARVIN_SELF_TEST) audio_app::set_mic_monitor(false);  // the bench keeps it for its 5 s lines
+  }
+#endif
+  const real::Counters c = real::counters();
+  selftest::radar_line(line, sizeof(line), c.ld2450_frames - runtime_test_c0.ld2450_frames,
+                       (ms - runtime_test_t0) / 1000.0f, c.ld2450_bad_frames - runtime_test_c0.ld2450_bad_frames,
+                       c.uart_overflows - runtime_test_c0.uart_overflows);
+  runtime_line(PART_RADAR, line);
+  if (wifi_rc.up())
+    selftest::wifi_line(line, sizeof(line), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+  else
+    selftest::wifi_waiting_line(line, sizeof(line), WIFI_SSID, (ms - wifi_rc.down_since()) / 1000);
+  runtime_line(PART_WIFI, line);
+#if defined(MARVIN_HAS_CAMERA)
+  if (!network_started) {
+    selftest::camera_waiting_line(line, sizeof(line));
+  } else {
+    int w = 0, h = 0;
+    size_t bytes = 0;
+    const bool ok = camera_app::ready() && camera_app::test_frame(&w, &h, &bytes);
+    selftest::camera_line(line, sizeof(line), ok, w, h, camera_app::sensor_name(), WiFi.localIP().toString().c_str(),
+                          proto::CAMERA_PORT, psramFound() ? selftest::CAMERA_NOT_FOUND : selftest::CAMERA_NO_PSRAM);
+  }
+  runtime_line(PART_CAMERA, line);
+#endif
+  if (linked) selftest::host_linked_line(line, sizeof(line), host.toString().c_str());
+  else selftest::host_waiting_line(line, sizeof(line), wifi_rc.up() ? (ms - wifi_up_ms) / 1000 : 0);
+  runtime_line(PART_HOST, line);
+  Serial.println("self-test: done");
+}
+#else
+void start_runtime_test(uint32_t) {}
+void runtime_test_step(uint32_t) {}
+#endif
+
+// The serial monitor: `t` runs the self-test (a XIAO with real sensors), Enter prints its last
+// lines again, `h` or `?` lists the keys.
+void console_step(uint32_t ms) {
+  static uint32_t last_replay = 0;
+  bool enter = false, test = false, help = false;
   while (Serial.available()) {
     const int ch = Serial.read();
     enter |= ch == '\n' || ch == '\r';
+    test |= ch == 't' || ch == 'T';
+    help |= ch == 'h' || ch == 'H' || ch == '?';
   }
-  if (enter && ms - last_replay > 500) {  // CR LF is one Enter
+  if (help)
+    Serial.println(MARVIN_RUNTIME_TEST ? "keys: t self-test, Enter its last lines, h this help" : "keys: none on this board");
+  if (test) start_runtime_test(ms);
+#if MARVIN_SELF_TEST || MARVIN_RUNTIME_TEST
+  if (enter && !test && ms - last_replay > 500) {  // CR LF is one Enter
     last_replay = ms;
     replay_self_test();
   }
+#else
+  (void)enter;
+  (void)last_replay;
+#endif
+  runtime_test_step(ms);
+}
+
+#if MARVIN_SELF_TEST
+// While no host answers, a hint every 30 s.
+void self_test_step(uint32_t ms) {
+  static uint32_t next_host_hint = 0;
   if (linked) {
     next_host_hint = 0;
     return;
@@ -1067,7 +1187,9 @@ void setup() {
     Serial.println(boot);
   }
 #if MARVIN_SELF_TEST
-  Serial.println("self-test: one line per part (docs/xiao-bench.md); press Enter to see them again");
+  Serial.println("self-test: one line per part (docs/xiao-bench.md); press Enter to see them again, t to run it again");
+#elif MARVIN_RUNTIME_TEST
+  Serial.println("self-test: type t in the monitor (h for the keys)");
 #endif
 #if defined(MARVIN_HAS_BENCH_IO)
   // the eyes run in their own task from here on; the buttons, buzzer and LED from the loop
@@ -1123,6 +1245,7 @@ void loop() {
   wifi_step(ms);
   link_step(ms);
   knob_step(ms);
+  console_step(ms);
   self_test_step(ms);
   room_step(ms);
   head_step(ms);
