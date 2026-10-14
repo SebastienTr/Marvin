@@ -23,7 +23,6 @@ KIT = dict(z=41.7, tilt=20, h=35, d=22)    # MR60BHA2 case, face centre height (
 LD = dict(z=16.4, tilt=10, h=15, d=2)      # HLK-LD2450
 SCREEN_Z = (76, 107)                        # planned head layout
 CAM_Z = 113
-LIDAR_TOP = 141
 CHEST = (280, 450)                          # chest band of a seated person, above the desk
 
 
@@ -54,10 +53,6 @@ a.add_patch(Rectangle((-1.6, 20), 1.6, 30, fc="#3a3a3c", zorder=2))             
 rbox(a, -HEAD[2] + 3, HEAD[0], HEAD[2], HEAD[1] - HEAD[0], "#e9e6e0")
 a.add_patch(Rectangle((1.4, 74), 1.6, 44, fc="#111", zorder=2))                                     # smoked window
 a.add_patch(Rectangle((-5, SCREEN_Z[0]), 4.5, SCREEN_Z[1] - SCREEN_Z[0], fc="#3a4a5a", zorder=3))
-hc = -HEAD[2] / 2 + 3                                                                               # head centre
-a.add_patch(Rectangle((hc - 19.3, HEAD[1] - 18), 38.6, 18 + 4, fc="#222", zorder=2))                  # lidar base, recessed
-a.add_patch(Rectangle((hc - 17.6, HEAD[1] + 4), 35.3, LIDAR_TOP - HEAD[1] - 4, fc="#222", zorder=2))    # turret
-a.text(hc, LIDAR_TOP + 5, "lidar", ha="center", fontsize=8, color=MUTE)
 
 f_kit = tilted(a, -2.6, KIT["z"], KIT["d"], KIT["h"], KIT["tilt"], "#b9b3a6")
 f_ld = tilted(a, -2.6, LD["z"], LD["d"], LD["h"], LD["tilt"], "#8fb0d6")

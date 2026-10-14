@@ -8,7 +8,7 @@ Il peut **voir** (caméra), **ressentir** (qui est dans la pièce, comment on bo
 
 <p align="center">
   <img src="docs/images/robot_threequarter.png" alt="Le robot Marvin : un corps gris chaud avec une bande anthracite, une tête un peu plus large avec un visage en vitre noire et une molette orange" width="260">
-  <img src="docs/images/robot_front.png" alt="Le robot de face, avec une expression contente" width="280">
+  <img src="docs/images/robot_front.png" alt="Le robot de face : le visage en vitre noire avec ses yeux, la caméra au-dessus, la bande anthracite en dessous" width="280">
 </p>
 
 Page de présentation : ouvre [`docs/index.html`](docs/index.html) dans un navigateur (FR/EN).

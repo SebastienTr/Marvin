@@ -9,7 +9,6 @@ out="${OUT:-$here/../stl}"   # set OUT to write elsewhere
 mkdir -p "$out"
 
 parts=(
-  "print_template:0_lidar_template"
   "print_body:1_body"
   "print_plinth:2_plinth"
   "print_sled:3_sensor_sled"

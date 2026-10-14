@@ -12,7 +12,7 @@ or with the `bpy` wheel:
 hardware/scripts/build_blend.sh does all of this.
 
 The head is not in the CAD yet: the "Head (concept)" collection is a stand-in with the
-planned outer shape, face window, camera, status LED, knob and lidar, so the model reads
+planned outer shape, face window, camera, status LED and knob (rev F has no lidar), so the model reads
 as the whole robot. Replace it when the head CAD lands.
 
 SPDX-License-Identifier: MIT
@@ -77,7 +77,6 @@ M = {
     "eye": material("Eyes", (0.72, 0.93, 1.0), 0.3, emit=4.0),
     "led": material("Status LED", (1.0, 0.45, 0.1), 0.3, emit=6.0),
     "lens": material("Lens", (0.02, 0.02, 0.03), 0.05, 0.3),
-    "lidar": material("Lidar", (0.03, 0.03, 0.035), 0.35),
     "plate": material("Print preview", (0.85, 0.55, 0.30), 0.6),
 }
 
@@ -191,8 +190,6 @@ for sx in (-1, 1):
 cylinder("Camera lens", 2.4, 0.6, (0, yf - 1.4, 113), M["lens"], head, rot=(math.pi / 2, 0, 0))
 cylinder("Status LED", 0.9, 0.6, (30, yf - 1.4, 113), M["led"], head, rot=(math.pi / 2, 0, 0))
 cylinder("Knob", 10, 7, (-HEAD_W / 2 - 3.5, 6, 96), M["orange"], head, rot=(0, math.pi / 2, 0))
-cylinder("Lidar ring", 28, 4, (0, 0, HEAD_Z1 + 2), M["anth"], head)
-cylinder("Lidar turret", 17.6, 12.6, (0, 0, HEAD_Z1 + 4 + 6.3), M["lidar"], head)
 
 # ------------------------------------------------------------------ print layout (not rendered)
 lay = collection("Print plates (hardware/stl)")

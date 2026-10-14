@@ -1,10 +1,9 @@
 """Build hardware/bambu/marvin_A1.3mf: a Bambu Studio project with every printable part on its plate.
 
 Plates (Bambu Lab A1 + AMS lite, 0.4 mm nozzle, 0.20 mm layers):
-  1. Lidar template        anthracite PETG   print it first and test-fit the lidar
-  2. Body + sensor sled    warm grey PETG, anthracite band by filament change at 14 and 44 mm
-  3. Plinth                anthracite PETG
-  4. TPU parts             black TPU 95A, fed from the external spool (not the AMS lite)
+  1. Body + sensor sled    warm grey PETG, anthracite band by filament change at 14 and 44 mm
+  2. Plinth                anthracite PETG
+  3. TPU parts             black TPU 95A, fed from the external spool (not the AMS lite)
 
 Usage:
     BAMBU_STUDIO=/path/to/bambu-studio python3 hardware/scripts/build_3mf.py [out.3mf]
@@ -46,15 +45,13 @@ FILAMENTS = [
 ]
 # part file -> (object name, filament slot 1-based, plate 1-based, per-object settings)
 PARTS = {
-    "0_lidar_template": ("Lidar template", 2, 1, {}),
-    "1_body": ("Body", 1, 2, {"wall_loops": "4", "sparse_infill_density": "15%"}),
-    "3_sensor_sled": ("Sensor sled", 1, 2, {"wall_loops": "3", "sparse_infill_density": "20%"}),
-    "2_plinth": ("Plinth", 2, 3, {"wall_loops": "3", "sparse_infill_density": "20%"}),
-    "4_tpu_neck_grommets_feet": ("TPU neck, grommets and feet", 3, 4,
+    "1_body": ("Body", 1, 1, {"wall_loops": "4", "sparse_infill_density": "15%"}),
+    "3_sensor_sled": ("Sensor sled", 1, 1, {"wall_loops": "3", "sparse_infill_density": "20%"}),
+    "2_plinth": ("Plinth", 2, 2, {"wall_loops": "3", "sparse_infill_density": "20%"}),
+    "4_tpu_neck_grommets_feet": ("TPU neck, grommets and feet", 3, 3,
                                  {"wall_loops": "3", "sparse_infill_density": "15%", "sparse_infill_pattern": "gyroid"}),
 }
-PLATES = {1: "1 - Lidar template (print first)", 2: "2 - Body + sensor sled (band colour change)",
-          3: "3 - Plinth", 4: "4 - TPU (external spool)"}
+PLATES = {1: "1 - Body + sensor sled (band colour change)", 2: "2 - Plinth", 3: "3 - TPU (external spool)"}
 # body band: filament change at these heights from the bed (the body prints upside down)
 BAND_CHANGES = [(14.2, 2, "#3A3A3C"), (44.2, 1, "#D9D5CC")]   # (layer top z, new slot, colour)
 

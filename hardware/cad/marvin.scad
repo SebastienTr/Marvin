@@ -7,14 +7,17 @@
 //  inside it, not the body.
 //
 //  This file covers the body half of the robot (everything below the neck).
-//  The head (face frame, acrylic window, XIAO cradle, lidar ring, knob)
+//  The head (face frame, acrylic window, XIAO cradle, knob)
 //  follows once the 1.69" screen is measured; its interface with the body
 //  is fixed here (neck bolt pattern, cable hole).
 //
+//  Rev F has no lidar (since 14 October 2026): nothing turns on top of the head. The rev E
+//  lidar template is in hardware/archive/rev-e/.
+//
 //  PART = "assembly" | "exploded" | "section"                (views)
-//         "body" | "plinth" | "sled" | "neck" | "grommet" | "foot" | "template"   (assembly frame)
+//         "body" | "plinth" | "sled" | "neck" | "grommet" | "foot"   (assembly frame)
 //         "ghost_mr60" | "ghost_ld2450" | "ghost_speaker"   (modules, for the Blender model)
-//         "print_body" | "print_plinth" | "print_sled" | "print_tpu" | "print_template"
+//         "print_body" | "print_plinth" | "print_sled" | "print_tpu"
 //
 //  SPDX-License-Identifier: CERN-OHL-P-2.0
 // =====================================================================
@@ -71,15 +74,12 @@ backScrewZ = [26, 46];
 spkY = 0; spkZ = 18; spkL = 30.4; spkH = 20.4;
 
 // Neck: 4 x M3 through TPU grommets. The screws go up into the head floor, so no rigid path
-// links the head (lidar motor) to the body (heart-rate radar).
+// links the head (knocks, a tap on the knob) to the body (heart-rate radar).
 neckBolt = [[-32, -20], [32, -20], [-32, 20], [32, 20]];
 gromOD = 7.6; gromFlange = 11; gromFlangeT = 1.6; gromBore = m3_clear;
 bossT = 1.2;                              // flat seat for the grommet flange under the deck
 cableHole = [30, 16, 5];                  // w, d, corner r; the 90 deg USB-C plug passes through it
 cableHoleY = 4;
-
-// Lidar (D800 / D500, LD19 footprint): used by the template now and by the head later
-lidPairDY = 8.3; lidSingleDY = -23.6; lidHalfX = 23.4; slot = 1.2; lidY = 0;
 
 // =====================================================================
 // Helpers
@@ -90,11 +90,6 @@ function mul(v, k) = [v[0]*k, v[1]*k];
 module squircle(w, d, r) { offset(r=r) square([w - 2*r, d - 2*r], center=true); }
 module sqblock(w, d, r, z0, h) { translate([0, 0, z0]) linear_extrude(h) squircle(w, d, r); }
 module rrect(w, d, r, h) { linear_extrude(h) offset(r=r) square([w - 2*r, d - 2*r], center=true); }
-module slotY(d, len, h) { hull() for (s=[-len, len]) translate([0, s, 0]) cylinder(d=d, h=h, $fn=24); }
-module lidarHoles() {
-    for (x=[-lidHalfX, lidHalfX]) translate([x, lidY - lidPairDY, 0]) children();
-    translate([0, lidY - lidSingleDY, 0]) children();
-}
 // a 2-D profile drawn in the (y, z) side plane, extruded along X from x0 to x1
 module sideExtrude(x0, x1) { translate([x0, 0, 0]) rotate([90, 0, 90]) linear_extrude(x1 - x0) children(); }
 
@@ -211,15 +206,6 @@ module grommet() {
 
 module foot() cylinder(d=10, h=2.0);
 
-// Lidar template: print first, check the holes of your lidar
-module template() {
-    difference() {
-        translate([0, lidY, 0]) rrect(62, 58, 4, 2);
-        translate([0, 0, -1]) lidarHoles() slotY(2.9, slot, 4);
-        translate([0, lidY, -1]) cylinder(d=4, h=4);
-    }
-}
-
 // =====================================================================
 // Ghosts (not printed): modules and the head envelope
 module kitGhost() translate([-kitW/2, 0, 0]) sideExtrude(0, kitW)
@@ -237,7 +223,6 @@ module ghosts(cut=false) {
 module print_body()     translate([0, 0, bodyZ1]) rotate([180, 0, 0]) body();
 module print_plinth()   plinth();
 module print_sled()     translate([0, 0, -floorZ]) sled();
-module print_template() template();
 module print_tpu() {                      // gasket + 4 grommets + 4 feet, one TPU plate
     translate([0, 0, -bodyZ1]) neck();
     for (i=[0:3]) translate([-30 + i*20, 50, 0]) grommet();
@@ -265,7 +250,6 @@ else if (PART == "sled")           sled();
 else if (PART == "neck")           neck();
 else if (PART == "grommet")        grommet();
 else if (PART == "foot")           foot();
-else if (PART == "template")       template();
 else if (PART == "ghost_mr60")     kitGhost();
 else if (PART == "ghost_ld2450")   ldGhost();
 else if (PART == "ghost_speaker")  speakerGhost();
@@ -273,7 +257,6 @@ else if (PART == "print_body")     print_body();
 else if (PART == "print_plinth")   print_plinth();
 else if (PART == "print_sled")     print_sled();
 else if (PART == "print_tpu")      print_tpu();
-else if (PART == "print_template") print_template();
 else if (PART == "exploded")       assemblyView(30);
 else if (PART == "section")        assemblyView(0, true);
 else                               assemblyView(0);

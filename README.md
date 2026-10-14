@@ -8,7 +8,7 @@ It can **see** (camera), **feel** (who is in the room, how they move, and your b
 
 <p align="center">
   <img src="docs/images/robot_threequarter.png" alt="The Marvin robot: an upright warm-grey body with an anthracite band, a slightly wider head with a black glass face showing two eyes, and an orange knob on the side" width="280">
-  <img src="docs/images/robot_front.png" alt="Front view of the robot with a content expression on its face" width="300">
+  <img src="docs/images/robot_front.png" alt="Front view of the robot: the black glass face with its eyes, the camera above them, the anthracite band below" width="300">
 </p>
 
 > Français : [lire en français](README.fr.md) · Presentation page: open [`docs/index.html`](docs/index.html) in a browser.
