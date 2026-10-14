@@ -24,6 +24,15 @@
 // a DHT11 and, once wired, a light sensor (MARVIN_HAS_LDR), sent as ENVIRONMENT every 5 s and at once
 // when motion starts or ends. Announced in HELLO's flags.
 //
+// Boot self-test on the XIAO bench (MARVIN_SELF_TEST, xiao_bench, docs/xiao-bench.md): one console
+// line per part as it starts (screen, speaker, mic, radar, wifi, camera, host; wording in
+// self_test.h), the radar and mic lines again every 5 s, all of them again on Enter. The screen
+// shows red, green and blue, then the eyes wake up and look at you for 8 s; the speaker plays a
+// short two-note chime. Each part may be missing: its line says what to check, nothing waits on it.
+//
+// With a screen and real sensors, the face follows the board's own LD2450 while the host sends no
+// FACE_STATE: someone in front wakes it up and its eyes follow them.
+//
 // Head on the "looks" bench (MARVIN_HAS_HEAD, head/head_io.h, docs/looks-bench.md): a servo turning
 // towards the nearest LD2450 target, read whether linked or not; HEAD to the host (5 Hz and on a
 // change), HEAD_CTRL from it. Someone arriving or leaving plays a chirp on the buzzer
@@ -39,7 +48,9 @@
 #endif
 #include <WiFiUdp.h>
 
+#include "head/head_logic.h"
 #include "protocol.h"
+#include "self_test.h"
 #include "sensor_framing.h"
 #include "sensors_real.h"
 #include "sensors_sim.h"
@@ -98,7 +109,13 @@
 #define MARVIN_PRESENCE_CHIRPS 1                // with a head and a buzzer: "hello" and "bye" chirps (0: mute)
 #endif
 #ifndef MARVIN_EYES_TARGET_Z_MM
-#define MARVIN_EYES_TARGET_Z_MM 300             // with a head: the height the eyes look at, above the desk
+#define MARVIN_EYES_TARGET_Z_MM 300             // with a head or a screen: the height the eyes look at, above the desk
+#endif
+#ifndef MARVIN_LD2450_X_SIGN
+#define MARVIN_LD2450_X_SIGN 1                  // -1 for an LD2450 mounted upside down
+#endif
+#ifndef MARVIN_SELF_TEST
+#define MARVIN_SELF_TEST 0                      // 1: the boot self-test (the XIAO bench)
 #endif
 
 // MARVIN_SENSORS=SIM or MARVIN_SENSORS=REAL, turned into a number the preprocessor can compare.
@@ -137,6 +154,10 @@
 
 #if defined(MARVIN_HAS_HEAD) && !defined(ARDUINO_ARCH_ESP32)
 #error "MARVIN_HAS_HEAD is for the ESP32 DevKits (esp32dev_looks; pins in docs/looks-bench.md)."
+#endif
+
+#if MARVIN_SELF_TEST && !(defined(CONFIG_IDF_TARGET_ESP32S3) && MARVIN_SENSORS_ID == MARVIN_SENSORS_ID_REAL)
+#error "MARVIN_SELF_TEST is for the XIAO bench (xiao_bench: a XIAO ESP32S3 Sense with real sensors, docs/xiao-bench.md)."
 #endif
 
 #if MARVIN_REAL_SENSORS && !defined(ARDUINO_ARCH_ESP32)
@@ -251,6 +272,31 @@ void send_log(const char *text) {
 bool ld2450_configured = false;
 #endif
 
+// ---- Boot self-test (XIAO bench) ---------------------------------------------------------------
+
+#if MARVIN_SELF_TEST
+enum Part { PART_SCREEN, PART_SPEAKER, PART_MIC, PART_RADAR, PART_WIFI, PART_CAMERA, PART_HOST, PART_COUNT };
+char part_lines[PART_COUNT][224];
+uint32_t wifi_up_ms = 0;
+
+// Prints a part's line and keeps it for the replay (Enter).
+void part_line(Part part, const char *line) {
+  snprintf(part_lines[part], sizeof(part_lines[part]), "%s", line);
+  Serial.println(line);
+}
+
+void replay_self_test() {
+  Serial.println("self-test, last results:");
+  for (int i = 0; i < PART_COUNT; i++)
+    if (part_lines[i][0]) Serial.printf("  %s\n", part_lines[i]);
+}
+
+// The USB console only shows what is printed while the monitor is open: wait for it a little.
+void wait_for_console(uint32_t ms) {
+  for (uint32_t t0 = millis(); !Serial && millis() - t0 < ms;) delay(10);
+}
+#endif
+
 void on_host_ack() {
   last_ack_ms = millis();
   if (linked && udp.remoteIP() == host) return;
@@ -264,7 +310,13 @@ void on_host_ack() {
   static bool chimed = false;
   if (!chimed) chimed = bench_io::play_sound(audio::SOUND_HELLO);  // first link since boot, on the buzzer
 #endif
+#if MARVIN_SELF_TEST
+  char line[64];
+  selftest::host_linked_line(line, sizeof(line), host.toString().c_str());
+  part_line(PART_HOST, line);
+#else
   Serial.printf("linked to host %s\n", host.toString().c_str());
+#endif
   char msg[96];
 #if MARVIN_REAL_SENSORS
   snprintf(msg, sizeof(msg), "firmware %s up, real sensors, %s lidar, LD2450 %s", MARVIN_FW_VERSION,
@@ -329,7 +381,7 @@ void connect_wifi() {
   WiFi.setSleep(false);
 #endif
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.printf("joining %s", WIFI_SSID);
+  Serial.printf(MARVIN_SELF_TEST ? "wifi: joining \"%s" : "joining %s", WIFI_SSID);
 #if defined(MARVIN_HAS_BENCH_IO)
   for (uint32_t i = 0; WiFi.status() != WL_CONNECTED; i++) {
     bench_io::step(millis());       // the LED blinks slowly; the eyes run in their own task
@@ -345,6 +397,23 @@ void connect_wifi() {
     if (i % 20 == 19) Serial.print('.');
   }
   bench_io::set_phase(bench::LinkPhase::SEARCHING);
+#elif MARVIN_SELF_TEST
+  Serial.println("\"");
+  constexpr uint32_t HINT_MS = 20000;  // then every 20 s: what to check
+  for (uint32_t t0 = millis(), next = t0 + HINT_MS; WiFi.status() != WL_CONNECTED;) {
+    led(true); delay(100); led(false); delay(100);
+    if ((int32_t)(millis() - next) >= 0) {
+      char line[192];
+      selftest::wifi_waiting_line(line, sizeof(line), WIFI_SSID, (millis() - t0) / 1000);
+      part_line(PART_WIFI, line);
+      next += HINT_MS;
+    }
+  }
+  char line[64];
+  selftest::wifi_line(line, sizeof(line), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+  part_line(PART_WIFI, line);
+  wifi_up_ms = millis();
+  return;
 #else
   while (WiFi.status() != WL_CONNECTED) {
     led(true); delay(100); led(false); delay(100);
@@ -457,16 +526,65 @@ void head_step(uint32_t) {}
 uint8_t mic_dgram[proto::HEADER_SIZE + audio_packets::AUDIO_IN_HEADER + 2 * proto::AUDIO_IN_SAMPLES];
 #endif
 
+#if defined(MARVIN_HAS_AUDIO) && MARVIN_SELF_TEST
+// The self-test's mic line: the level since the previous one.
+void report_mic() {
+  double sum_sq;
+  uint32_t samples;
+  uint16_t peak;
+  const bool got = audio_app::mic_level(&sum_sq, &samples, &peak);
+  char line[128];
+  selftest::mic_line(line, sizeof(line), got, selftest::dbfs(sum_sq, samples), peak);
+  part_line(PART_MIC, line);
+  if (linked) send_log(line);
+}
+#endif
+
+// Speaker and microphone. The self-test starts them before Wi-Fi (they do not need it), plays the
+// chime, then listens for half a second once the chime is over.
+void audio_begin() {
+#if defined(MARVIN_HAS_AUDIO)
+  const bool ok = audio_app::begin();
+#if MARVIN_SELF_TEST
+  char line[128];
+  if (ok) audio_app::play_sound(audio::SOUND_WAKE);  // two notes up, 0.2 s
+  selftest::speaker_line(line, sizeof(line), ok);
+  part_line(PART_SPEAKER, line);
+  if (ok) {
+    audio_app::set_mic_monitor(true);  // from now on, for the level lines
+    delay(400);                        // the chime and the microphone's warm-up
+    double sum_sq;
+    uint32_t samples;
+    uint16_t peak;
+    audio_app::mic_level(&sum_sq, &samples, &peak);  // forget what overlapped the chime
+    delay(500);
+  }
+  report_mic();
+#else
+  Serial.println(ok ? "audio: speaker on I2S1 (GPIO8/43/3), PDM mic on I2S0 (GPIO42/41)" : "audio: disabled");
+#endif
+#endif
+}
+
 // After Wi-Fi is up (the camera server needs the network stack).
 void media_begin() {
-#if defined(MARVIN_HAS_AUDIO)
-  Serial.println(audio_app::begin() ? "audio: speaker on I2S1 (GPIO8/43/3), PDM mic on I2S0 (GPIO42/41)"
-                                    : "audio: disabled");
+#if !MARVIN_SELF_TEST
+  audio_begin();
 #endif
 #if defined(MARVIN_HAS_CAMERA)
+#if MARVIN_SELF_TEST
+  int w = 0, h = 0;
+  size_t bytes = 0;
+  const bool ok = camera_app::begin() && camera_app::test_frame(&w, &h, &bytes);
+  char line[224];
+  selftest::camera_line(line, sizeof(line), ok, w, h, camera_app::sensor_name(), WiFi.localIP().toString().c_str(),
+                        proto::CAMERA_PORT, psramFound() ? selftest::CAMERA_NOT_FOUND : selftest::CAMERA_NO_PSRAM);
+  part_line(PART_CAMERA, line);
+#else
   if (camera_app::begin())
     Serial.printf("camera: %s, http://%s:%u/stream\n", camera_app::sensor_name(), WiFi.localIP().toString().c_str(),
                   (unsigned)proto::CAMERA_PORT);
+#endif
 #endif
 }
 
@@ -496,6 +614,7 @@ void media_step(uint32_t ms) {
 }
 
 #else
+void audio_begin() {}
 void media_begin() {}
 void media_step(uint32_t) {}
 #endif
@@ -570,8 +689,25 @@ void on_lidar_packet(const uint8_t *packet) {
   if (++lidar_count == LIDAR_BATCH) flush_lidar();
 }
 
+// The face's own idea of who is there, from the board's radar (used while the host is silent).
+void face_frame(const uint8_t *frame) {
+#if defined(MARVIN_HAS_SCREEN)
+  head::Target t;
+  if (head::nearest_target(frame, framing::LD2450_FRAME, MARVIN_LD2450_X_SIGN, t)) {
+    double p[3];
+    head::face_point(t, 0, MARVIN_EYES_TARGET_Z_MM, p);
+    face_app::set_local_presence(true, p);
+  } else {
+    face_app::set_local_presence(false, nullptr);
+  }
+#else
+  (void)frame;
+#endif
+}
+
 void on_ld2450_frame(const uint8_t *frame) {
   head_frame(frame, framing::LD2450_FRAME);
+  face_frame(frame);
   if (!linked) return;
   memcpy(buf + proto::HEADER_SIZE, frame, framing::LD2450_FRAME);
   send(proto::LD2450, framing::LD2450_FRAME);
@@ -582,6 +718,18 @@ void report_stats(uint32_t ms) {
   real::Counters c = real::counters(), &p = last_counters;
   float s = (ms - last_stats_ms) / 1000.0f;
   char msg[160];
+#if MARVIN_SELF_TEST
+  selftest::radar_line(msg, sizeof(msg), c.ld2450_frames - p.ld2450_frames, s, c.ld2450_bad_frames - p.ld2450_bad_frames,
+                       c.uart_overflows - p.uart_overflows);
+  part_line(PART_RADAR, msg);
+  if (linked) send_log(msg);
+#if defined(MARVIN_HAS_AUDIO)
+  report_mic();
+#endif
+  last_counters = c;
+  last_stats_ms = ms;
+  return;
+#endif
   if (LIDAR_MODEL == 0)  // the LD2450 only
     snprintf(msg, sizeof(msg), "LD2450 %.1f frame/s, %lu bad; %lu UART overflows",
              (c.ld2450_frames - p.ld2450_frames) / s, (unsigned long)(c.ld2450_bad_frames - p.ld2450_bad_frames),
@@ -600,6 +748,22 @@ void report_stats(uint32_t ms) {
 }
 
 void sensors_begin() {
+#if MARVIN_SELF_TEST
+  // Configure the LD2450 quietly (up to ~3 s when it does not answer), then count its frames for 1.5 s.
+  ld2450_configured = real::begin(LIDAR_MODEL, false);
+  const real::Counters c0 = real::counters();
+  const uint32_t t0 = millis();
+  while (millis() - t0 < 1500) {
+    real::poll(nullptr, on_ld2450_frame);
+    delay(2);
+  }
+  const real::Counters c1 = real::counters();
+  char line[96];
+  selftest::radar_line(line, sizeof(line), c1.ld2450_frames - c0.ld2450_frames, (millis() - t0) / 1000.0f,
+                       c1.ld2450_bad_frames - c0.ld2450_bad_frames, c1.uart_overflows - c0.uart_overflows);
+  part_line(PART_RADAR, line);
+  return;
+#endif
   if (LIDAR_MODEL == 0) Serial.println("no lidar (MARVIN_LIDAR_MODEL=0)");
   else
     Serial.printf("lidar %s on its UART at %lu baud\n", lidar_name(LIDAR_MODEL),
@@ -625,6 +789,35 @@ void sensors_step(uint32_t ms) {
 
 #endif  // MARVIN_REAL_SENSORS
 
+#if MARVIN_SELF_TEST
+// Enter in the monitor prints the self-test again; while no host answers, a hint every 30 s.
+void self_test_step(uint32_t ms) {
+  static uint32_t last_replay = 0, next_host_hint = 0;
+  bool enter = false;
+  while (Serial.available()) {
+    const int ch = Serial.read();
+    enter |= ch == '\n' || ch == '\r';
+  }
+  if (enter && ms - last_replay > 500) {  // CR LF is one Enter
+    last_replay = ms;
+    replay_self_test();
+  }
+  if (linked) {
+    next_host_hint = 0;
+    return;
+  }
+  if (next_host_hint == 0) next_host_hint = ms + 10000;
+  if ((int32_t)(ms - next_host_hint) >= 0) {
+    char line[160];
+    selftest::host_waiting_line(line, sizeof(line), (ms - wifi_up_ms) / 1000);
+    part_line(PART_HOST, line);
+    next_host_hint = ms + 30000;
+  }
+}
+#else
+void self_test_step(uint32_t) {}
+#endif
+
 }  // namespace
 
 // ---- Arduino entry points ---------------------------------------------------------------------
@@ -632,8 +825,14 @@ void sensors_step(uint32_t ms) {
 void setup() {
   Serial.begin(MARVIN_SERIAL_BAUD);
   delay(200);
+#if MARVIN_SELF_TEST
+  wait_for_console(3000);
+#endif
   Serial.printf("\nMarvin firmware %s, board %d, %s sensors\n", MARVIN_FW_VERSION, MARVIN_BOARD,
                 MARVIN_REAL_SENSORS ? "real" : "simulated");
+#if MARVIN_SELF_TEST
+  Serial.println("self-test: one line per part (docs/xiao-bench.md); press Enter to see them again");
+#endif
 #if defined(MARVIN_HAS_BENCH_IO)
   // the eyes run in their own task from here on; the buttons, buzzer and LED from the loop
   if (!bench_io::begin()) Serial.println("bench: the eyes' task did not start");
@@ -649,7 +848,20 @@ void setup() {
 #endif
 #if defined(MARVIN_HAS_SCREEN)
   // the face runs in its own task from here on, asleep until the host says someone is there
-  if (!face_app::begin()) Serial.println("face: screen init failed");
+  if (!face_app::begin()) {
+    Serial.println("face: screen init failed");
+  }
+#if MARVIN_SELF_TEST
+  else {
+    char line[192];
+    selftest::screen_line(line, sizeof(line), face_app::screen_id());
+    part_line(PART_SCREEN, line);
+    face_app::greet(8000);  // after the colours: the eyes wake up and look at you
+  }
+#endif
+#endif
+#if MARVIN_SELF_TEST
+  audio_begin();  // the chime and the mic level, before Wi-Fi
 #endif
   sensors_begin();
   connect_wifi();
@@ -672,6 +884,7 @@ void loop() {
 #endif
   uint32_t ms = millis();
   link_step(ms);
+  self_test_step(ms);
   room_step(ms);
   head_step(ms);
   media_step(ms);
