@@ -2,7 +2,7 @@
   "contract": {
     "id": "C3",
     "owner": "W2",
-    "state": "pending",
+    "state": "implemented",
     "frozen": "2026-10-14",
     "notes": [
       "hours: 1..24 (default 24). current: the last reading that passed the quality gate, or null when there is no vitals sensor.",

@@ -171,10 +171,11 @@ public class HostWiring {
                                              HostLog hostLog, EventHub hub, ObjectProvider<RobotLinkQuery> query,
                                              ObjectProvider<RobotAudioService> audio,
                                              ObjectProvider<VoiceControl> voice,
-                                             ObjectProvider<BuzzerChimeService> chimes) {
+                                             ObjectProvider<BuzzerChimeService> chimes,
+                                             VitalsWiring.VitalsFeed vitals) {
         DeviceNotices notices = new DeviceNotices(hostLog, hub, () -> Views.devicesOf(query.getObject()));
         return new RobotLinkService(extrinsics, clock,
-                List.of(new PresenceFeed(presence), new ButtonFeed(voice::getObject, chimes::getObject)),
+                List.of(new PresenceFeed(presence), new ButtonFeed(voice::getObject, chimes::getObject), vitals),
                 List.of(HostWiring::logNotice, notices, n -> audio.getObject().onNotice(n)));
     }
 

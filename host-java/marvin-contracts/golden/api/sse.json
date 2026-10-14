@@ -1116,7 +1116,6 @@
         },
         "vitals": {
           "count": 0,
-          "pending": "C3, W2: 1 Hz, GET /api/vitals's current object",
           "sample": {
             "hr": 66.3,
             "br": 14.0,

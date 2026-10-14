@@ -99,6 +99,9 @@ marvin:
     face-state-hz: 10
     # empty: $MARVIN_CONFIG_DIR, $XDG_CONFIG_HOME/marvin or ~/.config/marvin, calibration.json
     calibration-file: ${MARVIN_CALIBRATION:}
+  vitals:
+    # the per-minute heart and breathing rates (GET /api/vitals) are kept this long
+    keep-days: ${MARVIN_VITALS_KEEP_DAYS:90}
 
 management:
   endpoints:

@@ -82,8 +82,12 @@ class GoldenFilesTest {
     void theV1ContractsAreSpecified() throws IOException {
         JsonNode index = json("api/index.json");
         JsonNode pending = index.get("pending");
-        assertThat(pending.get("get").propertyNames()).containsExactlyInAnyOrder("setup", "vitals", "soul", "approvals",
-                "connectors");
+        // each frozen endpoint is either still pending or implemented (moved to the replayed list)
+        for (String name : java.util.List.of("setup", "vitals", "soul", "approvals", "connectors")) {
+            assertThat(pending.get("get").has(name) != index.get("get").toString().contains("\"" + name + "\""))
+                    .as(name + ": pending or replayed, not both").isTrue();
+        }
+        assertThat(pending.get("get").propertyNames()).isSubsetOf("setup", "vitals", "soul", "approvals", "connectors");
         for (String name : pending.get("get").propertyNames()) {
             assertThat(index.get("get").toString()).as(name).doesNotContain("\"" + name + "\"");
             JsonNode snap = json("api/get/" + name + ".json");
