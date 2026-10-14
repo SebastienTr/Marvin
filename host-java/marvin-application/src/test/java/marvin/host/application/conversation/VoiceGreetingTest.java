@@ -36,7 +36,11 @@ class VoiceGreetingTest {
     }
 
     private VoiceService started() throws InterruptedException {
-        VoiceService v = t.service(FakeModel.of("w", "w"));
+        return started(FakeModel.of("w", "w"));
+    }
+
+    private VoiceService started(FakeModel model) throws InterruptedException {
+        VoiceService v = t.service(model);
         v.setOwner(() -> new Greeting.Owner("Sébastien", List.of("fr", "en")));
         v.start();
         VoiceServiceTest.waitFor(() -> v.snapshot().state().equals("on"));
@@ -120,7 +124,9 @@ class VoiceGreetingTest {
 
     @Test
     void inTheLastLanguageSpoken() throws InterruptedException {
-        VoiceService v = started();
+        FakeModel model = FakeModel.of("w", "w", "It is noon.");
+        VoiceService v = started(model);
+        VoiceServiceTest.waitFor(() -> model.calls.size() == 2);          // the warm-up is over
         t.sidecar.signals.signal(new VoiceSidecar.Heard(1, "What time is it?", "", "en", "voice", Map.of(), 0));
         VoiceServiceTest.waitFor(() -> t.kinds("reply").size() == 1);
         v.onPresenceEvent(ev(EventKind.ARRIVED));
