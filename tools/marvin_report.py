@@ -290,7 +290,7 @@ def report(args) -> str:
     section("Device log (last 15)", [f"{e.get('device', '?')}: [{e.get('level')}] {e.get('text', '')}"
                                      for e in entries[-15:]])
 
-    lat_path = Path(args.latency) if args.latency else data / "logs" / "latency.jsonl"
+    lat_path = Path(args.latency) if args.latency else data / "latency.jsonl"
     lat = latency_lines(lat_path)
     lines = []
     for d in lat:
@@ -324,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--data-dir", default=os.environ.get("MARVIN_DATA_DIR", "~/.local/share/marvin"))
     ap.add_argument("--log", default=os.environ.get("MARVIN_REPORT_LOG", ""), help="the host's log file")
     ap.add_argument("--latency", default=os.environ.get("MARVIN_LATENCY_LOG", ""),
-                    help="the latency lines (default DATA_DIR/logs/latency.jsonl)")
+                    help="the latency lines (default DATA_DIR/latency.jsonl, where the Java host writes them)")
     ap.add_argument("--no-doctor", dest="doctor", action="store_false", help="skip ./marvin doctor")
     ap.add_argument("--offline", action="store_true", help="do not ask the host or Ollama")
     ap.add_argument("--out", help="also write the report to this file")
