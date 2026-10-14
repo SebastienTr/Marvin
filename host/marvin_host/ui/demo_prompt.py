@@ -48,7 +48,7 @@ def context_facts(state: PresenceState | None, events: Iterable[Event] = (),
         return []
     facts: list[str] = []
     if state.simulated:
-        facts.append("Your sensors are simulated for testing (no real radar or lidar yet): the person below is "
+        facts.append("Your sensors are simulated for testing (no real radar connected yet): the person below is "
                      "a simulated one walking in a simulated room on a loop, not the one talking to you. If "
                      "asked about the room, the person or their vital signs, give the simulated values and "
                      "say they are simulated.")
