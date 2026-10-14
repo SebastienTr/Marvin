@@ -4,7 +4,7 @@ Prices are indicative. They were checked in September 2026 and move often. Pick 
 
 **Total: about €115 in parts** (prices checked 26 September 2026, before import fees, see below), in one AliExpress order. Seeed Studio's own shop (Germany warehouse) can be cheaper for the MR60BHA2 kit and the XIAO ESP32S3 Sense when they are in stock there. You provide the USB-C power source: a phone charger or a power bank.
 
-Rev F (the upright robot) uses the electronics of rev D and rev E **without the lidar**: since 14 October 2026 Marvin senses the room with its two radars and its camera only. It adds a smoked acrylic face window and a little TPU for the neck damper. (The D800 lidar moved to a separate project, a 3D room scanner. The firmware and the host still read a D500 or D800, on the robot's spare D7 pin or on a USB-serial adapter: [usb-sensors.md](usb-sensors.md).)
+Rev F (the upright robot) uses the electronics of rev D and rev E **without the lidar**: since 14 October 2026 Marvin senses the room with its two radars and its camera only. It adds a smoked acrylic face window and a little TPU for the neck damper. (The D800 lidar moved to a separate project, a 3D room scanner. The host still reads a D500 or D800 on a USB-serial adapter: [usb-sensors.md](usb-sensors.md). The robot's last free pin, D7, now reads the knob.)
 
 ## Sensors and controller
 
@@ -31,6 +31,7 @@ The microphone is already on the XIAO Sense board: nothing to buy.
 |---|---:|---|---:|
 | [Dupont jumper wires, female–female, 20 cm](https://fr.aliexpress.com/item/1005012095727159.html) | 1 lot | ESP32 power pins to the lever connectors, the amp's I2S lines, and the runs through the neck. | 2 |
 | [5-port lever connectors, 221-415 type](https://fr.aliexpress.com/item/1005007171193407.html), variant "10pcs-415-Bag" | 1 bag of 10 | Four buses: 5 V, GND-A, GND-B, 3V3 (0.15–4 mm² wire). No tools needed. | 3 |
+| 6 × 6 mm push button (tactile switch, 4 legs, through-hole) | 1 | The orange knob: tap it and Marvin listens, hold it 1.5 s to mute or unmute. On D7. One from an Arduino or ESP32 starter kit is fine. | 0.1 |
 | [USB-C male pigtail, 2 wires, 90° plug](https://fr.aliexpress.com/item/1005010089226136.html) | 1 | Powers the MR60BHA2 kit from the 5 V bus; the right-angle plug fits under the kit. | 2 |
 | [USB-C cable with a **90° (right-angle) plug**](https://fr.aliexpress.com/item/1005008765247136.html), single elbow, 1 m | 1 | Enters at the back of the body and climbs through the neck to the XIAO in the head. The other end goes to a charger, a power bank or your computer (for flashing). | 3 |
 

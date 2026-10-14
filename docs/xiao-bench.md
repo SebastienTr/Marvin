@@ -14,6 +14,7 @@ The robot's electronics from the [BOM](bom.md), without the shell:
 | HLK-LD2450 (KIT-A) | Its cable ends in Dupont plugs |
 | 1.69" ST7789 screen, 240 × 280 | 8 labelled wires: VCC, GND, DIN, CLK, CS, DC, RST, BL |
 | MAX98357A amplifier + 2030 speaker (8 Ω, 1 W) | Amp header soldered; speaker on the screw terminal |
+| 6 × 6 mm push button (4 legs) | The knob, on the breadboard |
 | Breadboard, jumper wires | Male-to-male for the breadboard, female-to-male for the modules |
 
 The MR60BHA2 kit (60 GHz, vital signs) has its own ESP32-C6 and Wi-Fi: it needs only 5 V and GND (USB-C), not the XIAO ([mr60_bridge](../firmware/mr60_bridge/README.md)).
@@ -43,13 +44,14 @@ Put the XIAO across the breadboard's centre gap, USB-C at the end. Use the bread
 | Amp | DIN | **D2** | 3 |
 | Speaker | + / − | amp terminal + / − | – |
 | Microphone, camera | on the Sense board | nothing to wire | 41, 42; camera internal |
-| – | – | **D7** | 44, spare |
+| Knob (push button) | one leg / the diagonally opposite leg | **D7** / GND rail | 44 |
 
 - **TX goes to D4, RX to D5**: the radar's TX talks, the XIAO's D4 (UART1 RX) listens; the XIAO answers on D5.
 - **3V3 for the screen**, 5 V for the radar and the amp. 5 V never goes to a D pin.
 - Leave the amp's **GAIN** and **SD** pins unconnected (9 dB, mono mix).
 - Leave the Sense board's **microSD slot empty**: the card shares the screen's SPI pins and D9 (GPIO8, its MISO).
-- **D6 and D7** are UART0's default pins (GPIO43 TX, GPIO44 RX). The console uses the native USB port instead, so D6 is free for the amp's LRC and D7 stays spare.
+- **D6 and D7** are UART0's default pins (GPIO43 TX, GPIO44 RX). The console uses the native USB port instead, so D6 is free for the amp's LRC and D7 for the knob.
+- **The knob**: a 4-leg push button across the centre gap; two **diagonally opposite** legs are always the two sides of the switch. No resistor: the XIAO's internal pull-up holds D7 high, the button pulls it to ground. Tap: Marvin listens (*Talk now*); hold 1.5 s: mute or unmute.
 - Wire **one module at a time** if you like, power unplugged each time: the firmware runs with any of them missing, and its line says so.
 
 ## Flash it

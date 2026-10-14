@@ -27,7 +27,7 @@ like too much at once.
 | Document | What is in it |
 |---|---|
 | [bom.md](bom.md) | Every part, where to buy it, the price |
-| [wiring.md](wiring.md) | The 25 connections of the robot, for first-timers |
+| [wiring.md](wiring.md) | The 27 connections of the robot, for first-timers |
 | [printing.md](printing.md) | The printed parts, filaments, slicer settings |
 | [assembly.md](assembly.md) | How the parts go together |
 | [architecture.md](architecture.md) | Why the robot is built this way: data rates, power, coordinate frame, roadmap |
