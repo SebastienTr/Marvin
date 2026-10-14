@@ -120,4 +120,20 @@ class NightlyPassTest {
         assertThat(m.nightly.retention()).isEqualTo(1);
         assertThat(m.store.log.rows).containsKeys(kept, recent).doesNotContainKey(gone);
     }
+
+    @Test
+    void theConversationsTextAndTasksResultsGoAfterTheRetentionOnceSummarisedUnlessAFactNeedsThem() {
+        m.settings.update(Map.of("retention_days", 30));
+        long source = m.say(NOW.minus(Duration.ofDays(45)), "heard", "I play football on Wednesdays.").id();
+        long old = m.say(NOW.minus(Duration.ofDays(45)), "reply", "Noted, football on Wednesdays.").id();
+        long recent = m.say(NOW.minus(Duration.ofDays(3)), "heard", "What's the weather?").id();
+        long task = m.store.log.appendOne(marvin.host.domain.memory.EventFeeds.task("t1",
+                NOW.minus(Duration.ofDays(40)).getEpochSecond(), "done", "Compare two laptops", "Compare two laptops",
+                "The first one.", "| A | B |", "", "voice").orElseThrow()).orElseThrow().id();
+        fact("The owner plays football on Wednesdays.", Sensitivity.NORMAL, NOW.minus(Duration.ofDays(45)), source);
+        assertThat(m.nightly.retention()).isZero();                          // nothing summarised yet: nothing goes
+        m.nightly.dayEpisodes(target, () -> false);
+        assertThat(m.nightly.retention()).isEqualTo(2);
+        assertThat(m.store.log.rows).containsKeys(source, recent).doesNotContainKeys(old, task);
+    }
 }

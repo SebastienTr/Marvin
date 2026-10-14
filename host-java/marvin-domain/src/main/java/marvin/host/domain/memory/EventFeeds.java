@@ -66,6 +66,45 @@ public final class EventFeeds {
                 vitals ? Sensitivity.SENSITIVE : Sensitivity.NORMAL, "presence:" + eventId, text, data));
     }
 
+    /** Characters of a task's result the log keeps (the task itself keeps all of it). */
+    public static final int TASK_RESULT_CHARS = 1500;
+
+    /**
+     * A finished background task (done or failed); empty for any other state. {@code title}, {@code goal}: what the owner
+     * asked; {@code summary}: the sentence Marvin says; {@code result}: Markdown, cut to {@link #TASK_RESULT_CHARS}.
+     */
+    public static Optional<MemoryEvent> task(String taskId, double finishedAt, String status, String title, String goal,
+                                             String summary, String result, String error, String origin) {
+        if (!"done".equals(status) && !"failed".equals(status)) {
+            return Optional.empty();
+        }
+        StringBuilder b = new StringBuilder("Background task \u201c").append(title).append("\u201d");
+        if (goal != null && !goal.isBlank() && !goal.strip().equals(title)) {
+            b.append(" (asked: ").append(goal.strip()).append(')');
+        }
+        if ("done".equals(status)) {
+            b.append(" done");
+            if (summary != null && !summary.isBlank()) {
+                b.append(": ").append(summary.strip());
+            }
+            if (result != null && !result.isBlank() && !result.strip().equals(summary == null ? "" : summary.strip())) {
+                String r = result.strip();
+                b.append("\nResult: ").append(r.length() > TASK_RESULT_CHARS ? r.substring(0, TASK_RESULT_CHARS) + "\u2026" : r);
+            }
+        } else {
+            b.append(" did not finish").append(error == null || error.isBlank() ? "" : ": " + error.strip());
+        }
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("task_id", taskId);
+        d.put("status", status);
+        d.put("title", title);
+        if (origin != null) {
+            d.put("origin", origin);
+        }
+        return Optional.of(MemoryEvent.draft(instant(finishedAt), MemorySources.TASK, "task_" + status, Sensitivity.NORMAL,
+                "task:" + taskId, Redaction.redact(b.toString()), d));
+    }
+
     /** Unix seconds as an instant, to the microsecond (what PostgreSQL keeps). */
     public static Instant instant(double unixSeconds) {
         long micros = Math.round(unixSeconds * 1e6);

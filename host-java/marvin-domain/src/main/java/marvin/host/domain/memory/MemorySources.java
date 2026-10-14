@@ -11,6 +11,11 @@ public final class MemorySources {
     public static final String BRAIN = "brain";
     /** What the owner did in the app or said with a tool ("remember that ..."): memory never undoes it. */
     public static final String OWNER = "owner";
+    /**
+     * What Marvin's background tasks found (docs/design.md 6.1): a finished task's goal, summary and the start of its
+     * result. It goes into the day's summary; facts are not extracted from it (a task reads the world, not the owner).
+     */
+    public static final String TASK = "task";
 
     /** Every source, in the order the app lists their switches. */
     public static final List<String> ALL = List.of(CONVERSATION, BRAIN, OWNER);

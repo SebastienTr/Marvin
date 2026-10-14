@@ -305,6 +305,9 @@ public final class Consolidator {
         if (MemorySources.CONVERSATION.equals(e.source())) {
             return "reply".equals(e.kind()) ? "Marvin" : "Owner";
         }
+        if (MemorySources.TASK.equals(e.source())) {
+            return "Marvin's task";
+        }
         return e.source();
     }
 

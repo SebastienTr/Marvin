@@ -466,8 +466,10 @@ public final class NightlyPass {
     }
 
     /**
-     * Deletes brain events older than the retention setting whose day is summarised and which no fact comes from;
-     * the conversation is kept until the owner says otherwise. Returns how many.
+     * Deletes events older than the retention setting (a year by default) whose day is summarised and which no fact
+     * comes from: the brain's, the conversation's text (the owner's decision of 14 October 2026: kept a year, then
+     * summarised and dropped) and the tasks' results. What a fact was learned from stays, so it can say where it came
+     * from. Returns how many.
      */
     int retention() {
         Optional<Episode> lastDay = episodes.latest(EpisodeLevel.DAY);
@@ -477,7 +479,11 @@ public final class NightlyPass {
         Instant cutoff = now().minus(Duration.ofDays(settings.settings().retentionDays()));
         Instant summarised = lastDay.get().periodEnd();
         Instant before = cutoff.isBefore(summarised) ? cutoff : summarised;
-        return events.deleteUnreferenced(MemorySources.BRAIN, before);
+        int n = 0;
+        for (String source : List.of(MemorySources.BRAIN, MemorySources.CONVERSATION, MemorySources.TASK)) {
+            n += events.deleteUnreferenced(source, before);
+        }
+        return n;
     }
 
     /** Facts whose events were all forgotten go too. */
