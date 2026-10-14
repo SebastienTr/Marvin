@@ -16,6 +16,7 @@ enum : uint8_t {
   CASET = 0x2A,
   RASET = 0x2B,
   RAMWR = 0x2C,
+  RDDID = 0x04,
   MADCTL = 0x36,
   COLMOD = 0x3A,
 };
@@ -37,6 +38,7 @@ bool St7789::begin(const St7789Config &cfg, uint8_t spi_bus) {
     digitalWrite(cfg.rst, HIGH);
     delay(150);
   }
+  id_ = read_id();
   spi_ = new SPIClass(spi_bus);
   if (!spi_) return false;
   spi_->begin(cfg.sck, -1, cfg.mosi, -1);
@@ -54,6 +56,39 @@ bool St7789::begin(const St7789Config &cfg, uint8_t spi_bus) {
   command(DISPON);
   delay(20);
   return true;
+}
+
+// RDDID, bit-banged: the command goes out MSB first on SCK's rising edges; the panel then drives the
+// same data line (SDA is bidirectional on these modules) and changes it on the falling edges: one
+// dummy bit, then the 24 bits of ID1..ID3. With no panel the pull-up reads all ones. Write-only
+// wiring never blocks: a panel that cannot answer only reads as "no answer".
+uint32_t St7789::read_id() {
+  pinMode(cfg_.sck, OUTPUT);
+  digitalWrite(cfg_.sck, LOW);
+  pinMode(cfg_.mosi, OUTPUT);
+  digitalWrite(cfg_.cs, LOW);
+  digitalWrite(cfg_.dc, LOW);
+  for (int i = 7; i >= 0; i--) {
+    digitalWrite(cfg_.mosi, (RDDID >> i) & 1);
+    delayMicroseconds(1);
+    digitalWrite(cfg_.sck, HIGH);
+    delayMicroseconds(1);
+    digitalWrite(cfg_.sck, LOW);
+  }
+  pinMode(cfg_.mosi, INPUT_PULLUP);
+  digitalWrite(cfg_.dc, HIGH);
+  delayMicroseconds(1);
+  uint32_t v = 0;
+  for (int i = 0; i < 25; i++) {  // the dummy bit, then 24
+    digitalWrite(cfg_.sck, HIGH);
+    delayMicroseconds(1);
+    v = (v << 1) | (digitalRead(cfg_.mosi) ? 1u : 0u);
+    digitalWrite(cfg_.sck, LOW);
+    delayMicroseconds(1);
+  }
+  digitalWrite(cfg_.cs, HIGH);
+  pinMode(cfg_.mosi, OUTPUT);
+  return v & 0xFFFFFF;
 }
 
 void St7789::command(uint8_t cmd, const uint8_t *data, size_t n) {

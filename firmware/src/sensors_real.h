@@ -29,7 +29,8 @@ uint32_t lidar_baud(uint8_t lidar_model);
 // Opens both UARTs (only the LD2450's for lidar_model 0: no lidar fitted) and configures the LD2450 (enable configuration, multi-target tracking, end
 // configuration, each ACK checked, with retries). Blocks for up to ~3 s if the LD2450 does not
 // answer. Returns true if the LD2450 acknowledged the whole sequence; the stream is read either way.
-bool begin(uint8_t lidar_model);
+// log_acks false: no console line per missing ACK (the self-test says it in one line instead).
+bool begin(uint8_t lidar_model, bool log_acks = true);
 
 // Reads what the UARTs received; calls on_lidar for every valid 47-byte lidar packet and
 // on_ld2450 for every valid 30-byte target frame. Call it often (every loop) so the RX buffers

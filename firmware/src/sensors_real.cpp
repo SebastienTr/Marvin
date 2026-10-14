@@ -40,6 +40,7 @@ HardwareSerial &radar_uart = Serial1;
 framing::LidarFramer lidar;
 framing::Ld2450Framer radar;
 bool has_lidar = false;
+bool log_acks = true;
 volatile uint32_t overflows = 0;
 
 void count_overflow(hardwareSerial_error_t err) {
@@ -66,8 +67,8 @@ bool command(const uint8_t *frame, size_t len, uint16_t word, const char *name) 
     if (n) radar.feed(in, n, on_frame);
     else delay(1);
   }
-  if (!acked) Serial.printf("LD2450: no ACK for %s\n", name);
-  else if (!ok) Serial.printf("LD2450: %s refused\n", name);
+  if (log_acks && !acked) Serial.printf("LD2450: no ACK for %s\n", name);
+  else if (log_acks && !ok) Serial.printf("LD2450: %s refused\n", name);
   return ok;
 }
 
@@ -89,8 +90,9 @@ bool configure_ld2450() {
 
 uint32_t lidar_baud(uint8_t lidar_model) { return lidar_model == 2 ? 921600 : 230400; }
 
-bool begin(uint8_t lidar_model) {
+bool begin(uint8_t lidar_model, bool log) {
   has_lidar = lidar_model != 0;
+  log_acks = log;
   if (has_lidar) {
     lidar_uart.setRxBufferSize(LIDAR_RX_BUFFER);      // must come before begin()
     lidar_uart.begin(lidar_baud(lidar_model), SERIAL_8N1, LIDAR_RX, -1);

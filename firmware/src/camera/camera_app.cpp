@@ -298,6 +298,17 @@ bool ready() { return ok; }
 
 const char *sensor_name() { return sensor; }
 
+bool test_frame(int *width, int *height, size_t *bytes) {
+  if (!ok) return false;
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) return false;
+  *width = fb->width;
+  *height = fb->height;
+  *bytes = fb->len;
+  esp_camera_fb_return(fb);
+  return true;
+}
+
 bool stats_line(char *out, size_t cap) {
   if (!ok) return false;
   uint32_t ms = millis();

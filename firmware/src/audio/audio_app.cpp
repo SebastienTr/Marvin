@@ -76,11 +76,15 @@ TaskHandle_t mic_task_handle = nullptr;
 volatile float speaker_gain = 0.0f;
 volatile float mic_gain = 1.0f;
 volatile bool mic_wanted = false;  // the host asked for the microphone
+volatile bool mic_monitor = false;  // the board listens for itself (set_mic_monitor)
 volatile bool linked = false;
 
 // counters (under lock)
 uint32_t sounds = 0, mic_blocks = 0, mic_dropped = 0;
 uint16_t mic_peak = 0;
+double level_sum_sq = 0;  // mic_level()'s window
+uint32_t level_samples = 0;
+uint16_t level_peak = 0;
 audio::JitterBuffer::Counters last;
 uint32_t last_sounds = 0, last_mic_blocks = 0, last_mic_dropped = 0;
 
@@ -110,20 +114,22 @@ void speaker_task(void *) {
   }
 }
 
-// Microphone: runs the PDM clock only while wanted and linked.
+// Microphone: runs the PDM clock only while wanted and linked, or monitored.
 void mic_task(void *) {
   static MicBlock block;
   audio::DcBlocker dc;
-  bool running = false;
+  bool running = false, streaming = false;
   int warmup = 0;
   uint32_t index = 0;
   for (;;) {
-    if (!(mic_wanted && linked)) {
+    const bool stream = mic_wanted && linked;
+    if (!(stream || mic_monitor)) {
       if (running) {
         i2s_stop(MIC_PORT);
         running = false;
       }
-      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));  // woken by MIC_START / link up
+      streaming = false;
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));  // woken by MIC_START / link up / the monitor
       continue;
     }
     if (!running) {
@@ -131,10 +137,13 @@ void mic_task(void *) {
       i2s_start(MIC_PORT);
       running = true;
       warmup = MIC_WARMUP_BLOCKS;
-      index = 0;  // a new stream starts at sample 0
-      xQueueReset(mic_queue);  // nothing from a previous stream
       dc.reset();
     }
+    if (stream && !streaming) {
+      index = 0;  // a new stream starts at sample 0
+      xQueueReset(mic_queue);  // nothing from a previous stream
+    }
+    streaming = stream;
     size_t got = 0;
     if (i2s_read(MIC_PORT, block.pcm, sizeof(block.pcm), &got, pdMS_TO_TICKS(100)) != ESP_OK ||
         got != sizeof(block.pcm))
@@ -146,14 +155,23 @@ void mic_task(void *) {
       continue;
     }
     dc.process(block.pcm, MIC_BLOCK, mic_gain);
-    block.index = index;
-    index += MIC_BLOCK;
     uint16_t pk = audio::peak(block.pcm, MIC_BLOCK);
-    bool queued = xQueueSend(mic_queue, &block, 0) == pdTRUE;
+    double sq = 0;
+    for (size_t i = 0; i < MIC_BLOCK; i++) sq += (double)block.pcm[i] * block.pcm[i];
+    bool queued = false, tried = false;
+    if (stream) {
+      block.index = index;
+      index += MIC_BLOCK;
+      tried = true;
+      queued = xQueueSend(mic_queue, &block, 0) == pdTRUE;
+    }
     Lock l;
     if (queued) mic_blocks++;
-    else mic_dropped++;
-    if (pk > mic_peak) mic_peak = pk;
+    else if (tried) mic_dropped++;
+    if (stream && pk > mic_peak) mic_peak = pk;
+    level_sum_sq += sq;
+    level_samples += MIC_BLOCK;
+    if (pk > level_peak) level_peak = pk;
   }
 }
 
@@ -297,6 +315,25 @@ void set_linked(bool up) {
   } else if (mic_task_handle) {
     xTaskNotifyGive(mic_task_handle);
   }
+}
+
+void set_mic_monitor(bool on) {
+  if (!ok || on == mic_monitor) return;
+  mic_monitor = on;
+  if (on && mic_task_handle) xTaskNotifyGive(mic_task_handle);
+}
+
+bool mic_level(double *sum_sq, uint32_t *samples, uint16_t *peak) {
+  if (!ok) return false;
+  Lock l;
+  const bool any = level_samples > 0;
+  *sum_sq = level_sum_sq;
+  *samples = level_samples;
+  *peak = level_peak;
+  level_sum_sq = 0;
+  level_samples = 0;
+  level_peak = 0;
+  return any;
 }
 
 size_t next_mic_payload(uint8_t *payload, size_t cap, uint64_t *t_us) {

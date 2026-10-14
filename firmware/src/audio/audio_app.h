@@ -15,7 +15,8 @@
 // When nothing is queued it writes silence, so the I2S clock paces the task.
 //
 // Microphone: the Sense board's PDM mic on I2S0 (CLK GPIO42, DATA GPIO41), 16 kHz. The PDM clock
-// only runs while the host asked for the stream (AUDIO_CTRL MIC_START) and the link is up; a task
+// only runs while the host asked for the stream (AUDIO_CTRL MIC_START) and the link is up, or
+// while the board listens for itself (set_mic_monitor: the XIAO bench's level line); a task
 // on core 1 reads 20 ms blocks, removes the DC offset, applies the gain and queues them for the
 // main loop, which sends them as AUDIO_IN (the loop owns the UDP socket, so AUDIO_IN leaves from
 // the robot's port like every other message).
@@ -56,6 +57,15 @@ void set_linked(bool linked);
 // payload and the capture time of its first sample (robot clock, us) into t_us. Returns the
 // payload size, 0 when nothing is waiting.
 size_t next_mic_payload(uint8_t *payload, size_t cap, uint64_t *t_us);
+
+// Keeps the microphone running without a host, for mic_level() (the self-test's level line).
+// Blocks are only queued for AUDIO_IN while the host asks for them, as without the monitor.
+void set_mic_monitor(bool on);
+
+// The microphone's level since the previous call (after the DC blocker and the gain, as AUDIO_IN
+// carries it): the sum of the squares and the number of samples, and the loudest sample. False when
+// no block came in meanwhile (the microphone is not running, or did not start).
+bool mic_level(double *sum_sq, uint32_t *samples, uint16_t *peak);
 
 // One-line summary of the counters since the previous call (for LOG), and whether anything
 // happened (speaker stream, sound or microphone) since then.

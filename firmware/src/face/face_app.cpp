@@ -53,12 +53,21 @@
 #ifndef MARVIN_FACE_FPS
 #define MARVIN_FACE_FPS 30
 #endif
+#ifndef MARVIN_SCREEN_TEST
+#define MARVIN_SCREEN_TEST 0
+#endif
 
 namespace face_app {
 
 namespace {
 
 constexpr size_t FB_PIXELS = face::SCREEN_W * face::SCREEN_H;
+
+// The queue also carries the board's own presence (set_local_presence), as a FACE_STATE payload
+// under a type no host message has.
+constexpr uint8_t LOCAL_STATE = 0x00;
+// Where a greeted visitor stands: straight ahead, 60 cm away, face height (device frame, mm).
+constexpr double GREET_POINT_MM[3] = {0, -600, 300};
 
 struct Msg {
   uint8_t type;
@@ -72,15 +81,46 @@ uint16_t *fb = nullptr;
 face::St7789 display;
 volatile uint32_t n_frames = 0;
 volatile uint32_t frame_us = 0;
+volatile uint32_t greet_until = 0;
+volatile bool greeting = false;
+
+// Full-screen colours, so the panel's colour order and inversion can be checked by eye.
+void colour_test() {
+  const face::Rgb colours[3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
+  for (const face::Rgb &c : colours) {
+    const uint16_t px = face::rgb565(c);
+    for (size_t i = 0; i < FB_PIXELS; i++) fb[i] = px;
+    display.push(fb, face::Rect{0, 0, face::SCREEN_W, face::SCREEN_H});
+    vTaskDelay(pdMS_TO_TICKS(300));
+  }
+}
 
 void task(void *) {
   const TickType_t period = pdMS_TO_TICKS(1000 / MARVIN_FACE_FPS) ? pdMS_TO_TICKS(1000 / MARVIN_FACE_FPS) : 1;
   TickType_t wake = xTaskGetTickCount();
   bool first = true;
+  if (MARVIN_SCREEN_TEST) colour_test();
   for (;;) {
     const uint32_t now = millis();
     Msg m;
-    while (xQueueReceive(queue, &m, 0) == pdTRUE) link->on_message(m.type, m.data, m.n, now);
+    while (xQueueReceive(queue, &m, 0) == pdTRUE) {
+      if (m.type == LOCAL_STATE) {
+        face::Presence p;
+        if (face::decode_state(m.data, m.n, p)) link->set_local(p, now);
+      } else {
+        link->on_message(m.type, m.data, m.n, now);
+      }
+    }
+    if (greeting) {
+      if ((int32_t)(greet_until - now) > 0) {
+        face::Presence p;
+        p.present = p.has_position = true;
+        for (int k = 0; k < 3; k++) p.position[k] = GREET_POINT_MM[k];
+        link->set_local(p, now);
+      } else {
+        greeting = false;
+      }
+    }
 
     const uint32_t t0 = micros();
     face::Rect r = link->frame(now, fb);
@@ -134,6 +174,27 @@ void on_message(uint8_t type, const uint8_t *payload, size_t n) {
   m.n = n < sizeof(m.data) ? (uint8_t)n : (uint8_t)sizeof(m.data);
   memcpy(m.data, payload, m.n);
   xQueueSend(queue, &m, 0);  // queue full: drop (the next FACE_STATE follows within 100 ms)
+}
+
+uint32_t screen_id() { return display.id(); }
+
+void set_local_presence(bool present, const double position_mm[3]) {
+  if (!queue) return;
+  face::Presence s;
+  s.present = present;
+  if (present && position_mm) {
+    s.has_position = true;
+    for (int k = 0; k < 3; k++) s.position[k] = position_mm[k];
+  }
+  Msg m;
+  m.type = LOCAL_STATE;
+  m.n = (uint8_t)face::encode_state(s, m.data);
+  xQueueSend(queue, &m, 0);
+}
+
+void greet(uint32_t ms) {
+  greet_until = millis() + ms;
+  greeting = true;
 }
 
 uint32_t frames() { return n_frames; }

@@ -31,6 +31,10 @@ struct St7789Config {
 class St7789 {
  public:
   bool begin(const St7789Config &cfg, uint8_t spi_bus);
+  // The panel's RDDID answer read at begin() (ID1 << 16 | ID2 << 8 | ID3, 0x858552 on most ST7789V),
+  // over its bidirectional data line before the SPI peripheral takes the pins. 0xFFFFFF: nothing
+  // answered (the line's pull-up), as with no panel wired, or a module that cannot be read.
+  uint32_t id() const { return id_; }
   // Send `r` of `fb` (SCREEN_W x SCREEN_H, row-major, native RGB565). r.x0 must be even and `fb`
   // 4-byte aligned (writePixels reads 32-bit words).
   void push(const uint16_t *fb, Rect r);
@@ -38,9 +42,11 @@ class St7789 {
  private:
   void command(uint8_t cmd, const uint8_t *data = nullptr, size_t n = 0);
   void window(int x0, int y0, int x1, int y1);
+  uint32_t read_id();
 
   SPIClass *spi_ = nullptr;
   St7789Config cfg_{};
+  uint32_t id_ = 0xFFFFFF;
 };
 
 }  // namespace face

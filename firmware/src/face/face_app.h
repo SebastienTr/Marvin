@@ -15,6 +15,8 @@
 // MARVIN_TFT_SCK (7), MARVIN_TFT_MOSI (9), MARVIN_TFT_CS (1), MARVIN_TFT_DC (2), MARVIN_TFT_RST (4),
 // MARVIN_TFT_SPI_HZ (40 MHz), MARVIN_TFT_COL_OFFSET (0), MARVIN_TFT_ROW_OFFSET (20),
 // MARVIN_TFT_MADCTL (0x00), MARVIN_TFT_INVERT (1), MARVIN_FACE_FPS (30).
+// MARVIN_SCREEN_TEST (the XIAO bench): the task first shows full red, green and blue (0.3 s each),
+// so a wrong colour order or inversion shows before the eyes do.
 #pragma once
 
 #include <stddef.h>
@@ -30,6 +32,18 @@ bool begin();
 // Hand over a host -> robot message: type (header byte 3) and the payload after the 16-byte
 // header. Face messages (FACE_STATE, FACE_EVENT) are queued, anything else is ignored.
 void on_message(uint8_t type, const uint8_t *payload, size_t n);
+
+// The panel's ID read at begin() (St7789::id(): 0xFFFFFF when nothing answered). Only the
+// wording of the answer is decided elsewhere (self_test.h).
+uint32_t screen_id();
+
+// The board's own presence (its radar), for the face while the host sends no FACE_STATE
+// (FaceLink::set_local): call it with every radar frame. position_mm in the device frame, or null.
+void set_local_presence(bool present, const double position_mm[3]);
+
+// Someone is "there", straight ahead, for ms milliseconds from now: the face wakes up and looks
+// at you (the boot self-test). Then it goes back to what the host or the radar says.
+void greet(uint32_t ms);
 
 // Frames drawn and pushed so far, and the last frame's render + push time (for logs).
 uint32_t frames();

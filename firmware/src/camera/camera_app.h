@@ -39,6 +39,9 @@ bool ready();
 // Detected sensor ("OV3660", "OV2640", ...), or "none".
 const char *sensor_name();
 
+// Grabs one frame now and gives its size (the boot self-test). False if no frame came.
+bool test_frame(int *width, int *height, size_t *bytes);
+
 // One-line summary since the previous call (for LOG); true if anyone was served meanwhile.
 bool stats_line(char *out, size_t cap);
 
