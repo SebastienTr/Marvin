@@ -78,3 +78,22 @@ When the microphone starts, the first 100 ms are dropped while the PDM filter an
 
 - Microphone level: the `audio:` `LOG` line every 10 s reports the microphone peak. Normal speech at a desk should peak around 3 000–15 000; change the gain with `AUDIO_CTRL` *mic gain* (0–36 dB, default 12) or `MARVIN_MIC_GAIN_DB`. A peak of 0 means the mic is on the other PDM slot: build with `-DMARVIN_MIC_RIGHT_SLOT=1`.
 - Speaker: start at the default volume 60 and adjust from the host.
+
+### The robot's audio profile from H1
+
+The robot profile's values (`AudioDeviceProfile.ROBOT_DEFAULT`: echo tail 0.5 s, output latency 0.05 s, VAD floor
+-55 dBFS per frame and -45 dBFS for an utterance, WebRTC aggressiveness 3, Silero threshold 0.5) are estimates. At
+H1, with the voice on the robot route:
+
+1. **Output latency**: ask 10 short questions; the reply inspector's *speaker* stage (`playback_start` -
+   `audio_start`) and the latency lines' `robot_out_ms` - `tts_first_audio_ms` give the real delay to the speaker.
+   Set `devices.robot.output_latency_s` to their median minus the 150 ms lead the robot's pacing already counts.
+2. **Echo tail**: say nothing while Marvin answers a long question; any `heard` or `ignored` entry in the second
+   after the answer ends is its own voice. Raise `devices.robot.echo_tail_s` by 0.1 s until none comes, 10 answers
+   in a row.
+3. **VAD floors**: run the voice calibration (**Your voice**) through the robot, then read the `audio:` log's
+   microphone peaks at rest and while talking at the desk; with "ignored: too quiet" entries for real questions,
+   lower `speech_min_dbfs` by 3 dB.
+
+Write the values in `voice.json` (`devices.robot`), then paste `./marvin report` (it carries the last latency lines)
+so the defaults can be updated in `AudioDeviceProfile.ROBOT_DEFAULT`.

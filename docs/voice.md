@@ -257,7 +257,7 @@ How to talk to it:
 
 - **"Marvin, what's the capital of Peru?"** in one breath: the name is removed, the rest is the question.
 - **"Marvin."** alone: a soft two-note earcon, then ask within 6 seconds.
-- **Talk now** (the app's button, or the bench board's Talk button): the same, without the name. It
+- **Talk now** (the app's button, a tap on the robot's orange knob, or the bench board's Talk button): the same, without the name. It
   stops whatever Marvin is saying or thinking, and the microphone is open at once: what you say right
   after pressing is never clipped (see [Talk now and barge-in](#talk-now-and-barge-in)).
 - **Follow-up**: for 5 seconds after an answer, ask again without the name.
@@ -271,12 +271,15 @@ How to talk to it:
 - It answers in the language you speak (French and English are expected; French by default), and
   mixes them as you do.
 - It forgets the conversation after 3 minutes of silence.
+- **Mute**: hold the robot's knob for 1.5 s (or the app's Mute, or the bench board's Mute button); hold it
+  again to unmute. The earcons say which (the end-of-listening sound: muted; the listening sound: back on).
 
 The model also knows what the brain and memory know, stated as plain facts: whether someone is
 there, how long they have been seated, breathing and heart rate while those readings are reliable,
 recent events, the room, what it remembers of the owner. Marvin also speaks first once in a while:
-a break reminder (on by default) and, if you want it, a "welcome back" after 30 minutes away. At
-most one such sentence every 10 minutes, never during a conversation.
+it greets you by name when you sit down after 30 minutes away ([The greeting](#the-greeting)), a
+break reminder (on by default) and, if you want it and the greeting is off, a "welcome back". At
+most one such sentence every 10 minutes, never during a conversation, never in quiet hours.
 
 ### From the app
 
@@ -329,7 +332,8 @@ Other keys: `ollama_host`, `default_language`, `wake`, `follow_up_s`, `listen_wi
 `end_silence_long_ms` (1100, 0 turns the longer pause off), `chime` (the earcons, default true),
 `tools` (default true), `internet` (online tools, default true), `home_place` (the weather's place
 when none is said, e.g. `"Nice"`), `reminders` (spoken break reminders, default true),
-`welcome_back` (default false), `vision_model`, `camera`, `vad` and `turn` (`auto`), `turn_check_ms`
+`welcome_back` (default false; replaced by the greeting while `greet_on_sit` is on), `greet_on_sit` (greet the
+owner by name on sitting down, default true), `vision_model`, `camera`, `vad` and `turn` (`auto`), `turn_check_ms`
 (200) and `turn_max_ms` (2000), `speaker_threshold` (0.45). `devices` changes the two
 [audio devices'](#audio-devices) profiles; the older top-level `duplex`, `echo_tail_s`,
 `input_device` and `output_device` still set the computer's.
@@ -511,10 +515,20 @@ system prompt cached; M1/M2 at the slow end, M3/M4 Pro/Max at the fast end):
 The first question after starting a model costs its loading time (5-20 s for 27B) and the
 processing of the system prompt (several seconds for 27B). Marvin does both at start-up by
 rehearsing a real question (same system prompt, same options: `num_ctx` 16384, `think` off,
-`keep_alive` 30 min, streamed), then checks that the next one reuses the cached prompt:
+`keep_alive` -1 for the voice's model, streamed), then checks that the next one reuses the cached prompt:
 `model ... ready (prompt cached) in X s; first token now Y s`. If Y stays high, the log says the
 server did not reuse the cache. Options that differ between requests (for instance another app
 using the same model with another `num_ctx`) make Ollama reload the model.
+
+### Keeping the voice's model warm
+
+One model often serves the voice, background tasks and memory, and memory's embeddings (and sometimes its night
+model, or the model for images) are other models Ollama must load beside it. The voice's model is **pinned**: every
+request for it asks `keep_alive: -1` (never unloaded for idleness), set when the voice warms up; every other model
+keeps `keep_alive: 30m`. A task using the same model shares the loaded one. When another model was just used,
+the host asks Ollama what is loaded (`GET /api/ps`, at most every 30 s); if the voice's model was pushed out to make
+room, it is warmed up again as soon as nobody is talking (`Ollama unloaded ... warming it up again` in the log).
+On a Mac where both fit, set `OLLAMA_MAX_LOADED_MODELS=2` (or more) so nothing has to be pushed out at all.
 
 ## One thought, one question
 
@@ -596,6 +610,67 @@ Marvin looking through a camera itself (the robot's or the computer's) is the `l
 [vision.md](vision.md): the same model for images and the same checks, but the picture goes to that
 model in a request of its own, and the conversation gets its description.
 
+## The greeting
+
+Marvin greets its owner by name when they sit down after an absence (v1 contract C5): "Bonjour Sébastien !" or
+"Hi Sébastien!", on the voice's device (the robot's speaker on the robot route).
+
+- **When**: an `arrived` after at least 30 minutes away (or the first one since the host started) arms it; the next
+  `sat_down` says it, within about 3 s of sitting still at the desk. A `left` disarms it. At most once every
+  10 minutes; never during a conversation (it is skipped, not delayed), never in quiet hours.
+- **Who**: the owner is the app's setting `owner` (`name`, `languages`, set by the onboarding). Single owner in v1:
+  whoever sits down is taken for the owner. With someone else in the room (two people on the radar) or no name set
+  yet, the greeting is neutral ("Bonjour !", "Hello!").
+- **Language**: the last one spoken to Marvin (today's conversation counts, across restarts), else the owner's first
+  language, else the voice's. French, English, German, Spanish, Italian, Dutch and Portuguese have their own words.
+- **Switch**: the voice setting `greet_on_sit` (default on). While it is on, "welcome back" is not said (one hello
+  per return).
+- **In the conversation**: the greeting is a proactive reply entry with `greeting: true`.
+
+## Presence tuning
+
+The brain ([intelligence.md](intelligence.md)) decides arrivals, sitting down and standing up from the LD2450. A
+real LD2450 a short way from a seated person (0.3 to 0.7 m) jitters by tens of centimetres, and its point jumps to
+another part of the body now and then, with a speed spike: with the Python brain's rules, `sat_down` and `stood_up`
+alternated every 2 to 10 s on Sébastien's desk. The Java brain adds a posture hysteresis (`BrainConfig.DEFAULT`;
+`BrainConfig.PYTHON` is brain.py exactly, which the golden recordings replay):
+
+| Threshold | Default | brain.py | What it does |
+|---|---|---|---|
+| `stand_confirm_s` | 2.0 | 0 | the stand-up condition must hold this long |
+| `seat_tau_s` | 1.5 | 0 | while seated, the position compared with the seat is averaged over this |
+| `resit_after_s` | 3.0 | 0 | no new `sat_down` this soon after a `stood_up` |
+| `still_grace_s` | 3.0 | 0 | a break in stillness shorter than this, ending where it began, keeps the stillness counted (sitting needs being still at that moment) |
+| `sit_still_s` | 2.5 | 3.0 | still this long, close enough: `sat_down` |
+
+Every threshold, these and brain.py's (`sit_max_m`, `stand_move_mm`, `still_move_mm`...), can be changed in the
+`brain` block of `calibration.json`, with brain.py's names; an unknown key or a non-number leaves the whole block
+ignored (with a warning):
+
+```json
+{"version": 1, "ld2450": {"x_sign": 1, "speed_sign": -1}, "brain": {"stand_confirm_s": 2.5, "sit_max_m": 1.1}}
+```
+
+`BrainPostureReplayTest` replays a seeded session rebuilt from what was observed (brain.py flaps; the defaults sit
+once and stand once) and `VoiceGreetingTest` replays a sit-down into the greeting. Stand-ups are reported about 2 s
+later than brain.py did: the price of the confirmation.
+
+**The LD2450 speed sign.** The brain wants the speed positive moving away. The simulator sends the LD2450's speed
+positive approaching (`speed_sign` -1, the default); ESPHome's `ld2450` component reads a real one as positive moving
+away, which would be +1. Every brain rule uses the speed's absolute value, so only the speed shown in the app is at
+stake. `BrainSpeedSignCheck` finds the sign from a recording (the raw speed against how fast the distance changes).
+
+**What H1 should measure** (bench, LD2450 on the robot, one recording each: `MARVIN_RECORD=~/h1-seated.mvrec.gz ./marvin up`):
+
+1. Seated at 0.6 m and at 1.0 m, still, 3 minutes: the spread of x and y (mm), how often the point jumps and how
+   far, the speed's noise. Expect one `sat_down` within 5 s and nothing else.
+2. Seated, then typing, turning to the side, leaning back, 3 minutes: still no `stood_up`.
+3. Stand up and walk away, 5 times: `stood_up` within 3 s each time, then `left`.
+4. Walk straight towards the robot and away, 3 times: the `BrainSpeedSignCheck` verdict for `speed_sign`.
+5. Away 30 minutes (or restart the host), sit down: the greeting within 5 s, once.
+
+Add each recording to the replay tests with its expected events, and set the thresholds from them.
+
 ## The room
 
 With room sensors on a robot (the bench board's PIR and DHT11, [wiring-bench.md](wiring-bench.md)), each question's
@@ -661,7 +736,15 @@ the Java host writes **one JSON object per answered turn**, one per line, frozen
 | `robot_out_ms` | The robot's speaker starts playing it; `null` when the voice speaks on the computer |
 | `total_ms` | The first sound is heard, wherever it plays (the app's "first word") |
 
-Streams may add stages as extra `*_ms` numbers; the seven fields above keep their meaning.
+Streams may add stages as extra `*_ms` numbers; the seven fields above keep their meaning. The Java host adds
+`endpoint_ms` (the end-of-speech silence), `prepare_ms` (the core's time from the question heard to the model's
+request: waiting for the previous turn, memory, the context), `tools_ms`, and `route` (`robot` or `computer`).
+
+The lines go to `<data-dir>/latency.jsonl` (`~/.local/share/marvin/latency.jsonl` by default; the last 500 are
+kept) and to the `marvin.latency` log. How each field is computed from the turn's breakdown: `stt_ms` = `endpoint`
++ queue + `stt`; `llm_first_token_ms` = that + `prepare_ms` + `llm_first_token`; `tts_first_audio_ms` = `endpoint` +
+`first_audio`; `total_ms` = `endpoint` + `playback_start` (the app's first word), and `robot_out_ms` the same when
+the voice is on the robot. A question typed in the app has no `stt_ms` (no speech).
 
 What to expect on an Apple Silicon Mac (estimates; the log tells the truth):
 
