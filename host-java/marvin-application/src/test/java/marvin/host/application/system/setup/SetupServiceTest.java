@@ -116,7 +116,7 @@ class SetupServiceTest {
 
     @Test
     void theSpeakerIsOkOnlyOnceTheOwnerHeardIt() {
-        assertThat(step(setup.status(), "speaker").detail()).startsWith("Play a sentence");
+        assertThat(step(setup.status(), "speaker").detail()).startsWith("Play a test sound");
         setup.act("speaker", Map.of("play", true));
         assertThat(probe.plays).isEqualTo(1);
         RunSetup.Step played = step(setup.status(), "speaker");

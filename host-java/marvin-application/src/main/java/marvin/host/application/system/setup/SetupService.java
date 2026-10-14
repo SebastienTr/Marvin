@@ -169,7 +169,7 @@ public final class SetupService implements RunSetup {
         if (play != null) {
             return new Step("speaker", "missing", play.detail() + ". Did you hear it?", null);
         }
-        return new Step("speaker", "missing", "Play a sentence on the robot and say whether you heard it", null);
+        return new Step("speaker", "missing", "Play a test sound on the robot and say whether you heard it", null);
     }
 
     private Step ownerStep() {

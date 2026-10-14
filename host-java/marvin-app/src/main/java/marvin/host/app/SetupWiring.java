@@ -53,6 +53,10 @@ public class SetupWiring {
     /** Below this, the setup says the disk is nearly full (models, the database and the log need room). */
     static final long LOW_DISK_BYTES = 2L << 30;
 
+    /** The ears' models, as the app names them (ears.js). */
+    static final Map<String, String> EARS = Map.of("silero-vad", "Silero VAD", "smart-turn", "Smart Turn",
+            "speaker", "speaker recognition", "parakeet", "Parakeet");
+
     /** The checks, on this host's services. */
     static final class HostChecks implements SetupProbe {
         private final ReportHealth health;
@@ -80,7 +84,9 @@ public class SetupWiring {
                 return Check.missing(java + "; the database does not answer: " + db.detail(),
                         "./marvin doctor (PostgreSQL in Docker: start Docker Desktop)");
             }
-            String database = db == null ? "the database" : db.detail().isBlank() ? "PostgreSQL" : db.detail();
+            // "PostgreSQL 18.6 (Debian 18.6-1.pgdg12+2), pgvector 0.8.6": without the build in brackets
+            String database = db == null ? "the database" : db.detail().isBlank() ? "PostgreSQL"
+                    : db.detail().replaceAll(" \\([^)]*\\)", "");
             String disk = "";
             if (dataDir != null) {
                 try {
@@ -137,7 +143,7 @@ public class SetupWiring {
             List<?> ears = (List<?>) v.options().getOrDefault("ears", List.of());
             List<String> missing = ears.stream().map(e -> (Map<?, ?>) e)
                     .filter(e -> !Boolean.TRUE.equals(e.get("installed")))
-                    .map(e -> String.valueOf(e.get("name"))).toList();
+                    .map(e -> EARS.getOrDefault(String.valueOf(e.get("name")), String.valueOf(e.get("name")))).toList();
             if (!missing.isEmpty()) {
                 return Check.missing("The voice sidecar's models are not all here: missing " + String.join(", ", missing),
                         "./marvin up downloads them (./marvin doctor says what is missing)");
