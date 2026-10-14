@@ -5,15 +5,17 @@ Usage (Blender 4.2+):
 or with the `bpy` wheel:
     python3 hardware/blender/build_blend.py <asm_stl_dir> <out.blend> [render_dir]
 
-<asm_stl_dir> holds the parts exported in the ASSEMBLY frame (not the print-ready STLs):
-    for p in body plinth sled neck grommet foot ghost_mr60 ghost_ld2450 ghost_speaker; do
+<asm_stl_dir> holds the parts exported in the ASSEMBLY frame (not the print-ready STLs), and
+values.echo, the numbers the head is built on (PART="check_values"):
+    for p in body plinth sled neck grommet foot ghost_mr60 ghost_ld2450 ghost_speaker \
+             head_shell head_cap face_frame knob switch_bracket window ghost_lcd ghost_xiao ghost_usb ghost_tact; do
         openscad -D "PART=\\"$p\\"" -o <asm_stl_dir>/$p.stl hardware/cad/marvin.scad
     done
 hardware/scripts/build_blend.sh does all of this.
 
-The head is not in the CAD yet: the "Head (concept)" collection is a stand-in with the
-planned outer shape, face window, camera, status LED and knob (rev F has no lidar), so the model reads
-as the whole robot. Replace it when the head CAD lands.
+The head is the CAD head: shell, back cap, face frame, knob and switch bracket, the acrylic window,
+and the modules inside it (screen, XIAO, USB-C plug, tact switch). The screen shows Marvin's neutral
+face, drawn by host/marvin_host/face.py (a plain stand-in if that cannot be imported).
 
 SPDX-License-Identifier: MIT
 """
@@ -23,7 +25,8 @@ import sys
 from pathlib import Path
 
 import bpy
-import bmesh  # noqa: E402  (must come after bpy with the pip wheel)
+import bmesh
+import numpy as np  # noqa: E402  (must come after bpy with the pip wheel)
 from mathutils import Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
@@ -36,7 +39,6 @@ BODY_Z1, DECK, BOSS_T, GROM_FLANGE_T = 64, 2.0, 1.2, 1.6
 BAND = (20, 50)                                  # anthracite band on the body
 NECK_BOLTS = [(-32, -20), (32, -20), (-32, 20), (32, 20)]
 PLINTH_W, PLINTH_D = 68, 62
-HEAD_W, HEAD_D, HEAD_R, HEAD_Z0, HEAD_Z1 = 88, 80, 16, 68, 124
 # A1 / A1 mini bed and Bambu Studio plate spacing, for the print layout
 BED, PLATE_STRIDE = 180, 180 * 1.2
 
@@ -64,6 +66,19 @@ def material(name, rgb, rough=0.5, metal=0.0, emit=0.0, alpha=1.0):
     return m
 
 
+def acrylic(name, tint):
+    """Smoked acrylic: glass that lets a little light through, so the lit face shows and the rest stays black."""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    b = m.node_tree.nodes["Principled BSDF"]
+    b.inputs["Base Color"].default_value = (*tint, 1)
+    b.inputs["Roughness"].default_value = 0.03
+    b.inputs["IOR"].default_value = 1.49
+    b.inputs["Transmission Weight"].default_value = 1.0
+    m.diffuse_color = (*tint, 1)
+    return m
+
+
 M = {
     "grey": material("Warm grey PETG", (0.80, 0.79, 0.76), 0.5),
     "anth": material("Anthracite PETG", (0.10, 0.10, 0.11), 0.55),
@@ -73,11 +88,10 @@ M = {
     "mr60": material("MR60BHA2 case", (0.22, 0.22, 0.24), 0.5),
     "ld": material("LD2450 board", (0.08, 0.35, 0.18), 0.4),
     "spk": material("Speaker", (0.75, 0.60, 0.25), 0.4, 0.6),
-    "glass": material("Smoked acrylic", (0.006, 0.007, 0.009), 0.12),
-    "eye": material("Eyes", (0.72, 0.93, 1.0), 0.3, emit=4.0),
-    "led": material("Status LED", (1.0, 0.45, 0.1), 0.3, emit=6.0),
-    "lens": material("Lens", (0.02, 0.02, 0.03), 0.05, 0.3),
+    "pcb": material("Screen module (PCB, glass)", (0.02, 0.05, 0.10), 0.35),
+    "xiao": material("XIAO (shield)", (0.62, 0.62, 0.64), 0.35, 0.8),
     "plate": material("Print preview", (0.85, 0.55, 0.30), 0.6),
+    "acrylic": acrylic("Smoked acrylic", (0.045, 0.045, 0.05)),
 }
 
 
@@ -173,23 +187,78 @@ import_stl(asm_dir / "ghost_mr60.stl", "MR60BHA2 kit (60 GHz)", [M["mr60"]], mod
 import_stl(asm_dir / "ghost_ld2450.stl", "HLK-LD2450 (24 GHz)", [M["ld"]], modules)
 import_stl(asm_dir / "ghost_speaker.stl", "Speaker 2030", [M["spk"]], modules)
 
-# ------------------------------------------------------------------ head (concept stand-in)
-head = collection("Head (concept)", robot)
-squircle("Head shell", HEAD_W, HEAD_D, HEAD_R, HEAD_Z0, HEAD_Z1 - HEAD_Z0, M["grey"], head, bevel=4)
-yf = -HEAD_D / 2
-win = squircle("Face window (2.3 mm acrylic)", HEAD_W - 14, HEAD_Z1 - HEAD_Z0 - 12, 10, 0, 1.2, M["glass"], head, bevel=0.3)
-win.rotation_euler = (math.pi / 2, 0, 0)           # the plate stands up, its thickness points at the user
-win.location = (0, yf + 0.2, (HEAD_Z0 + HEAD_Z1) / 2)
-for sx in (-1, 1):
-    bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=4.5, depth=0.4, location=(sx * 11, yf - 1.35, 92), rotation=(math.pi / 2, 0, 0))
-    e = bpy.context.active_object
-    e.name = f"Eye {'left' if sx < 0 else 'right'}"
-    e.scale = (1, 1.7, 1)
-    e.data.materials.append(M["eye"])
-    link(e, head)
-cylinder("Camera lens", 2.4, 0.6, (0, yf - 1.4, 113), M["lens"], head, rot=(math.pi / 2, 0, 0))
-cylinder("Status LED", 0.9, 0.6, (30, yf - 1.4, 113), M["led"], head, rot=(math.pi / 2, 0, 0))
-cylinder("Knob", 10, 7, (-HEAD_W / 2 - 3.5, 6, 96), M["orange"], head, rot=(0, math.pi / 2, 0))
+# ------------------------------------------------------------------ head (from the CAD)
+vals = {}
+echo = asm_dir / "values.echo"
+if echo.exists():
+    import ast
+    import re
+    for k, v in re.findall(r'ECHO: "CHECK (\w+)=(.*)"', echo.read_text()):
+        vals[k] = ast.literal_eval(v)
+SCREEN = vals.get("screenCentre", [0, -38, 92])
+ACTIVE = vals.get("active", [27.97, 32.63])
+Y_GLASS = vals.get("activeCentre", [0, -36.9, 92])[1]
+
+head = collection("Head (CAD)", robot)
+head_parts = {
+    "shell": import_stl(asm_dir / "head_shell.stl", "Head shell", [M["grey"]], head),
+    "cap": import_stl(asm_dir / "head_cap.stl", "Head back cap", [M["grey"]], head),
+    "frame": import_stl(asm_dir / "face_frame.stl", "Face frame", [M["anth"]], head),
+    "window": import_stl(asm_dir / "window.stl", "Face window (2.3 mm smoked acrylic)", [M["acrylic"]], head),
+    "knob": import_stl(asm_dir / "knob.stl", "Knob", [M["orange"]], head),
+    "bracket": import_stl(asm_dir / "switch_bracket.stl", "Switch bracket", [M["anth"]], head),
+}
+head_modules = collection("Head modules", robot)
+head_mods = {
+    "lcd": import_stl(asm_dir / "ghost_lcd.stl", "1.69in ST7789 module", [M["pcb"]], head_modules),
+    "xiao": import_stl(asm_dir / "ghost_xiao.stl", "XIAO ESP32S3 Sense", [M["xiao"]], head_modules),
+    "usb": import_stl(asm_dir / "ghost_usb.stl", "USB-C plug, 90 deg", [M["tpu"]], head_modules),
+    "tact": import_stl(asm_dir / "ghost_tact.stl", "Tact switch 6 x 6", [M["tpu"]], head_modules),
+}
+
+
+def face_image(path, w=240, h=280):
+    """Marvin's neutral face at the screen's resolution, from the host's face renderer."""
+    try:
+        sys.path.insert(0, str(repo / "host"))
+        from marvin_host import face as mface
+        px = np.asarray(mface.render(mface.EXPRESSIONS["neutral"]), dtype=np.float32)[..., :3] / 255.0
+    except Exception as e:                                   # noqa: BLE001 - any failure: plain stand-in
+        print("face.py not available, drawing a stand-in:", e)
+        px = np.full((h, w, 3), 20 / 255.0, np.float32)
+        yy, xx = np.mgrid[0:h, 0:w]
+        for cx in (68, 172):
+            px[((xx - cx) / 32) ** 4 + ((yy - 146) / 41) ** 4 < 1] = 0.92
+    img = bpy.data.images.new("Marvin face", w, h)
+    img.colorspace_settings.name = "sRGB"
+    rgba = np.ones((h, w, 4), np.float32)
+    rgba[..., :3] = px[::-1]                                   # Blender images start at the bottom row
+    img.pixels.foreach_set(rgba.ravel())
+    img.filepath_raw = str(path)
+    img.file_format = "PNG"
+    return img
+
+
+face_img = face_image(Path(bpy.app.tempdir or "/tmp") / "marvin_face.png")
+mface_mat = bpy.data.materials.new("Screen (face)")
+mface_mat.use_nodes = True
+nt = mface_mat.node_tree
+for n in list(nt.nodes):
+    nt.nodes.remove(n)
+tex = nt.nodes.new("ShaderNodeTexImage")
+tex.image = face_img
+tex.interpolation = "Closest"
+emit = nt.nodes.new("ShaderNodeEmission")
+emit.inputs["Strength"].default_value = float(os.environ.get("FACE_GLOW", 10.0))
+out_node = nt.nodes.new("ShaderNodeOutputMaterial")
+nt.links.new(tex.outputs["Color"], emit.inputs["Color"])
+nt.links.new(emit.outputs["Emission"], out_node.inputs["Surface"])
+bpy.ops.mesh.primitive_plane_add(size=1, location=(SCREEN[0], Y_GLASS - 0.01, SCREEN[2]), rotation=(math.pi / 2, 0, 0))
+scr = bpy.context.active_object
+scr.name = "Screen (active area, neutral face)"
+scr.scale = (ACTIVE[0], ACTIVE[1], 1)
+scr.data.materials.append(mface_mat)
+link(scr, head_modules)
 
 # ------------------------------------------------------------------ print layout (not rendered)
 lay = collection("Print plates (hardware/stl)")
@@ -266,21 +335,48 @@ def clean_shadow(path):
     Image.fromarray(a.astype(np.uint8)).save(path, optimize=True)
 
 
+def explode(on):
+    """Pull the head apart along its assembly directions (or put it back)."""
+    k = 1.0 if on else 0.0
+    moves = {head_parts["window"]: (0, -32, 0), head_parts["cap"]: (0, 150, 0), head_parts["knob"]: (-30, 0, 0),
+             head_parts["bracket"]: (24, 0, 0), head_mods["tact"]: (24, 0, 0),
+             head_parts["frame"]: (0, 82, 0), head_mods["lcd"]: (0, 68, 0), scr: (0, 68, 0),
+             head_mods["xiao"]: (0, 98, 0), head_mods["usb"]: (0, 98, 0)}
+    for ob, d in moves.items():
+        base = tuple(ob.get("base", tuple(ob.location)))
+        ob["base"] = base
+        ob.location = (base[0] + k * d[0], base[1] + k * d[1], base[2] + k * d[2])
+    for ob in body_half.objects:
+        ob.hide_render = on
+    for ob in modules.objects:
+        ob.hide_render = on
+    g.hide_render = on                          # no floor shadow under parts in the air
+
+
 if render_dir:
     render_dir.mkdir(parents=True, exist_ok=True)
     scene.render.engine = "CYCLES"
-    scene.cycles.samples = int(os.environ.get("SAMPLES", 48))
+    scene.cycles.samples = int(os.environ.get("SAMPLES", 64))
     scene.cycles.device = "CPU"
     scene.cycles.use_denoising = True
     scene.render.film_transparent = True
-    scene.render.resolution_x, scene.render.resolution_y = 1000, 1150
     scene.view_settings.view_transform = "AgX"
-    for name, loc, target, lens in (("blender_threequarter", (-330, -560, 250), (0, 0, 70), 95),
-                                     ("blender_front", (0, -700, 150), (0, 0, 70), 105)):
+    # name, size, camera position, target, lens; the sizes match the images already used by the docs
+    views = [("robot_threequarter", (640, 846), (-330, -560, 250), (0, 0, 64), 95),
+             ("robot_front", (710, 845), (0, -640, 110), (0, 0, 64), 125),
+             ("robot_side", (887, 845), (-640, 0, 110), (0, 0, 64), 125),
+             ("robot_head_exploded", (1200, 760), (-560, -170, 330), (0, 52, 92), 58)]
+    only = os.environ.get("VIEWS")
+    for name, (w, h), loc, target, lens in views:
+        if only and name not in only.split(","):
+            continue
+        explode(name.endswith("exploded"))
+        scene.render.resolution_x, scene.render.resolution_y = w, h
         cam.location = loc
         aim(cam, target)
         cam.data.lens = lens
         scene.render.filepath = str(render_dir / f"{name}.png")
         bpy.ops.render.render(write_still=True)
         clean_shadow(scene.render.filepath)
+    explode(False)
     print("rendered")
