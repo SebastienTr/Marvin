@@ -54,7 +54,6 @@ import marvin.host.application.system.port.out.ComponentProbe;
 import marvin.host.domain.presence.BrainConfig;
 import marvin.host.domain.robot.DeviceMonitor;
 import marvin.host.domain.robot.Extrinsics;
-import marvin.host.domain.robot.SensorCalibration;
 import marvin.host.domain.system.RunMode;
 
 /**
@@ -85,8 +84,8 @@ public class HostWiring {
     }
 
     @Bean
-    public PresenceService presenceService(SensorCalibration calibration, PresenceEventBus bus) {
-        return new PresenceService(BrainConfig.DEFAULT.withRadarSpeedSign(calibration.radarSpeedSign()), bus);
+    public PresenceService presenceService(BrainConfig brain, PresenceEventBus bus) {
+        return new PresenceService(brain, bus);       // RobotAdapterConfiguration: defaults, calibration.json
     }
 
     @Bean

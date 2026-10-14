@@ -13,7 +13,7 @@ import marvin.host.domain.presence.event.PresenceEvent;
 
 /** The brain's rules on hand-made frames (the golden recordings cover whole scenes). */
 class BrainTest {
-    private final Brain brain = new Brain(BrainConfig.DEFAULT.withStillLongS(60));
+    private final Brain brain = new Brain(BrainConfig.PYTHON.withStillLongS(60));
     private final List<PresenceEvent> events = new ArrayList<>();
 
     private void seen(double t, double x, double y) {

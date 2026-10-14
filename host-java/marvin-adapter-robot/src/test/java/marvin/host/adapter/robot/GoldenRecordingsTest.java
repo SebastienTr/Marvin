@@ -115,10 +115,37 @@ class GoldenRecordingsTest {
     Stream<DynamicTest> everyScenarioReplaysLikeThePythonHost() {
         JsonNode index = Golden.json("recordings/index.json");
         BrainConfig config = brainConfig(index.get("brain_config"));
-        assertThat(config).isEqualTo(BrainConfig.DEFAULT);
+        assertThat(config).as("brain.py's config, without the Java posture hysteresis").isEqualTo(BrainConfig.PYTHON);
         List<DynamicTest> tests = new ArrayList<>();
         for (JsonNode sc : index.get("scenarios")) {
             tests.add(DynamicTest.dynamicTest(sc.get("name").asString(), () -> check(sc, config)));
+        }
+        return tests.stream();
+    }
+
+    /**
+     * With the host's defaults (the posture hysteresis on), each simulated scene still makes the same events, in the
+     * same order: the hysteresis only filters jitter the simulator does not have.
+     */
+    @TestFactory
+    Stream<DynamicTest> theHysteresisKeepsEveryScenesEvents() {
+        JsonNode index = Golden.json("recordings/index.json");
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode sc : index.get("scenarios")) {
+            tests.add(DynamicTest.dynamicTest(sc.get("name").asString(), () -> {
+                String name = sc.get("name").asString();
+                RobotLinkProcessor rx = new RobotLinkProcessor(Extrinsics.DEFAULT);
+                Capture cap = new Capture(BrainConfig.DEFAULT, Extrinsics.DEFAULT);
+                try (RecordingReader reader = new RecordingReader(Golden.open("recordings/" + sc.get("file").asString()),
+                        name)) {
+                    for (RecordingReader.Datagram d : reader) {
+                        rx.handle(d.data(), d.from()).frames().forEach(cap::accept);
+                    }
+                }
+                List<String> expected = new ArrayList<>();
+                sc.get("events").forEach(e -> expected.add(e.asString()));
+                assertThat(cap.events).extracting(e -> e.kind().wireName()).as(name).containsExactlyElementsOf(expected);
+            }));
         }
         return tests.stream();
     }

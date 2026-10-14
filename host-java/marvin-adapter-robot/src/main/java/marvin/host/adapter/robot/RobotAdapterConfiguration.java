@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import marvin.host.application.robot.port.in.RobotInbound;
+import marvin.host.domain.presence.BrainConfig;
 import marvin.host.domain.robot.Extrinsics;
 import marvin.host.domain.robot.RobotLinkProcessor;
 import marvin.host.domain.robot.SensorCalibration;
@@ -22,8 +23,20 @@ public class RobotAdapterConfiguration {
 
     @Bean
     public SensorCalibration sensorCalibration(RobotLinkProperties props) {
-        Path file = props.calibrationFile().isEmpty() ? CalibrationFile.defaultPath() : Path.of(props.calibrationFile());
-        return CalibrationFile.load(file);
+        return CalibrationFile.load(calibrationFile(props));
+    }
+
+    /**
+     * The brain's thresholds: the host's defaults, the calibrated LD2450 speed sign, and the {@code brain} block of
+     * {@code calibration.json} (docs/voice.md "Presence tuning").
+     */
+    @Bean
+    public BrainConfig brainConfig(RobotLinkProperties props, SensorCalibration calibration) {
+        return CalibrationFile.brain(calibrationFile(props), BrainConfig.DEFAULT.withRadarSpeedSign(calibration.radarSpeedSign()));
+    }
+
+    private static Path calibrationFile(RobotLinkProperties props) {
+        return props.calibrationFile().isEmpty() ? CalibrationFile.defaultPath() : Path.of(props.calibrationFile());
     }
 
     @Bean

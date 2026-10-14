@@ -10,6 +10,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import marvin.host.domain.presence.BrainConfig;
 import marvin.host.domain.robot.SensorCalibration;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -72,6 +73,44 @@ public final class CalibrationFile {
         } catch (JacksonException | IllegalArgumentException e) {
             log.warn("ignoring calibration file {}: {}", path, e.getMessage());
             return SensorCalibration.DEFAULT;
+        }
+    }
+
+    /**
+     * {@code base} with the {@code brain} block of the calibration file applied, keyed as brain.py names the
+     * thresholds (and the Java posture hysteresis: {@code stand_confirm_s}, {@code seat_tau_s}, {@code resit_after_s},
+     * {@code still_grace_s}):
+     *
+     * <pre>
+     * {"version": 1, ..., "brain": {"sit_max_m": 1.1, "stand_confirm_s": 2.5}}
+     * </pre>
+     *
+     * No file, no block, or a bad one: {@code base} (a warning for a bad one, which is ignored as a whole).
+     */
+    public static BrainConfig brain(Path path, BrainConfig base) {
+        String text;
+        try {
+            text = Files.readString(path);
+        } catch (IOException e) {
+            return base;
+        }
+        try {
+            JsonNode block = new ObjectMapper().readTree(text).path("brain");
+            if (block.isMissingNode() || block.isNull()) {
+                return base;
+            }
+            if (!block.isObject()) {
+                throw new IllegalArgumentException("brain is not an object");
+            }
+            Map<String, Object> overrides = new java.util.LinkedHashMap<>();
+            block.properties().forEach(p -> overrides.put(p.getKey(), p.getValue().isNumber() ? p.getValue().asDouble()
+                    : p.getValue().asString()));
+            BrainConfig c = base.with(overrides);
+            log.info("brain thresholds from {}: {}", path, overrides);
+            return c;
+        } catch (JacksonException | IllegalArgumentException e) {
+            log.warn("ignoring the brain block of {}: {}", path, e.getMessage());
+            return base;
         }
     }
 

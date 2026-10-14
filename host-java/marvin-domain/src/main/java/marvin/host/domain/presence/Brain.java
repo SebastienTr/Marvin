@@ -30,6 +30,10 @@ import marvin.host.domain.presence.event.PresenceState;
  * where anyone is: no position, no sitting; {@link PresenceState#motionPresence()} says so. Next to a live radar the
  * PIR is only noted: the radar knows better.
  *
+ * <p>Posture hysteresis (Java only, off in {@link BrainConfig#PYTHON}): while seated, the position compared with the
+ * seat is a slower average ({@code seatTauS}); a stand-up must hold for {@code standConfirmS}; a new sit-down waits
+ * {@code resitAfterS} after a stand-up; a break in stillness shorter than {@code stillGraceS} does not restart it. A real LD2450 close to a seated person jitters enough to flap otherwise.
+ *
  * <p>One robot: frames from several devices share one state. The lidar is not used (see brain.py).
  * Not thread-safe: the application service serializes the calls.
  */
@@ -65,11 +69,22 @@ public final class Brain {
     private final Deque<double[]> window = new ArrayDeque<>();     // {t, x, y}
     private boolean still;
     private Double stillSince;
+    /** When the current break in stillness began ({@code null}: still). */
+    private Double notStillSince;
+    /** Where the person was when this stillness began: a break must end there to be a blip. */
+    private double[] stillAnchor;
     private Double fastSince;
     private boolean approachArmed;
     private double[] seat;
     private double seatDistance;
     private double seatedSince;
+    /** While seated: the slow average of the position compared with the seat, and when it was last updated. */
+    private double[] seatPos;
+    private double seatPosT;
+    /** When the stand-up condition started holding ({@code null}: it does not). */
+    private Double standSince;
+    /** When the last {@code stood_up} was. */
+    private Double stoodAt;
     private boolean stillLongSent;
     private boolean vitalsOk;
     private Double vitalsGoodSince;
@@ -265,11 +280,17 @@ public final class Brain {
         window.clear();
         still = false;
         stillSince = null;
+        notStillSince = null;
+        stillAnchor = null;
         fastSince = null;
         approachArmed = true;
         seat = null;
         seatDistance = 0.0;
         seatedSince = 0.0;
+        seatPos = null;
+        seatPosT = 0.0;
+        standSince = null;
+        stoodAt = null;
         stillLongSent = false;
         vitalsOk = false;
         vitalsGoodSince = null;
@@ -332,8 +353,24 @@ public final class Brain {
         }
         double spread = Math.hypot(maxX - minX, maxY - minY);
         still = spread < c.stillMoveMm() && Math.abs(speed) < c.stillSpeedCms();
-        if (!still || stillSince == null) {
-            stillSince = t;
+        if (still) {
+            if (notStillSince != null && stillAnchor != null && c.stillGraceS() > 0
+                    && Math.hypot(pos[0] - stillAnchor[0], pos[1] - stillAnchor[1]) > c.stillMoveMm()) {
+                stillSince = null;                  // still again, but somewhere else: they moved
+            }
+            notStillSince = null;
+            if (stillSince == null) {
+                stillSince = t;
+                stillAnchor = pos.clone();
+            }
+        } else {
+            if (notStillSince == null) {
+                notStillSince = t;
+            }
+            if (stillSince == null || t - notStillSince >= c.stillGraceS()) {
+                stillSince = t;                     // a real movement (brain.py: any break)
+                stillAnchor = pos.clone();
+            }
         }
         if (Math.abs(speed) < c.standSpeedCms()) {
             fastSince = null;
@@ -343,7 +380,8 @@ public final class Brain {
         position = pos.clone();
         distanceM = Math.hypot(pos[0], pos[1]) / 1000;
         speedCms = speed;
-        stillS = t - stillSince;
+        // in a break shorter than the grace, the stillness so far is kept but does not grow
+        stillS = (notStillSince != null && c.stillGraceS() > 0 ? notStillSince : t) - stillSince;
     }
 
     /** Returns true when the person left and the state was reset. */
@@ -385,24 +423,49 @@ public final class Brain {
     private void sitting(double t) {
         if (!seated) {
             seatedS = 0.0;
-            if (distanceM != null && distanceM <= c.sitMaxM() && stillS >= c.sitStillS()) {
+            if (distanceM != null && distanceM <= c.sitMaxM() && stillS >= c.sitStillS()
+                    && (stoodAt == null || t - stoodAt >= c.resitAfterS())
+                    && (c.stillGraceS() <= 0 || notStillSince == null)) {     // with the grace: still now, too
                 seated = true;
                 seat = position;
                 seatDistance = distanceM;
                 seatedSince = t;
+                seatPos = position.clone();
+                seatPosT = t;
+                standSince = null;
                 stillLongSent = false;
                 emit(EventKind.SAT_DOWN, tUs, fmt(distanceM, 2) + " m away", "distance_m", distanceM);
             }
             return;
         }
         seatedS = t - seatedSince;
-        double moved = Math.hypot(position[0] - seat[0], position[1] - seat[1]);
+        double[] at = position;
+        double away = distanceM;
+        if (c.seatTauS() > 0) {
+            double a = alpha(t - seatPosT, c.seatTauS());
+            seatPos = new double[] {seatPos[0] + a * (position[0] - seatPos[0]), seatPos[1] + a * (position[1] - seatPos[1]),
+                seatPos[2] + a * (position[2] - seatPos[2])};
+            seatPosT = t;
+            at = seatPos;
+            away = Math.hypot(seatPos[0], seatPos[1]) / 1000;
+        }
+        double moved = Math.hypot(at[0] - seat[0], at[1] - seat[1]);
         boolean fast = fastSince != null && t - fastSince >= c.standSpeedS();
-        if (moved > c.standMoveMm() || distanceM - seatDistance > c.standAwayM() || fast) {
+        boolean standing = moved > c.standMoveMm() || away - seatDistance > c.standAwayM() || fast;
+        if (!standing) {
+            standSince = null;
+        } else if (standSince == null) {
+            standSince = t;
+        }
+        if (standing && t - standSince >= c.standConfirmS()) {
             seated = false;
+            standSince = null;
+            stoodAt = t;
             emit(EventKind.STOOD_UP, tUs, "after " + duration(seatedS) + " seated", "seated_s", seatedS);
             seatedS = 0.0;
             stillSince = t;                         // standing up is movement
+            notStillSince = t;
+            stillAnchor = pos.clone();
             stillS = 0.0;
             if (vitalsOk) {
                 loseVitals(tUs, "movement");
