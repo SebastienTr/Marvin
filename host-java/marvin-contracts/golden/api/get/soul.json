@@ -2,13 +2,14 @@
   "contract": {
     "id": "C4",
     "owner": "W4",
-    "state": "pending",
+    "state": "implemented",
     "frozen": "2026-10-14",
     "notes": [
       "design.md section 8. core: written by the owner only. learned: proposed by the weekly reflection, changed only once the owner approves.",
       "proposal: the pending one, or null. diff ops: keep | add | remove. guardrails: every rule with ok and the reason when it fails (a failing proposal is shown as rejected with its reasons).",
       "versions: newest first, author owner | reflection.",
-      "POST /api/soul/core {text}; POST /api/soul/learned {text} (owner edit, guardrails checked); POST /api/soul/proposal/{id}/approve | /reject; POST /api/soul/revert {part, version}."
+      "POST /api/soul/core {text}; POST /api/soul/learned {text} (owner edit, guardrails checked); POST /api/soul/proposal/{id}/approve | /reject; POST /api/soul/revert {part, version}.",
+      "proposal.state: pending | rejected (by the guardrails, shown until the owner dismisses it with reject); approved and superseded ones are not shown. Every POST answers the soul as GET does; a guardrail refusal is 422 {error, guardrails}. POST /api/soul/reflect runs the reflection now (W4)."
     ]
   },
   "request": {
