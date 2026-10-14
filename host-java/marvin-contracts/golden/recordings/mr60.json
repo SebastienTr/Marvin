@@ -1,0 +1,87 @@
+{
+  "about": "MR60BHA2 bridge recordings for the vitals pipeline (host-java/marvin-contracts/tools/mr60_recordings.py). Host times in seconds from the start of the recording; expectations checked by VitalsRecordingsTest.",
+  "format": "mvrec v1, gzip (host/marvin_host/record.py)",
+  "bridge": {
+    "address": "192.0.2.4:47101",
+    "board": 4,
+    "firmware": "mr60-bridge-0.2.0",
+    "flags": {
+      "valid": 1,
+      "quality_reported": 2,
+      "steady": 4
+    }
+  },
+  "scenarios": [
+    {
+      "name": "mr60_desk",
+      "file": "mr60_desk.mvrec.gz",
+      "description": "The MR60BHA2 bridge on its own on a desk (no presence radar): nobody (0-5 s), someone sits at 85 cm (rates from 8 s, valid and steady), fidgets (50-56 s: valid, not steady, the heart rate jumps), still again, leaves (80 s).",
+      "duration_s": 86.0,
+      "expect": [
+        {
+          "at_s": 4.9,
+          "quality": "none"
+        },
+        {
+          "at_s": 12.0,
+          "quality": "unstable"
+        },
+        {
+          "at_s": 20.0,
+          "quality": "good",
+          "hr": [
+            60.0,
+            66.0
+          ],
+          "br": [
+            12.0,
+            14.0
+          ],
+          "distance_m": 0.84
+        },
+        {
+          "at_s": 49.9,
+          "quality": "good"
+        },
+        {
+          "at_s": 54.0,
+          "quality": "unstable"
+        },
+        {
+          "at_s": 75.0,
+          "quality": "good"
+        },
+        {
+          "at_s": 85.9,
+          "quality": "none"
+        }
+      ]
+    },
+    {
+      "name": "mr60_with_robot",
+      "file": "mr60_with_robot.mvrec.gz",
+      "description": "The simulated robot (LD2450 and simulated VITALS, seated in its scene from 26 s) and, from 10 s, the MR60BHA2 bridge on the desk with other rates: one seat, one radar. The bridge, real, takes the seat from the simulated radar at once; the robot's LD2450 still says whether the person is still.",
+      "duration_s": 30.0,
+      "expect": [
+        {
+          "at_s": 9.9,
+          "source": "robot"
+        },
+        {
+          "at_s": 29.9,
+          "source": "bridge",
+          "quality": "good",
+          "hr": [
+            57.0,
+            58.0
+          ],
+          "br": [
+            11.5,
+            11.5
+          ],
+          "distance_m": 0.7
+        }
+      ]
+    }
+  ]
+}
