@@ -16,6 +16,11 @@
 //   MARVIN_HAS_CAMERA  MJPEG over HTTP on port 81 (camera/camera_app.h).
 // A LOG with their counters every 10 s while they are in use.
 //
+// Health (health.h): a line with the free heap, PSRAM, the longest loop and the Wi-Fi every minute,
+// to the console and as a LOG; why the board last reset, once per boot on the first link. On the
+// ESP32 boards the task watchdog reboots the robot when the loop is stuck for MARVIN_WDT_S (10 s);
+// it is paused during an OTA update.
+//
 // The robot's knob (MARVIN_KNOB_PIN, D7 on the XIAO, knob.h): a tap sends BUTTON Talk action 1 on
 // release, holding it 1.5 s sends action 2 once (the host: Talk now, mute). HELLO flag bit 3.
 //
@@ -48,10 +53,13 @@
 #include <ESP8266WiFi.h>
 #else
 #include <WiFi.h>
+#include <esp_system.h>
+#include <esp_task_wdt.h>
 #endif
 #include <WiFiUdp.h>
 
 #include "head/head_logic.h"
+#include "health.h"
 #include "knob.h"
 #include "protocol.h"
 #include "self_test.h"
@@ -126,6 +134,12 @@
 #define MARVIN_KNOB_PIN -1                      // the robot's knob, a tact switch to GND: 44 (D7) on the XIAO
 #endif
 #define MARVIN_HAS_KNOB (MARVIN_KNOB_PIN >= 0)
+#ifndef MARVIN_WDT_S
+#define MARVIN_WDT_S 10                         // ESP32: the loop stuck this long reboots the robot (0: no watchdog)
+#endif
+#ifndef MARVIN_HEALTH_PERIOD_MS
+#define MARVIN_HEALTH_PERIOD_MS 60000           // the health line (heap, PSRAM, loop time), console and LOG
+#endif
 // The bench builds wait for the Wi-Fi in setup() (their LED, eyes and self-test lines say so); the
 // others start at once and join from the loop, so the face, the radar and the knob work without it.
 #if defined(MARVIN_HAS_BENCH_IO) || MARVIN_SELF_TEST
@@ -302,6 +316,61 @@ void send_log(const char *text) {
 bool ld2450_configured = false;
 #endif
 
+// ---- Watchdog and health -----------------------------------------------------------------------
+
+#if defined(ARDUINO_ARCH_ESP32) && MARVIN_WDT_S > 0
+void wdt_begin() {
+  esp_task_wdt_init(MARVIN_WDT_S, true);  // panic: reboot, and say why at the next boot (health.h)
+  esp_task_wdt_add(nullptr);              // the loop task
+  Serial.printf("watchdog: a loop stuck for %d s restarts the robot\n", MARVIN_WDT_S);
+}
+void wdt_feed() { esp_task_wdt_reset(); }
+void wdt_pause(bool paused) {
+  if (paused) esp_task_wdt_delete(nullptr);
+  else esp_task_wdt_add(nullptr);
+}
+#else
+void wdt_begin() {}
+void wdt_feed() {}
+void wdt_pause(bool) {}
+#endif
+
+int reset_reason() {
+#if defined(ARDUINO_ARCH_ESP32)
+  return (int)esp_reset_reason();
+#else
+  return health::RESET_UNKNOWN;
+#endif
+}
+
+uint32_t loop_max_ms = 0;  // the longest loop() since the last health line
+
+void health_step(uint32_t ms) {
+  static uint32_t last = 0;
+  if (ms - last < MARVIN_HEALTH_PERIOD_MS) return;
+  last = ms;
+  health::Snapshot h;
+  h.uptime_s = ms / 1000;
+  h.heap_free = ESP.getFreeHeap();
+#if defined(ARDUINO_ARCH_ESP32)
+  h.heap_min = ESP.getMinFreeHeap();
+  h.heap_largest = ESP.getMaxAllocHeap();
+  h.psram_total = ESP.getPsramSize();
+  h.psram_free = h.psram_total ? ESP.getFreePsram() : 0;
+#else
+  h.heap_min = h.heap_free;
+  h.heap_largest = ESP.getMaxFreeBlockSize();
+#endif
+  h.loop_max_ms = loop_max_ms;
+  h.rssi = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
+  h.wifi_drops = wifi_rc.drops();
+  loop_max_ms = 0;
+  char line[192];
+  health::line(line, sizeof(line), h);
+  Serial.println(line);
+  if (linked) send_log(line);
+}
+
 // ---- Boot self-test (XIAO bench) ---------------------------------------------------------------
 
 #if MARVIN_SELF_TEST
@@ -358,6 +427,13 @@ void on_host_ack() {
   if (wifi_note[0]) {
     send_log(wifi_note);
     wifi_note[0] = 0;
+  }
+  static bool told_boot = false;  // why it last reset, once per boot
+  if (!told_boot) {
+    told_boot = true;
+    char boot[160];
+    health::boot_line(boot, sizeof(boot), reset_reason());
+    send_log(boot);
   }
 }
 
@@ -478,7 +554,13 @@ void network_begin() {
   udp.begin(proto::DEVICE_PORT);
 #if defined(MARVIN_HAS_OTA)
   ota::Callbacks ota_callbacks;
-  ota_callbacks.on_start = [] { if (linked) send_log("OTA update started, back after the reboot"); };
+  ota_callbacks.on_start = [] {
+    wdt_pause(true);  // the update blocks the loop for tens of seconds
+    if (linked) send_log("OTA update started, back after the reboot");
+  };
+  ota_callbacks.on_end = [](bool ok) {
+    if (!ok) wdt_pause(false);  // ok: rebooting into it
+  };
   ota::begin(mac, ota_callbacks);
 #endif
   media_begin();
@@ -948,6 +1030,11 @@ void setup() {
 #endif
   Serial.printf("\nMarvin firmware %s, board %d, %s sensors\n", MARVIN_FW_VERSION, MARVIN_BOARD,
                 MARVIN_REAL_SENSORS ? "real" : "simulated");
+  {
+    char boot[160];
+    health::boot_line(boot, sizeof(boot), reset_reason());
+    Serial.println(boot);
+  }
 #if MARVIN_SELF_TEST
   Serial.println("self-test: one line per part (docs/xiao-bench.md); press Enter to see them again");
 #endif
@@ -994,6 +1081,7 @@ void setup() {
 #if MARVIN_REAL_SENSORS
   sensors_ready();
 #endif
+  wdt_begin();
 }
 
 void loop() {
@@ -1009,6 +1097,10 @@ void loop() {
   head_step(ms);
   media_step(ms);
   sensors_step(ms);
+  health_step(ms);
+  wdt_feed();
+  const uint32_t took = millis() - ms;
+  if (took > loop_max_ms) loop_max_ms = took;
   // Simulated sensors idle for 10 ms while searching for the host; real ones must keep the UARTs drained.
   delay(linked || MARVIN_REAL_SENSORS ? 1 : 10);
 }
