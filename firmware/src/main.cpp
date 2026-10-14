@@ -58,6 +58,7 @@
 #include "sensor_framing.h"
 #include "sensors_real.h"
 #include "sensors_sim.h"
+#include "wifi_reconnect.h"
 #if defined(MARVIN_HAS_OTA)
 #include "ota.h"
 #endif
@@ -125,6 +126,13 @@
 #define MARVIN_KNOB_PIN -1                      // the robot's knob, a tact switch to GND: 44 (D7) on the XIAO
 #endif
 #define MARVIN_HAS_KNOB (MARVIN_KNOB_PIN >= 0)
+// The bench builds wait for the Wi-Fi in setup() (their LED, eyes and self-test lines say so); the
+// others start at once and join from the loop, so the face, the radar and the knob work without it.
+#if defined(MARVIN_HAS_BENCH_IO) || MARVIN_SELF_TEST
+#define MARVIN_WIFI_AT_BOOT 1
+#else
+#define MARVIN_WIFI_AT_BOOT 0
+#endif
 
 // MARVIN_SENSORS=SIM or MARVIN_SENSORS=REAL, turned into a number the preprocessor can compare.
 #ifndef MARVIN_SENSORS
@@ -196,6 +204,9 @@ const char *lidar_name(uint8_t model) { return model == 0 ? "no" : model == 2 ? 
 WiFiUDP udp;
 IPAddress host;
 bool linked = false;
+wifi::Reconnect wifi_rc;                        // when to (re)join the Wi-Fi (wifi_reconnect.h)
+bool network_started = false;                   // UDP, OTA and the camera server: once Wi-Fi first came up
+char wifi_note[96] = "";                        // "wifi: back after ...", sent as LOG on the next link
 uint32_t last_ack_ms = 0;
 uint32_t seq = 0;
 uint8_t mac[6];
@@ -344,6 +355,16 @@ void on_host_ack() {
   snprintf(msg, sizeof(msg), "firmware %s up, simulated %s lidar", MARVIN_FW_VERSION, lidar_name(LIDAR_MODEL));
 #endif
   send_log(msg);
+  if (wifi_note[0]) {
+    send_log(wifi_note);
+    wifi_note[0] = 0;
+  }
+}
+
+void host_lost(const char *why) {
+  if (!linked) return;
+  linked = false;
+  Serial.printf("host lost (%s), searching\n", why);
 }
 
 // Reads the datagrams from the host.
@@ -392,12 +413,18 @@ void poll_host() {
 void head_frame(const uint8_t *frame, size_t n);
 void head_step(uint32_t ms);
 
+// Starts the Wi-Fi. MARVIN_WIFI_AT_BOOT: waits until it is up; otherwise the loop joins it (wifi_step).
 void connect_wifi() {
   WiFi.mode(WIFI_STA);
 #if defined(ESP8266)
   WiFi.setSleepMode(WIFI_NONE_SLEEP);           // modem sleep adds latency and drops broadcast replies
 #else
   WiFi.setSleep(false);
+#endif
+  WiFi.setAutoReconnect(false);                 // wifi_step reconnects, with a backoff that never gives up
+#if !MARVIN_WIFI_AT_BOOT
+  Serial.printf("wifi: joining \"%s\" from the loop; the face, radar and knob work meanwhile\n", WIFI_SSID);
+  return;
 #endif
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.printf(MARVIN_SELF_TEST ? "wifi: joining \"%s" : "joining %s", WIFI_SSID);
@@ -442,20 +469,65 @@ void connect_wifi() {
   Serial.printf("\nIP %s, RSSI %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
 }
 
+void media_begin();
+
+// UDP, OTA and the camera server, the first time the Wi-Fi is up.
+void network_begin() {
+  if (network_started) return;
+  network_started = true;
+  udp.begin(proto::DEVICE_PORT);
+#if defined(MARVIN_HAS_OTA)
+  ota::Callbacks ota_callbacks;
+  ota_callbacks.on_start = [] { if (linked) send_log("OTA update started, back after the reboot"); };
+  ota::begin(mac, ota_callbacks);
+#endif
+  media_begin();
+}
+
+// (Re)joins the Wi-Fi with a backoff (wifi_reconnect.h); losing it loses the host at once.
+void wifi_step(uint32_t ms) {
+  switch (wifi_rc.update(WiFi.status() == WL_CONNECTED, ms)) {
+    case wifi::Reconnect::Step::BEGIN:
+      if (wifi_rc.attempt() > 1 || wifi_rc.drops() > 0)
+        Serial.printf("wifi: joining \"%s\" (attempt %lu)\n", WIFI_SSID, (unsigned long)wifi_rc.attempt());
+      WiFi.disconnect();
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+      break;
+    case wifi::Reconnect::Step::UP:
+      if (wifi_rc.drops() > 0) {
+        snprintf(wifi_note, sizeof(wifi_note), "wifi: back after %lu s, RSSI %d dBm (%lu drops since boot)",
+                 (unsigned long)((ms - wifi_rc.down_since()) / 1000), (int)WiFi.RSSI(), (unsigned long)wifi_rc.drops());
+        Serial.println(wifi_note);
+        udp.stop();  // a fresh socket on the new connection
+        udp.begin(proto::DEVICE_PORT);
+      } else if (!network_started) {
+        Serial.printf("wifi: %s, RSSI %d dBm\n", WiFi.localIP().toString().c_str(), (int)WiFi.RSSI());
+      }
+      network_begin();
+      break;
+    case wifi::Reconnect::Step::DOWN:
+      Serial.println("wifi: connection lost, reconnecting");
+      host_lost("wifi lost");
+      break;
+    case wifi::Reconnect::Step::NONE:
+      break;
+  }
+}
+
 // Host datagrams, link timeout, HELLO, status LED.
 void link_step(uint32_t ms) {
   static uint32_t next_hello = 0;
-  poll_host();
-  // signed: an ACK read just above is stamped with millis(), which can be later than ms
-  if (linked && (int32_t)(ms - last_ack_ms) > (int32_t)LINK_TIMEOUT_MS) {
-    linked = false;
-    Serial.println("host lost, searching");
+  if (wifi_rc.up()) {
+    poll_host();
+    // signed: an ACK read just above is stamped with millis(), which can be later than ms
+    if (linked && (int32_t)(ms - last_ack_ms) > (int32_t)LINK_TIMEOUT_MS) host_lost("no answer for 6 s");
+    if ((int32_t)(ms - next_hello) >= 0) {
+      send_hello();
+      next_hello = ms + (linked ? 2000 : 500);
+    }
   }
-  if ((int32_t)(ms - next_hello) >= 0) {
-    send_hello();
-    next_hello = ms + (linked ? 2000 : 500);
-  }
-  led(linked ? (ms % 2000) < 100 : (ms % 250) < 125);
+  // linked: a short flash every 2 s; looking for the host: 4 Hz; no Wi-Fi: 5 Hz, as while joining at boot
+  led(linked ? (ms % 2000) < 100 : wifi_rc.up() ? (ms % 250) < 125 : (ms % 200) < 100);
 #if defined(MARVIN_HAS_BENCH_IO)
   bench_io::set_phase(WiFi.status() != WL_CONNECTED ? bench::LinkPhase::WIFI  // Wi-Fi lost: reconnecting
                       : linked                        ? bench::LinkPhase::LINKED
@@ -615,11 +687,8 @@ void audio_begin() {
 #endif
 }
 
-// After Wi-Fi is up (the camera server needs the network stack).
+// After Wi-Fi is up (the camera server needs the network stack). The audio starts before, in setup().
 void media_begin() {
-#if !MARVIN_SELF_TEST
-  audio_begin();
-#endif
 #if defined(MARVIN_HAS_CAMERA)
 #if MARVIN_SELF_TEST
   int w = 0, h = 0;
@@ -914,15 +983,14 @@ void setup() {
 #endif
   knob_begin();
   sensors_begin();
+#if !MARVIN_SELF_TEST
+  audio_begin();  // after the sensors (GPIO43, see audio_app.h), before Wi-Fi: it does not need it
+#endif
   connect_wifi();
   WiFi.macAddress(mac);
-  udp.begin(proto::DEVICE_PORT);
-#if defined(MARVIN_HAS_OTA)
-  ota::Callbacks ota_callbacks;
-  ota_callbacks.on_start = [] { if (linked) send_log("OTA update started, back after the reboot"); };
-  ota::begin(mac, ota_callbacks);
+#if MARVIN_WIFI_AT_BOOT
+  network_begin();
 #endif
-  media_begin();
 #if MARVIN_REAL_SENSORS
   sensors_ready();
 #endif
@@ -933,6 +1001,7 @@ void loop() {
   ota::handle();                     // an update blocks here until it reboots or fails
 #endif
   uint32_t ms = millis();
+  wifi_step(ms);
   link_step(ms);
   knob_step(ms);
   self_test_step(ms);
