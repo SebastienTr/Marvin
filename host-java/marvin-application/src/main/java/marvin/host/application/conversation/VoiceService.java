@@ -40,6 +40,7 @@ import marvin.host.domain.conversation.AudioDeviceProfile;
 import marvin.host.domain.conversation.ContextAssembler;
 import marvin.host.domain.conversation.ConversationEntry;
 import marvin.host.domain.conversation.ConversationMemory;
+import marvin.host.domain.conversation.Greeting;
 import marvin.host.domain.conversation.ImageAttachment;
 import marvin.host.domain.conversation.SpeechText;
 import marvin.host.domain.conversation.VoiceSettings;
@@ -269,6 +270,14 @@ public final class VoiceService implements VoiceControl {
     /** Quiet hours: Marvin says nothing about tasks on its own then (the app's setting). */
     public void setQuiet(BooleanSupplier q) {
         proactive.setQuiet(Objects.requireNonNull(q, "quiet"));
+    }
+
+    /**
+     * Who Marvin lives with (the app's {@code owner} setting, C5): the greeting on sitting down names them. None by
+     * default (a neutral greeting).
+     */
+    public void setOwner(Supplier<Greeting.Owner> owner) {
+        proactive.setOwner(Objects.requireNonNull(owner, "owner"));
     }
 
     /** The memory sections' shared budget in tokens (what memory may add to each question's prompt). */

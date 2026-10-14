@@ -292,7 +292,7 @@ public final class VoiceSettings {
                 choice(str(settings, "vad", "auto"), VAD_CHOICES), choice(str(settings, "turn", "auto"), TURN_CHOICES),
                 positive(settings, "turn_check_ms", TURN_CHECK_MS), positive(settings, "turn_max_ms", TURN_MAX_MS),
                 terms(settings.get("vocabulary")), bool(settings, "known_voices_only", false),
-                positive(settings, "speaker_threshold", SPEAKER_THRESHOLD));
+                positive(settings, "speaker_threshold", SPEAKER_THRESHOLD), bool(settings, "greet_on_sit", GREET_ON_SIT));
     }
 
     private static String choice(String s, List<String> choices) {
@@ -391,6 +391,7 @@ public final class VoiceSettings {
      * @param vocabulary       names and terms speech recognition must get right
      * @param knownVoicesOnly  questions from voices Marvin does not know are ignored
      * @param speakerThreshold the similarity from which a voice is recognised
+     * @param greetOnSit       greet the owner by name when they sit down after an absence (C5)
      */
     public record VoiceConfig(String llmModel, String ollamaHost, String language, String defaultLanguage,
                               String stt, String sttModel, String tts, String ttsVoice, boolean wake,
@@ -400,7 +401,7 @@ public final class VoiceSettings {
                               boolean welcomeBack, String audioRoute, AudioDeviceProfile computer,
                               AudioDeviceProfile robot, String visionModel, String camera, String vad, String turn,
                               double turnCheckMs, double turnMaxMs, List<String> vocabulary, boolean knownVoicesOnly,
-                              double speakerThreshold) {
+                              double speakerThreshold, boolean greetOnSit) {
 
         /** The model that answers a question with an image: the vision model, or the voice's when there is none. */
         public String imageModel() {

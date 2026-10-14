@@ -32,6 +32,8 @@ import marvin.host.application.settings.SettingsService;
 import marvin.host.application.system.port.in.HostLog;
 import marvin.host.application.system.port.out.ComponentProbe;
 import marvin.host.application.vision.port.in.Camera;
+import marvin.host.domain.conversation.Greeting;
+import marvin.host.domain.settings.AppSettings;
 import marvin.host.domain.shared.Clocks;
 import marvin.host.domain.shared.LocalDays;
 import marvin.host.domain.system.ComponentHealth;
@@ -96,17 +98,26 @@ public class VoiceWiring {
                                      VoiceSettingsFile settingsFile, JsonFetcher fetch, ConversationStore store,
                                      PresenceService presence, Clocks clocks, LocalDays days, EventHub hub,
                                      HostLog hostLog, PresenceEventBus bus, ObjectProvider<Tracer> tracer,
-                                     BuzzerChimeService chimes, RobotLinkQuery robot, Camera camera) {
+                                     BuzzerChimeService chimes, RobotLinkQuery robot, Camera camera,
+                                     SettingsService settings) {
         VoiceService voice = new VoiceService(sidecar, model, settingsFile, fetch, store, presence, clocks, days,
                 platform(), sidecar::audioRobot);
         tracer.ifAvailable(t -> voice.setTracing(new MicrometerTracing(t)));
         voice.setRoom(robot::room);                         // the room sensors' readings in the question's context
         voice.setCamera(camera);                            // the look tool, while a camera can take a picture
+        // the greeting on sitting down names the owner (C5); nothing on Marvin's own in quiet hours
+        voice.setOwner(() -> owner(settings.current().owner()));
+        voice.setQuiet(() -> settings.current().quietHours().contains(days.minuteOfDay(clocks.wallSeconds())));
         voice.addListener(hub);
         voice.addListener((kind, payload) -> logLine(hostLog, kind, payload));
         voice.addListener(new VoiceChimes(chimes, voice::earcon));      // the voice's earcons, on one device
         bus.subscribe(voice::onPresenceEvent);
         return voice;
+    }
+
+    /** The app's owner setting as the voice sees it. */
+    static Greeting.Owner owner(AppSettings.Owner o) {
+        return o == null ? Greeting.Owner.NONE : new Greeting.Owner(o.name(), o.languages());
     }
 
     /** As the Python host's app: the voice's errors and notes in the Log panel. */

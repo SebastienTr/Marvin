@@ -7,11 +7,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 import marvin.host.application.conversation.port.out.VoiceSidecar;
 import marvin.host.application.conversation.task.TaskService;
 import marvin.host.application.conversation.tools.ToolRegistry;
+import marvin.host.domain.conversation.Greeting;
 import marvin.host.domain.conversation.ProactiveSpeech;
 import marvin.host.domain.conversation.SentenceSplitter;
 import marvin.host.domain.conversation.SpeechLanguage;
@@ -24,17 +26,25 @@ import marvin.host.domain.presence.event.PresenceState;
 
 /**
  * Marvin speaking first (a collaborator of {@link VoiceService}): from the brain's events (a break reminder, "welcome
- * back"), and for background tasks (a finished task said aloud); never during a conversation. What it says is written
- * down once said, as a proactive reply.
+ * back", the owner greeted by name when they sit down after an absence), and for background tasks (a finished task said
+ * aloud); never during a conversation, and nothing from the brain's events in quiet hours. What it says is written down
+ * once said, as a proactive reply ({@code greeting: true} for the greeting).
  */
 final class VoiceProactive {
     private static final Logger log = Logger.getLogger("marvin.voice");
 
     private final VoiceService v;
     private volatile ProactiveSpeech proactive;
-    /** What Marvin said on its own and the voice has not reported yet: the language, by reply id. */
-    private final Map<Long, String> replies = new ConcurrentHashMap<>();
+    /** The greeting by name ({@code null}: off, or the voice is off). */
+    private volatile Greeting greeting;
+    /** What Marvin said on its own and the voice has not reported yet, by reply id. */
+    private final Map<Long, Said> replies = new ConcurrentHashMap<>();
     private volatile BooleanSupplier quiet = () -> false;
+    private volatile Supplier<Greeting.Owner> owner = () -> Greeting.Owner.NONE;
+
+    /** Something Marvin said on its own: its language, and whether it was the greeting. */
+    private record Said(String language, boolean greeting) {
+    }
 
     VoiceProactive(VoiceService v) {
         this.v = v;
@@ -42,16 +52,51 @@ final class VoiceProactive {
 
     /** The voice starts with these settings. */
     void start(VoiceConfig c) {
-        proactive = new ProactiveSpeech(c.reminders(), c.welcomeBack());
+        // the greeting on sitting down replaces "welcome back" on arriving: one hello per return
+        proactive = new ProactiveSpeech(c.reminders(), c.welcomeBack() && !c.greetOnSit());
+        Greeting before = greeting;
+        greeting = !c.greetOnSit() ? null : before != null ? before : new Greeting();
     }
 
     /** The voice stops: nothing more on its own. */
     void stop() {
         proactive = null;
+        greeting = null;
     }
 
     void setQuiet(BooleanSupplier q) {
         quiet = q;
+    }
+
+    void setOwner(Supplier<Greeting.Owner> o) {
+        owner = o;
+    }
+
+    private boolean quietNow() {
+        try {
+            return quiet.getAsBoolean();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    private Greeting.Owner owner() {
+        try {
+            Greeting.Owner o = owner.get();
+            return o != null ? o : Greeting.Owner.NONE;
+        } catch (RuntimeException e) {
+            return Greeting.Owner.NONE;
+        }
+    }
+
+    /** Someone besides the owner is in the room: the greeting names nobody. */
+    private boolean othersPresent() {
+        try {
+            PresenceState st = v.presence.state();
+            return st != null && st.targets() > 1;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** A brain event: maybe a break reminder or "welcome back" (never during a conversation). */
@@ -64,21 +109,57 @@ final class VoiceProactive {
         if (p == null || !VoiceService.ON.equals(v.state) || !v.opened) {
             return;
         }
-        String lang = v.language;
         double now = v.clocks.monotonicSeconds();
+        Greeting g = greeting;
+        if (g != null && g.onEvent(event, now)) {
+            greet(g, now);
+            return;
+        }
+        String lang = v.language;
         String text = p.onEvent(event, lang, now).orElse(null);
         if (text == null) {
             return;
         }
-        VoiceSidecar.Status s = v.status;
-        if (v.turns.active() || s != null && ("thinking".equals(s.state()) || "speaking".equals(s.state()))) {
+        if (quietNow()) {
+            log.fine("proactive speech skipped in quiet hours: " + text);
+            return;
+        }
+        if (inConversation()) {
             log.fine("proactive speech skipped during a conversation: " + text);
             return;
         }
         long id = v.replyIds.getAndIncrement();
-        replies.put(id, lang);
+        replies.put(id, new Said(lang, false));
         v.voice.send(new VoiceSidecar.Say(id, text, lang, false, true, clauses(text, lang)));
         p.spoken(now);
+    }
+
+    private boolean inConversation() {
+        VoiceSidecar.Status s = v.status;
+        return v.turns.active() || s != null && ("thinking".equals(s.state()) || "speaking".equals(s.state()));
+    }
+
+    /**
+     * The owner sat down after an absence: "Bonjour Sébastien !" in the last language they spoke, a neutral hello when
+     * someone else is there or the owner has no name yet; nothing in quiet hours or during a conversation.
+     */
+    private void greet(Greeting g, double now) {
+        Greeting.Owner o = owner();
+        String lang = Greeting.language(v.transcript.lastHeardLanguage(), o, v.language);
+        String text = Greeting.text(othersPresent() ? "" : o.name(), lang);
+        if (quietNow()) {
+            log.fine("greeting skipped in quiet hours");
+            return;
+        }
+        if (inConversation()) {
+            log.fine("greeting skipped during a conversation");
+            return;
+        }
+        long id = v.replyIds.getAndIncrement();
+        replies.put(id, new Said(lang, true));
+        v.voice.send(new VoiceSidecar.Say(id, text, lang, false, true, clauses(text, lang)));
+        g.greeted(now);
+        log.info("greeting: " + text);
     }
 
     /** Says {@code text} on Marvin's own initiative, now: false when the voice is off or a conversation is going on. */
@@ -87,7 +168,7 @@ final class VoiceProactive {
             return false;
         }
         long id = v.replyIds.getAndIncrement();
-        replies.put(id, lang);
+        replies.put(id, new Said(lang, false));
         v.voice.send(new VoiceSidecar.Say(id, text, lang, false, true, clauses(text, lang)));
         return true;
     }
@@ -101,16 +182,19 @@ final class VoiceProactive {
 
     /** The voice said {@code r}: written down when it was one of Marvin's own and was not cut. */
     void onSpoken(VoiceSidecar.ReplySpoken r) {
-        String lang = replies.remove(r.replyId());
-        if (lang != null && !r.interrupted()) {
+        Said said = replies.remove(r.replyId());
+        if (said != null && !r.interrupted()) {
             Map<String, Object> d = new LinkedHashMap<>();
-            d.put("language", lang);
+            d.put("language", said.language());
             d.put("latency", Map.of());
             d.put("first_word_s", null);
             d.put("interrupted", false);
             d.put("proactive", true);
             d.put("error", null);
             d.put("hint", "");
+            if (said.greeting()) {
+                d.put("greeting", true);        // the owner greeted on sitting down (the greeting event, C5)
+            }
             v.transcript.entry("reply", v.clocks.wallSeconds(), r.text(), d);
         }
     }
@@ -185,11 +269,7 @@ final class VoiceProactive {
 
         @Override
         public boolean quiet() {
-            try {
-                return quiet.getAsBoolean();
-            } catch (RuntimeException e) {
-                return false;
-            }
+            return quietNow();
         }
     }
 }

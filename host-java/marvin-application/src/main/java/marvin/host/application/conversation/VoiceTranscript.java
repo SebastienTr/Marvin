@@ -59,6 +59,20 @@ final class VoiceTranscript {
         }
     }
 
+    /** The language of the last question heard in the transcript (today's, restored, or since), {@code null} when none. */
+    String lastHeardLanguage() {
+        synchronized (lock) {
+            var it = transcript.descendingIterator();
+            while (it.hasNext()) {
+                ConversationEntry e = it.next();
+                if ("heard".equals(e.kind()) && e.data().get("language") instanceof String l && !l.isBlank()) {
+                    return l;
+                }
+            }
+        }
+        return null;
+    }
+
     void addListener(VoiceListener l) {
         listeners.add(l);
     }
