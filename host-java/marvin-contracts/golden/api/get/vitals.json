@@ -1,0 +1,80 @@
+{
+  "contract": {
+    "id": "C3",
+    "owner": "W2",
+    "state": "pending",
+    "frozen": "2026-10-14",
+    "notes": [
+      "hours: 1..24 (default 24). current: the last reading that passed the quality gate, or null when there is no vitals sensor.",
+      "hr: beats per minute, br: breaths per minute, both null when quality is none.",
+      "quality: good (valid, person still, in range, median over 10 s) | unstable (readings, not trusted yet) | none.",
+      "distance_m: the MR60BHA2's distance to the person, metres, or null. t: wall-clock seconds.",
+      "minutes: one row per minute with readings, oldest first: the medians, n = readings that passed the gate.",
+      "SSE: /api/stream event 'vitals', 1 Hz, the 'current' object."
+    ]
+  },
+  "request": {
+    "method": "GET",
+    "path": "/api/vitals?hours=24"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "current": {
+      "hr": 66.3,
+      "br": 14.0,
+      "quality": "good",
+      "distance_m": 0.82,
+      "t": 1789983000.0
+    },
+    "minutes": [
+      {
+        "t": 1789979400.0,
+        "hr": null,
+        "br": null,
+        "n": 0
+      },
+      {
+        "t": 1789982880.0,
+        "hr": 66.0,
+        "br": 14.0,
+        "n": 58
+      },
+      {
+        "t": 1789982940.0,
+        "hr": 67.5,
+        "br": 13.5,
+        "n": 60
+      }
+    ]
+  },
+  "shape": {
+    "current": {
+      "hr": "number",
+      "br": "number",
+      "quality": "string",
+      "distance_m": "number",
+      "t": "number"
+    },
+    "minutes": [
+      {
+        "t": "number",
+        "hr": "null",
+        "br": "null",
+        "n": "number"
+      },
+      {
+        "t": "number",
+        "hr": "number",
+        "br": "number",
+        "n": "number"
+      }
+    ]
+  }
+}

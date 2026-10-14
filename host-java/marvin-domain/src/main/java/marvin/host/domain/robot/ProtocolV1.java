@@ -31,6 +31,11 @@ public final class ProtocolV1 {
     public static final int FLAG_ENVIRONMENT = 0x40;
     public static final int CAMERA_PORT = 81;
 
+    /** {@code BUTTON} action: held at least {@link #BUTTON_LONG_PRESS_MS} (the robot's knob: Talk held = mute). */
+    public static final int BUTTON_LONG_PRESS = 2;
+    /** How long a button is held for a long press, milliseconds (measured on the robot). */
+    public static final int BUTTON_LONG_PRESS_MS = 1500;
+
     /** Audio in both directions: 16 kHz mono signed 16-bit little-endian PCM. */
     public static final int AUDIO_RATE = 16_000;
     /** Samples in one {@code AUDIO_IN} datagram (20 ms). */

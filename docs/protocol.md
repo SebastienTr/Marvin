@@ -67,7 +67,7 @@ Board ids: 1 = Wemos D1 mini (ESP8266), 2 = ESP32-S3 DevKitC, 3 = XIAO ESP32S3 S
 
 Bits 1 to 6 were added to v1 without a version bump: older robots send 0 there, and older hosts only look at bit 0. A robot sets a capability bit only once that part has started (a camera that failed to initialise is not announced; the bench board's OLED is announced while it answers on I2C, so a screen plugged in later shows up at the next `HELLO`). Bit 7 is reserved and sent as 0: the last free bit, kept for a second flags byte if more capabilities come. That is why the room sensors share one bit and say which they are in their own message.
 
-The bench boards (board ids 2 and 5 with `MARVIN_HAS_BENCH_IO`, [wiring-bench.md](wiring-bench.md)) announce bits 3, 4 and 5, and bit 6 with `MARVIN_HAS_ROOM_SENSORS`.
+The bench boards (board ids 2 and 5 with `MARVIN_HAS_BENCH_IO`, [wiring-bench.md](wiring-bench.md)) announce bits 3, 4 and 5, and bit 6 with `MARVIN_HAS_ROOM_SENSORS`. The robot (board 3) announces bits 1, 2 and 3 (camera, audio, the knob as a Talk button).
 
 The sensor frames travel **raw**, CRC included, so the host validates them exactly as it would on a serial port, and a recording can be replayed through the same parsers.
 
@@ -152,14 +152,17 @@ Robots with a buzzer (`HELLO` flag bit 4) and no speaker are sent `SOUND` too, a
 | Offset | Size | Field |
 |---:|---:|---|
 | 0 | 1 | Button: 1 = Talk, 2 = Mute |
-| 1 | 1 | Action: 1 = press |
+| 1 | 1 | Action: 1 = press (a tap), 2 = long press (held 1.5 s or more) |
 
-The host ignores buttons and actions it does not know, and reads only these 2 bytes of a longer payload, so buttons and actions (a long press, a release) can be added. A shorter payload is counted as bad and dropped. A lost `BUTTON` is lost: press again.
+The host ignores buttons and actions it does not know, and reads only these 2 bytes of a longer payload, so buttons and actions (a release, say) can be added. A shorter payload is counted as bad and dropped. A lost `BUTTON` is lost: press again.
 
-| Button | What the host does (as the app's button does) |
-|---|---|
-| Talk | Talk now: opens a listening window, or closes the one that is open. With the voice off, it sends `SOUND` `error` back to that robot |
-| Mute | Mutes the microphone, or unmutes it |
+| Button | Action | What the host does (as the app's button does) |
+|---|---|---|
+| Talk | press | Talk now: opens a listening window, or closes the one that is open. With the voice off, it sends `SOUND` `error` back to that robot |
+| Talk | long press | Mutes the microphone, or unmutes it (the robot's knob) |
+| Mute | press | Mutes the microphone, or unmutes it |
+
+**Long press** (action 2, added to v1 without a version bump, frozen 14 October 2026): the robot sends it once, when the button has been held for 1.5 s (`BUTTON_LONG_PRESS_MS`), and sends nothing when it is released. On a button that has a long press, a tap is sent as action 1 when it is released before 1.5 s; buttons without one (the bench board's) send action 1 at once, as before. A host that does not know action 2 ignores it. The robot (board 3) has one button, the orange knob on the head (a tact switch on D7, GPIO44): Talk, tap and long press; it announces `HELLO` bit 3 once the knob is read.
 
 The robot clicks its buzzer on each press. Without a host (not linked), it sends nothing and plays `error` itself.
 

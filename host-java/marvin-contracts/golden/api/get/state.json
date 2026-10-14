@@ -108,7 +108,11 @@
       },
       "voice": false,
       "clock": "24h",
-      "ui_sounds": true
+      "ui_sounds": true,
+      "owner": {
+        "name": "",
+        "languages": []
+      }
     }
   },
   "shape": {
@@ -197,7 +201,11 @@
       },
       "voice": "boolean",
       "clock": "string",
-      "ui_sounds": "boolean"
+      "ui_sounds": "boolean",
+      "owner": {
+        "name": "string",
+        "languages": []
+      }
     }
   }
 }

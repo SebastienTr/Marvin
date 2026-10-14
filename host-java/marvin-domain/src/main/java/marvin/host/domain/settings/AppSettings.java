@@ -15,12 +15,41 @@ import java.util.Objects;
  * @param voice            the voice starts with the host (turned on and off in the app)
  * @param clock            {@code "24h"} or {@code "12h"}
  * @param uiSounds         short sounds in the browser
+ * @param owner            who Marvin lives with ({@code owner.name}, {@code owner.languages}): set by the onboarding,
+ *                         read by the voice to greet the owner by name (v1 contract C5)
  */
 public record AppSettings(Number breakIntervalMin, QuietHours quietHours, boolean voice, String clock,
-                          boolean uiSounds) {
+                          boolean uiSounds, Owner owner) {
 
     /** The keys, in the order the app lists them. */
-    public static final List<String> KEYS = List.of("break_interval_min", "quiet_hours", "voice", "clock", "ui_sounds");
+    public static final List<String> KEYS = List.of("break_interval_min", "quiet_hours", "voice", "clock", "ui_sounds",
+            "owner");
+    /** The languages an owner may speak, as ISO 639-1 codes (the persona's languages). */
+    public static final List<String> LANGUAGES = List.of("fr", "en", "de", "es", "it", "nl", "pt");
+    public static final int MAX_OWNER_NAME = 40;
+    public static final int MAX_OWNER_LANGUAGES = 4;
+
+    /**
+     * The owner (single owner in v1, recognised by voice: no face ID).
+     *
+     * @param name      what Marvin calls them; empty until the onboarding asks
+     * @param languages the languages they speak to Marvin, most used first (ISO 639-1); empty until the onboarding asks
+     */
+    public record Owner(String name, List<String> languages) {
+        public static final Owner DEFAULT = new Owner("", List.of());
+
+        public Owner {
+            Objects.requireNonNull(name, "name");
+            languages = List.copyOf(languages);
+        }
+
+        Map<String, Object> toMap() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("name", name);
+            m.put("languages", languages);
+            return m;
+        }
+    }
 
     /**
      * @param start {@code HH:MM}, local time
@@ -52,12 +81,18 @@ public record AppSettings(Number breakIntervalMin, QuietHours quietHours, boolea
         Objects.requireNonNull(breakIntervalMin, "breakIntervalMin");
         Objects.requireNonNull(quietHours, "quietHours");
         Objects.requireNonNull(clock, "clock");
+        Objects.requireNonNull(owner, "owner");
+    }
+
+    /** The same settings without an owner field given (the defaults' owner). */
+    public AppSettings(Number breakIntervalMin, QuietHours quietHours, boolean voice, String clock, boolean uiSounds) {
+        this(breakIntervalMin, quietHours, voice, clock, uiSounds, Owner.DEFAULT);
     }
 
     /** The defaults, with the brain's break interval (seconds). */
     public static AppSettings defaults(double stillLongS) {
         double minutes = Math.round(stillLongS / 60 * 10) / 10.0;
-        return new AppSettings(whole(minutes), QuietHours.DEFAULT, false, "24h", true);
+        return new AppSettings(whole(minutes), QuietHours.DEFAULT, false, "24h", true, Owner.DEFAULT);
     }
 
     public double breakIntervalS() {
@@ -72,6 +107,7 @@ public record AppSettings(Number breakIntervalMin, QuietHours quietHours, boolea
         m.put("voice", voice);
         m.put("clock", clock);
         m.put("ui_sounds", uiSounds);
+        m.put("owner", owner.toMap());
         return m;
     }
 
@@ -90,6 +126,7 @@ public record AppSettings(Number breakIntervalMin, QuietHours quietHours, boolea
         boolean v = voice;
         String c = clock;
         boolean sounds = uiSounds;
+        Owner who = owner;
         for (Map.Entry<String, ?> e : update.entrySet()) {
             Object value = e.getValue();
             switch (e.getKey()) {
@@ -150,10 +187,48 @@ public record AppSettings(Number breakIntervalMin, QuietHours quietHours, boolea
                     }
                     c = (String) value;
                 }
+                case "owner" -> who = owner(who, value);
                 default -> throw new InvalidSettingException("unknown setting " + e.getKey());
             }
         }
-        return new AppSettings(interval, quiet, v, c, sounds);
+        return new AppSettings(interval, quiet, v, c, sounds, who);
+    }
+
+    private static Owner owner(Owner before, Object value) {
+        if (!(value instanceof Map<?, ?> m)) {
+            throw new InvalidSettingException("owner must be an object");
+        }
+        String name = before.name();
+        List<String> languages = before.languages();
+        for (Map.Entry<?, ?> o : m.entrySet()) {
+            String k = String.valueOf(o.getKey());
+            Object ov = o.getValue();
+            switch (k) {
+                case "name" -> {
+                    if (!(ov instanceof String n)) {
+                        throw new InvalidSettingException("owner.name must be text");
+                    }
+                    String t = String.join(" ", n.strip().split("\\s+"));
+                    if (t.codePointCount(0, t.length()) > MAX_OWNER_NAME
+                            || t.codePoints().anyMatch(ch -> Character.isISOControl(ch) || "{}<>[]\\\"`".indexOf(ch) >= 0)) {
+                        throw new InvalidSettingException("owner.name must be a name of at most " + MAX_OWNER_NAME
+                                + " characters");
+                    }
+                    name = t;
+                }
+                case "languages" -> {
+                    if (!(ov instanceof List<?> l) || l.size() > MAX_OWNER_LANGUAGES
+                            || !l.stream().allMatch(x -> x instanceof String code && LANGUAGES.contains(code))
+                            || l.stream().distinct().count() != l.size()) {
+                        throw new InvalidSettingException("owner.languages must be a list of at most "
+                                + MAX_OWNER_LANGUAGES + " different languages among " + String.join(", ", LANGUAGES));
+                    }
+                    languages = l.stream().map(String::valueOf).toList();
+                }
+                default -> throw new InvalidSettingException("unknown setting owner." + k);
+            }
+        }
+        return new Owner(name, languages);
     }
 
     /** Minutes since midnight of {@code HH:MM}. */

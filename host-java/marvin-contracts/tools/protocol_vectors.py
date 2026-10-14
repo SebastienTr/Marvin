@@ -99,6 +99,9 @@ def robot_to_host() -> list[dict]:
                                                            protocol.FLAG_SIMULATED | protocol.FLAG_BUTTONS
                                                            | protocol.FLAG_BUZZER | protocol.FLAG_FACE
                                                            | protocol.FLAG_ENVIRONMENT, -55, 61000, "0.1.0")),
+        ("hello_xiao_robot_knob", protocol.Hello(bytes.fromhex("a4cf12345678"), 3,
+                                                 protocol.FLAG_CAMERA | protocol.FLAG_AUDIO | protocol.FLAG_BUTTONS,
+                                                 -61, 123456, "0.7.0")),
         ("hello_usb_bridge", protocol.Hello(bytes.fromhex("1a2b3c4d5e6f"), protocol.BOARD_USB_BRIDGE, 0, 0, 42000,
                                             "usb-0.1.0")),
     ]:
@@ -159,12 +162,15 @@ def robot_to_host() -> list[dict]:
     for name, payload, note in [
         ("button_talk", protocol.Button(protocol.BUTTON_TALK).encode(), ""),
         ("button_mute", protocol.Button(protocol.BUTTON_MUTE).encode(), ""),
+        ("button_talk_long_press", protocol.Button(protocol.BUTTON_TALK, protocol.BUTTON_LONG_PRESS).encode(),
+         "the robot's knob held for 1.5 s or more: the host mutes or unmutes"),
         ("button_unknown_kept", bytes([9, 1, 0xAA]),
          "an unknown button (and a longer payload) decodes; the host ignores it"),
     ]:
         b = protocol.Button.decode(payload)
         out.append(vec(name, protocol.BUTTON, 1007, 5_700_000, payload,
-                       {"button": b.button, "action": b.action, "name": b.name}, note))
+                       {"button": b.button, "action": b.action, "name": b.name, "action_name": b.action_name},
+                       note))
     out.append(vec("button_too_short", protocol.BUTTON, 1008, 5_800_000, b"\x01",
                    {"error": error(protocol.Button.decode, b"\x01")}, "counted as bad, dropped"))
     # ENVIRONMENT
@@ -305,7 +311,8 @@ def main() -> None:
                                 "audio": protocol.FLAG_AUDIO, "buttons": protocol.FLAG_BUTTONS,
                                 "buzzer": protocol.FLAG_BUZZER, "face": protocol.FLAG_FACE,
                                 "environment": protocol.FLAG_ENVIRONMENT},
-                      "buttons": protocol.BUTTONS, "button_actions": {protocol.BUTTON_PRESS: "press"},
+                      "buttons": protocol.BUTTONS, "button_actions": protocol.BUTTON_ACTIONS,
+                      "button_long_press_ms": protocol.BUTTON_LONG_PRESS_MS,
                       "environment": {"size": protocol.Environment.SIZE, "sensors": protocol.ENV_SENSORS,
                                       "flags": {"motion": protocol.ENV_MOTION, "warming_up": protocol.ENV_WARMING_UP,
                                                 "temperature_valid": protocol.ENV_TEMPERATURE_VALID,

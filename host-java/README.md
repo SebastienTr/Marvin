@@ -390,6 +390,11 @@ stand-in for Ollama; they are skipped when the sidecar cannot run.
 | `marvin-app` | `marvin.host.app` | Spring Boot main, wiring; `ArchitectureTest` | everything |
 | `marvin-contracts` | `marvin.host.contracts.voice.v1` (generated) | Golden files (generated from the Python host, or kept by hand: the API, the conversation, the voice's defaults), `voice.proto` ([README](marvin-contracts/README.md)) | protobuf, gRPC |
 
+Migrations live in `marvin-adapter-persistence/src/main/resources/db/migration/<context>/`, one Flyway
+history per context. For Marvin v1 (2026-10-14) the next versions are allocated, and nobody else adds a
+migration: `presence/V3` (vitals), `memory/V4` (Soul), `conversation/V4` (approvals), `settings/V3`
+(onboarding).
+
 Bounded contexts today: `robot`, `presence`, `conversation`, `settings`, `system`, `face`, `memory`, `vision`. A context
 reaches another only through its application ports (`application.<context>.port.in|out`) and its
 domain events (`domain.<context>.event`); `domain.shared` is the shared kernel. Each context owns a

@@ -6,6 +6,9 @@ package marvin.host.domain.conversation.tool;
  * local-write tools on its own; a tool that writes outside this computer needs the owner's approval, which does not
  * exist yet, so no task is offered one. Irreversible external actions (sending an email, deleting anything remote,
  * paying) are never tools at all.
+ *
+ * <p>Frozen for Marvin v1 (contract C7, 2026-10-14): these three values, no {@code IRREVERSIBLE} one
+ * ({@code ToolAccessTest}).
  */
 public enum ToolAccess {
     /** Reads only: the weather, recall, a picture described. */

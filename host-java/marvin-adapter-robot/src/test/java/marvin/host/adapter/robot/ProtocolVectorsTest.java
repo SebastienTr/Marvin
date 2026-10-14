@@ -89,6 +89,10 @@ class ProtocolVectorsTest {
                 .isEqualTo(e.getValue().asString()));
         assertThat(Button.names()).hasSize(c.get("buttons").size());
         assertThat(c.get("button_actions").get(String.valueOf(Button.PRESS)).asString()).isEqualTo("press");
+        c.get("button_actions").properties().forEach(e -> assertThat(Button.actionName(Integer.parseInt(e.getKey())))
+                .isEqualTo(e.getValue().asString()));
+        assertThat(Button.actionNames()).hasSize(c.get("button_actions").size());
+        assertThat(c.get("button_long_press_ms").asInt()).isEqualTo(ProtocolV1.BUTTON_LONG_PRESS_MS);
         c.get("face_event_codes").properties().forEach(e -> assertThat(
                 EventKind.fromWireName(e.getKey()).orElseThrow().faceCode()).isEqualTo(e.getValue().asInt()));
         c.get("sounds").properties().forEach(e -> {
@@ -239,6 +243,8 @@ class ProtocolVectorsTest {
                 assertThat(b.button()).isEqualTo(e.get("button").asInt());
                 assertThat(b.action()).isEqualTo(e.get("action").asInt());
                 assertThat(Button.name(b.button())).isEqualTo(e.get("name").isNull() ? null : e.get("name").asString());
+                assertThat(Button.actionName(b.action()))
+                        .isEqualTo(e.get("action_name").isNull() ? null : e.get("action_name").asString());
                 assertThat(b.encode()).isEqualTo(java.util.Arrays.copyOf(payload, Button.SIZE));
             }
             case 0x08 -> {

@@ -641,6 +641,28 @@ sentence, Synthesis, Speaker), and in each question's trace.
 
 `first_word_s` (the app's "First word ... after you stopped talking") is `endpoint` + `playback_start`.
 
+### The latency line (v1 contract)
+
+For `./marvin report` and the v1 acceptance test (end of speech to first audio: p50 ≤ 2.5 s, p90 ≤ 4 s),
+the Java host writes **one JSON object per answered turn**, one per line, frozen on 14 October 2026
+(schema: [`latency.schema.json`](../host-java/marvin-contracts/golden/voice/latency.schema.json)):
+
+```json
+{"t": 1789983000.0, "lang": "fr", "stt_ms": 120, "llm_first_token_ms": 1500, "tts_first_audio_ms": 1830, "robot_out_ms": 1990, "total_ms": 1990}
+```
+
+| Field | Meaning (milliseconds from the end of speech; `null` when the stage did not happen) |
+|---|---|
+| `t` | Wall-clock time of the end of speech, Unix seconds |
+| `lang` | The answer's language, ISO 639-1 |
+| `stt_ms` | The transcript is ready |
+| `llm_first_token_ms` | The model's first token of the answer |
+| `tts_first_audio_ms` | The first clause's first synthesised sound |
+| `robot_out_ms` | The robot's speaker starts playing it; `null` when the voice speaks on the computer |
+| `total_ms` | The first sound is heard, wherever it plays (the app's "first word") |
+
+Streams may add stages as extra `*_ms` numbers; the seven fields above keep their meaning.
+
 What to expect on an Apple Silicon Mac (estimates; the log tells the truth):
 
 | Stage | Time | How it is kept short |

@@ -38,6 +38,8 @@ The Maven module puts `golden/` on the classpath under `marvin/contracts/golden/
 | `golden/api/sse.json` | by hand (as above) | The two event streams: event names, counts, a sample payload and the shapes of each |
 | `golden/conversation/vectors.json` | by hand (generated from the Python persona until 2026-10) | The conversation's texts and rules: prompts, context blocks, text cleaning, sentence splitting, the voice settings' validation and defaults, the background tasks' rules, hint and tools |
 | `golden/face/` | `face_vectors.py` | The face: each expression as PNG, the icon, and the scripted scenario of `host/scripts/face_golden.py` with the CRC-32 of every frame |
+| `golden/api/get/{setup,vitals,soul,approvals,connectors}.json` | by hand (Marvin v1 plan, 2026-10-14) | The endpoints frozen for v1 (contracts C2-C4) and not implemented yet: listed under `pending` in `index.json` (with the stream that owns each), as are the stream events `vitals` and `approval` in `sse.json`. The stream that implements one moves it to `get` in the same commit |
+| `golden/voice/latency.schema.json` | by hand (Marvin v1 plan, 2026-10-14) | The latency line: one JSON object per answered turn (contract C6, [docs/voice.md](../../docs/voice.md#the-latency-line-v1-contract)) |
 | `src/main/proto/marvin/voice/v1/voice.proto` | by hand | The gRPC contract between the Java core and the voice sidecar (design section 4) |
 
 ## How the Java host uses them
@@ -57,5 +59,7 @@ The Maven module puts `golden/` on the classpath under `marvin/contracts/golden/
 - **Face**: pixels, compared through the CRC-32 of the RGB888 frames or the decoded PNGs.
 - **Conversation vectors**: `ConversationVectorsTest` checks the Java persona, context blocks, text
   cleaning, sentence splitting and settings rules against them.
+- **voice.proto** is frozen for Marvin v1 (2026-10-14): fields may be added, never renumbered or
+  removed, and a hand-back says so.
 - **voice.proto**: compiled by this module (Java classes in `marvin.host.contracts.voice.v1`),
   and by the Python sidecar with `grpcio-tools` (host/scripts/gen_voice_contract.py).

@@ -95,5 +95,19 @@
   ],
   "machine_dependent": [
     "get/voice_options.json: Ollama models, speech backends and voices installed on the machine that recorded it; compare the shape only"
-  ]
+  ],
+  "pending": {
+    "about": "Endpoints frozen by the Marvin v1 plan (contracts C2-C4, 2026-10-14) and not implemented yet: their goldens are the specification. The stream that implements one moves it to 'get' in the same commit, so the contract test replays it.",
+    "get": {
+      "setup": "W5",
+      "vitals": "W2",
+      "soul": "W4",
+      "approvals": "W4",
+      "connectors": "W4"
+    },
+    "sse": {
+      "vitals": "W2",
+      "approval": "W4"
+    }
+  }
 }

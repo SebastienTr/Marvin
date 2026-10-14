@@ -28,7 +28,11 @@
       },
       "voice": false,
       "clock": "24h",
-      "ui_sounds": true
+      "ui_sounds": true,
+      "owner": {
+        "name": "",
+        "languages": []
+      }
     },
     "defaults": {
       "break_interval_min": 45,
@@ -39,7 +43,11 @@
       },
       "voice": false,
       "clock": "24h",
-      "ui_sounds": true
+      "ui_sounds": true,
+      "owner": {
+        "name": "",
+        "languages": []
+      }
     },
     "about": {
       "data_dir": "/tmp/marvin-contracts-wtu22e28",
@@ -56,7 +64,11 @@
       },
       "voice": "boolean",
       "clock": "string",
-      "ui_sounds": "boolean"
+      "ui_sounds": "boolean",
+      "owner": {
+        "name": "string",
+        "languages": []
+      }
     },
     "defaults": {
       "break_interval_min": "number",
@@ -67,7 +79,11 @@
       },
       "voice": "boolean",
       "clock": "string",
-      "ui_sounds": "boolean"
+      "ui_sounds": "boolean",
+      "owner": {
+        "name": "string",
+        "languages": []
+      }
     },
     "about": {
       "data_dir": "string",

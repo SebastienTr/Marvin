@@ -2,6 +2,9 @@
 //
 // The contract between Marvin's Java core and the voice sidecar (docs/design.md, section 4).
 //
+// FROZEN for Marvin v1 (2026-10-14): fields and messages may be added, never renumbered, retyped or
+// removed; a change says so in its commit message.
+//
 // The sidecar owns the real-time audio loop: audio in and out, VAD and segmentation, the echo gate,
 // the wake word and listening windows, speculative and final speech recognition with its filters,
 // chunking text for speech, synthesis and playback pacing, barge-in. The core owns the

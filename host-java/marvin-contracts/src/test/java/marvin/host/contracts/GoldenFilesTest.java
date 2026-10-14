@@ -74,6 +74,40 @@ class GoldenFilesTest {
         assertThat(json("api/get/state.json").get("status").asInt()).isEqualTo(200);
     }
 
+    /**
+     * The Marvin v1 contracts (2026-10-14): the endpoints and stream events frozen before they exist are specified,
+     * kept out of the replayed list until a stream implements them, and the latency line has its schema.
+     */
+    @Test
+    void theV1ContractsAreSpecified() throws IOException {
+        JsonNode index = json("api/index.json");
+        JsonNode pending = index.get("pending");
+        assertThat(pending.get("get").propertyNames()).containsExactlyInAnyOrder("setup", "vitals", "soul", "approvals",
+                "connectors");
+        for (String name : pending.get("get").propertyNames()) {
+            assertThat(index.get("get").toString()).as(name).doesNotContain("\"" + name + "\"");
+            JsonNode snap = json("api/get/" + name + ".json");
+            assertThat(snap.get("contract").get("owner").asString()).isEqualTo(pending.get("get").get(name).asString());
+            assertThat(snap.get("request").get("method").asString()).isEqualTo("GET");
+            assertThat(snap.get("request").get("path").asString()).startsWith("/api/" + name);
+            assertThat(snap.get("status").asInt()).isEqualTo(200);
+            assertThat(snap.get("body").propertyNames()).isEqualTo(snap.get("shape").propertyNames());
+        }
+        JsonNode events = json("api/sse.json").get("streams").get("/api/stream").get("events");
+        for (String kind : pending.get("sse").propertyNames()) {
+            assertThat(events.get(kind).has("pending")).as(kind).isTrue();
+            assertThat(events.get(kind).get("shapes").size()).isEqualTo(1);
+        }
+        assertThat(json("api/get/setup.json").get("body").get("steps").findValuesAsString("id")).containsExactly(
+                "host", "model", "voice", "robot", "mr60", "speaker", "voiceprint", "owner", "quiet_hours");
+        JsonNode settings = json("api/get/settings.json").get("body").get("defaults");
+        assertThat(settings.get("owner").propertyNames()).containsExactly("name", "languages");
+        assertThat(json("api/get/voice.json").get("body").get("settings").get("greet_on_sit").asBoolean()).isTrue();
+        JsonNode latency = json("voice/latency.schema.json");
+        assertThat(latency.get("required").toString()).isEqualTo("[\"t\",\"lang\",\"stt_ms\",\"llm_first_token_ms\","
+                + "\"tts_first_audio_ms\",\"robot_out_ms\",\"total_ms\"]");
+    }
+
     @Test
     void voiceContractCompiles() {
         CoreToVoice m = CoreToVoice.newBuilder().setText(TextPiece.newBuilder().setReplyId(7).setText("Hello")).build();

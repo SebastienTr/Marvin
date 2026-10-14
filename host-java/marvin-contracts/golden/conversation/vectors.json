@@ -3910,6 +3910,14 @@
       },
       {
         "in": {
+          "greet_on_sit": false
+        },
+        "out": {
+          "greet_on_sit": false
+        }
+      },
+      {
+        "in": {
           "tools": false
         },
         "out": {
@@ -4354,6 +4362,7 @@
       "home_place": "",
       "reminders": true,
       "welcome_back": false,
+      "greet_on_sit": true,
       "vision_model": "",
       "camera": "auto",
       "vocabulary": [

@@ -25,7 +25,11 @@
               },
               "voice": false,
               "clock": "24h",
-              "ui_sounds": true
+              "ui_sounds": true,
+              "owner": {
+                "name": "",
+                "languages": []
+              }
             }
           },
           "shapes": [
@@ -39,7 +43,11 @@
                 },
                 "voice": "boolean",
                 "clock": "string",
-                "ui_sounds": "boolean"
+                "ui_sounds": "boolean",
+                "owner": {
+                  "name": "string",
+                  "languages": []
+                }
               }
             }
           ]
@@ -715,7 +723,11 @@
             },
             "voice": false,
             "clock": "24h",
-            "ui_sounds": true
+            "ui_sounds": true,
+            "owner": {
+              "name": "",
+              "languages": []
+            }
           },
           "shapes": [
             {
@@ -727,7 +739,11 @@
               },
               "voice": "boolean",
               "clock": "string",
-              "ui_sounds": "boolean"
+              "ui_sounds": "boolean",
+              "owner": {
+                "name": "string",
+                "languages": []
+              }
             }
           ]
         },
@@ -1076,6 +1092,46 @@
                 "kind": "string",
                 "text": "string"
               }
+            }
+          ]
+        },
+        "vitals": {
+          "count": 0,
+          "pending": "C3, W2: 1 Hz, GET /api/vitals's current object",
+          "sample": {
+            "hr": 66.3,
+            "br": 14.0,
+            "quality": "good",
+            "distance_m": 0.82,
+            "t": 1789983000.0
+          },
+          "shapes": [
+            {
+              "hr": "number",
+              "br": "number",
+              "quality": "string",
+              "distance_m": "number",
+              "t": "number"
+            }
+          ]
+        },
+        "approval": {
+          "count": 0,
+          "pending": "C4, W4: on every change of an approval",
+          "sample": {
+            "id": 12,
+            "task_id": 41,
+            "state": "pending",
+            "tool": "gmail_create_draft",
+            "summary": "Draft a reply to the plumber saying Thursday works"
+          },
+          "shapes": [
+            {
+              "id": "number",
+              "task_id": "number",
+              "state": "string",
+              "tool": "string",
+              "summary": "string"
             }
           ]
         }

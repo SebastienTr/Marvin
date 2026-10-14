@@ -1,0 +1,102 @@
+{
+  "contract": {
+    "id": "C2",
+    "owner": "W5",
+    "state": "pending",
+    "frozen": "2026-10-14",
+    "notes": [
+      "Step ids, in this order: host, model, voice, robot, mr60, speaker, voiceprint, owner, quiet_hours.",
+      "state: ok | missing | skipped. fix: a one-line command or action, or null.",
+      "done: true once every step is ok or skipped; the app then opens Home instead of /setup.",
+      "POST /api/setup/{step} (JSON body depends on the step: {} to re-check, {\"skip\": true} to skip, {\"heard\": true} for speaker, the owner's {\"name\", \"languages\"} for owner, the quiet hours object for quiet_hours) answers the same object as this GET."
+    ]
+  },
+  "request": {
+    "method": "GET",
+    "path": "/api/setup"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "steps": [
+      {
+        "id": "host",
+        "state": "ok",
+        "detail": "Java 25, Postgres 17 (Docker), 312 GB free",
+        "fix": null
+      },
+      {
+        "id": "model",
+        "state": "ok",
+        "detail": "qwen3.8:27b-mxfp8 installed in Ollama",
+        "fix": null
+      },
+      {
+        "id": "voice",
+        "state": "missing",
+        "detail": "The voice sidecar's models are not downloaded",
+        "fix": "./marvin doctor --fix voice"
+      },
+      {
+        "id": "robot",
+        "state": "ok",
+        "detail": "marvin-345678 (XIAO ESP32S3 Sense), firmware 0.7.0, self-test ok",
+        "fix": null
+      },
+      {
+        "id": "mr60",
+        "state": "skipped",
+        "detail": "No MR60BHA2 kit: heart rate and breathing are off",
+        "fix": null
+      },
+      {
+        "id": "speaker",
+        "state": "missing",
+        "detail": "Play a sentence on the robot and say whether you heard it",
+        "fix": null
+      },
+      {
+        "id": "voiceprint",
+        "state": "missing",
+        "detail": "Read three sentences so Marvin knows your voice",
+        "fix": null
+      },
+      {
+        "id": "owner",
+        "state": "missing",
+        "detail": "Your name and the languages you speak to Marvin",
+        "fix": null
+      },
+      {
+        "id": "quiet_hours",
+        "state": "skipped",
+        "detail": "No quiet hours",
+        "fix": null
+      }
+    ],
+    "done": false
+  },
+  "shape": {
+    "steps": [
+      {
+        "id": "string",
+        "state": "string",
+        "detail": "string",
+        "fix": "null"
+      },
+      {
+        "id": "string",
+        "state": "string",
+        "detail": "string",
+        "fix": "string"
+      }
+    ],
+    "done": "boolean"
+  }
+}

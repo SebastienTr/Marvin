@@ -65,14 +65,16 @@ The CAD frame is also the device frame used by the host software:
 - origin on the vertical axis of the body, at desk level (Z = 0);
 - **X** to the right, **Y** backwards (the face looks towards −Y), **Z** up.
 
-Sensor positions (extrinsics) for rev F. Body values come from `hardware/cad/marvin.scad`; head values are planned until the head CAD lands:
+Sensor positions (extrinsics) for rev F. Body values come from `hardware/cad/marvin.scad`. The head's are **frozen** for v1 (14 October 2026, the `FROZEN` block of `marvin.scad`): the head CAD is built to them, and they change only together with that block.
 
 | Sensor | Position (X, Y, Z) mm | Facing |
 |---|---|---|
-| Camera | (0, ≈ −38, ≈ 113) | −Y, tilted 20° up. Planned. |
-| Screen centre | (0, ≈ −38, ≈ 92) | −Y, vertical. Planned. |
+| Camera (lens centre) | (0, −38, 113) | −Y, tilted 20° up. Frozen (`camPos`, `camTilt`). |
+| Screen centre (active area) | (0, −38, 92) | −Y, vertical. Frozen (`screenCentre`). |
 | MR60BHA2 case, face centre | (0, −28.4, 41.7) | −Y, tilted 20° up. The antenna is off-centre inside the case (about 7 mm to one side). |
 | HLK-LD2450, face centre | (0, −33.1, 16.4) | −Y, tilted 10° up |
+
+The head ↔ body interface, frozen with them: head envelope 88 × 80 mm (corner radius 16), from Z = 68 to 124; four M3 neck bolts at (±32, ±20) into pilots in the head floor; the cable hole 30 × 16 mm (corner radius 5) centred at Y = +4.
 
 With the 60 GHz radar at 42 mm and tilted 20°, its boresight crosses the chest band of a seated person (280–450 mm above the desk) between about 0.65 and 1.1 m.
 

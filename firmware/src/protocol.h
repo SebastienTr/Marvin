@@ -67,8 +67,10 @@ enum ButtonId : uint8_t {
   BUTTON_MUTE = 2,  // mute or unmute the microphone
 };
 enum ButtonAction : uint8_t {
-  BUTTON_PRESS = 1,
+  BUTTON_PRESS = 1,       // a tap: released before BUTTON_LONG_PRESS_MS
+  BUTTON_LONG_PRESS = 2,  // held BUTTON_LONG_PRESS_MS or more, sent once when the time is reached (knob: mute)
 };
+constexpr uint32_t BUTTON_LONG_PRESS_MS = 1500;
 
 inline size_t button(uint8_t *p, uint8_t id, uint8_t action) {
   p[0] = id;

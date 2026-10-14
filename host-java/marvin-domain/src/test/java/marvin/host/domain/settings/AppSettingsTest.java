@@ -17,7 +17,24 @@ class AppSettingsTest {
     void defaults() {
         assertThat(D.toMap()).containsExactly(Map.entry("break_interval_min", 50),
                 Map.entry("quiet_hours", Map.of("enabled", false, "start", "22:00", "end", "07:00")),
-                Map.entry("voice", false), Map.entry("clock", "24h"), Map.entry("ui_sounds", true));
+                Map.entry("voice", false), Map.entry("clock", "24h"), Map.entry("ui_sounds", true),
+                Map.entry("owner", Map.of("name", "", "languages", List.of())));
+    }
+
+    @Test
+    void owner() {
+        AppSettings o = D.apply(Map.of("owner", Map.of("name", "  Sébastien  ", "languages", List.of("fr", "en"))));
+        assertThat(o.owner()).isEqualTo(new AppSettings.Owner("Sébastien", List.of("fr", "en")));
+        assertThat(o.apply(Map.of("owner", Map.of("languages", List.of("en")))).owner().name()).isEqualTo("Sébastien");
+        assertThatThrownBy(() -> D.apply(Map.of("owner", "Seb"))).hasMessage("owner must be an object");
+        assertThatThrownBy(() -> D.apply(Map.of("owner", Map.of("name", 3)))).hasMessage("owner.name must be text");
+        assertThatThrownBy(() -> D.apply(Map.of("owner", Map.of("name", "x".repeat(41)))))
+                .hasMessage("owner.name must be a name of at most 40 characters");
+        assertThatThrownBy(() -> D.apply(Map.of("owner", Map.of("languages", List.of("fr", "fr")))))
+                .hasMessageStartingWith("owner.languages must be a list");
+        assertThatThrownBy(() -> D.apply(Map.of("owner", Map.of("languages", List.of("klingon")))))
+                .hasMessageStartingWith("owner.languages must be a list");
+        assertThatThrownBy(() -> D.apply(Map.of("owner", Map.of("age", 3)))).hasMessage("unknown setting owner.age");
     }
 
     @Test

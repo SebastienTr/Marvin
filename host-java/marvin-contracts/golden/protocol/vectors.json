@@ -37,8 +37,10 @@
       "2": "mute"
     },
     "button_actions": {
-      "1": "press"
+      "1": "press",
+      "2": "long_press"
     },
+    "button_long_press_ms": 1500,
     "environment": {
       "size": 12,
       "sensors": {
@@ -587,6 +589,34 @@
         "uptime_ms": 61000,
         "firmware": "0.1.0",
         "device_name": "marvin-112233"
+      }
+    },
+    {
+      "name": "hello_xiao_robot_knob",
+      "type": 1,
+      "datagram": "4d56010107000000b882010000000000a4cf12345678030ec340e2010005302e372e30",
+      "header": {
+        "type": 1,
+        "seq": 7,
+        "t_us": 99000
+      },
+      "payload": "a4cf12345678030ec340e2010005302e372e30",
+      "decoded": {
+        "device_id": "a4cf12345678",
+        "board": 3,
+        "board_name": "XIAO ESP32S3 Sense",
+        "flags": 14,
+        "simulated": false,
+        "has_camera": true,
+        "has_audio": true,
+        "has_buttons": true,
+        "has_buzzer": false,
+        "has_face": true,
+        "has_environment": false,
+        "rssi": -61,
+        "uptime_ms": 123456,
+        "firmware": "0.7.0",
+        "device_name": "marvin-345678"
       }
     },
     {
@@ -1156,7 +1186,8 @@
       "decoded": {
         "button": 1,
         "action": 1,
-        "name": "talk"
+        "name": "talk",
+        "action_name": "press"
       }
     },
     {
@@ -1172,8 +1203,27 @@
       "decoded": {
         "button": 2,
         "action": 1,
-        "name": "mute"
+        "name": "mute",
+        "action_name": "press"
       }
+    },
+    {
+      "name": "button_talk_long_press",
+      "type": 7,
+      "datagram": "4d560107ef030000a0f95600000000000102",
+      "header": {
+        "type": 7,
+        "seq": 1007,
+        "t_us": 5700000
+      },
+      "payload": "0102",
+      "decoded": {
+        "button": 1,
+        "action": 2,
+        "name": "talk",
+        "action_name": "long_press"
+      },
+      "note": "the robot's knob held for 1.5 s or more: the host mutes or unmutes"
     },
     {
       "name": "button_unknown_kept",
@@ -1188,7 +1238,8 @@
       "decoded": {
         "button": 9,
         "action": 1,
-        "name": null
+        "name": null,
+        "action_name": "press"
       },
       "note": "an unknown button (and a longer payload) decodes; the host ignores it"
     },

@@ -1,0 +1,106 @@
+{
+  "contract": {
+    "id": "C4",
+    "owner": "W4",
+    "state": "pending",
+    "frozen": "2026-10-14",
+    "notes": [
+      "design.md 7.3. Native Google APIs with the owner's own OAuth desktop client; tokens in the SecretStore (macOS Keychain, 0600 file fallback), never in the database, the logs or a prompt.",
+      "state: disconnected | connected | error (last_error says why). account: 'connected as', or null.",
+      "scopes: what the connector asks for; never gmail.send, never a delete scope.",
+      "oauth_client: whether the owner's OAuth client file is installed.",
+      "POST /api/connectors/{id}/connect answers {auth_url}; GET /api/connectors/callback (localhost redirect); POST /api/connectors/{id}/disconnect revokes the token."
+    ]
+  },
+  "request": {
+    "method": "GET",
+    "path": "/api/connectors"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "connectors": [
+      {
+        "id": "google_calendar",
+        "name": "Google Calendar",
+        "state": "connected",
+        "account": "owner@gmail.com",
+        "scopes": [
+          "https://www.googleapis.com/auth/calendar.readonly"
+        ],
+        "tools": [
+          {
+            "name": "calendar_list_events",
+            "class": "READ"
+          }
+        ],
+        "last_error": null
+      },
+      {
+        "id": "gmail",
+        "name": "Gmail",
+        "state": "disconnected",
+        "account": null,
+        "scopes": [
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/gmail.compose"
+        ],
+        "tools": [
+          {
+            "name": "gmail_search",
+            "class": "READ"
+          },
+          {
+            "name": "gmail_create_draft",
+            "class": "EXTERNAL_WRITE"
+          }
+        ],
+        "last_error": null
+      }
+    ],
+    "oauth_client": true
+  },
+  "shape": {
+    "connectors": [
+      {
+        "id": "string",
+        "name": "string",
+        "state": "string",
+        "account": "string",
+        "scopes": [
+          "string"
+        ],
+        "tools": [
+          {
+            "name": "string",
+            "class": "string"
+          }
+        ],
+        "last_error": "null"
+      },
+      {
+        "id": "string",
+        "name": "string",
+        "state": "string",
+        "account": "null",
+        "scopes": [
+          "string"
+        ],
+        "tools": [
+          {
+            "name": "string",
+            "class": "string"
+          }
+        ],
+        "last_error": "null"
+      }
+    ],
+    "oauth_client": "boolean"
+  }
+}

@@ -32,13 +32,13 @@ public final class VoiceSettings {
     public static final List<String> CAMERAS = List.of("auto", "computer", "robot", "off");
     /** The settings the app edits. */
     public static final List<String> APP_KEYS = List.of("llm_model", "stt", "stt_model", "tts", "tts_voice", "language",
-            "wake", "follow_up_s", "reminders", "welcome_back", "tools", "internet", "home_place", "vision_model", "camera",
-            "vocabulary", "known_voices_only");
+            "wake", "follow_up_s", "reminders", "welcome_back", "greet_on_sit", "tools", "internet", "home_place",
+            "vision_model", "camera", "vocabulary", "known_voices_only");
     /** Every key of voice.json. */
     public static final List<String> FILE_KEYS = List.of("stt", "stt_model", "llm_model", "ollama_host", "tts",
             "tts_voice", "language", "default_language", "wake", "duplex", "echo_tail_s", "follow_up_s",
-            "listen_window_s", "speculative_stt", "end_silence_ms", "reminders", "welcome_back", "tools", "internet",
-            "home_place", "chime", "audio_route", "input_device", "output_device", "continue_grace_s",
+            "listen_window_s", "speculative_stt", "end_silence_ms", "reminders", "welcome_back", "greet_on_sit", "tools",
+            "internet", "home_place", "chime", "audio_route", "input_device", "output_device", "continue_grace_s",
             "end_silence_long_ms", "vision_model", "camera", "continue_join_s", "speculate_after_s", "devices", "vad", "turn",
             "turn_check_ms", "turn_max_ms", "vocabulary", "known_voices_only", "speaker_threshold");
     public static final int MAX_HOME_PLACE = 80;
@@ -57,6 +57,11 @@ public final class VoiceSettings {
     public static final double TURN_CHECK_MS = 200.0;
     public static final double TURN_MAX_MS = 2000.0;
     public static final double SPEAKER_THRESHOLD = 0.45;
+    /**
+     * Greet the owner by name when they sit down or come back after an absence (v1 contract C5: the key and its default
+     * are frozen; the voice reads it from voice.json).
+     */
+    public static final boolean GREET_ON_SIT = true;
     /** Names and terms speech recognition must get right; the owner adds theirs (people, places, projects). */
     public static final List<String> VOCABULARY = List.of("Marvin");
     public static final int MAX_TERMS = 40;
@@ -142,7 +147,7 @@ public final class VoiceSettings {
                     v = t;
                 }
                 case "vocabulary" -> v = vocabulary(v);
-                case "wake", "reminders", "welcome_back", "tools", "internet", "known_voices_only" -> {
+                case "wake", "reminders", "welcome_back", "greet_on_sit", "tools", "internet", "known_voices_only" -> {
                     if (!(v instanceof Boolean)) {
                         throw bad(key + " must be true or false");
                     }
@@ -230,6 +235,7 @@ public final class VoiceSettings {
         out.put("home_place", "");
         out.put("reminders", true);
         out.put("welcome_back", false);
+        out.put("greet_on_sit", GREET_ON_SIT);
         out.put("vision_model", "");
         out.put("camera", "auto");
         out.put("vocabulary", VOCABULARY);

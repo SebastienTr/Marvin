@@ -1,0 +1,112 @@
+{
+  "contract": {
+    "id": "C4",
+    "owner": "W4",
+    "state": "pending",
+    "frozen": "2026-10-14",
+    "notes": [
+      "design.md 6.3. One approval per EXTERNAL_WRITE tool call of a task; the task waits in needs_approval.",
+      "state: pending | approved | rejected | expired. class is always EXTERNAL_WRITE (READ and LOCAL_WRITE need none; irreversible tools do not exist).",
+      "preview.kind: email_draft (to, subject, body, open_url once the draft exists) | calendar_event (later).",
+      "Newest first; pending ones and the last 50 decided.",
+      "POST /api/approvals/{id}/approve, POST /api/approvals/{id}/reject {reason?}.",
+      "SSE: /api/stream event 'approval' with {id, task_id, state, tool, summary} on every change."
+    ]
+  },
+  "request": {
+    "method": "GET",
+    "path": "/api/approvals"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "approvals": [
+      {
+        "id": 12,
+        "task_id": 41,
+        "tool": "gmail_create_draft",
+        "class": "EXTERNAL_WRITE",
+        "state": "pending",
+        "created": 1789982700.0,
+        "decided": null,
+        "summary": "Draft a reply to the plumber saying Thursday works",
+        "preview": {
+          "kind": "email_draft",
+          "to": [
+            "plumber@example.com"
+          ],
+          "subject": "Re: Thursday",
+          "body": "Hello, Thursday works for me. Best regards.",
+          "open_url": null
+        }
+      },
+      {
+        "id": 11,
+        "task_id": 39,
+        "tool": "gmail_create_draft",
+        "class": "EXTERNAL_WRITE",
+        "state": "approved",
+        "created": 1789896600.0,
+        "decided": 1789897000.0,
+        "summary": "Draft a thank-you note to the garage",
+        "preview": {
+          "kind": "email_draft",
+          "to": [
+            "garage@example.com"
+          ],
+          "subject": "Thank you",
+          "body": "Thank you for the quick repair.",
+          "open_url": "https://mail.google.com/mail/u/0/#drafts"
+        }
+      }
+    ]
+  },
+  "shape": {
+    "approvals": [
+      {
+        "id": "number",
+        "task_id": "number",
+        "tool": "string",
+        "class": "string",
+        "state": "string",
+        "created": "number",
+        "decided": "null",
+        "summary": "string",
+        "preview": {
+          "kind": "string",
+          "to": [
+            "string"
+          ],
+          "subject": "string",
+          "body": "string",
+          "open_url": "null"
+        }
+      },
+      {
+        "id": "number",
+        "task_id": "number",
+        "tool": "string",
+        "class": "string",
+        "state": "string",
+        "created": "number",
+        "decided": "number",
+        "summary": "string",
+        "preview": {
+          "kind": "string",
+          "to": [
+            "string"
+          ],
+          "subject": "string",
+          "body": "string",
+          "open_url": "string"
+        }
+      }
+    ]
+  }
+}

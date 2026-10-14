@@ -9,7 +9,8 @@
 //  This file covers the body half of the robot (everything below the neck).
 //  The head (face frame, acrylic window, XIAO cradle, knob)
 //  follows once the 1.69" screen is measured; its interface with the body
-//  is fixed here (neck bolt pattern, cable hole).
+//  is frozen here (the FROZEN block below: envelope, neck bolt pattern,
+//  cable hole, camera and screen positions).
 //
 //  Rev F has no lidar (since 14 October 2026): nothing turns on top of the head. The rev E
 //  lidar template is in hardware/archive/rev-e/.
@@ -26,13 +27,26 @@ PART = "assembly";
 $fn = 64;
 eps = 0.01;
 
+// ---------------- FROZEN: head <-> body interface -------------------------
+// Marvin v1 contract C8 (frozen 14 October 2026). The head CAD builds on these
+// values and the body is not changed: change them only through the integrator,
+// together with docs/architecture.md (Coordinate frame, extrinsics table).
+headW = 88;  headD = 80;  headR = 16;     // head footprint (squircle)
+headZ0 = 68; headZ1 = 124;                // head bottom (floor) / top
+// Neck: 4 x M3 through TPU grommets, up into pilots in the head floor
+neckBolt = [[-32, -20], [32, -20], [-32, 20], [32, 20]];
+cableHole = [30, 16, 5];                  // w, d, corner r; the 90 deg USB-C plug passes through it
+cableHoleY = 4;
+camPos = [0, -38, 113];                   // camera lens centre (XIAO ESP32S3 Sense), looks toward -Y...
+camTilt = 20;                             // ...tilted 20 deg up
+screenCentre = [0, -38, 92];              // centre of the 1.69" screen's active area, vertical, faces -Y
+// ---------------- end of FROZEN ------------------------------------------
+
 // ---------------- Outer shape -------------------------------------------
 bodyW = 80;  bodyD = 74;  bodyR = 16;     // body footprint (squircle), a little narrower than the head
 bodyZ0 = 6;  bodyZ1 = 64;                 // body bottom / top (the plinth hides below bodyZ0)
 wall = 1.6;                               // half a wavelength at 60 GHz in PETG: the front wall is a radome
 deck = 2.0;                               // roof of the body, under the neck
-headW = 88;  headD = 80;  headR = 16;     // head footprint (for the ghost and the bolt pattern)
-headZ0 = 68; headZ1 = 124;
 neckH = headZ0 - bodyZ1;                  // 4 mm TPU gasket between body and head
 
 // Anthracite band: a filament change by layer (cosmetic only; any colour is RF-transparent)
@@ -73,13 +87,10 @@ backScrewZ = [26, 46];
 // Speaker 2030 (20 x 30 x 5) glued inside the right wall behind a dot grille
 spkY = 0; spkZ = 18; spkL = 30.4; spkH = 20.4;
 
-// Neck: 4 x M3 through TPU grommets. The screws go up into the head floor, so no rigid path
-// links the head (knocks, a tap on the knob) to the body (heart-rate radar).
-neckBolt = [[-32, -20], [32, -20], [-32, 20], [32, 20]];
+// Neck: 4 x M3 through TPU grommets (neckBolt, FROZEN above). The screws go up into the head floor,
+// so no rigid path links the head (knocks, a tap on the knob) to the body (heart-rate radar).
 gromOD = 7.6; gromFlange = 11; gromFlangeT = 1.6; gromBore = m3_clear;
 bossT = 1.2;                              // flat seat for the grommet flange under the deck
-cableHole = [30, 16, 5];                  // w, d, corner r; the 90 deg USB-C plug passes through it
-cableHoleY = 4;
 
 // =====================================================================
 // Helpers

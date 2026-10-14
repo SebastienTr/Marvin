@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SebastienTr/Marvin/host-java/marvin-contracts/golden/voice/latency.schema.json",
+  "title": "Marvin voice latency line",
+  "description": "One JSON object per answered turn, one per line (JSON Lines), written by the Java host and read by ./marvin report (Marvin v1 contract C6, frozen 2026-10-14; docs/voice.md, Latency). Times are milliseconds from the end of the person's speech; a stage that did not happen is null. New stages may be added as extra *_ms numbers; the required ones never change meaning.",
+  "type": "object",
+  "required": ["t", "lang", "stt_ms", "llm_first_token_ms", "tts_first_audio_ms", "robot_out_ms", "total_ms"],
+  "properties": {
+    "t": {
+      "description": "Wall-clock time of the end of speech, seconds since the Unix epoch.",
+      "type": "number"
+    },
+    "lang": {
+      "description": "The language of the answer, ISO 639-1 (fr, en, ...).",
+      "type": "string",
+      "pattern": "^[a-z]{2}$"
+    },
+    "stt_ms": {
+      "description": "End of speech to the transcript (speech recognition, what was left to wait for).",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "llm_first_token_ms": {
+      "description": "End of speech to the model's first token of the answer.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "tts_first_audio_ms": {
+      "description": "End of speech to the first synthesised audio of the first clause.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "robot_out_ms": {
+      "description": "End of speech to the first audio played by the robot's speaker; null when the voice speaks on the computer.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "total_ms": {
+      "description": "End of speech to the first audio heard, wherever it plays (the app's 'first word').",
+      "type": ["number", "null"],
+      "minimum": 0
+    }
+  },
+  "patternProperties": {
+    "_ms$": {"type": ["number", "null"], "minimum": 0}
+  },
+  "additionalProperties": true,
+  "examples": [
+    {"t": 1789983000.0, "lang": "fr", "stt_ms": 120, "llm_first_token_ms": 1500, "tts_first_audio_ms": 1830, "robot_out_ms": 1990, "total_ms": 1990},
+    {"t": 1789983060.0, "lang": "en", "stt_ms": 150, "llm_first_token_ms": 1420, "tts_first_audio_ms": 1760, "robot_out_ms": null, "total_ms": 1880}
+  ]
+}

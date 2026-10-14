@@ -1,0 +1,158 @@
+{
+  "contract": {
+    "id": "C4",
+    "owner": "W4",
+    "state": "pending",
+    "frozen": "2026-10-14",
+    "notes": [
+      "design.md section 8. core: written by the owner only. learned: proposed by the weekly reflection, changed only once the owner approves.",
+      "proposal: the pending one, or null. diff ops: keep | add | remove. guardrails: every rule with ok and the reason when it fails (a failing proposal is shown as rejected with its reasons).",
+      "versions: newest first, author owner | reflection.",
+      "POST /api/soul/core {text}; POST /api/soul/learned {text} (owner edit, guardrails checked); POST /api/soul/proposal/{id}/approve | /reject; POST /api/soul/revert {part, version}."
+    ]
+  },
+  "request": {
+    "method": "GET",
+    "path": "/api/soul"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer"
+  },
+  "body": {
+    "core": {
+      "text": "Calm, grown-up, dry humour. Calls the owner by their first name. Answers in the language it is spoken to in. Never pretends to sense what it cannot.",
+      "version": 1,
+      "updated": 1789378200.0,
+      "tokens": 31
+    },
+    "learned": {
+      "text": "Prefers short answers in the morning.",
+      "version": 3,
+      "updated": 1789896600.0,
+      "tokens": 8
+    },
+    "limits": {
+      "core_tokens": 150,
+      "learned_tokens": 150
+    },
+    "proposal": {
+      "id": 4,
+      "created": 1789979400.0,
+      "state": "pending",
+      "rationale": "Twice this week the owner asked Marvin to stop the break reminder during a call.",
+      "diff": [
+        {
+          "op": "keep",
+          "text": "Prefers short answers in the morning."
+        },
+        {
+          "op": "add",
+          "text": "Does not want break reminders during calls."
+        }
+      ],
+      "events": [
+        1812,
+        1840
+      ],
+      "guardrails": [
+        {
+          "rule": "no_manipulation",
+          "ok": true,
+          "reason": null
+        },
+        {
+          "rule": "no_dependency",
+          "ok": true,
+          "reason": null
+        },
+        {
+          "rule": "honesty",
+          "ok": true,
+          "reason": null
+        },
+        {
+          "rule": "bounded",
+          "ok": true,
+          "reason": null
+        }
+      ]
+    },
+    "versions": [
+      {
+        "version": 3,
+        "part": "learned",
+        "created": 1789896600.0,
+        "author": "reflection",
+        "note": "Approved by the owner"
+      },
+      {
+        "version": 1,
+        "part": "core",
+        "created": 1789378200.0,
+        "author": "owner",
+        "note": null
+      }
+    ]
+  },
+  "shape": {
+    "core": {
+      "text": "string",
+      "version": "number",
+      "updated": "number",
+      "tokens": "number"
+    },
+    "learned": {
+      "text": "string",
+      "version": "number",
+      "updated": "number",
+      "tokens": "number"
+    },
+    "limits": {
+      "core_tokens": "number",
+      "learned_tokens": "number"
+    },
+    "proposal": {
+      "id": "number",
+      "created": "number",
+      "state": "string",
+      "rationale": "string",
+      "diff": [
+        {
+          "op": "string",
+          "text": "string"
+        }
+      ],
+      "events": [
+        "number"
+      ],
+      "guardrails": [
+        {
+          "rule": "string",
+          "ok": "boolean",
+          "reason": "null"
+        }
+      ]
+    },
+    "versions": [
+      {
+        "version": "number",
+        "part": "string",
+        "created": "number",
+        "author": "string",
+        "note": "string"
+      },
+      {
+        "version": "number",
+        "part": "string",
+        "created": "number",
+        "author": "string",
+        "note": "null"
+      }
+    ]
+  }
+}

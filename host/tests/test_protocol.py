@@ -145,3 +145,26 @@ def test_end_to_end_over_udp():
     assert len(got["targets"]) >= 5
     (d,) = rx.devices.values()
     assert d.stats.crc_errors == 0 and d.stats.lost == 0
+
+
+def test_button_long_press_matches_the_vectors():
+    """BUTTON action 2 (long press, contract C1 of the v1 plan) and HELLO bit 3 on the robot, as in the vectors."""
+    import json
+    from pathlib import Path
+
+    vectors = json.loads((Path(__file__).resolve().parents[2] / "host-java" / "marvin-contracts" / "golden"
+                          / "protocol" / "vectors.json").read_text())
+    by_name = {v["name"]: v for v in vectors["robot_to_host"]}
+    assert vectors["constants"]["button_actions"] == {"1": "press", "2": "long_press"}
+
+    long_press = by_name["button_talk_long_press"]
+    b = protocol.Button.decode(bytes.fromhex(long_press["payload"]))
+    assert (b.button, b.action, b.name, b.action_name) == (protocol.BUTTON_TALK, protocol.BUTTON_LONG_PRESS,
+                                                            "talk", "long_press")
+    assert protocol.Button(protocol.BUTTON_TALK, protocol.BUTTON_LONG_PRESS).encode() == b"\x01\x02"
+    assert protocol.Button.decode(b"\x01\x07").action_name is None       # an action this host does not know
+
+    knob = by_name["hello_xiao_robot_knob"]
+    _, payload = protocol.unpack(bytes.fromhex(knob["datagram"]))
+    hello = protocol.Hello.decode(payload)
+    assert hello.board == 3 and hello.has_buttons and hello.has_camera and hello.has_audio

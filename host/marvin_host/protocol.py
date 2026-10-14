@@ -94,6 +94,9 @@ BUTTONS = {1: "talk", 2: "mute"}
 BUTTON_TALK = 1         # the app's Talk now
 BUTTON_MUTE = 2         # mute or unmute the microphone
 BUTTON_PRESS = 1
+BUTTON_LONG_PRESS = 2   # held for BUTTON_LONG_PRESS_MS or more (the robot's knob: Talk held = mute or unmute)
+BUTTON_ACTIONS = {BUTTON_PRESS: "press", BUTTON_LONG_PRESS: "long_press"}
+BUTTON_LONG_PRESS_MS = 1500
 
 # ENVIRONMENT: the sensors a device has (sensors byte) and what its readings say (flags byte)
 ENV_PIR = 0x01          # a PIR motion sensor
@@ -217,7 +220,7 @@ class Hello:
 
 @dataclass
 class Button:
-    """BUTTON payload: button (u8, BUTTONS) and action (u8, BUTTON_PRESS). Longer payloads keep this prefix."""
+    """BUTTON payload: button (u8, BUTTONS) and action (u8, BUTTON_ACTIONS). Longer payloads keep this prefix."""
 
     button: int
     action: int = BUTTON_PRESS
@@ -237,6 +240,11 @@ class Button:
     def name(self) -> str | None:
         """talk, mute, or None for a button this host does not know."""
         return BUTTONS.get(self.button)
+
+    @property
+    def action_name(self) -> str | None:
+        """press, long_press, or None for an action this host does not know."""
+        return BUTTON_ACTIONS.get(self.action)
 
 
 @dataclass

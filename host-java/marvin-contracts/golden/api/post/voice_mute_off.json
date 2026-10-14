@@ -44,6 +44,7 @@
       "home_place": "",
       "reminders": true,
       "welcome_back": false,
+      "greet_on_sit": true,
       "vision_model": "",
       "camera": "auto",
       "vocabulary": [
@@ -82,6 +83,7 @@
       "home_place": "string",
       "reminders": "boolean",
       "welcome_back": "boolean",
+      "greet_on_sit": "boolean",
       "vision_model": "string",
       "camera": "string",
       "vocabulary": [
