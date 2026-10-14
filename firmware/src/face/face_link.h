@@ -3,7 +3,8 @@
 // The face's side of the host link: decodes FACE_STATE and FACE_EVENT (docs/protocol.md) into
 // face inputs, and runs the face on its own when the host goes quiet.
 //
-// Autonomy: without a FACE_STATE for HOST_TIMEOUT_MS (5 s), or before the first one, the face is
+// Autonomy: without a FACE_STATE for HOST_TIMEOUT_MS (5 s), before the first one, or as soon as the
+// robot says the host is gone (host_lost), the face is
 // told what the board itself sees (set_local, from its own radar) or, without that, that nobody is present. It then behaves as when someone leaves: it looks around, gets
 // sleepy after 4 s and falls asleep after 20 s, breathing slowly. It never freezes.
 //
@@ -47,6 +48,10 @@ class FaceLink {
   // Advance the face to now_ms without drawing it, for renderers of their own (the bench board's
   // OLED, bench/eyes.h): they read the face's parameters, gaze and blink.
   const Face &advance(uint32_t now_ms);
+
+  // The robot lost the host (Wi-Fi down, or no HOST_ACK for 6 s): forget its last FACE_STATE, so
+  // the face follows the board's own radar (or nobody) at once instead of HOST_TIMEOUT_MS later.
+  void host_lost() { has_state_ = false; }
 
   // True while FACE_STATE messages arrive (the last one is less than HOST_TIMEOUT_MS old).
   bool host_alive(uint32_t now_ms) const {

@@ -284,6 +284,30 @@ static void test_link_autonomy() {
   TEST_ASSERT_EQUAL_STRING("awake", expr_name(link.face().expression()));
 }
 
+// The robot losing the host hands the face to its own radar at once, not 5 s later.
+static void test_link_host_lost() {
+  FaceLink link(5);
+  uint8_t seated[17] = {0x03};  // present and seated, nothing else
+  uint32_t ms = 1000;
+  TEST_ASSERT_TRUE(link.on_message(proto::FACE_STATE, seated, sizeof(seated), ms));
+  TEST_ASSERT_TRUE(link.host_alive(ms + 100));
+  TEST_ASSERT_TRUE(link.state().seated);
+  link.host_lost();
+  TEST_ASSERT_FALSE(link.host_alive(ms + 100));
+  // the board's radar now drives it
+  Presence local;
+  local.present = true;
+  local.has_position = true;
+  local.position[1] = -700;
+  link.set_local(local, ms + 100);
+  static uint16_t buf[N_PIXELS];
+  for (int i = 0; i < 60; i++) link.frame(ms + 100 + 33 * i, buf);
+  TEST_ASSERT_NOT_EQUAL((int)Expr::ASLEEP, (int)link.face().expression());
+  // and the host's next FACE_STATE wins again
+  TEST_ASSERT_TRUE(link.on_message(proto::FACE_STATE, seated, sizeof(seated), ms + 3000));
+  TEST_ASSERT_TRUE(link.host_alive(ms + 3000));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_xorshift_matches_python);
@@ -295,5 +319,6 @@ int main() {
   RUN_TEST(test_decode_state);
   RUN_TEST(test_decode_event);
   RUN_TEST(test_link_autonomy);
+  RUN_TEST(test_link_host_lost);
   return UNITY_END();
 }

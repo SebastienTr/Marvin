@@ -441,6 +441,9 @@ void host_lost(const char *why) {
   if (!linked) return;
   linked = false;
   Serial.printf("host lost (%s), searching\n", why);
+#if defined(MARVIN_HAS_SCREEN)
+  face_app::set_host_linked(false);  // the face on its own at once: the board's radar, or nobody
+#endif
 }
 
 // Reads the datagrams from the host.

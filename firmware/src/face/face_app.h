@@ -41,6 +41,10 @@ uint32_t screen_id();
 // (FaceLink::set_local): call it with every radar frame. position_mm in the device frame, or null.
 void set_local_presence(bool present, const double position_mm[3]);
 
+// The robot's link to the host: on false the face forgets the host's last FACE_STATE and runs on
+// its own at once (FaceLink::host_lost). Cheap: call it on every change.
+void set_host_linked(bool linked);
+
 // Someone is "there", straight ahead, for ms milliseconds from now: the face wakes up and looks
 // at you (the boot self-test). Then it goes back to what the host or the radar says.
 void greet(uint32_t ms);

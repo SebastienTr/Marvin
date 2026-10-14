@@ -66,6 +66,7 @@ constexpr size_t FB_PIXELS = face::SCREEN_W * face::SCREEN_H;
 // The queue also carries the board's own presence (set_local_presence), as a FACE_STATE payload
 // under a type no host message has.
 constexpr uint8_t LOCAL_STATE = 0x00;
+constexpr uint8_t LOCAL_HOST_LOST = 0x7F;  // robot -> host types are below 0x80, host -> robot above
 // Where a greeted visitor stands: straight ahead, 60 cm away, face height (device frame, mm).
 constexpr double GREET_POINT_MM[3] = {0, -600, 300};
 
@@ -107,6 +108,8 @@ void task(void *) {
       if (m.type == LOCAL_STATE) {
         face::Presence p;
         if (face::decode_state(m.data, m.n, p)) link->set_local(p, now);
+      } else if (m.type == LOCAL_HOST_LOST) {
+        link->host_lost();
       } else {
         link->on_message(m.type, m.data, m.n, now);
       }
@@ -189,6 +192,14 @@ void set_local_presence(bool present, const double position_mm[3]) {
   Msg m;
   m.type = LOCAL_STATE;
   m.n = (uint8_t)face::encode_state(s, m.data);
+  xQueueSend(queue, &m, 0);
+}
+
+void set_host_linked(bool linked) {
+  if (!queue || linked) return;
+  Msg m;
+  m.type = LOCAL_HOST_LOST;
+  m.n = 0;
   xQueueSend(queue, &m, 0);
 }
 
