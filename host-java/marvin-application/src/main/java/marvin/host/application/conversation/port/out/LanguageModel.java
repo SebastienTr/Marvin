@@ -89,6 +89,13 @@ public interface LanguageModel {
     List<String> models(String host);
 
     /**
+     * {@code model} is the voice's: the model server should keep it loaded (Ollama: {@code keep_alive: -1}), and say
+     * when another model pushed it out. Nothing by default.
+     */
+    default void keepLoaded(String host, String model) {
+    }
+
+    /**
      * What {@code model} can do, as the model server says (Ollama's {@code /api/show} {@code capabilities}:
      * {@code completion}, {@code vision}, {@code tools}, {@code thinking} ...). Empty when it does not say.
      *

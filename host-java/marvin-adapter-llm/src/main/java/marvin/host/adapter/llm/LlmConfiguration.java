@@ -8,19 +8,25 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 public class LlmConfiguration {
 
+    /** One keep-alive policy for every Ollama request: the voice's model stays loaded. */
     @Bean
-    public OllamaLanguageModel ollamaLanguageModel() {
-        return new OllamaLanguageModel();
+    public OllamaKeepAlive ollamaKeepAlive() {
+        return new OllamaKeepAlive();
     }
 
     @Bean
-    public OllamaEmbedder ollamaEmbedder() {
-        return new OllamaEmbedder();
+    public OllamaLanguageModel ollamaLanguageModel(OllamaKeepAlive keepAlive) {
+        return new OllamaLanguageModel(keepAlive);
     }
 
     @Bean
-    public OllamaMemoryModel ollamaMemoryModel() {
-        return new OllamaMemoryModel();
+    public OllamaEmbedder ollamaEmbedder(OllamaKeepAlive keepAlive) {
+        return new OllamaEmbedder(keepAlive);
+    }
+
+    @Bean
+    public OllamaMemoryModel ollamaMemoryModel(OllamaKeepAlive keepAlive) {
+        return new OllamaMemoryModel(keepAlive);
     }
 
     @Bean

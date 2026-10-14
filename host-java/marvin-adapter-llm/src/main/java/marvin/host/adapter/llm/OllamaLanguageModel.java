@@ -62,6 +62,22 @@ public final class OllamaLanguageModel implements LanguageModel {
     public static final int NUM_CTX = 16384;
 
     private final OllamaHttp http = new OllamaHttp();
+    private final OllamaKeepAlive keepAlive;
+
+    public OllamaLanguageModel() {
+        this(new OllamaKeepAlive());
+    }
+
+    /** With the keep-alive policy shared with memory's model and the embeddings. */
+    public OllamaLanguageModel(OllamaKeepAlive keepAlive) {
+        this.keepAlive = java.util.Objects.requireNonNull(keepAlive, "keepAlive");
+    }
+
+    /** The voice's model stays loaded ({@code keep_alive: -1}). */
+    @Override
+    public void keepLoaded(String host, String model) {
+        keepAlive.pin(host, model);
+    }
     /** What each model says of its thinking, by host and model (asked once). */
     private final Map<String, ModelThinking> thinking = new ConcurrentHashMap<>();
     /** The {@code think} value that worked after Ollama refused the one asked, by host, model and level. */
@@ -83,11 +99,16 @@ public final class OllamaLanguageModel implements LanguageModel {
 
     static OllamaApi.ChatRequest request(String model, List<ChatMessage> messages, List<Map<String, Object>> tools,
                                          int numPredict) {
+        return request(model, messages, tools, numPredict, KEEP_ALIVE);
+    }
+
+    static OllamaApi.ChatRequest request(String model, List<ChatMessage> messages, List<Map<String, Object>> tools,
+                                         int numPredict, String keep) {
         OllamaApi.ChatRequest.Builder b = OllamaApi.ChatRequest.builder(model)
                 .messages(messages.stream().map(OllamaLanguageModel::message).toList())
                 .stream(true)
                 .options(options(numPredict))
-                .keepAlive(KEEP_ALIVE)
+                .keepAlive(keep)
                 .disableThinking();
         if (tools != null && !tools.isEmpty()) {
             b.tools(tools.stream().map(OllamaLanguageModel::tool).toList());
@@ -126,22 +147,26 @@ public final class OllamaLanguageModel implements LanguageModel {
     @Override
     public void streamChat(String host, String model, List<ChatMessage> messages, List<Map<String, Object>> tools,
                            double timeoutS, LanguageModel.Stream stream) {
-        springChat(host, model, request(model, messages, tools), timeoutS, stream);
+        springChat(host, model, request(model, messages, tools, Thinking.OFF.maxTokens(), keepAlive.of(host, model)),
+                timeoutS, stream);
     }
 
     @Override
     public void streamChat(String host, String model, List<ChatMessage> messages, List<Map<String, Object>> tools,
                            double timeoutS, Thinking thinks, LanguageModel.Stream stream) {
         if (thinks.level() == Reasoning.OFF) {
-            springChat(host, model, request(model, messages, tools, thinks.maxTokens()), timeoutS, stream);
+            springChat(host, model, request(model, messages, tools, thinks.maxTokens(), keepAlive.of(host, model)), timeoutS,
+                    stream);
             return;
         }
         String key = host + " " + model + " " + thinks.level().id();
         Object think = thinkFallback.containsKey(key) ? thinkFallback.get(key) : thinks.level().thinkValue(thinkingOf(host, model));
         while (true) {
             Map<String, Object> body = OllamaHttp.chatBody(model, messages, tools, options(thinks.maxTokens()), think);
+            body.put("keep_alive", keepAlive.of(host, model));
             try {
                 http.chat(host, body, timeoutS, stream);
+                keepAlive.used(host, model);
                 return;
             } catch (ToolsUnsupported e) {
                 throw e;
@@ -247,6 +272,15 @@ public final class OllamaLanguageModel implements LanguageModel {
 
     private void springChat(String host, String model, OllamaApi.ChatRequest req, double timeoutS,
                             LanguageModel.Stream stream) {
+        try {
+            springChatOnce(host, model, req, timeoutS, stream);
+        } finally {
+            keepAlive.used(host, model);        // another model than the voice's: is the voice's still loaded?
+        }
+    }
+
+    private void springChatOnce(String host, String model, OllamaApi.ChatRequest req, double timeoutS,
+                                LanguageModel.Stream stream) {
         Duration timeout = Duration.ofMillis((long) (timeoutS * 1000));
         try (java.util.stream.Stream<OllamaApi.ChatResponse> s = api(host).streamingChat(req).timeout(timeout).toStream(1)) {
             Iterator<OllamaApi.ChatResponse> it = s.iterator();

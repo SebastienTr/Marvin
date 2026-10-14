@@ -309,6 +309,11 @@ final class VoiceRouting {
 
     /** Loads the model and fills the model server's prompt cache by rehearsing a real first question, twice. */
     void warmUp(VoiceConfig c) {
+        try {
+            model.keepLoaded(c.ollamaHost(), c.llmModel());     // tasks, memory and embeddings must not evict it
+        } catch (RuntimeException e) {
+            log.log(Level.FINE, "keepLoaded failed", e);
+        }
         String key = c.ollamaHost() + " " + c.llmModel();
         ToolRegistry reg = currentTools();
         boolean offer = reg != null && reg.ollamaTools() != null && toolSupport.getOrDefault(key, true);

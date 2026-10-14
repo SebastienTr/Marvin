@@ -34,6 +34,17 @@ import marvin.host.domain.shared.JsonText;
  * using the voice's model for memory does not reload it.
  */
 public final class OllamaMemoryModel implements MemoryModel {
+    private final OllamaKeepAlive keepAlive;
+
+    public OllamaMemoryModel() {
+        this(new OllamaKeepAlive());
+    }
+
+    /** With the keep-alive policy shared with the voice's model. */
+    public OllamaMemoryModel(OllamaKeepAlive keepAlive) {
+        this.keepAlive = java.util.Objects.requireNonNull(keepAlive, "keepAlive");
+    }
+
     private static final Logger log = LoggerFactory.getLogger("marvin.memory.model");
     public static final String VERSION = "memory-prompts/1";
     static final String PROMPTS = "/marvin/memory/prompts/v1/";
@@ -263,17 +274,27 @@ public final class OllamaMemoryModel implements MemoryModel {
      * response, which closes the connection, and Ollama stops at once. (Spring AI's reactive client does not close the
      * connection when its stream is cancelled, so memory's calls use the JDK's client directly.)
      */
-    @SuppressWarnings("unchecked")
     private Answer call(Target target, String system, String user, Map<String, Object> schema, int numPredict,
                         BooleanSupplier cancelled) {
+        try {
+            return callOnce(target, system, user, schema, numPredict, cancelled);
+        } finally {
+            keepAlive.used(target.host(), target.model());        // did it push the voice's model out?
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Answer callOnce(Target target, String system, String user, Map<String, Object> schema, int numPredict,
+                            BooleanSupplier cancelled) {
         if (cancelled.getAsBoolean()) {
             throw new Cancelled();
         }
         String host = target.host().replaceAll("/+$", "");
+        Map<String, Object> requestBody = body(target.model(), system, user, schema, numPredict);
+        requestBody.put("keep_alive", keepAlive.of(host, target.model()));
         java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(host + "/api/chat"))
                 .header("Content-Type", "application/json")
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
-                        JsonText.write(body(target.model(), system, user, schema, numPredict))))
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(JsonText.write(requestBody)))
                 .build();
         java.util.concurrent.CompletableFuture<java.net.http.HttpResponse<InputStream>> sent =
                 HTTP.sendAsync(req, java.net.http.HttpResponse.BodyHandlers.ofInputStream());

@@ -15,6 +15,17 @@ import marvin.host.application.memory.port.out.Embedder;
  * ({@code ollama pull qwen3-embedding:8b}).
  */
 public final class OllamaEmbedder implements Embedder {
+    private final OllamaKeepAlive keepAlive;
+
+    public OllamaEmbedder() {
+        this(new OllamaKeepAlive());
+    }
+
+    /** With the keep-alive policy shared with the voice's model. */
+    public OllamaEmbedder(OllamaKeepAlive keepAlive) {
+        this.keepAlive = java.util.Objects.requireNonNull(keepAlive, "keepAlive");
+    }
+
     static final int BATCH = 32;
 
     private final Map<String, OllamaApi> clients = new ConcurrentHashMap<>();
@@ -37,7 +48,7 @@ public final class OllamaEmbedder implements Embedder {
             List<String> part = texts.subList(i, Math.min(texts.size(), i + BATCH));
             OllamaApi.EmbeddingsResponse r;
             try {
-                r = api(host).embed(new OllamaApi.EmbeddingsRequest(model, part, OllamaLanguageModel.KEEP_ALIVE, null, true, dims));
+                r = api(host).embed(new OllamaApi.EmbeddingsRequest(model, part, keepAlive.of(host, model), null, true, dims));
             } catch (RuntimeException e) {
                 OllamaErrors.Failure f = OllamaErrors.of(e);
                 if (f.status() == 404 || f.message().contains("not found")) {
@@ -56,6 +67,7 @@ public final class OllamaEmbedder implements Embedder {
             }
             out.addAll(r.embeddings());
         }
+        keepAlive.used(host, model);           // did it push the voice's model out?
         return out;
     }
 }
