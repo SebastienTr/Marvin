@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: MIT
+# The firmware: the robot-relevant builds and the native unit tests; the MR60BHA2 bridge (its own PlatformIO
+# project, on the pioarduino platform). No hardware here: what runs on a board is checked by the self-test.
+name: Firmware
+
+on:
+  push:
+    paths: ["firmware/**", "host-java/marvin-contracts/golden/protocol/**", ".github/workflows/firmware.yml"]
+  pull_request:
+    paths: ["firmware/**", "host-java/marvin-contracts/golden/protocol/**", ".github/workflows/firmware.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PLATFORMIO_VERSION: "6.2.0"
+
+jobs:
+  native:
+    name: Native unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: PlatformIO
+        run: pip install "platformio==$PLATFORMIO_VERSION"
+      - name: pio test -e native
+        working-directory: firmware
+        run: pio test -e native
+
+  build:
+    name: Build ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # the robot, the XIAO bench, the robot with simulated sensors, the D1 mini (simulated, the cheapest board)
+        env: [xiao_esp32s3, xiao_bench, xiao_esp32s3_sim, d1_mini]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ env.PLATFORMIO_VERSION }}-${{ matrix.env }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: pio-${{ env.PLATFORMIO_VERSION }}-${{ matrix.env }}-
+      - name: PlatformIO
+        run: pip install "platformio==$PLATFORMIO_VERSION"
+      - name: Wi-Fi placeholder (include/secrets.h is git-ignored)
+        working-directory: firmware
+        run: cp include/secrets.example.h include/secrets.h
+      - name: pio run -e ${{ matrix.env }}
+        working-directory: firmware
+        run: pio run -e ${{ matrix.env }}
+      - name: Size
+        working-directory: firmware
+        run: |
+          f=$(ls .pio/build/${{ matrix.env }}/firmware.bin 2>/dev/null || true)
+          [ -n "$f" ] && echo "${{ matrix.env }}: $(wc -c < "$f") bytes" >> "$GITHUB_STEP_SUMMARY" || true
+
+  mr60-bridge:
+    name: MR60BHA2 bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          # the bridge keeps pioarduino in its own core (core_dir in its platformio.ini)
+          path: ~/.platformio-pioarduino
+          key: pioarduino-${{ env.PLATFORMIO_VERSION }}-${{ hashFiles('firmware/mr60_bridge/platformio.ini') }}
+      - name: PlatformIO
+        run: pip install "platformio==$PLATFORMIO_VERSION"
+      - name: Wi-Fi placeholder
+        working-directory: firmware/mr60_bridge
+        run: cp include/secrets.example.h include/secrets.h
+      - name: pio test -e native
+        working-directory: firmware/mr60_bridge
+        run: pio test -e native
+      - name: pio run (XIAO ESP32C6)
+        working-directory: firmware/mr60_bridge
+        run: pio run -e xiao_esp32c6
