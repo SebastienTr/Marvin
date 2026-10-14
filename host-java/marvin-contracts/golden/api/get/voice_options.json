@@ -68,6 +68,34 @@
         "description": "Get the real weather for a place: the current conditions, or today's or tomorrow's forecast. Use it whenever the person asks about the weather, temperature, rain or wind. When they name no place, call it without one: it then uses the owner's home, or says which city to ask for.",
         "online": true
       }
+    ],
+    "vision": {
+      "model": "qwen3:4b-instruct",
+      "own_model": false,
+      "sees": null,
+      "error": ""
+    },
+    "ears": [
+      {
+        "name": "silero-vad",
+        "installed": false,
+        "why": "pip install onnxruntime (./marvin up does it)"
+      },
+      {
+        "name": "smart-turn",
+        "installed": false,
+        "why": "pip install onnxruntime (./marvin up does it)"
+      },
+      {
+        "name": "speaker",
+        "installed": false,
+        "why": "pip install onnxruntime (./marvin up does it)"
+      },
+      {
+        "name": "parakeet",
+        "installed": false,
+        "why": "Apple Silicon: pip install parakeet-mlx; elsewhere: pip install onnx-asr"
+      }
     ]
   },
   "shape": {
@@ -104,6 +132,19 @@
         "name": "string",
         "description": "string",
         "online": "boolean"
+      }
+    ],
+    "vision": {
+      "model": "string",
+      "own_model": "boolean",
+      "sees": "null",
+      "error": "string"
+    },
+    "ears": [
+      {
+        "name": "string",
+        "installed": "boolean",
+        "why": "string"
       }
     ]
   }

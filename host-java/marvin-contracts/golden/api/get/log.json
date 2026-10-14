@@ -112,6 +112,14 @@
         "level": "string",
         "text": "string",
         "device": "string"
+      },
+      {
+        "id": "number",
+        "ts": "number",
+        "source": "string",
+        "level": "string",
+        "text": "string",
+        "logger": "string"
       }
     ]
   }

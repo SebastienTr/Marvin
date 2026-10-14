@@ -665,8 +665,27 @@
                 "heart_rate": "number"
               },
               "text": "string"
+            },
+            {
+              "id": "number",
+              "ts": "number",
+              "kind": "string",
+              "detail": "string",
+              "data": {},
+              "text": "string"
+            },
+            {
+              "id": "number",
+              "ts": "number",
+              "kind": "string",
+              "detail": "string",
+              "data": {
+                "seated_s": "number"
+              },
+              "text": "string"
             }
-          ]
+          ],
+          "note": "data depends on the kind (Brain.java): present/seated (robot online/offline), distance_m (arrived, approached, sat_down), breath_rate/heart_rate (vitals_acquired), seated_s (stood_up, still_long), nothing (left, vitals_lost)"
         },
         "log": {
           "count": 14,
@@ -4469,8 +4488,99 @@
                 "seconds": "number",
                 "answer": "string"
               }
+            },
+            {
+              "t": "number",
+              "feels": {
+                "sensors": {
+                  "lidar": "boolean",
+                  "radar": "boolean",
+                  "vitals": "boolean",
+                  "pir": "boolean",
+                  "climate": "boolean",
+                  "light": "boolean",
+                  "camera": "boolean"
+                },
+                "presence": {
+                  "present": "boolean",
+                  "seated": "boolean",
+                  "source": "string",
+                  "distance_m": "null",
+                  "still_s": "number",
+                  "seated_s": "number",
+                  "targets": "number",
+                  "simulated": "boolean",
+                  "reasoning": [
+                    "string"
+                  ]
+                },
+                "vitals": {
+                  "sensor": "boolean",
+                  "breath_rate": "null",
+                  "heart_rate": "null"
+                },
+                "room": "null"
+              },
+              "hears": {
+                "state": "string",
+                "status": "string",
+                "muted": "boolean",
+                "why": "string",
+                "wake": "boolean",
+                "language": "string",
+                "vocabulary": [
+                  "string"
+                ],
+                "known_voices_only": "boolean",
+                "stt": "string",
+                "stt_setting": "string",
+                "tts": "string",
+                "tts_setting": "string",
+                "tts_voice": "null",
+                "device": "string",
+                "earcons": "string",
+                "level": {
+                  "mic": "number",
+                  "speech": "boolean",
+                  "gated": "boolean",
+                  "dbfs": "number",
+                  "t": "number"
+                }
+              },
+              "thinks": {
+                "model": "string",
+                "status": "string",
+                "last_answer": {
+                  "t": "number",
+                  "model": "string",
+                  "first_word_s": "number",
+                  "latency": {
+                    "endpoint": "number",
+                    "queue": "number",
+                    "stt": "number",
+                    "speculative": "number",
+                    "llm_first_token": "number",
+                    "first_chunk": "number",
+                    "playback_start": "number",
+                    "audio_start": "number",
+                    "first_audio": "number",
+                    "total": "number",
+                    "tts": "number"
+                  },
+                  "interrupted": "boolean",
+                  "load_s": "number"
+                }
+              },
+              "look": {
+                "t": "number",
+                "ok": "boolean",
+                "text": "string",
+                "seconds": "number",
+                "answer": "string"
+              }
             }
-          ]
+          ],
+          "note": "thinks.reasoning (the reasoning levels, asked of the model server) is refreshed every 30 s: the messages before the first refresh have none, the app keeps the last one, GET /api/senses always has it"
         },
         "level": {
           "count": 70,
