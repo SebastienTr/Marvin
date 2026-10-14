@@ -20,6 +20,8 @@ import marvin.host.application.conversation.port.out.ToolSource;
 import marvin.host.domain.conversation.tool.ToolAccess;
 import marvin.host.domain.conversation.tool.ToolArguments;
 import marvin.host.domain.conversation.tool.ToolError;
+import marvin.host.domain.conversation.tool.ToolPolicy;
+import marvin.host.domain.conversation.tool.ToolPreview;
 import marvin.host.domain.conversation.tool.ToolResult;
 import marvin.host.domain.conversation.tool.ToolSpec;
 import marvin.host.domain.conversation.tool.ToolSurface;
@@ -35,18 +37,29 @@ import marvin.host.domain.shared.JsonText;
  * an error result the model can talk about.
  *
  * <p>Each tool says what it does to the world ({@link ToolAccess}) and where it is offered ({@link ToolSurface}): the
- * conversation's registry has the conversation's tools, {@link #forTasks(List)} a background task's (no tool that writes
- * outside this computer: that needs an approval, which does not exist yet). Tools from outside the conversation (a
- * connector) come through {@link ToolSource}s ({@link #fromSources}).
+ * conversation's registry has the conversation's tools, {@link #forTasks(List, boolean)} a background task's: a tool that
+ * writes outside this computer only when the task can ask the owner's approval for each call. Tools from outside the
+ * conversation (a connector) come through {@link ToolSource}s ({@link #fromSources}).
+ *
+ * <p>The tool filter ({@link ToolPolicy}) is applied here, to every tool whatever its source: a tool that would send,
+ * delete, pay or share is never registered, and a tool that writes outside this computer is never offered in the
+ * conversation.
  */
 public final class ToolRegistry {
     private static final Logger log = Logger.getLogger("marvin.voice.tools");
 
-    /** A tool: what the model is told, what runs, what it does to the world and where it is offered. */
-    public record Tool(ToolSpec spec, ToolFunction fn, ToolAccess access, Set<ToolSurface> surfaces) {
+    /**
+     * A tool: what the model is told, what runs, what it does to the world, where it is offered, and, for a tool that
+     * writes outside this computer, what the owner is shown before approving a call ({@code null}: its arguments).
+     */
+    public record Tool(ToolSpec spec, ToolFunction fn, ToolAccess access, Set<ToolSurface> surfaces, ToolPreview preview) {
         public Tool {
             access = access == null ? ToolAccess.READ : access;
             surfaces = surfaces == null || surfaces.isEmpty() ? ToolSurface.ALL : Set.copyOf(surfaces);
+        }
+
+        public Tool(ToolSpec spec, ToolFunction fn, ToolAccess access, Set<ToolSurface> surfaces) {
+            this(spec, fn, access, surfaces, null);
         }
 
         /** A tool that only reads, offered everywhere. */
@@ -55,7 +68,7 @@ public final class ToolRegistry {
         }
 
         public Tool with(ToolAccess a, Set<ToolSurface> s) {
-            return new Tool(spec, fn, a, s);
+            return new Tool(spec, fn, a, s, preview);
         }
 
         public boolean offeredIn(ToolSurface s) {
@@ -70,7 +83,8 @@ public final class ToolRegistry {
             try {
                 for (ToolSource.SourcedTool t : src.tools()) {
                     if (t.surfaces().contains(surface)) {
-                        out.add(new Tool(t.spec(), t.handler()::call, t.access(), t.surfaces()));
+                        out.add(new Tool(t.spec(), t.handler()::call, t.access(), t.surfaces(),
+                                t.handler() instanceof ToolPreview p ? p : null));
                     }
                 }
             } catch (RuntimeException e) {
@@ -87,6 +101,7 @@ public final class ToolRegistry {
     private final List<Map<String, Object>> schemas;
     private final List<Tool> all;
     private final ToolSurface surface;
+    private final boolean approvals;
     private static final ExecutorService RUNNER = Executors.newVirtualThreadPerTaskExecutor();
 
     public ToolRegistry(List<Tool> tools, boolean enabled, boolean internet, DoubleSupplier monotonicSeconds) {
@@ -96,8 +111,23 @@ public final class ToolRegistry {
     /** The same, offering the tools of {@code surface} only (the others are kept for {@link #forTasks(List)}). */
     public ToolRegistry(List<Tool> tools, boolean enabled, boolean internet, DoubleSupplier monotonicSeconds,
                         ToolSurface surface) {
+        this(tools, enabled, internet, monotonicSeconds, surface, false);
+    }
+
+    /**
+     * The same; {@code approvals}: the owner's approval is asked for each call of a tool that writes outside this
+     * computer (a background task's registry), so such tools may be offered in {@link ToolSurface#TASK}.
+     */
+    public ToolRegistry(List<Tool> tools, boolean enabled, boolean internet, DoubleSupplier monotonicSeconds,
+                        ToolSurface surface, boolean approvals) {
         this.surface = surface;
+        this.approvals = approvals;
         for (Tool t : tools) {
+            String refused = ToolPolicy.refusal(t.spec().name(), t.access());
+            if (refused != null) {
+                log.severe("tool refused by the tool filter: " + refused);
+                continue;
+            }
             this.tools.put(t.spec().name(), t);
         }
         this.all = List.copyOf(this.tools.values());
@@ -117,18 +147,31 @@ public final class ToolRegistry {
     }
 
     /**
-     * A background task's registry: the tools offered in tasks that do not write outside this computer, with the same
-     * switches, and {@code extra} (the task's own, such as its final answer).
+     * A background task's registry without approvals: the tools offered in tasks that do not write outside this
+     * computer, with the same switches, and {@code extra} (the task's own, such as its final answer).
      */
     public ToolRegistry forTasks(List<Tool> extra) {
+        return forTasks(extra, false);
+    }
+
+    /**
+     * A background task's registry: the tools offered in tasks, with the same switches, and {@code extra}; those that
+     * write outside this computer only when {@code approvals} (each call then waits for the owner's approval).
+     */
+    public ToolRegistry forTasks(List<Tool> extra, boolean approvals) {
         List<Tool> kept = new ArrayList<>();
         for (Tool t : all) {
-            if (t.offeredIn(ToolSurface.TASK) && t.access() != ToolAccess.EXTERNAL_WRITE) {
+            if (t.offeredIn(ToolSurface.TASK) && (approvals || t.access() != ToolAccess.EXTERNAL_WRITE)) {
                 kept.add(t);
             }
         }
         kept.addAll(extra);
-        return new ToolRegistry(kept, enabled, internet, clock, ToolSurface.TASK);
+        return new ToolRegistry(kept, enabled, internet, clock, ToolSurface.TASK, approvals);
+    }
+
+    /** Whether the owner's approval is asked for each call of a tool that writes outside this computer. */
+    public boolean approvals() {
+        return approvals;
     }
 
     /** Whether the tools are switched on at all (the {@code tools} setting). */
@@ -142,7 +185,8 @@ public final class ToolRegistry {
     }
 
     public boolean isOffered(Tool t) {
-        return enabled && (internet || !t.spec().online()) && t.offeredIn(surface);
+        return enabled && (internet || !t.spec().online()) && t.offeredIn(surface)
+                && ToolPolicy.offerable(t.access(), surface, approvals);
     }
 
     /** The tools the model is given, by name (a fixed order: the request never changes). */

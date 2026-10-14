@@ -229,7 +229,8 @@ class TaskRunnerTest {
                         false, false), (a, c) -> "t", marvin.host.domain.conversation.tool.ToolAccess.READ,
                         java.util.Set.of(marvin.host.domain.conversation.tool.ToolSurface.TASK)));
         ToolRegistry conversation = new ToolRegistry(all, true, true, () -> now);
-        assertThat(conversation.offered()).extracting(t -> t.spec().name()).containsExactly("draft_email", "forget", "recall");
+        // a tool that writes outside this computer is never offered in the conversation (no approval there)
+        assertThat(conversation.offered()).extracting(t -> t.spec().name()).containsExactly("forget", "recall");
         ToolRegistry task = conversation.forTasks(List.of());
         assertThat(task.offered()).extracting(t -> t.spec().name()).containsExactly("recall", "task_only");
         assertThat(new ToolRegistry(all, true, false, () -> now).forTasks(List.of()).offered())
