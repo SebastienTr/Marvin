@@ -113,6 +113,9 @@ final class VoiceTurns {
         volatile boolean replied;
         /** The image the owner showed with it ({@code null}: none). */
         volatile VoiceService.PendingImage image;
+        /** When it was heard (monotonic seconds), and when its model request started: the core's share of the latency. */
+        final double heardAt = v.clocks.monotonicSeconds();
+        volatile double askedAt = Double.NaN;
 
         Turn(VoiceSidecar.Heard heard, long replyId) {
             this.heard = heard;
@@ -326,6 +329,7 @@ final class VoiceTurns {
                 v.voice.send(new VoiceSidecar.Filler(turn.replyId, text, lang));
             }
         };
+        turn.askedAt = v.clocks.monotonicSeconds();
         AnswerLoop.Outcome out = explicitGoal != null ? startTask(reg, explicitGoal, lang, toolContext, speaker) : null;
         if (out == null) {
             LanguageModel.Thinking thinking = LanguageModel.Thinking.chat(ReasoningSettings.of(v.settings()).chat());
@@ -362,6 +366,7 @@ final class VoiceTurns {
         Map<String, Double> lat = latency(h.latency(), out.latency(), spoken.latency());
         lat.forEach((k, val) -> span.attribute("marvin.latency." + k, val));
         log.info(latencyLine(lat));
+        writeLatency(turn, lang, lat, c);
         span.attribute("marvin.language", lang);
         span.attribute("marvin.interrupted", Boolean.toString(turn.cancelled || spoken.interrupted()));
         if (out.failure() != null) {
@@ -390,6 +395,18 @@ final class VoiceTurns {
         lastQuestion = explicitGoal != null ? explicitGoal : h.text();
         if (!mention.isEmpty() && !interrupted && ts != null) {
             ts.mentioned(mention);
+        }
+    }
+
+    /** The turn's latency line (C6), to the latency log. */
+    private void writeLatency(Turn turn, String lang, Map<String, Double> lat, VoiceConfig c) {
+        try {
+            VoiceSidecar.Heard h = turn.heard;
+            double ended = (h.wallTime() > 0 ? h.wallTime() : v.clocks.wallSeconds()) - lat.getOrDefault("endpoint", 0.0);
+            Double prepare = Double.isNaN(turn.askedAt) ? null : Math.max(0.0, turn.askedAt - turn.heardAt);
+            v.latencyLog.turn(LatencyLine.of(ended, lang, lat, prepare, v.sidecarSettings(c).robot()));
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "could not write the latency line", e);
         }
     }
 

@@ -99,7 +99,7 @@ public class VoiceWiring {
                                      PresenceService presence, Clocks clocks, LocalDays days, EventHub hub,
                                      HostLog hostLog, PresenceEventBus bus, ObjectProvider<Tracer> tracer,
                                      BuzzerChimeService chimes, RobotLinkQuery robot, Camera camera,
-                                     SettingsService settings) {
+                                     SettingsService settings, @Value("${marvin.data-dir}") String dataDir) {
         VoiceService voice = new VoiceService(sidecar, model, settingsFile, fetch, store, presence, clocks, days,
                 platform(), sidecar::audioRobot);
         tracer.ifAvailable(t -> voice.setTracing(new MicrometerTracing(t)));
@@ -107,6 +107,7 @@ public class VoiceWiring {
         voice.setCamera(camera);                            // the look tool, while a camera can take a picture
         // the greeting on sitting down names the owner (C5); nothing on Marvin's own in quiet hours
         voice.setOwner(() -> owner(settings.current().owner()));
+        voice.setLatencyLog(new LatencyFile(java.nio.file.Path.of(dataDir, LatencyFile.NAME)));     // C6
         voice.setQuiet(() -> settings.current().quietHours().contains(days.minuteOfDay(clocks.wallSeconds())));
         voice.addListener(hub);
         voice.addListener((kind, payload) -> logLine(hostLog, kind, payload));

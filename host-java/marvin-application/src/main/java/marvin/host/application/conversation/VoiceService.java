@@ -25,6 +25,7 @@ import java.util.logging.Logger;
 import marvin.host.application.conversation.port.in.VoiceControl;
 import marvin.host.application.conversation.port.out.ConversationStore;
 import marvin.host.application.conversation.port.out.JsonFetcher;
+import marvin.host.application.conversation.port.out.LatencyLog;
 import marvin.host.application.conversation.port.out.LanguageModel;
 import marvin.host.application.conversation.port.out.MemoryContext;
 import marvin.host.application.conversation.port.out.ToolSource;
@@ -176,6 +177,8 @@ public final class VoiceService implements VoiceControl {
     volatile String language;
     volatile VoiceConfig config;
     volatile Tracing tracing = Tracing.NONE;
+    /** Where each answered turn's latency line goes (C6). */
+    volatile LatencyLog latencyLog = LatencyLog.NONE;
     volatile MemoryContext memoryContext = MemoryContext.NONE;
     /** The memory sections' shared budget (tokens), {@link ContextAssembler#MEMORY_BUDGET} unless the host sets it. */
     volatile int memoryBudget = ContextAssembler.MEMORY_BUDGET;
@@ -293,6 +296,11 @@ public final class VoiceService implements VoiceControl {
     /** Where each question's trace goes (a span from the end of speech to the last word said). */
     public void setTracing(Tracing t) {
         tracing = Objects.requireNonNull(t, "tracing");
+    }
+
+    /** Where each answered turn's latency line goes (v1 contract C6: one JSON object per turn). */
+    public void setLatencyLog(LatencyLog l) {
+        latencyLog = Objects.requireNonNull(l, "latency log");
     }
 
     /** The voiceprints the voice is given with its settings (the voice calibration's store). */
