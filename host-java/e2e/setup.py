@@ -69,9 +69,11 @@ def vitals_history():
 
 
 def host_has_vitals():
+    """True when the host has trusted vitals to draw (the demo's simulated person often sits beyond the quality
+    gate's range: then the drawing is checked on contract C3's shape too)."""
     try:
-        api("/api/vitals?hours=24")
-        return True
+        minutes = api("/api/vitals?hours=24").get("minutes") or []
+        return sum(1 for m in minutes if m.get("hr") is not None) >= 2
     except urllib.error.HTTPError:
         return False
 
@@ -255,7 +257,7 @@ def main():
     before = api("/api/settings")["settings"]
     stub = not host_has_vitals()
     if stub:
-        print("note: no /api/vitals on this host yet: answered from contract C3's shape", flush=True)
+        print("note: no trusted vitals on this host yet: answered from contract C3's shape", flush=True)
     with sync_playwright() as p:
         browser = p.chromium.launch()
         try:
