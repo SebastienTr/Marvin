@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Marvin's brain: design
 
-This is the design for the next generation of Marvin's host software: a long-term memory, background agents, connectors to the owner's email and calendar, an identity that grows over time, and a new host core in Java. It builds on what runs today ([architecture.md](architecture.md), [voice.md](voice.md), [ui.md](ui.md), [protocol.md](protocol.md)) and on the perception plan in [intelligence.md](intelligence.md). Status: **proposal**, nothing here is implemented yet.
+This is the design for the next generation of Marvin's host software: a long-term memory, background agents, connectors to the owner's email and calendar, an identity that grows over time, and a new host core in Java. It builds on what runs today ([architecture.md](architecture.md), [voice.md](voice.md), [ui.md](ui.md), [protocol.md](protocol.md)) and on the perception plan in [intelligence.md](intelligence.md). Status (14 October 2026): phases 0 to 3 are built (the Java core is the default host, memory v1 and the new app run); the Marvin v1 work adds the Soul, approvals and the first connectors (sections 6 to 8, scoped by the [decisions log](#decisions-log)); containers (phase 6) are not a v1 goal. The sections describe the design; paragraphs marked **As built** say where the code differs, and the engineering log is [host-java/NOTES.md](../host-java/NOTES.md).
 
 Versions and facts about third-party projects were checked in late September 2026; the sources are at the end.
 
@@ -789,6 +789,8 @@ One command:
 
 It checks and starts, in order: PostgreSQL (the bundled Compose file in Docker if not reachable, or the Homebrew service), Ollama (checks it is running and the models are pulled; says how to fix it if not), the voice sidecar (`uv run` in `sidecars/voice`, MLX Whisper and Piper), then the core, the robot link and the app. It prints the app's address, as today. Stopping it stops everything it started.
 
+**As built.** `./marvin up` ([getting-started.md](getting-started.md)) starts PostgreSQL in Docker (`pgvector/pgvector:pg18`, the owner's choice for the Mac) or, without Docker, inside the host; checks Ollama and its models in `./marvin doctor` rather than at start; runs the voice sidecar from `host/.venv`, which it creates and fills the first time (no `uv`, no `sidecars/` folder); then the core, the robot link and the app. `./marvin down` stops what `up` started.
+
 ### 10.2 Docker Compose (Linux, with an NVIDIA GPU)
 
 ```mermaid
@@ -844,7 +846,7 @@ A strangler: the Java host grows beside the Python one and takes over piece by p
 
 - **Protocol v1 does not change.** The firmware is not touched by this plan.
 - **The app does not change** until phase 3, then only grows.
-- **One of the two hosts is always complete.** Until the Java host reaches parity (end of phase 2), `marvin-host run` stays the default; only one of them can own UDP 47100 at a time.
+- **One of the two hosts is always complete.** Until the Java host reaches parity (end of phase 2), `marvin-host run` stays the default; only one of them can own UDP 47100 at a time. (Done: since phase 2 the Java host is the default, `./marvin up`; the Python host's own app and `marvin-host run` are retired in v1.)
 - **Recordings stay valid**: both hosts read and write `.mvrec` v1.
 
 | Phase | Deliverables | Tests that carry over | Effort (weeks, one developer full-time) |
@@ -857,7 +859,9 @@ A strangler: the Java host grows beside the Python one and takes over piece by p
 | **5. Soul** | Core and learned blocks, versions, weekly reflection, guardrail rules, Soul section | Guardrail rule tests with adversarial proposals | 2 |
 | **6. Containers** | Images, Compose on Linux with CUDA sidecars; (optional) k3s manifests | The same test suites in CI against the images | 2–3 (+2 for k3s) |
 
-Total: **about 22 to 28 weeks** of focused work, including phase 0; phases 3 to 5 are where the product value is, phases 1 and 2 are where the risk is. At side-project pace, expect roughly double. Phases 1–2 can be shortened by keeping the Python conversation code longer (phase 2 could keep the LLM in the sidecar temporarily), but that postpones the point where memory can be built in Java, so it is not recommended.
+**Where it stands (14 October 2026).** Phases 0 to 3 are done (the details, deviations and known gaps of each are in [host-java/NOTES.md](../host-java/NOTES.md)). Marvin v1 takes from phases 4 and 5 what one owner uses daily: background tasks (built), approvals, Google Calendar read and Gmail drafts through native Google APIs (MCP later, decision 3 below), notifications left for later, and the Soul with its weekly reflection. Phase 6 (containers) is not a v1 goal (decision 7). What v1 must do is the [acceptance checklist](test-plan.md).
+
+Total (the original estimate): **about 22 to 28 weeks** of focused work, including phase 0; phases 3 to 5 are where the product value is, phases 1 and 2 are where the risk is. At side-project pace, expect roughly double. Phases 1–2 can be shortened by keeping the Python conversation code longer (phase 2 could keep the LLM in the sidecar temporarily), but that postpones the point where memory can be built in Java, so it is not recommended.
 
 What stays Python for good: the voice and vision sidecars, the simulator and the scene (they also generate the firmware's scene data), the Rerun viewer, calibration and firmware tooling (`face_golden.py`). Calibration (lidar yaw) could move to Java later; it is not on the critical path.
 
