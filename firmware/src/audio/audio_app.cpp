@@ -78,6 +78,7 @@ volatile float mic_gain = 1.0f;
 volatile bool mic_wanted = false;  // the host asked for the microphone
 volatile bool mic_monitor = false;  // the board listens for itself (set_mic_monitor)
 volatile bool linked = false;
+volatile bool stream_active = false;  // the jitter buffer has something queued or playing (speaking())
 
 // counters (under lock)
 uint32_t sounds = 0, mic_blocks = 0, mic_dropped = 0;
@@ -102,6 +103,7 @@ void speaker_task(void *) {
     {
       Lock l;
       jitter->pull(mono, SPK_BLOCK, millis());
+      stream_active = jitter->active();
       if (earcon.active()) {
         earcon.render(fx, SPK_BLOCK);
         audio::mix(mono, fx, SPK_BLOCK);
@@ -252,6 +254,8 @@ bool begin() {
 }
 
 bool ready() { return ok; }
+
+bool speaking() { return ok && stream_active; }
 
 bool play_sound(uint8_t id) {
   if (!ok) return false;

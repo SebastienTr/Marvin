@@ -242,6 +242,19 @@ void led(bool on) {
 #endif
 }
 
+// A sound the robot plays by itself: on the speaker, and its mood on the face (face/mood.h).
+__attribute__((unused)) bool play_local_sound(uint8_t id) {
+#if defined(MARVIN_HAS_SCREEN)
+  face_app::on_local_sound(id);
+#endif
+#if defined(MARVIN_HAS_AUDIO)
+  return audio_app::play_sound(id);
+#else
+  (void)id;
+  return false;
+#endif
+}
+
 // Wi-Fi back-pressure. On a weak link the radio falls behind and lwIP runs out of buffers (endPacket()
 // fails with ENOMEM, error 12). The sensor streams then pause for TX_PAUSE_MS, so the link messages
 // (HELLO, BUTTON, ENVIRONMENT, LOG) still get through, and the drops are counted in one line every
@@ -403,7 +416,7 @@ void on_host_ack() {
   linked = true;
 #if defined(MARVIN_HAS_AUDIO) && MARVIN_BOOT_SOUND
   static bool greeted = false;
-  if (!greeted) greeted = audio_app::play_sound(audio::SOUND_HELLO);  // first link since boot
+  if (!greeted) greeted = play_local_sound(audio::SOUND_HELLO);  // first link since boot
 #endif
 #if defined(MARVIN_HAS_BENCH_IO) && MARVIN_BOOT_SOUND
   static bool chimed = false;
@@ -466,7 +479,13 @@ void poll_host() {
       case proto::AUDIO_OUT:
       case proto::AUDIO_CTRL:
       case proto::SOUND:
-        if (from_host) audio_app::on_message(in[3], in + proto::HEADER_SIZE, n - proto::HEADER_SIZE);
+        if (from_host) {
+          audio_app::on_message(in[3], in + proto::HEADER_SIZE, n - proto::HEADER_SIZE);
+#if defined(MARVIN_HAS_SCREEN)
+          if (in[3] == proto::SOUND)  // its mood on the face: listening, thinking, concerned, happy
+            face_app::on_message(in[3], in + proto::HEADER_SIZE, n - proto::HEADER_SIZE);
+#endif
+        }
         break;
 #endif
 #if defined(MARVIN_HAS_HEAD)
@@ -651,9 +670,7 @@ void knob_step(uint32_t ms) {
     send(proto::BUTTON, proto::button(buf + proto::HEADER_SIZE, proto::BUTTON_TALK, (uint8_t)a));
     Serial.printf("knob: %s\n", knob::action_name(a));
   } else {
-#if defined(MARVIN_HAS_AUDIO)
-    audio_app::play_sound(audio::SOUND_ERROR);
-#endif
+    play_local_sound(audio::SOUND_ERROR);  // a low double beep and a concerned look
     Serial.printf("knob: %s, but no host yet\n", knob::action_name(a));
   }
 }
@@ -795,6 +812,17 @@ void media_step(uint32_t ms) {
   static uint32_t last_stats = 0;
 #if defined(MARVIN_HAS_AUDIO)
   audio_app::set_linked(linked);
+#if defined(MARVIN_HAS_SCREEN)
+  // the speaking mood: on as soon as the stream plays, off once it has been quiet for 300 ms (a
+  // late datagram empties the buffer for a moment)
+  static bool speaking = false;
+  static uint32_t quiet_since = 0;
+  const bool playing = audio_app::speaking();
+  if (playing) quiet_since = ms;
+  const bool now_speaking = playing || (speaking && ms - quiet_since < 300);
+  if (now_speaking != speaking) face_app::set_speaking(now_speaking);
+  speaking = now_speaking;
+#endif
   uint64_t t_us;
   while (size_t n = audio_app::next_mic_payload(mic_dgram + proto::HEADER_SIZE, sizeof(mic_dgram) - proto::HEADER_SIZE, &t_us))
     send_datagram(mic_dgram, proto::AUDIO_IN, n, t_us);

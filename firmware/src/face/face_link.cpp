@@ -73,8 +73,22 @@ bool FaceLink::on_message(uint8_t type, const uint8_t *payload, size_t n, uint32
     face_.on_event(ev);
     return true;
   }
+  if (type == proto::SOUND) {
+    if (payload == nullptr || n < 1) return false;
+    on_sound(payload[0], now_ms);
+    return true;
+  }
   return false;
 }
+
+void FaceLink::host_lost() {
+  has_state_ = false;
+  moods_.clear(elapsed_ms_ / 1000.0);  // no "speaking" or "listening" left over from the host
+}
+
+void FaceLink::on_sound(uint8_t id, uint32_t now_ms) { moods_.on_sound(id, seconds(now_ms)); }
+
+void FaceLink::set_speaking(bool on, uint32_t now_ms) { moods_.set_speaking(on, seconds(now_ms)); }
 
 void FaceLink::set_local(const Presence &s, uint32_t now_ms) {
   local_ = s;
@@ -84,6 +98,10 @@ void FaceLink::set_local(const Presence &s, uint32_t now_ms) {
 
 Rect FaceLink::frame(uint32_t now_ms, uint16_t *fb) {
   advance(now_ms);
+  FaceParams p = face_.params();
+  double gx = face_.gaze_x(), gy = face_.gaze_y(), blink = face_.blink();
+  if (moods_.apply(elapsed_ms_ / 1000.0, p, &gx, &gy, &blink) > 0.0)
+    draw(p, gx, gy, blink, face_.accent(), face_.raster());  // the same frame, with the mood on top
   return face_.raster().render(fb);
 }
 

@@ -8,6 +8,9 @@
 // told what the board itself sees (set_local, from its own radar) or, without that, that nobody is present. It then behaves as when someone leaves: it looks around, gets
 // sleepy after 4 s and falls asleep after 20 s, breathing slowly. It never freezes.
 //
+// Moods (mood.h): SOUND sets listening, thinking, concerned or happy, and set_speaking() the
+// speaking mood while the speaker plays the host's stream; they show on top of the face in frame().
+//
 // Portable C++ (no Arduino), unit-tested natively.
 #pragma once
 
@@ -15,6 +18,7 @@
 #include <stdint.h>
 
 #include "face.h"
+#include "mood.h"
 
 namespace face {
 
@@ -32,8 +36,8 @@ class FaceLink {
 
   explicit FaceLink(uint32_t seed = 0) : face_(seed) {}
 
-  // A host -> robot message (type from protocol.h, payload after the 16-byte header).
-  // Returns true if it was a face message and was understood.
+  // A host -> robot message (type from protocol.h, payload after the 16-byte header): FACE_STATE,
+  // FACE_EVENT, and SOUND for the moods. Returns true if it was one of them and was understood.
   bool on_message(uint8_t type, const uint8_t *payload, size_t n, uint32_t now_ms);
 
   // The board's own presence (its radar), used while the host sends no FACE_STATE, for
@@ -42,16 +46,21 @@ class FaceLink {
   static constexpr uint32_t LOCAL_TIMEOUT_MS = 1000;
 
   // Advance the face to now_ms (a millisecond clock that may wrap) and draw into `fb`
-  // (SCREEN_W x SCREEN_H RGB565). Returns the rectangle that changed.
+  // (SCREEN_W x SCREEN_H RGB565), with the mood on top. Returns the rectangle that changed.
   Rect frame(uint32_t now_ms, uint16_t *fb);
 
   // Advance the face to now_ms without drawing it, for renderers of their own (the bench board's
-  // OLED, bench/eyes.h): they read the face's parameters, gaze and blink.
+  // OLED, bench/eyes.h): they read the face's parameters, gaze and blink (without the mood).
   const Face &advance(uint32_t now_ms);
 
   // The robot lost the host (Wi-Fi down, or no HOST_ACK for 6 s): forget its last FACE_STATE, so
   // the face follows the board's own radar (or nobody) at once instead of HOST_TIMEOUT_MS later.
-  void host_lost() { has_state_ = false; }
+  void host_lost();
+
+  // A sound the robot plays by itself (not the host's SOUND): its mood, as on_message would.
+  void on_sound(uint8_t id, uint32_t now_ms);
+  // The speaker plays the host's stream (AUDIO_OUT) or has nothing left: the speaking mood.
+  void set_speaking(bool on, uint32_t now_ms);
 
   // True while FACE_STATE messages arrive (the last one is less than HOST_TIMEOUT_MS old).
   bool host_alive(uint32_t now_ms) const {
@@ -59,9 +68,17 @@ class FaceLink {
   }
   const Presence &state() const { return state_; }
   const Face &face() const { return face_; }
+  // The mood showing at now_ms (NONE when none).
+  Mood mood(uint32_t now_ms) { return moods_.mood(seconds(now_ms)); }
 
  private:
+  // The face clock (seconds since the first call) at now_ms, without advancing it.
+  double seconds(uint32_t now_ms) const {
+    return has_clock_ ? (elapsed_ms_ + (uint32_t)(now_ms - last_ms_)) / 1000.0 : 0.0;
+  }
+
   Face face_;
+  Moods moods_;
   Presence state_;
   bool has_state_ = false;
   uint32_t last_state_ms_ = 0;

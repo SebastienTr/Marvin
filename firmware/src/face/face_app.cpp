@@ -67,6 +67,7 @@ constexpr size_t FB_PIXELS = face::SCREEN_W * face::SCREEN_H;
 // under a type no host message has.
 constexpr uint8_t LOCAL_STATE = 0x00;
 constexpr uint8_t LOCAL_HOST_LOST = 0x7F;  // robot -> host types are below 0x80, host -> robot above
+constexpr uint8_t LOCAL_SPEAKING = 0x7E;   // data[0]: 1 the speaker plays the host's stream, 0 it stopped
 // Where a greeted visitor stands: straight ahead, 60 cm away, face height (device frame, mm).
 constexpr double GREET_POINT_MM[3] = {0, -600, 300};
 
@@ -110,6 +111,8 @@ void task(void *) {
         if (face::decode_state(m.data, m.n, p)) link->set_local(p, now);
       } else if (m.type == LOCAL_HOST_LOST) {
         link->host_lost();
+      } else if (m.type == LOCAL_SPEAKING) {
+        link->set_speaking(m.n && m.data[0], now);
       } else {
         link->on_message(m.type, m.data, m.n, now);
       }
@@ -171,7 +174,7 @@ bool begin() {
 }
 
 void on_message(uint8_t type, const uint8_t *payload, size_t n) {
-  if (!queue || (type != proto::FACE_STATE && type != proto::FACE_EVENT)) return;
+  if (!queue || (type != proto::FACE_STATE && type != proto::FACE_EVENT && type != proto::SOUND)) return;
   Msg m;
   m.type = type;
   m.n = n < sizeof(m.data) ? (uint8_t)n : (uint8_t)sizeof(m.data);
@@ -192,6 +195,17 @@ void set_local_presence(bool present, const double position_mm[3]) {
   Msg m;
   m.type = LOCAL_STATE;
   m.n = (uint8_t)face::encode_state(s, m.data);
+  xQueueSend(queue, &m, 0);
+}
+
+void on_local_sound(uint8_t id) { on_message(proto::SOUND, &id, 1); }
+
+void set_speaking(bool on) {
+  if (!queue) return;
+  Msg m;
+  m.type = LOCAL_SPEAKING;
+  m.n = 1;
+  m.data[0] = on ? 1 : 0;
   xQueueSend(queue, &m, 0);
 }
 

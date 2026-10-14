@@ -30,7 +30,8 @@ namespace face_app {
 bool begin();
 
 // Hand over a host -> robot message: type (header byte 3) and the payload after the 16-byte
-// header. Face messages (FACE_STATE, FACE_EVENT) are queued, anything else is ignored.
+// header. Face messages (FACE_STATE, FACE_EVENT) and SOUND (its mood, face/mood.h) are queued,
+// anything else is ignored.
 void on_message(uint8_t type, const uint8_t *payload, size_t n);
 
 // The panel's ID read at begin() (St7789::id(): 0xFFFFFF when nothing answered). Only the
@@ -40,6 +41,13 @@ uint32_t screen_id();
 // The board's own presence (its radar), for the face while the host sends no FACE_STATE
 // (FaceLink::set_local): call it with every radar frame. position_mm in the device frame, or null.
 void set_local_presence(bool present, const double position_mm[3]);
+
+// A sound the robot plays by itself (the knob without a host, the hello on the first link): its mood.
+void on_local_sound(uint8_t id);
+
+// The speaker plays the host's stream (true) or has nothing left to play: the speaking mood.
+// Cheap: call it on every change.
+void set_speaking(bool on);
 
 // The robot's link to the host: on false the face forgets the host's last FACE_STATE and runs on
 // its own at once (FaceLink::host_lost). Cheap: call it on every change.

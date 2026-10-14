@@ -50,6 +50,10 @@ void on_message(uint8_t type, const uint8_t *payload, size_t n);
 // Plays a built-in sound (audio/earcons.h) locally. False if the id is unknown.
 bool play_sound(uint8_t id);
 
+// True while the speaker plays the host's stream (AUDIO_OUT queued or playing), for the face's
+// speaking mood; earcons do not count.
+bool speaking();
+
 // The main loop reports the link state: losing the host stops the microphone stream.
 void set_linked(bool linked);
 
