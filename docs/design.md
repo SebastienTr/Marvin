@@ -808,6 +808,8 @@ What stays Python for good: the voice and vision sidecars, the simulator and the
 
 ## 12. Open questions for the owner
 
+Answered on 14 October 2026: see the [decisions log](#decisions-log) below.
+
 1. **Which machine is the host long-term?** A laptop that sleeps (then nightly passes run "at the first idle hour") or an always-on Mac mini / Linux box? This decides whether phase 6 matters early.
 2. **Cloud models at all?** If never, the consent machinery can wait and the agents are sized to local models.
 3. **Which Google account and connector?** Google's official MCP servers are remote and in Developer Preview (enrolment and a Cloud project needed); community servers run locally with your own OAuth client. Personal Gmail or Workspace?
@@ -816,6 +818,25 @@ What stays Python for good: the voice and vision sidecars, the simulator and the
 6. **Language of stored memory**: English (recommended: one embedding space, one set of prompts) while the conversation stays French?
 7. **Is Kubernetes a goal in itself** (learning), or only if the hardware calls for it?
 8. **PostgreSQL on the Mac**: Docker Desktop is acceptable as a prerequisite, or Homebrew only?
+
+### Decisions log
+
+**14 October 2026** (the owner, answering the questions above and those of the Marvin v1 plan):
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Host machine | The owner's MacBook. Nightly passes (memory worker, reflection) run at the first idle hour. |
+| 2 | Cloud models | None. Agents are sized to local models; the cloud consent machinery waits. |
+| 3 | Google account and connector | Personal Gmail. **Native Google APIs** with the owner's own OAuth desktop client, not MCP in v1: Google Calendar read-only, Gmail search and drafts. Drafts only after an approval in the app; **no send tool exists**. MCP stays the later transport behind the same port. |
+| 4 | Who else is in the room | A single owner, recognised by voice (the voiceprint), no face ID. Anyone who sits down is greeted as the owner until their voice says otherwise; guests get a neutral greeting. |
+| 5 | Retention | Conversation text is kept one year, then summarised and dropped. |
+| 6 | Language of stored memory | English, while the conversation stays in the owner's language. |
+| 7 | Kubernetes | Not a v1 goal. |
+| 8 | PostgreSQL on the Mac | Docker (Docker Desktop is an accepted prerequisite); the embedded database stays for demos and tests. |
+| v1-1 | The orange knob | A real button: a 6 × 6 mm tact switch on the XIAO's free D7. Tap = Talk now, long press (1.5 s or more) = mute or unmute; no volume (it stays in the app). Protocol: `BUTTON` action 2 ([protocol.md](protocol.md#buttons)). |
+| v1-2 | Greeting by name | Yes, for the single owner above: the owner's name and languages are settings (`owner`), the greeting is the voice setting `greet_on_sit` (on by default). |
+| v1-4 | The Python host's own app | Retired in v1: its web app and `marvin-host run` go; the voice sidecar, the simulator, the viewer, recordings, calibration and the USB sensors stay. The API goldens are re-recorded from the Java host. |
+| v1-5 | Wi-Fi provisioning | Not in v1: Wi-Fi stays in `secrets.h` at compile time; a captive portal is for v1.1. |
 
 ## Sources
 
