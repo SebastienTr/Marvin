@@ -1,6 +1,12 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Review guide: the Java host (migration phases 0 to 3)
 
+> **Archived (14 October 2026).** This guide is the record of the review of the move to the Java host (phases 0
+> to 3). It is kept for its module map and its reading order, but it is no longer maintained: the Python host's own
+> app is being retired in v1, and the manual plan it points to was replaced by the
+> [v1 acceptance checklist](test-plan.md). Its references to "the test plan, part 11 and checks 9.4 to 9.6" mean
+> the earlier plan, still in the history: `git show b5450fa:docs/test-plan.md`.
+
 The change adds `host-java/` (a Spring Boot host at parity with the Python host), the `./marvin`
 launcher, the Python voice sidecar (`host/marvin_host/sidecar/voice`) and a few deliberate changes to
 the Python host (phases 0 to 2); then memory v1 and the new app (phase 3, [its own reading
@@ -97,7 +103,7 @@ section under "Memory v1" in [NOTES.md](../host-java/NOTES.md). About half a day
 10. **End to end**: `MemoryEndToEndIT` (the whole host), `host-java/e2e/week.py` (a scripted week in French and
     English against the running host) and `e2e.py` (every screen, both appearances, phone and desktop); their
     screenshots are listed in NOTES.md.
-11. **The owner's checks on the Mac**: [test-plan.md](test-plan.md), part 11 and checks 9.4 to 9.6.
+11. **The owner's checks on the Mac**: the earlier test plan, part 11 and checks 9.4 to 9.6 (`git show b5450fa:docs/test-plan.md`).
 
 The boundaries: `memory` is a bounded context with its own schema and Flyway history; the conversation reaches it only
 through its own `MemoryContext` port, plugged in `marvin-app` (`ArchitectureTest`, and `ArchitectureRulesBiteTest`
@@ -108,7 +114,7 @@ shows the rule fails on a fixture).
 - Only one host can own UDP 47100. History written by the Java host stays in PostgreSQL: going back
   to the Python host shows its own SQLite history only. The import runs once, so days spent on the
   Python host afterwards are not imported.
-- Not run on macOS or with real boards before release: [test-plan.md](test-plan.md) covers it.
+- Not run on macOS or with real boards before release: the earlier test plan covered it; for v1, the [acceptance checklist](test-plan.md).
 - `/api/state` and `today` answer 500 after 5 s while PostgreSQL is down (robot and voice keep going).
 - No trace context sent to the sidecar yet (phase 3: a `trace_parent` field in the voice contract).
 - Four Boot lifecycle classes are known exceptions to the glue rule (`ArchitectureTest.BOOT_GLUE_KNOWN`).
