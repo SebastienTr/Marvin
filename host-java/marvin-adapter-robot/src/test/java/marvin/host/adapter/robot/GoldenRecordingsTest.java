@@ -11,11 +11,13 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 import marvin.host.adapter.robot.mvrec.RecordingReader;
 import marvin.host.application.presence.PresenceService;
 import marvin.host.domain.presence.BrainConfig;
+import marvin.host.domain.presence.BrainSpeedSignCheck;
 import marvin.host.domain.presence.TargetSighting;
 import marvin.host.domain.presence.VitalsReading;
 import marvin.host.domain.presence.event.PresenceEvent;
@@ -148,6 +150,31 @@ class GoldenRecordingsTest {
             }));
         }
         return tests.stream();
+    }
+
+    /** The simulator sends the LD2450 speed positive approaching: the check finds the default sign, -1. */
+    @Test
+    void theSpeedSignCheckFindsTheSimulatorsSign() {
+        BrainSpeedSignCheck check = new BrainSpeedSignCheck();
+        RobotLinkProcessor rx = new RobotLinkProcessor(Extrinsics.DEFAULT);
+        try (RecordingReader reader = new RecordingReader(Golden.open("recordings/room_loop.mvrec.gz"), "room_loop")) {
+            for (RecordingReader.Datagram d : reader) {
+                rx.handle(d.data(), d.from()).frames().forEach(f -> {
+                    if (f instanceof SensorFrame.RadarTargets t) {
+                        TargetSighting nearest = null;
+                        for (int i = 0; i < t.targets().size(); i++) {
+                            double[] p = t.points().get(i);
+                            if (nearest == null || Math.hypot(p[0], p[1]) < Math.hypot(nearest.x(), nearest.y())) {
+                                nearest = new TargetSighting(p[0], p[1], p[2], t.targets().get(i).speedCms());
+                            }
+                        }
+                        check.add(t.tUs() / 1e6, nearest);
+                    }
+                });
+            }
+        }
+        assertThat(check.samples()).isGreaterThanOrEqualTo(BrainSpeedSignCheck.MIN_SAMPLES);
+        assertThat(check.sign()).isEqualTo(BrainConfig.DEFAULT.radarSpeedSign()).isEqualTo(-1);
     }
 
     private void check(JsonNode sc, BrainConfig config) {
