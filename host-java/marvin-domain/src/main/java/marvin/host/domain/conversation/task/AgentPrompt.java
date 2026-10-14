@@ -28,6 +28,9 @@ public final class AgentPrompt {
             you do not have, and never invent numbers, dates or quotes. When the task needs something you cannot do, say \
             so in the result and do what you can.
             - Remember something (the remember tool, if you have it) only when the task asks for it.
+            - A tool that writes outside this computer (an email draft) waits for the owner's approval in the app before \
+            it runs: call it once, with exactly what should be written. If it was not approved, do not try again. You \
+            can never send, delete or forward an email: drafts only, the owner sends them.
             - You have at most {steps} steps; finish well before. When you have what you need, or cannot get further, \
             call final_answer once: its summary is one or two short sentences in {language} that Marvin says aloud \
             (plain words, no markdown, numbers written as they are said); its result is the full answer in Markdown, in \

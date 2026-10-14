@@ -15,12 +15,15 @@ import marvin.host.domain.conversation.ChatMessage;
 import marvin.host.domain.conversation.SpeechText;
 import marvin.host.domain.conversation.ToolCall;
 import marvin.host.domain.conversation.task.AgentPrompt;
+import marvin.host.domain.conversation.task.Approval;
+import marvin.host.domain.conversation.task.ApprovalText;
 import marvin.host.domain.conversation.task.TaskBudget;
 import marvin.host.domain.conversation.task.TaskSpent;
 import marvin.host.domain.conversation.task.TaskStatus;
 import marvin.host.domain.conversation.task.TaskStep;
 import marvin.host.domain.conversation.task.TaskText;
 import marvin.host.domain.conversation.tool.TaskTools;
+import marvin.host.domain.conversation.tool.ToolAccess;
 import marvin.host.domain.conversation.tool.ToolArguments;
 import marvin.host.domain.conversation.tool.ToolError;
 import marvin.host.domain.conversation.tool.ToolResult;
@@ -36,6 +39,10 @@ import marvin.host.domain.shared.JsonText;
  * within the model's context: tool results are cut to {@link #MAX_TOOL_RESULT} characters, and a prompt that grows past
  * {@link #MAX_PROMPT_CHARS} makes the next step the last. A request cut for the conversation ({@link ModelLane}) is made
  * again and does not count.
+ *
+ * <p>A call of a tool that writes outside this computer runs only once the owner approved it ({@link Approvals}): the
+ * task waits meanwhile, and the wait does not count against its time budget. A rejected or expired call is not made; the
+ * model is told why and goes on without it.
  */
 public final class TaskRunner {
     private static final Logger log = Logger.getLogger("marvin.tasks");
@@ -46,9 +53,33 @@ public final class TaskRunner {
     /** Times the model may answer in plain text instead of finishing before that text is taken as the result. */
     static final int NUDGES = 1;
 
-    /** What a task runs with. */
+    /**
+     * What a task runs with.
+     *
+     * @param approvals asks the owner's approval of a call that writes outside this computer; {@code null}: such a call
+     *                  is refused
+     */
     public record Setup(String host, String model, ToolRegistry tools, LanguageModel.Thinking thinking,
-                        List<ChatMessage> messages, TaskBudget budget, Map<String, Object> toolContext, double timeoutS) {
+                        List<ChatMessage> messages, TaskBudget budget, Map<String, Object> toolContext, double timeoutS,
+                        Approvals approvals) {
+
+        public Setup(String host, String model, ToolRegistry tools, LanguageModel.Thinking thinking,
+                     List<ChatMessage> messages, TaskBudget budget, Map<String, Object> toolContext, double timeoutS) {
+            this(host, model, tools, thinking, messages, budget, toolContext, timeoutS, null);
+        }
+    }
+
+    /** The owner's approval of one call (docs/design.md 6.3). */
+    public interface Approvals {
+        /**
+         * Asks for it and waits until it is decided (approved, rejected, or expired: no answer in time, or the task was
+         * cancelled).
+         */
+        Approval ask(String tool, Map<String, Object> arguments, Map<String, Object> preview) throws InterruptedException;
+
+        /** The approved call ran, with this result. */
+        default void ran(Approval approval, ToolResult result) {
+        }
     }
 
     /** What the runner tells as it goes: each step, and what it is doing now. */
@@ -99,6 +130,7 @@ public final class TaskRunner {
         TaskSpent spent = TaskSpent.NONE;
         int nudges;
         boolean last;
+        double waited;
 
         Run(Setup s, Progress progress, BooleanSupplier cancelled) {
             this.s = s;
@@ -109,7 +141,7 @@ public final class TaskRunner {
         }
 
         TaskSpent spent() {
-            return spent = spent.at(clock.getAsDouble() - t0);
+            return spent = spent.at(clock.getAsDouble() - t0 - waited);
         }
 
         Outcome end(TaskStatus status, String summary, String result, String error) {
@@ -218,8 +250,17 @@ public final class TaskRunner {
                         }
                         continue;
                     }
-                    progress.activity("Using " + call.name(), spent());
-                    ToolResult res = tools.call(call.name(), call.arguments(), s.toolContext());
+                    ToolRegistry.Tool tool = tools.get(call.name());
+                    ToolResult res;
+                    if (tool != null && tool.access() == ToolAccess.EXTERNAL_WRITE) {
+                        res = approved(call, tool);
+                        if (res == null) {
+                            return end(TaskStatus.CANCELLED, "", "", "Cancelled");
+                        }
+                    } else {
+                        progress.activity("Using " + call.name(), spent());
+                        res = tools.call(call.name(), call.arguments(), s.toolContext());
+                    }
                     spent = spent.plusTool();
                     String content = TaskText.cut(res.content(), MAX_TOOL_RESULT);
                     messages.add(ChatMessage.tool(call.name(), content));
@@ -234,6 +275,63 @@ public final class TaskRunner {
                         d.put("error", res.error());
                     }
                     step(TaskStep.TOOL, d);
+                }
+            }
+        }
+
+        /**
+         * A call of a tool that writes outside this computer: made once the owner approved it, otherwise an error the
+         * model reads; {@code null} when the task was cancelled while it waited.
+         */
+        ToolResult approved(ToolCall call, ToolRegistry.Tool tool) throws InterruptedException {
+            Map<String, Object> args;
+            try {
+                args = ToolArguments.validate(tool.spec().parameters(), call.arguments());
+            } catch (ToolError e) {
+                return tools.call(call.name(), call.arguments(), s.toolContext());      // the error, as for any tool
+            }
+            if (s.approvals() == null || !tools.approvals()) {
+                return ToolResult.failure(call.name(), args, "this tool needs the owner's approval, which cannot be asked "
+                        + "here: it was not done", 0);
+            }
+            Map<String, Object> preview = null;
+            if (tool.preview() != null) {
+                try {
+                    preview = tool.preview().preview(args);
+                } catch (RuntimeException e) {
+                    log.log(java.util.logging.Level.WARNING, "the preview of " + call.name() + " failed", e);
+                }
+            }
+            note("Waiting for the owner's approval: " + call.name());
+            double w0 = clock.getAsDouble();
+            Approval a;
+            try {
+                a = s.approvals().ask(call.name(), args, preview);
+            } finally {
+                waited += clock.getAsDouble() - w0;
+            }
+            switch (a.state()) {
+                case APPROVED -> {
+                    note("Approved by the owner");
+                    progress.activity("Using " + call.name(), spent());
+                    ToolResult res = tools.call(call.name(), args, s.toolContext());
+                    try {
+                        s.approvals().ran(a, res);
+                    } catch (RuntimeException e) {
+                        log.log(java.util.logging.Level.WARNING, "could not keep what an approved call made", e);
+                    }
+                    return res;
+                }
+                case REJECTED -> {
+                    note("Rejected by the owner" + (a.reason().isEmpty() ? "" : ": " + a.reason()));
+                    return ToolResult.failure(call.name(), args, ApprovalText.rejected(a.reason()), 0);
+                }
+                default -> {
+                    if (cancelled.getAsBoolean()) {
+                        return null;
+                    }
+                    note("No approval: " + a.reason());
+                    return ToolResult.failure(call.name(), args, ApprovalText.expired(a.reason()), 0);
                 }
             }
         }
@@ -350,7 +448,7 @@ public final class TaskRunner {
 
             @Override
             public boolean cancelled() {
-                if (clock.getAsDouble() - t0 >= s.budget().seconds()) {
+                if (clock.getAsDouble() - t0 - waited >= s.budget().seconds()) {
                     overTime = true;
                 }
                 return overTime || lease.preempted() || cancelled.getAsBoolean();

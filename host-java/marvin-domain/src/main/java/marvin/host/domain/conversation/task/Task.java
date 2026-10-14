@@ -62,6 +62,16 @@ public record Task(String id, String goal, String title, String language, String
                 budget, spent, "Starting", summary, result, error, announced, announcedAt);
     }
 
+    /** Waiting for the owner's approval ({@code needs_approval}), or running again after it. */
+    public Task awaiting(boolean waiting, String doing) {
+        TaskStatus to = waiting ? TaskStatus.NEEDS_APPROVAL : TaskStatus.RUNNING;
+        if (status.finished()) {
+            throw new IllegalArgumentException("a finished task does not wait: " + id);
+        }
+        return new Task(id, goal, title, language, origin, to, createdAt, startedAt, finishedAt, model, reasoning, think,
+                budget, spent, doing, summary, result, error, announced, announcedAt);
+    }
+
     public Task progress(String doing, TaskSpent s) {
         return new Task(id, goal, title, language, origin, status, createdAt, startedAt, finishedAt, model, reasoning, think,
                 budget, s, doing, summary, result, error, announced, announcedAt);

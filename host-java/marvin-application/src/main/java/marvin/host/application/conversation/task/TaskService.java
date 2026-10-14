@@ -14,6 +14,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -30,6 +31,8 @@ import marvin.host.domain.conversation.ReasoningSettings;
 import marvin.host.domain.conversation.VoiceSettings;
 import marvin.host.domain.conversation.VoiceSettings.VoiceConfig;
 import marvin.host.domain.conversation.task.AgentPrompt;
+import marvin.host.domain.conversation.task.Approval;
+import marvin.host.domain.conversation.task.ApprovalText;
 import marvin.host.domain.conversation.task.Task;
 import marvin.host.domain.conversation.task.TaskAnnouncement;
 import marvin.host.domain.conversation.task.TaskBudget;
@@ -39,6 +42,8 @@ import marvin.host.domain.conversation.task.TaskStep;
 import marvin.host.domain.conversation.task.TaskText;
 import marvin.host.domain.conversation.tool.TaskTools;
 import marvin.host.domain.conversation.tool.ToolError;
+import marvin.host.domain.conversation.tool.ToolResult;
+import marvin.host.domain.shared.JsonText;
 import marvin.host.domain.shared.Clocks;
 import marvin.host.domain.shared.LocalDays;
 
@@ -49,7 +54,12 @@ import marvin.host.domain.shared.LocalDays;
  * as they change ({@link TaskListener}); and told to the owner when they are done ({@link TaskAnnouncement}): said at
  * once when they are there and not talking with Marvin, else mentioned in the next answer.
  *
- * <p>After a restart, a task that was queued or running is {@code interrupted}: its steps so far stay readable.
+ * <p>A task may call a tool that writes outside this computer (an email draft) only with the owner's approval
+ * ({@link ApprovalService}, when set): it waits in {@code needs_approval}, and gives its turn to the next task meanwhile
+ * (one task runs at a time; one waiting for the owner does not hold the others up). Marvin mentions the approval aloud
+ * once, when the owner is there and not talking with it.
+ *
+ * <p>After a restart, a task that was queued, running or waiting is {@code interrupted}: its steps so far stay readable.
  */
 public final class TaskService implements TaskControl {
     private static final Logger log = Logger.getLogger("marvin.tasks");
@@ -105,6 +115,10 @@ public final class TaskService implements TaskControl {
     private volatile Host host;
     private volatile TaskBudget budget = TaskBudget.DEFAULT;
     private volatile boolean closed;
+    private volatile ApprovalService approvals;
+    /** The one task that runs: a task waiting for the owner's approval gives it back meanwhile. */
+    private final Semaphore slot = new Semaphore(1, true);
+    private final Set<Thread> running = ConcurrentHashMap.newKeySet();
     private final Thread worker;
 
     public TaskService(TaskStore store, LanguageModel model, ModelLane lane, VoiceSettingsStore settings, Clocks clocks,
@@ -132,6 +146,11 @@ public final class TaskService implements TaskControl {
         host = h;
     }
 
+    /** The owner's approvals: with them, tasks may call tools that write outside this computer. Set before the first task. */
+    public void setApprovals(ApprovalService a) {
+        approvals = a;
+    }
+
     public void addListener(TaskListener l) {
         listeners.add(l);
     }
@@ -152,6 +171,9 @@ public final class TaskService implements TaskControl {
         worker.interrupt();
         try {
             worker.join(3000);
+            for (Thread t : List.copyOf(running)) {
+                t.join(3000);
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -238,9 +260,10 @@ public final class TaskService implements TaskControl {
             return store.get(id);
         }
         cancelled.add(id);
-        if (t.status() == TaskStatus.QUEUED && queue.remove(id)) {
+        if (t.status() == TaskStatus.QUEUED && open.remove(id, t)) {
+            // still waiting its turn (in the queue, or taken by the worker for the next free turn): it never starts
+            queue.remove(id);
             Task c = t.finished(TaskStatus.CANCELLED, clocks.wallSeconds(), "", "", "Cancelled before it started", null);
-            open.remove(id);
             save(c);
             return Optional.of(c);
         }
@@ -260,21 +283,41 @@ public final class TaskService implements TaskControl {
             if (id == null) {
                 continue;
             }
+            try {
+                slot.acquire();             // fair: a task back from its approval goes before the next one
+            } catch (InterruptedException e) {
+                return;
+            }
             Task t = open.get(id);
             if (t == null) {
+                slot.release();
                 continue;
             }
-            try {
-                run(t);
-            } catch (RuntimeException e) {
-                log.log(Level.SEVERE, "a task failed", e);
-                Task f = open.getOrDefault(id, t).finished(TaskStatus.FAILED, clocks.wallSeconds(), "", "",
-                        "Something went wrong: " + e.getMessage(), null);
-                open.remove(id);
-                save(f);
-            } finally {
-                cancelled.remove(id);
-            }
+            Thread th = Thread.ofVirtual().name("marvin-task").unstarted(() -> {
+                try {
+                    guarded(t);
+                } finally {
+                    running.remove(Thread.currentThread());
+                    slot.release();
+                }
+            });
+            running.add(th);
+            th.start();
+        }
+    }
+
+    private void guarded(Task t) {
+        String id = t.id();
+        try {
+            run(t);
+        } catch (RuntimeException e) {
+            log.log(Level.SEVERE, "a task failed", e);
+            Task f = open.getOrDefault(id, t).finished(TaskStatus.FAILED, clocks.wallSeconds(), "", "",
+                    "Something went wrong: " + e.getMessage(), null);
+            open.remove(id);
+            save(f);
+        } finally {
+            cancelled.remove(id);
         }
     }
 
@@ -285,10 +328,13 @@ public final class TaskService implements TaskControl {
         LanguageModel.Thinking thinking = new LanguageModel.Thinking(r.tasks(), LanguageModel.Thinking.TASK_TOKENS);
         String think = String.valueOf(r.tasks().thinkValue(model.describe(c.ollamaHost(), c.llmModel()).thinking()));
         Task t = queued.running(clocks.wallSeconds(), c.llmModel(), r.tasks().id(), think);
-        open.put(t.id(), t);
+        if (!open.replace(t.id(), queued, t)) {
+            return;                                     // cancelled before it started
+        }
         save(t);
         log.info("task running: " + t.title() + " (" + c.llmModel() + ", think " + think + ")");
-        ToolRegistry tools = h.tools() != null ? h.tools().forTasks(List.of())
+        ApprovalService as = approvals;
+        ToolRegistry tools = h.tools() != null ? h.tools().forTasks(List.of(), as != null)
                 : new ToolRegistry(List.of(), false, false, clocks::monotonicSeconds);
         List<marvin.host.domain.conversation.tool.ToolSpec> specs = new ArrayList<>();
         tools.offered().forEach(x -> specs.add(x.spec()));
@@ -298,9 +344,9 @@ public final class TaskService implements TaskControl {
                 ChatMessage.user(AgentPrompt.task(t.goal(), now, t.language())));
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put("language", t.language());
-        TaskRunner.Setup setup = new TaskRunner.Setup(c.ollamaHost(), c.llmModel(), tools, thinking, messages, t.budget(), ctx,
-                REQUEST_TIMEOUT_S);
         String id = t.id();
+        TaskRunner.Setup setup = new TaskRunner.Setup(c.ollamaHost(), c.llmModel(), tools, thinking, messages, t.budget(), ctx,
+                REQUEST_TIMEOUT_S, as == null ? null : gate(id, as));
         TaskRunner.Outcome out = runner.run(setup, new TaskRunner.Progress() {
             @Override
             public void step(TaskStep step) {
@@ -335,6 +381,69 @@ public final class TaskService implements TaskControl {
                 + out.spent().toolCalls() + " tools, " + out.spent().tokens() + " tokens, "
                 + Math.round(out.spent().seconds()) + " s)" + (error.isEmpty() ? "" : ": " + error));
         tryAnnounce();
+    }
+
+    /** A task's way to the owner's approval: it waits in needs_approval, its turn given to the next task meanwhile. */
+    private TaskRunner.Approvals gate(String id, ApprovalService as) {
+        return new TaskRunner.Approvals() {
+            @Override
+            public Approval ask(String tool, Map<String, Object> arguments, Map<String, Object> preview)
+                    throws InterruptedException {
+                Task cur = open.get(id);
+                Approval a = as.request(cur, tool, arguments, preview);
+                waiting(id, true, ApprovalText.waiting(tool));
+                mentionApproval(cur);
+                slot.release();
+                try {
+                    return as.await(a.id(), () -> cancelled.contains(id) || closed);
+                } finally {
+                    slot.acquireUninterruptibly();
+                    waiting(id, false, "Back to work");
+                }
+            }
+
+            @Override
+            public void ran(Approval a, ToolResult result) {
+                as.ran(a.id(), openUrl(result));
+            }
+        };
+    }
+
+    private void waiting(String id, boolean on, String doing) {
+        Task cur = open.get(id);
+        if (cur != null && !cur.status().finished()) {
+            Task next = cur.awaiting(on, doing);
+            open.put(id, next);
+            save(next);
+        }
+    }
+
+    /** Says once that a task waits for the owner's approval, when they are there and not talking with Marvin. */
+    private void mentionApproval(Task t) {
+        Host h = host;
+        if (h == null || t == null) {
+            return;
+        }
+        try {
+            if (TaskAnnouncement.decide(h.voiceOn(), h.conversing(), h.quiet(), h.present(), h.sinceTalkS())
+                    == TaskAnnouncement.Decision.SPEAK_NOW) {
+                h.speak(ApprovalText.spoken(t.language(), t.title()), t.language());
+            }
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "could not mention an approval", e);
+        }
+    }
+
+    /** The link to what an approved call made ({@code open_url} in its JSON result), or {@code null}. */
+    static String openUrl(ToolResult r) {
+        if (r == null || !r.ok() || !r.content().contains("open_url")) {
+            return null;
+        }
+        try {
+            return JsonText.parse(r.content()) instanceof Map<?, ?> m && m.get("open_url") instanceof String u ? u : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static String profile(Host h) {
