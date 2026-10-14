@@ -121,7 +121,8 @@ public final class AccessFilter implements Filter {
                 denied(rs, why, path);
                 return;
             }
-            if (!POST_PATHS.contains(path) && !INTELLIGENCE_POSTS.matcher(path).matches()) {
+            if (!POST_PATHS.contains(path) && !INTELLIGENCE_POSTS.matcher(path).matches()
+                    && !SetupController.isStepPath(path)) {
                 write(rs, 404, Responses.JSON, error("not found"));
                 return;
             }

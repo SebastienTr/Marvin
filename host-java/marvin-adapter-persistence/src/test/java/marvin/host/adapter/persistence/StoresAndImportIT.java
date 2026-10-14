@@ -97,6 +97,13 @@ class StoresAndImportIT {
         assertThat(settings.load()).containsEntry("break_interval_min", 45.5).containsEntry("clock", "12h")
                 .containsEntry("quiet_hours", Map.of("enabled", true));
 
+        var setup = new JdbcSetupStore(jdbc, migrations);
+        setup.save("mr60", Map.of("skipped", true));
+        setup.save("speaker", Map.of("heard", false));
+        setup.save("speaker", Map.of("heard", true, "skipped", false));
+        assertThat(setup.load()).containsExactly(Map.entry("mr60", Map.of("skipped", true)),
+                Map.entry("speaker", Map.of("heard", true, "skipped", false)));
+
         var convo = new JdbcConversationStore(jdbc, migrations);
         Map<String, Object> latency = new LinkedHashMap<>();
         latency.put("endpoint", 0.55);

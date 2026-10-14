@@ -30,6 +30,7 @@ class SchemaOwnershipTest {
             Map.entry("JdbcTaskStore.java", "conversation"),
             Map.entry("JdbcApprovalStore.java", "conversation"),
             Map.entry("JdbcSettingsStore.java", "settings"),
+            Map.entry("JdbcSetupStore.java", "settings"),
             Map.entry("JdbcEventLog.java", "memory"),
             Map.entry("JdbcFactStore.java", "memory"),
             Map.entry("JdbcEpisodeStore.java", "memory"),

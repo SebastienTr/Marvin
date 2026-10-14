@@ -2,13 +2,14 @@
   "contract": {
     "id": "C2",
     "owner": "W5",
-    "state": "pending",
+    "state": "implemented",
     "frozen": "2026-10-14",
     "notes": [
       "Step ids, in this order: host, model, voice, robot, mr60, speaker, voiceprint, owner, quiet_hours.",
       "state: ok | missing | skipped. fix: a one-line command or action, or null.",
       "done: true once every step is ok or skipped; the app then opens Home instead of /setup.",
-      "POST /api/setup/{step} (JSON body depends on the step: {} to re-check, {\"skip\": true} to skip, {\"heard\": true} for speaker, the owner's {\"name\", \"languages\"} for owner, the quiet hours object for quiet_hours) answers the same object as this GET."
+      "POST /api/setup/{step} (JSON body depends on the step: {} to re-check, {\"skip\": true} to skip, {\"heard\": true} for speaker, the owner's {\"name\", \"languages\"} for owner, the quiet hours object for quiet_hours; {\"play\": true} for speaker plays the test first) answers the same object as this GET.",
+      "A step that is ok is ok even if it was skipped (the kit plugged in later). host cannot be skipped. 404 for an unknown step, 400 for a body the step does not take."
     ]
   },
   "request": {
