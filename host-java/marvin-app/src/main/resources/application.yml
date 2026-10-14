@@ -102,6 +102,23 @@ marvin:
   vitals:
     # the per-minute heart and breathing rates (GET /api/vitals) are kept this long
     keep-days: ${MARVIN_VITALS_KEEP_DAYS:90}
+  soul:
+    # the weekly reflection (docs/design.md 8.2): from Sunday 21:00, at the first moment the model is free, checked
+    # every check-minutes; off in the demo
+    reflection: ${MARVIN_SOUL_REFLECTION:true}
+    check-minutes: 15
+  approvals:
+    # a background task's call that writes outside this computer waits this long for the owner, then expires
+    expire-minutes: ${MARVIN_APPROVAL_MINUTES:60}
+  connectors:
+    # where OAuth tokens are kept: auto (the macOS Keychain on a Mac, else <data-dir>/secrets.json, 0600), keychain,
+    # file; the demo keeps them in memory only
+    secrets: ${MARVIN_SECRETS:auto}
+    google:
+      # the owner's own OAuth desktop client, as Google Cloud's console downloads it (docs/connectors.md)
+      client-file: ${MARVIN_GOOGLE_CLIENT:${marvin.data-dir}/google-oauth-client.json}
+      # empty: Google; a stand-in's address for tests
+      base: ${MARVIN_GOOGLE_BASE:}
 
 management:
   endpoints:
