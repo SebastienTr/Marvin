@@ -14,6 +14,7 @@
 #include "../protocol.h"
 #include "display_st7789.h"
 #include "face_link.h"
+#include "panel.h"
 
 #ifndef MARVIN_TFT_SCK
 #define MARVIN_TFT_SCK 7    // D8
@@ -44,8 +45,18 @@
 #ifndef MARVIN_TFT_ROW_OFFSET
 #define MARVIN_TFT_ROW_OFFSET 20
 #endif
-#ifndef MARVIN_TFT_MADCTL
-#define MARVIN_TFT_MADCTL 0x00
+// How the module sits (face/panel.h); MARVIN_TFT_MADCTL, when given, overrides the four of them.
+#ifndef MARVIN_TFT_ROTATE_180
+#define MARVIN_TFT_ROTATE_180 0
+#endif
+#ifndef MARVIN_TFT_MIRROR_X
+#define MARVIN_TFT_MIRROR_X 0
+#endif
+#ifndef MARVIN_TFT_MIRROR_Y
+#define MARVIN_TFT_MIRROR_Y 0
+#endif
+#ifndef MARVIN_TFT_BGR
+#define MARVIN_TFT_BGR 0
 #endif
 #ifndef MARVIN_TFT_INVERT
 #define MARVIN_TFT_INVERT 1
@@ -160,10 +171,23 @@ bool begin() {
   if (!fb) return false;
   memset(fb, 0, bytes);
 
-  const face::St7789Config cfg = {MARVIN_TFT_SCK,         MARVIN_TFT_MOSI,       MARVIN_TFT_CS,
-                                  MARVIN_TFT_DC,          MARVIN_TFT_RST,        MARVIN_TFT_SPI_HZ,
-                                  MARVIN_TFT_COL_OFFSET,  MARVIN_TFT_ROW_OFFSET, MARVIN_TFT_MADCTL,
-                                  MARVIN_TFT_INVERT != 0};
+  face::PanelOrientation orientation;
+  orientation.rotate_180 = MARVIN_TFT_ROTATE_180 != 0;
+  orientation.mirror_x = MARVIN_TFT_MIRROR_X != 0;
+  orientation.mirror_y = MARVIN_TFT_MIRROR_Y != 0;
+  orientation.bgr = MARVIN_TFT_BGR != 0;
+#if defined(MARVIN_TFT_MADCTL)
+  const uint8_t madctl = MARVIN_TFT_MADCTL;
+  const uint16_t col_offset = MARVIN_TFT_COL_OFFSET, row_offset = MARVIN_TFT_ROW_OFFSET;
+#else
+  const uint8_t madctl = face::panel_madctl(orientation);
+  uint16_t col_offset, row_offset;
+  face::panel_offsets(orientation, face::SCREEN_W, face::SCREEN_H, MARVIN_TFT_COL_OFFSET, MARVIN_TFT_ROW_OFFSET,
+                      &col_offset, &row_offset);
+#endif
+  const face::St7789Config cfg = {MARVIN_TFT_SCK,  MARVIN_TFT_MOSI, MARVIN_TFT_CS, MARVIN_TFT_DC,
+                                  MARVIN_TFT_RST,  MARVIN_TFT_SPI_HZ, col_offset,  row_offset,
+                                  madctl,          MARVIN_TFT_INVERT != 0};
   if (!display.begin(cfg, MARVIN_TFT_SPI_BUS)) return false;
 
   queue = xQueueCreate(16, sizeof(Msg));

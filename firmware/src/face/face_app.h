@@ -14,7 +14,8 @@
 // Pins and panel settings default to docs/wiring.md and can be overridden with -D flags:
 // MARVIN_TFT_SCK (7), MARVIN_TFT_MOSI (9), MARVIN_TFT_CS (1), MARVIN_TFT_DC (2), MARVIN_TFT_RST (4),
 // MARVIN_TFT_SPI_HZ (40 MHz), MARVIN_TFT_COL_OFFSET (0), MARVIN_TFT_ROW_OFFSET (20),
-// MARVIN_TFT_MADCTL (0x00), MARVIN_TFT_INVERT (1), MARVIN_FACE_FPS (30).
+// MARVIN_TFT_ROTATE_180, MARVIN_TFT_MIRROR_X, MARVIN_TFT_MIRROR_Y, MARVIN_TFT_BGR (0: how the module
+// sits, face/panel.h), or a raw MARVIN_TFT_MADCTL; MARVIN_TFT_INVERT (1), MARVIN_FACE_FPS (30).
 // MARVIN_SCREEN_TEST (the XIAO bench): the task first shows full red, green and blue (0.3 s each),
 // so a wrong colour order or inversion shows before the eyes do.
 #pragma once
