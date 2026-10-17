@@ -134,7 +134,7 @@ The eyes are drawn whether the screen answers its ID or not: some modules cannot
 
 ## Voice and microphone through the robot
 
-The bench is the robot as far as the host is concerned: its `HELLO` has the audio flag, so the Java host can route the voice through it. Set `"audio_route": "auto"` (the robot's speaker and microphone whenever a robot with audio is connected, the computer's otherwise) or `"robot"` in `~/.config/marvin/voice.json` ([voice.md](voice.md#audio-devices)); the default, `computer`, keeps the Mac's microphone and speaker. On that route the host asks for the microphone (`AUDIO_CTRL` MIC_START, `AUDIO_IN` back at 16 kHz) and sends the spoken replies as `AUDIO_OUT`, and the voice's earcons as `SOUND`. The self-test's level lines keep running meanwhile: they listen to the same microphone.
+The bench is the robot as far as the host is concerned: its `HELLO` has the audio flag, so the Java host can route the voice through it. By default (`"audio_route": "auto"` in `~/.config/marvin/voice.json`, [voice.md](voice.md#audio-devices)) it uses the robot's speaker and microphone whenever a robot with audio is connected, the computer's otherwise; `"computer"` keeps the Mac's, `"robot"` always the robot's. On that route the host asks for the microphone (`AUDIO_CTRL` MIC_START, `AUDIO_IN` back at 16 kHz) and sends the spoken replies as `AUDIO_OUT`, and the voice's earcons as `SOUND`. The self-test's level lines keep running meanwhile: they listen to the same microphone.
 
 ## Troubleshooting
 

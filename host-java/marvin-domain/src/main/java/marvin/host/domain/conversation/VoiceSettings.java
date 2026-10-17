@@ -238,6 +238,7 @@ public final class VoiceSettings {
         out.put("greet_on_sit", GREET_ON_SIT);
         out.put("vision_model", "");
         out.put("camera", "auto");
+        out.put("audio_route", "auto");   // the robot's mic and speaker when one with audio is linked, else this computer's
         out.put("vocabulary", VOCABULARY);
         out.put("known_voices_only", false);
         for (String k : APP_KEYS) {
@@ -287,7 +288,7 @@ public final class VoiceSettings {
                 bool(settings, "chime", true),
                 bool(settings, "tools", true), bool(settings, "internet", true),
                 str(settings, "home_place", "").strip(), bool(settings, "reminders", true),
-                bool(settings, "welcome_back", false), route(str(settings, "audio_route", "computer")),
+                bool(settings, "welcome_back", false), route(str(settings, "audio_route", "auto")),
                 computer, robot, str(settings, "vision_model", "").strip(), camera(str(settings, "camera", "auto")),
                 choice(str(settings, "vad", "auto"), VAD_CHOICES), choice(str(settings, "turn", "auto"), TURN_CHOICES),
                 positive(settings, "turn_check_ms", TURN_CHECK_MS), positive(settings, "turn_max_ms", TURN_MAX_MS),

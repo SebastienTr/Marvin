@@ -919,10 +919,10 @@ calls written as text, the break reminders and "welcome back". What the model st
 clauses in Java and sent to the sidecar as it comes; the transcript, the latency breakdown and the
 reply inspector's data are built from what both sides measured.
 
-**Where it hears and speaks**: `audio_route` in `voice.json`: `computer` (the default: the
-computer's microphone and speaker, inside the sidecar), `robot` (the robot's, relayed by the Java
-host as `AUDIO_IN` and `AUDIO_OUT`), or `auto` (the robot's when one with a microphone and a
-speaker is connected, else the computer's). See [Audio devices](#audio-devices).
+**Where it hears and speaks**: `audio_route` in `voice.json`: `auto` (the default: the robot's
+when one with a microphone and a speaker is connected, else the computer's), `computer` (the
+computer's microphone and speaker, inside the sidecar), or `robot` (the robot's, relayed by the Java
+host as `AUDIO_IN` and `AUDIO_OUT`). See [Audio devices](#audio-devices).
 
 ## Limits
 
