@@ -28,7 +28,7 @@ import marvin.host.domain.shared.JsonText;
 public final class OllamaKeepAlive {
     private static final Logger log = LoggerFactory.getLogger("marvin.voice.llm");
     /** Ollama's "never unload for idleness". */
-    public static final String PINNED = "-1";
+    public static final String PINNED = "-1m";            // a string goes through Go's ParseDuration, which needs a unit: "-1" is a 400
     static final double CHECK_EVERY_S = 30.0;
 
     private final Map<String, String> pinned = new ConcurrentHashMap<>();

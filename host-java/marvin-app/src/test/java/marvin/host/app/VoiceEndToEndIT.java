@@ -136,7 +136,7 @@ class VoiceEndToEndIT {
         List<Map<String, Object>> rehearsal = (List<Map<String, Object>>) requests.get(0).get("messages");
         assertThat(question.get(0)).isEqualTo(rehearsal.get(0));
         assertThat(requests.get(0).get("options")).isEqualTo(requests.get(requests.size() - 1).get("options"));
-        assertThat(requests.get(0).get("keep_alive")).as("the voice's model stays loaded").isEqualTo("-1");
+        assertThat(requests.get(0).get("keep_alive")).as("the voice's model stays loaded").isEqualTo("-1m");
         assertThat(OLLAMA.embedRequests.getFirst().get("keep_alive")).isEqualTo("30m");
         // memory: its tools' rules in the cached system prompt, the question searched, the report for the inspector
         assertThat((String) question.get(0).get("content")).contains("Your memory: call remember");

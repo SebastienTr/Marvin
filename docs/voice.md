@@ -515,7 +515,7 @@ system prompt cached; M1/M2 at the slow end, M3/M4 Pro/Max at the fast end):
 The first question after starting a model costs its loading time (5-20 s for 27B) and the
 processing of the system prompt (several seconds for 27B). Marvin does both at start-up by
 rehearsing a real question (same system prompt, same options: `num_ctx` 16384, `think` off,
-`keep_alive` -1 for the voice's model, streamed), then checks that the next one reuses the cached prompt:
+`keep_alive` "-1m" for the voice's model, streamed), then checks that the next one reuses the cached prompt:
 `model ... ready (prompt cached) in X s; first token now Y s`. If Y stays high, the log says the
 server did not reuse the cache. Options that differ between requests (for instance another app
 using the same model with another `num_ctx`) make Ollama reload the model.
@@ -524,7 +524,7 @@ using the same model with another `num_ctx`) make Ollama reload the model.
 
 One model often serves the voice, background tasks and memory, and memory's embeddings (and sometimes its night
 model, or the model for images) are other models Ollama must load beside it. The voice's model is **pinned**: every
-request for it asks `keep_alive: -1` (never unloaded for idleness), set when the voice warms up; every other model
+request for it asks `keep_alive: "-1m"` (never unloaded for idleness), set when the voice warms up; every other model
 keeps `keep_alive: 30m`. A task using the same model shares the loaded one. When another model was just used,
 the host asks Ollama what is loaded (`GET /api/ps`, at most every 30 s); if the voice's model was pushed out to make
 room, it is warmed up again as soon as nobody is talking (`Ollama unloaded ... warming it up again` in the log).

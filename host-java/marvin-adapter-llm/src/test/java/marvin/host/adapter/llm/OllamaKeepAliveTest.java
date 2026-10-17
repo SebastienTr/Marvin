@@ -31,7 +31,7 @@ class OllamaKeepAliveTest {
             model.keepLoaded(stub.url() + "/", "qwen3:4b-instruct");
             model.streamChat(stub.url(), "qwen3:4b-instruct", List.of(ChatMessage.user("Bonjour.")), null, 30,
                     new OllamaLanguageModelTest.Collect());
-            assertThat(stub.requests.getLast()).containsEntry("keep_alive", "-1");
+            assertThat(stub.requests.getLast()).containsEntry("keep_alive", "-1m");
             embedder.embed(stub.url(), "qwen3-embedding:8b", List.of("football on Wednesdays"));
             assertThat(stub.embedRequests.getLast()).containsEntry("keep_alive", OllamaLanguageModel.KEEP_ALIVE);
         }
